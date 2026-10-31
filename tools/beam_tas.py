@@ -982,7 +982,7 @@ class MixedTorchPolicy(SampledTorchPolicy):
     arrives at the finish window late, low, and dead."""
 
     def __init__(self, *a, n_greedy: int, view_temp=None, keys_temp=None, view_hold=None,
-                 hold_seed: int = 0, **kw):
+                 hold_seed: int = 0, pitch_hold=None, **kw):
         super().__init__(*a, **kw)
         self._ng = int(n_greedy)
         # --view-hold SIGMA PERIOD (None = off, nothing below runs): each PROPOSAL env adds a
@@ -998,6 +998,17 @@ class MixedTorchPolicy(SampledTorchPolicy):
             self._vh_k = 0
             self._vh_seed = int(hold_seed)
             self._vh_gen = None
+        # --pitch-hold SIGMA PERIOD (uf2r2b4, 2026-10-31; None = off, nothing below runs): the
+        # same held offset on the PITCH z (the last view column: pitch = -20 + 50 tanh z). Pitch
+        # has no physics effect but it moves the depth image, so a held camera direction is a
+        # sustained ATTENTION choice the policy's own per-decision pitch draw never holds for long
+        self._ph = None
+        if pitch_hold is not None:
+            self._ph = (float(pitch_hold[0]), max(1, int(pitch_hold[1])))
+            self._ph_c = None
+            self._ph_k = 0
+            self._ph_seed = int(hold_seed) + 104729
+            self._ph_gen = None
         # --view-temp / --keys-temp (None = off, the draw is byte-identical): the PROPOSAL
         # envs sample the yaw head at sigma x view_temp (pitch untouched: camera only) and
         # the four key heads at logits / keys_temp; the greedy envs still take mu / argmax
@@ -1028,6 +1039,16 @@ class MixedTorchPolicy(SampledTorchPolicy):
                                              dtype=z.dtype) * self._vh[0]
                 self._vh_k += 1
                 z[:, 0] = z[:, 0] + self._vh_c
+            if self._ph is not None:
+                n = z.shape[0]
+                if self._ph_gen is None:
+                    self._ph_gen = torch.Generator(device=z.device)
+                    self._ph_gen.manual_seed(self._ph_seed)
+                if self._ph_k % self._ph[1] == 0 or self._ph_c is None:
+                    self._ph_c = torch.randn(n, generator=self._ph_gen, device=z.device,
+                                             dtype=z.dtype) * self._ph[0]
+                self._ph_k += 1
+                z[:, -1] = z[:, -1] + self._ph_c
             if self._ng > 0:
                 act[:self._ng, N_VIEW:] = padded[:self._ng, N_VIEW:].argmax(-1)
                 z[:self._ng] = mu[:self._ng]
@@ -1917,6 +1938,13 @@ def main():
                          "offset per sigma near the velocity direction. A held manoeuvre is what "
                          "i.i.d. noise at a collapsed yaw sigma never proposes (train_fast "
                          "--view-ou-sigma's argument, for the planner). None = off, byte-identical")
+    ap.add_argument("--pitch-hold", type=float, nargs=2, default=None, metavar=("SIGMA", "PERIOD"),
+                    help="--greedy-envs + --view-continuous: --view-hold's twin on the PITCH z "
+                         "(pitch target = -20 + 50 tanh z): every proposal env adds a held offset "
+                         "c ~ N(0, SIGMA), redrawn every PERIOD decisions, cloned with the "
+                         "lineage. The pitch moves only the depth image, so this proposes "
+                         "sustained camera directions (what the policy looks at), which an i.i.d. "
+                         "per-decision draw does not hold. None = off, byte-identical")
     ap.add_argument("--cc-T", default="0",
                     help="--curiosity-cond checkpoints: the family member "
                          "the PROPOSAL envs run as - a T in [0, cc_tmax] "
@@ -2707,6 +2735,9 @@ def main():
     if progress_mode and args.commit > 0:
         raise SystemExit("--objective progress/auto is a population-mode "
                          "feature and excludes --commit")
+    if args.pitch_hold is not None and (args.greedy_envs <= 0 or not VIEWC):
+        raise SystemExit("--pitch-hold offsets the proposal envs' pitch draws: needs "
+                         "--greedy-envs and a --view-continuous checkpoint")
     if args.view_hold is not None and (args.greedy_envs <= 0 or not VIEWC):
         raise SystemExit("--view-hold offsets the proposal envs' yaw draws: needs --greedy-envs "
                          "and a --view-continuous checkpoint")
@@ -2722,6 +2753,7 @@ def main():
                                 K, stack, n_greedy=args.greedy_envs,
                                 view_temp=args.view_temp, keys_temp=args.keys_temp,
                                 view_hold=args.view_hold, hold_seed=int(args.torch_seed) + 7919,
+                                pitch_hold=args.pitch_hold,
                                 extra_slot=esN, extra_fn=efN,
                                 latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
     elif args.eps > 0.0 or args.dedup:
@@ -3326,6 +3358,12 @@ def main():
                         _li = torch.as_tensor(losers, device=spol._vh_c.device)
                         _di = torch.as_tensor(donors, device=spol._vh_c.device)
                         spol._vh_c[_li] = spol._vh_c[_di]
+                if getattr(spol, "_ph", None) is not None and spol._ph_c is not None:
+                    # --pitch-hold: the held camera offset travels with the lineage too
+                    with torch.inference_mode():
+                        _li = torch.as_tensor(losers, device=spol._ph_c.device)
+                        _di = torch.as_tensor(donors, device=spol._ph_c.device)
+                        spol._ph_c[_li] = spol._ph_c[_di]
                 if KEYS and getattr(spol, "keys", None) is not None:
                     # --keys-hold: the held keys are episode history - the loser now holds what
                     # the donor holds (the policy reads them as 7 obs columns next decision)
