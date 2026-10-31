@@ -391,3 +391,8 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   with E ~1,000: (1,586, 481, -726) at t+25 = 63%). A12's search 1 (5,909M, 55 s): new spine
   (4,585 states, end d 13,132 = 57.2%); 7/9 past its line -> search 2 running. The k01 curriculum
   at tau 3549 with 99.8% success. Hand-on: ckpt_5961678848 (9M before; md5 915931b4...).
+* **A12 6,046M: 66.202** (best 66.2%, median 57.4%): through the 57% energy gate in 4/9 - ep0 to
+  66.2% at (1,393, 1,909, -430) at 37 s, three at 61.5-62.5% (the record's ~t+25 stretch: 63% at
+  (1,586, 481, -726)) - dying on the `*12` floor at z ~-1,640; 2/9 still at 57%, 3/9 early (9%,
+  9%, 23%). Search 2 (169 s): no new spine (beam 12,994 vs greedy 13,013). Hand-on:
+  ckpt_6030360576 (16M before; md5 1786148f...).
