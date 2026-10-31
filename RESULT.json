@@ -1,7 +1,7 @@
 {
  "agent": "uf2r1b1",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 118.592,
   "eval_file": "/home/steam/ar_uf2/runs/uf2r1b1/uf2r1b1_cut/traj_13067878400.jsonl",
@@ -89,7 +89,7 @@
    "1e8"
   ],
   "resume_from": "chain: uf2r1b1_dcw (scratch, 0-279M) -> dcw2 -> gsp -> tick -> turn -> turn2 -> cur (2.415B) -> loop/auto (MC line, then beam spines) -> k04 (-d 100) -> cut (k03 line cut at row 4800, resumed at ~7.4B)",
-  "commit": "b5dafd7e"
+  "commit": "ee29bffb"
  },
- "summary": "118.592 (A13 13.068B: 9/9 greedy FINISHES of surf_unitfarmer2 from the true start, best 42.25 s; record 35.17 s; first 9/9 at 8.161B, 45.00 s). Hand-on = ckpt_13045858304 (22M before the best eval), re-recorded 9/9 TWICE (seeds default and 7: 18/18, best 42.07 / 42.13 s); the snapshots re-recorded between 9.6B and 10.9B finished only 6/9-8/9, and A13's evals ran 9/9 seven times in a row from 12.77B. One lineage from scratch, champion-free, no demo in training: fixed + windowed death charge, per-call energy K12, speed-bin novelty, keys T -> the pit dive (227M); greedy-row speed/turn -> first exit; tick 10->7.63 ms; backward curriculum on the policy's own Monte Carlo line (by hand) -> greedy exit (2.94B); the trainer's auto-spine loop (beams from the true start on its own weights) -> 69.2; success-d 100 and a stall cut of the 84% spine (both by hand) -> 99.7 -> 9/9. Next: the start pit (whole evals still die there: 0/9 at 12.31-12.39B) and speed (~7 s behind the record, mostly in the pit); auto_spine could not hand back a finishing line - fixed in 58574f32."
+ "summary": "118.592: surf_unitfarmer2 FINISHED from the true start, champion-free, 9/9 greedy (A13 13.068B, best 42.25 s; first 9/9 at 8.161B, 45.00 s; record 35.17 s; scratch control 5.608). Hand-on ckpt_13045858304 re-recorded 18/18 over two seeds (42.07 s).\nOne lineage from scratch, no demo in training: a FIXED death charge (it billed the next spawn's depth) windowed 2 s + speed-bin novelty + yaw-entropy 0 + keys T -> the pit dive (227M); per-call energy K12; greedy-row respawns x1-1.3 speed, heading turned 180 -> first exit in training; tick 10->7.63 ms; a backward curriculum on the policy's own Monte Carlo line (by hand) -> greedy exit (2.94B); the trainer's auto-spine loop (beam from the true start on its own weights -> next spine) -> 69.2; success-d 100 and a stall cut of the 84% spine (both by hand) -> 99.7 -> 9/9.\nNext: the start pit - whole evals still die there late (0/9 at 11.33, 12.31, 12.39B) and it holds most of the ~7 s to the record; the policy's own beam finishes in 43.18 s (expert-loop seed); make the 3 manual steps automatic and repeat on a second map (0b). auto_spine could not hand back a finishing line: fixed and tested (58574f32)."
 }

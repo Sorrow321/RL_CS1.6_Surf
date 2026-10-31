@@ -568,3 +568,52 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   (md5 359ab38c...), and `uf2r1b1_cut/extras/` (the trainer log, the auto-spine searches' logs
   and spine.json files, the 43.18 s finishing beam line of the box test in `fintest/`, the
   re-recording logs). Box 58455319 released at 08:54 UTC (idle since 08:47).
+
+### uf2r1b1 round-1 lesson (wrap-up, 2026-10-31 09:03 UTC)
+
+**Result: 118.592** - surf_unitfarmer2 FINISHED from the true start, champion-free, 9/9 greedy
+(A13 `uf2r1b1_cut` at 13.068B, best 42.25 s; the first 9/9 at 8.161B, 45.00 s; record 35.17 s).
+Scratch control (the round's base recipe) 5.608. Hand-on: **ckpt_13045858304** (md5 359ab38c...,
+22M before the best eval), re-recorded 9/9 twice (18/18, best 42.07 / 42.13 s). One lineage on
+one RTX 5080, 13.9B steps; 204 greedy evals over 14 runs.
+
+**What worked, in order** (A4 from scratch, every later arm a resume of the same weights):
+1. A correct death charge. `--death-charge` under `--race-ratchet` billed a dying episode for
+   the NEXT spawn's depth (fixed, ee29bffb; it made A1-A3 uninformative). Fixed and windowed
+   (`--death-charge-window 2`) the critic went from ev 0.1-0.2 to 0.9+, and A4 dived into the pit
+   at 227M with speed-bin novelty (`--int-coef 2.5 --int-view 0 --int-speed 8 --int-speed-weight 3
+   --int-speed-weight-up`), `--yaw-entropy 0` and keys temperature.
+2. Energy, then exits: per-call `--energy-pot 12` (A5); greedy-row respawns at x1.0-1.3 speed
+   (A6) with the heading turned U(-180, 180) (A8) -> the first exit in training (1.13B);
+   `--tick-ms-schedule 10:7.63:3e8` (A7).
+3. A backward curriculum on the policy's OWN Monte Carlo line from the true spawn (A10, by hand)
+   -> the greedy left the pit (2.94B, 8.8).
+4. The trainer's `--auto-spine` loop (beam_tas from the true spawn on its newest weights -> next
+   spine; milestones keep the old lines paying) -> 12.5 -> 69.2 (A11-A12); then, by hand,
+   `--demo-success-d 100` instead of -400 and a cut of the 84% spine where its curriculum
+   stalled (A13) -> 86 -> 99.7 -> 9/9. The last 141 u of height under the finish box's floor were
+   learned by the policy (the curriculum walking back + its own finishes), not found by a search.
+5. Long training then paid in time and, late, in consistency: 45.0 s (8.16B) -> 42.6 s (10.4B,
+   then flat) -> seven 9/9 evals in a row from 12.77B, best 42.25 s.
+
+**What did not / watch:**
+* `--demo-success-d -400` stalls a curriculum at a beam spine's end; the line belongs at the
+  spine's end + 100.
+* The loop could never hand back a FINISHING line (beam_tas wrote no frontier on a crossing; the
+  gain rule rejected a finish within --gain of the goal): FIXED in 58574f32 with tests and a box
+  test, not yet run inside a trainer.
+* The start pit stays fragile: whole evals die there (0/9 at 8.39, 11.33, 12.31, 12.39B; 2/9 at
+  8.61, 10.80B - laps without the exit, or a mis-dive into a catch), and it holds 3.55 s of the
+  8.4 s gap measured at 8.15B.
+* Evals overstate a policy: snapshots between 9.6 and 10.9B re-recorded 6/9-8/9 beside 9/9
+  evals. Re-record a candidate twice before handing it on; snapcopy prunes its copies after
+  45 min and copies only when ckpt_latest's mtime moves.
+* `score.py --best $AR_HOME/runs/$AR_AGENT/` does not recurse into the run directories (0 evals);
+  score a run directory, or all of them (`.../$AR_AGENT/*/`).
+
+**Next (round 2):** reliability in the pit first (the score ranks it first), then speed: the
+policy's own beam finishes in 43.18 s on the 8.82B weights (`uf2r1b1_cut/extras/fintest/`), the
+expert loop's seed (beam -> plan_to_bc -> --bc-file; keep the trainer's evals on, the grader
+counts only `traj_<step>.jsonl`). For the recipe (0b): make the three manual steps automatic (a
+first spine from the true start without a hand-run MC line; the stall cut without
+--auto-spine-energy) and repeat on a second map with the same flags and constants.
