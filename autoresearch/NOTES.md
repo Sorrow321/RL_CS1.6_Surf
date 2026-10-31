@@ -333,3 +333,9 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   snapcopy had silently stopped copying at 01:12 (3,857M; restarted 01:21), so the snapshots
   either side of the eval are 3,857M (pre-jump) and 4,050M (saved by hand, md5 66760a96...; its
   own fresh 9-episode greedy recording: 23.85% best / 23.6% median). Both pulled.
+* A11 4,061M: 23.725 (median 23.6%); **4,136M: 39.090** (best 39.1%, median 35.5%): 9/9 out of the
+  pit by ~10 s, 30.8-39.1% at 23-28 s - the 38% level holds, not a fluke. Hand-on snapshot pulled:
+  ckpt_4120903680 (15M before, md5 fdaeb1e2...).
+* Search 3 (-> 4,161M, 91 s): NEW SPINE from the beam on the newest weights (3,500 states, end d
+  17,676 = 42.3%, the greedy frontier 19,765): success line d <= 17,276; milestones 29,584 and
+  27,363 keep paying. The loop now has three spines; the curriculum restarts at the new end.
