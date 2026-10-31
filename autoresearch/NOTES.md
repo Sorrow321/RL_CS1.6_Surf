@@ -370,3 +370,13 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
 * Next cycle (04:00 UTC): GE10 rooted at 47 states of tcne's own greedy line's last 3 s (ticks
   752-1032, before the fall; runs/uf2r1b2_lines/ne_tail_roots.npy), 15 min; tcne2 = tcne's final
   + the same spine at tau 0 (consolidation) on the GPU meanwhile.
+* **tcne2 (consolidation at tau 0, 1.552B -> 1.952B): steady 9.26-9.55** (9.26 / 9.28 / 9.33 /
+  9.45 / 9.39 / 9.43 / 9.55 / 9.52; medians 9.2-9.5% - nine episodes on one line now). No new
+  best over 9.647.
+* **GE10 (rooted at tcne's own greedy line's last 3 s, 15 min): deepest 9.45%** - nothing past the
+  greedy's 9.65 from that line's energy (~750). GE9's 10.23% came from a root with E 861.
+* Arm tcne3 (04:24 UTC): spine = tce line [0, 447] + GE8 chain to cell 238221 (27.3 s of trough
+  pumping, E -> ~990) + GE9 chain to cell 668210 (the NE exit to 10.23%): 3,418 states
+  (runs/uf2r1b2_lines/ne2_spine.npy); depth rule (success d <= 27,611 = 9.9%), milestones
+  28588,27912 (both earlier success lines keep paying), resumed from tcne2's final (1.952B), 7e8.
+  GE11 meanwhile from the new spine's last 3 s (what lies past the NE fall?).
