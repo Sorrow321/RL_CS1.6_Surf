@@ -236,3 +236,23 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
 * tc's greedy line (record_ckpt --dump-states, runs/uf2r1b2_lines/tc_greedy_states.npz): tick 270
   (-2547, -2504, 533) at 1,077 u/s E 1,258 -> tick 275 on the floor (-2549, -2477, 548) at 487 u/s
   E 696. One impact, -560 E.
+* **tce result (400M -> 800M, 00:16-00:42 UTC): 7.699 (702.5M), +0.3 over tc.** Evals 7.35
+  (the resumed weights) / 7.62 / 7.60 / 7.45 / 7.67 / 7.60 / **7.70** / 7.63. Same route; the
+  floor still costs ~500 E (t 2.75: 1,138 -> 622) and an earlier lip ~220 (t 1.5-1.75); the gain
+  is a higher trough exit (z ~340 vs ~300) that falls further west (x -2,812 vs -2,725).
+  Hand-off ckpt_0702021632.pt (md5 7a479c04), pulled by hand.
+* **GE5 (rooted before the landing): no energy to find.** energy_pick against tc's line: +10 E at
+  3.5-4.5%, -175 at 4.5-5.5%, nothing at 5.5-6.5%. Physically: a 600 u fall onto a flat floor
+  loses its vertical energy (vz^2/1600 ~ 600 u) whatever the line, and the record never lands
+  there - it crosses that floor 36 u up, moving north at 919 u/s out of the pit. On this route
+  the only source of the missing ~450 E is PUMPING THE TROUGH (~56 u of E per second of ideal
+  strafing at ~700 u/s: ~8 s).
+* The training frontier (reservoir min-depth 93.58% = 6.4%) sits behind the greedy's 7.7%: the
+  west exit falls onto *18 in < 2 s, inside the reservoir's 2 s margin, so the boosted frontier
+  rows (x1.0-1.3) spawn at the exit, not past it.
+* Next (00:45 UTC): GE6 rooted at 29 states of tce's own trough ride (after the landing; E
+  613-684), 15 min - does random strafing on the half-pipe find energy and a west exit past 7.7%?
+  And tce2 = tce's final + `--energy-pot 16` + `--demo-success-bonus 0` (the curriculum's spawns
+  kept): the +50 bonus is paid at the line's end, which the direct route already reaches, so it
+  PENALISES an 8 s pump by delaying the bonus (~-17 in discounted value); energy at K 16 pays the
+  pump ~+7.
