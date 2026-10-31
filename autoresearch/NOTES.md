@@ -744,3 +744,16 @@ The score needs only ONE early-exit episode in a 9/9 eval (best finish time).
 * DAgger sweep (10:50 UTC, two streams): seeds 0-8 x cuts 440 / 480 / 520 x --pitch-hold 2.0 / 3.0
   (period 20) from each seed's greedy line -> every early-exit line becomes BC rows (state ticks
   440-900, lines finishing <= 39.5 s) + spine for x4.
+* DAgger sweep results (pitch-hold from the greedy's own lines): 1 early exit in 16 runs (seed 0 cut
+  520, 2.0/20 = 38.79 s); seeds 0-3 at 440 / 480 / 520 x 2.0 / 3.0 otherwise 41.4-42.2 s. A "targeted"
+  variant (2.5/40 held only for the first 50 decisions, resample 50) is WORSE: seed 0's population was
+  still in the pit at 19 s (selection every 1.5 s is too weak); stopped.
+* `--pitch-hold-for N` (f493b429): the pitch hold only during the search's first N decisions.
+
+### x4 `uf2r2b4_x4` (11:02 UTC): BC 1.0 -> 0.2 on rows 440-900 of 89 early-exit lines (73 e900-rooted
++ 16 from the seed-0 greedy line) + spine of 6 lines (29,405 states)
+* First eval (ONE update, BC 1.0): **0/9** - six die on the pit floor at ~6 s, three climb EARLY to z
+  480-514 at ~8 s and fail. A broken policy, but one that tries the early exit: its checkpoint
+  (`runs/beam/jolt1.pt`, step 13,046,382,592, md5 fe41a5b8) is kept as a PROPOSAL policy - the plain
+  beam from the true start on it, seeds 0-8 (`runs/beam/j<s>`), to collect early-exit lines from many
+  starts for the next BC round.
