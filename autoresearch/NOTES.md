@@ -324,3 +324,14 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   START (`--race-arc-tail` >= the route length: the field's ratchet beside the arc everywhere),
   which pays the east-wall climb whenever it beats the episode's own record. Next arm if A6c
   stalls at ~14%.
+
+### A6c `zlr1b2_arc3` (the arc tail): OUT OF LOOP 1 (20:10 UTC)
+* Scores: 1.38B 11.664, 1.46B 18.133, **1.53B 19.747 (9/9 at 19.0-19.75%, h max -1,109..-1,160,
+  z max -2,146..-2,192, 91-159 s)**, 1.61B 19.539, 1.68B 0.000, 1.76B 0.000, 1.83B 17.762,
+  **1.91B 21.388 (2/9 at 21.1-21.4%, h ~-1,090, z max -2,036; 7/9 stay in the start ramp)**,
+  1.98B 18.391. The field's ratchet past the route's end took the policy over the loop-1 exit
+  and into loop 2 within ~80M steps of the switch (the record is at 17.5% entering loop 2 at
+  t 70 s and 22% at t 95 s). Training at 2.02B: reward 52/ep, arc gain 5,157 u/ep, tail field
+  progress 194 u/ep, energy records +177 u/ep, reservoir deepest 21.5%, yaw sigma 0.096.
+* The remaining weakness: the start-ramp -> half-pipe transition is a coin flip for the greedy
+  (whole evals of 0%). Snapshot pulled: runs/zlr1b2_arc3/ckpt_2028470272.pt.

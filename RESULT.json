@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 14.093,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/traj_1204813824.jsonl",
-  "run": "zlr1b2_arc2",
-  "step": 1204813824,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/ckpt_1379926016.pt",
+  "score": 21.388,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc3/traj_1908932608.jsonl",
+  "run": "zlr1b2_arc3",
+  "step": 1908932608,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc3/ckpt_2028470272.pt",
   "recipe": [
    "recipe minus --race-ratchet",
    "--race-arc",
@@ -34,10 +34,12 @@
    "2",
    "--yaw-sigma-max",
    "0.3",
-   "--keys-hold-spawn-duck"
+   "--keys-hold-spawn-duck",
+   "--race-arc-tail",
+   "1500"
   ],
-  "resume_from": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc/ckpt_final.pt",
-  "commit": "b78ce5cc"
+  "resume_from": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_arc2/ckpt_1379926016.pt",
+  "commit": "0b345ae0"
  },
- "summary": "A1-A5 never get the greedy off the start platform (best 0.704). Go-Explore from the true spawn (energy cells) finds 9.48% then 12.77%; the exact joined line (40.5 s) becomes a --race-arc route. A6 (arc shaping along it + energy ratchet + fail-pen 2 + yaw sigma cap 0.3, from scratch) leaves the platform at 151M; resumed (A6b) it pumps through the start ramp into the half-pipe (676M 9.9%) and to the route's end: 1.20B best 14.1% median 13.8% (score 14.093), h ~-1,920 = the record's loop-exit energy. GE/beam from its own states reach 14.3% but no exit from loop 1 yet. Next: A6c = + --race-arc-tail (field ratchet past the route)."
+ "summary": "A1-A5 never get the greedy off the start platform (best 0.704). Go-Explore from the true spawn (energy cells) finds a 40.5 s line to 12.77%; it becomes a --race-arc route. A6 (arc shaping + energy ratchet + fail-pen 2 + yaw sigma cap 0.3, from scratch) leaves the platform at 151M; A6b pumps through the start ramp and half-pipe to the route's end (1.20B: 14.093); A6c adds --race-arc-tail 1500 (the field's ratchet past the route): 1.53B 9/9 at 19.0-19.75% (h ~-1,150, loop 2), 1.91B best 21.4% (score 21.388). The start-ramp transition still fails in some evals (0/9 at 1.68B, 1.76B). Next: keep training; consistency; loop 3."
 }
