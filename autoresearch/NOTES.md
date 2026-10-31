@@ -380,3 +380,8 @@ on purpose: round 1 needs an exit, and the attribution comes after. Read with uf
   spine (`autoresearch/spines/uf2r1b1_k04.npy`, the trainer's own search 4) with its keys,
   `--demo-success-d 100`, `--demo-milestones 29584,27363,17276`, the same auto-spine loop, 8e9
   steps (to the wrap-up); snapcopy beside it. Box extended to 09:32 UTC.
+* **A12 5,820M: 55.779** (best 55.8%, median 46.3%): ep4 reaches the k04 spine's end region
+  ((2,095, -562, -201), 55.8%, at 44 s); 6/9 still stop at the ~46% gate (3,150..3,450, 1,000..1,140,
+  z ~790), 1 at 51.6%. With `--demo-success-d 100` the curriculum WALKS BACK at once: tau 5090 ->
+  3035 in ~150M steps, 94% success over 312 band episodes. Hand-on: ckpt_5807538176 (12M before;
+  md5 88e3458a...).
