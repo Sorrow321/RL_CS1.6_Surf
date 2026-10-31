@@ -323,3 +323,14 @@ file without a word. Workaround: scp the padded file myself, md5-checked against
   `--spawn-states runs/uf2r1b2_ge8/tops_fwd.npy --spawn-states-frac 0.3`: the west exit from
   high trough energy, and a critic that learns what trough energy is worth (then: does the
   policy start pumping from the true start?).
+* **tcq result (800M -> 1.2B): 7.953 (901M), the round's best.** Evals 7.37 / 7.80 / **7.95** / 7.84
+  / 7.82 / 7.83 / 7.81 / 7.70 (medians up to 7.8%): practising the west exit from pumped trough
+  states lifts the greedy a little; it still does not pump from the true start. Hand-off
+  ckpt_0900726784.pt (md5 48c49d2a), pulled by hand.
+* Arm tcpump (02:36 UTC), princessburglar's energy-gate playbook: spine = tce's own greedy line to
+  its trough row 447 + GE8's chain to cell 230626 (26.5 s of north-south pumping, E 644 -> 1,005,
+  ends at 6.05%) - tools/stitch_spine.py --no-cut, 3,103 states, md5 028b28ce. Curriculum from
+  its end with the ENERGY rule: success = crossing d <= 28,894 with energy height >= 855
+  (`--demo-success-energy 150`); `--demo-milestones 28588` keeps the trough route's old success
+  line paying 50, so a pump first is +50 on top of the route. Resumed from tcq's 900.7M
+  snapshot, with GE8's trough spawns (30%) and per-call energy K 8 kept.
