@@ -166,3 +166,11 @@ idle for the first third of its round.
   CPU smoke of the whole flag set passed (curriculum 6,647 states, keys on 6,283 rows, success
   line d <= 5,784). The launchers had a pipe bug (`if ! cmd | tail` tests tail): fixed with
   `set -o pipefail`.
+* GE 128 u, **60 min** (one local core, seed 7): 464,707 cells, loop-1 E max **-1,989** (the
+  record's -1,956 at its loop-1 exit), best **13.94%** at a mid-air apex north of loop 1's WEST
+  end ((-1,874, 1,337, -2,517), 713 u/s, E -2,200; open air there). Still no state on loop 2
+  (its 10 cells south of loop 1 at x 820-1,050 stand ducked on the slab's top, 8.4-10.1%).
+  Spine `zlr1b3_ge60w` (9,315 states, 100/100 links exact): ~17 s in the start dip, loop 1 from
+  ~19 s, passes pumping E -3,020 -> -2,177, the west-end flight at 65 s. Arm B now uses it
+  (launcher restarted 23:50). Fixed on the way: `auto_spine.chain_keys` re-decompressed the
+  24M-row action table per chain link and kept every copy (OOM-killed locally).
