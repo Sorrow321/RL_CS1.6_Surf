@@ -718,3 +718,10 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   the spine with `--demo-tau0 0`: a resume restores neither the milestones nor the curriculum's
   position, and dropping 7 x 50 of the training return would shock the critic). The forks stay in
   the search as a cheap lottery.
+* **CPU plain beam on the incumbent's weights (11:44-12:03 UTC, 96 envs, `--score d`, keep 16):
+  a finish in 41.59 s** (bit-exact; the greedy line on the same weights 42.50 s): the same route
+  (equal splits through the pit: 5% at 12.40 s in both), faster execution from ~20% on (-0.26 s by
+  40%, -0.54 s by 57%, -0.78 s by 65%, -0.91 s at the finish). plan_to_bc over its 15 kept
+  finishers: 20,355 BC rows -> `$AR_HOME/runs/uf2r2b2/sf_c1/bc.npz` (md5 b3a6df84...), spine =
+  `autoresearch/spines/uf2r2b2_c1.npy` (+ keys). The expert loop's first round is ready before the
+  box: a box can start training right after deploy.
