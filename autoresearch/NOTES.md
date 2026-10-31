@@ -813,3 +813,18 @@ re-checks a recording: an episode finished only if some row's origin is inside m
   -1,999)), i.e. aimed at the box's empty triangle the old goal test paid for, not at the west-face
   / diagonal corner the record enters. On the fixed core only the corner pays (+50): a later
   steering change over the final ~1.5 s for RL to learn, like round 1's last 141 u under the box.
+
+### Operator 13:50 UTC: the grader counts only real finishes from round 2 on
+* The harness (uf2/main 2a27047f) merged the three branches' core fixes (mine: the automatic
+  model match; plus an explicit-model API and a plain-box guard), and score.py now counts a "done"
+  only if the finishing step entered the trigger's clip hull (surfgym.goalhull; box-only =
+  progress, "box_only"). Round 2 is scored that way. Re-scored here: the round-1 incumbent
+  **118.592 -> 109.692** (1/9 real, 42.57 s; my per-row check found 0/9 because the finishing
+  step's end position is not a recorded row - the grader is right). Merged into this branch (commit
+  d505a1b5) so a box builds the harness core; the shared local build/ carries it too.
+* The user's direction: keep the checkpoints, train a little more on the fixed finish, no scratch
+  retraining. PROTOCOL's READ FIRST reports a warm-started run flying 9/9 REAL finishes within
+  ~150M steps of the fix. My plan for a box is that: the incumbent warm-started on the fixed core
+  with A13's own reward (k02 spine at tau 0 + keys + the 7 milestones) + --auto-bc (placeholder at
+  coef 0, --auto-bc-coef 0.5 at the first real line its own search finds).
+* Box: still none (every rent refused since 09:52 UTC, the fleet at its spending pace).
