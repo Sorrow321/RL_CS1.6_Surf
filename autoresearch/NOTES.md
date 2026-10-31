@@ -682,3 +682,18 @@ Incumbent: uf2r1b1's ckpt_13045858304 (118.592: 9/9, best 42.25 s; record 35.17 
   window - the 60-65% loop turns the wrong way (north instead of east at (917, -185)) ~0.3 s before
   its window opens; the pit's choice (the lap direction at the dive, the climb at the first pass)
   is inside its window.
+* Go-Explore from the policy's own first lap (11:00 UTC, this host, 2 threads, 12 min): 69 roots =
+  the greedy line's states at ticks 420-1100 every 10 (E 1,150-1,297, unboosted), pbf's config
+  (`--exact-chains --cell 64 --cell-energy 32 --cell-heading 1 --view-follow=-90..90
+  --select-energy 3 --act-every 4 --decisions 100 --maxvel 3500 --tick-ms 8`, 1,024 envs): 1.18M
+  cells, **no cell above z 200, and with E >= 800 none above z -133**; its deepest cells (0.13%)
+  are crash-climbs at the south end with E 0-230. Uniform bursts bleed the energy before they can
+  surf up the bowl - October's go_cem result again, now from the policy's own energetic states.
+* The two passes compared (eval ep6): the policy's 2nd-pass climb starts from nearly the same
+  state as its 1st pass (west side heading south, x ~-2,500, |v| ~1,800, z ~-840; E 1,276 vs
+  1,155); the 2nd pass meets the slope at y ~-2,640 heading -80 deg and rides it up SE (vz +1,265
+  0.4 s later), the 1st pass meets it heading -90 and runs along the south end at z ~-700. The
+  2nd-pass climb also loses ~170 u at the wall contact, then GAINS ~100 by air-strafing on the way
+  up (to z 584-656). So the 1st-pass exit needs ~10 deg more east at the slope and the policy's own
+  climb after it - the +-20 deg probe's climber had the first part and lost the second to the
+  burst's later random offsets.
