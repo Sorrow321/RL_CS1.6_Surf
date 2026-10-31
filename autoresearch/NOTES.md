@@ -138,3 +138,10 @@ idle for the first third of its round.
   loop 2's first end swing reaches 19.4% at t+67. Every loop-1 pass before it turned LEFT
   (north, back west) at that end. A greedy eval that turns right at the east end with
   |v| >~ 1,000 at the bottom is attempting the transfer.
+* The transfer's energy floor (ballistics, ANALYSIS ONLY): from the record's turn point on loop
+  1's east end (1,184, 75, -2,648) to its landing on loop 2 (1,612, -448, -2,499) is 676 u
+  horizontally and +151 u up; the slowest projectile that makes it leaves at
+  v^2 = g (dz + sqrt(dz^2 + dx^2)) = 800 x 843.7 -> 822 u/s, i.e. E >= -2,648 + 422 = **-2,226**
+  (the record had -1,923 there). GE's -2,329 is ~100 u short of even the ideal shot.
+* 22:13 UTC: GE with 128 u cells (instead of 64), 30 min on one local core, to see whether a
+  coarser archive pumps faster per CPU-minute (fewer cells, more selections per energy top).
