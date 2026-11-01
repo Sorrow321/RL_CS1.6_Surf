@@ -977,3 +977,14 @@ every 25 decisions). ~270k env-steps/s on the 5080 beside training; a 42 s span 
   on a success), so its deepest states are now beside the slab, and --respawn-front-perturb (25% of
   the non-start rows, ~19% of all spawns) perturbs THOSE ("front-perturb: 922 rows from 2
   frontier-band reservoir states (d <= 32u)"): trivial wins at "@ 0.1 s". Harvest, not evidence.
+* **r1dhL (seed 1, T 133 s, 105 s span, dh 1): 31+ finishers, the first at tick 27,527 (192.69 s)**;
+  16 kept, 16/16 replay ok, all into the north strip's west edge (x -336..-344, y 2,219-2,655,
+  z 3,031-3,044, 192.69-192.79 s). Three searches of three found finishes once the span let the
+  lineages live past ~190 s: the energy-ranked selection (survive and pump) is what the greedy lacks.
+* c1 evals after the pool swap: 11,474M 0/9 (deaths 157-188 s), 11,549M 0/9 (deaths 128-229 s; 3/9
+  stalled in the first trough at ~30 s). Training win rate 0-1.2% "@ 0.7 s": the policy's own
+  samples rarely reproduce a finish from a pool state more than ~1 s out.
+* 18:22 UTC: pool -> the last 10 s of the three winners (r3dhL, r3dh2, r1dhL) at 70% + the rc10
+  frontier states at 30% (159,310 states, md5 2dce6db4), swapped at ~11,589M: a manual backward step
+  (the trainer's own curriculum holds the GE spine); widen the window once the training win rate
+  shows finishes from further out.

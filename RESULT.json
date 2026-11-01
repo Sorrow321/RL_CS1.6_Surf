@@ -30,5 +30,5 @@
   "resume_from": "incumbent r2 (zlr2b1_rc10 ckpt_11096031232)",
   "commit": "b11e95df"
  },
- "summary": "c1 = the incumbent continued (control, 95.3-96.2 so far, 0 finishes). Finish search under way: 4,096-env policy beams (beam_tas --prefix-line) from the incumbent's own greedy lines in the fifth loop; every good greedy episode passes the north finish strip 200-330 u too low (E ~4,000-4,240). A finishing line would go into the 15% own-state spawn pool."
+ "summary": "c1 = the incumbent continued (95.3-96.2, 0 finishes). Policy beams from the incumbent's own greedy lines (beam_tas --prefix-line, 4096 envs, --score dh: -d + energy height) FOUND FINISHES: r3dhL 199.98 s (south-west slab after a wall hit), r3dh2 211.5 s and r1dhL 192.7 s (north strip), all replay bit-exact from the true start. Their last 10-30 s go into c1's --spawn-states pool (tools/finish_pool.py, swapped in place). Waiting for a greedy finish from the true start."
 }
