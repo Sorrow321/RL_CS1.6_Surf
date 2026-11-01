@@ -904,3 +904,8 @@ plus held view offsets (beam_tas --branch-at with a finish objective) rather tha
 early-route fragility (2-6/9 episodes die in the first troughs) needs fresh starts in the mix.
 * rc11 (16:07-16:31 UTC, 12,491.7-12,891.7M): 96.814 / 96.238 / 95.598 / 95.808 / 96.991 / 94.463 - no
   gain on 98.329. Box 58621920 released at 16:34 UTC (idle; every cited run pulled).
+* **Wrap-up (16:41 UTC): Final 98.329** (zlr2b1_rc10, traj_11096031232; best of 12 runs scored with
+  `score.py --best <run dir>`: c1 64.417, rc1 64.719, rc2 63.211, rc3 77.176, rc4 90.081, rc5 89.204,
+  rc6 90.073, rc7 89.429, rc8 91.742, rc9 97.339, rc10 98.329, rc11 96.991). Hand-on
+  **ckpt_11096031232.pt** (rc10, the eval's own step; md5 3c40f24d) with rc10's ckpt_final (md5
+  d1a079ab), both pulled. Box 58621920 (RTX 5080, 0.34 $/h, 05:37-16:34 UTC, ~$3.7) released.
