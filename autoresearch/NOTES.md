@@ -951,3 +951,33 @@ Incumbent: zlr2b1_rc10 ckpt_11096031232 (98.329, median 95.4%, 0 finishes).
   offsets (--view-hold) or a yaw temperature (--view-temp) on top of the policy's proposals.
 * (Budget, 17:39-17:56 UTC: every rent refused - the fleet's burn was 0.55 of the 0.645 $/h pace,
   and no offer under 0.095 $/h exists.)
+
+### NEW tools/macro_finish.py: a CPU physics-only finish search from the policy's own states (18:10 UTC)
+Every rent refused (the fleet's burn 0.55 of the 0.645 $/h pace; at that burn the pace admits a
+0.16 $/h box only in ~30 h), so a search that needs no GPU: the bare C core runs 1.19M env-steps/s
+on this machine's 2 threads (no policy, no vision). Roots = the incumbent's own frontier pool
+(`autoresearch/spines/zlr2b1_frontier_rc10.npy`: its 11,096M greedy re-recording, the fifth loop),
+proposals = 3-4 held MACROS in the policy's own action frame (fwd / side keys, duck, jump and a yaw
+TARGET offset from the velocity heading, which the core tracks at its per-tick ceiling exactly as
+it does the policy's commands; log-uniform holds 0.1-1 s), each env one (root, plan) for 2.5-3 s,
+then cross-entropy rounds (the best 1-3% kept unchanged and perturbed). Score = max(field d, the
+exact distance to the hull-inflated trigger boxes): the 32 u field reads 0 up to a cell short of a
+trigger. A goal entry is replayed on a 1-env core (same tick, exact) and saved in the
+beam_frontier.npz layout tools/finish_pool.py reads. Nothing reads the map but the goal field and
+the trigger boxes.
+* 478 roots x 64 plans x 5 rounds (102 s): no finish; the best lines come within 0.03 u of a
+  trigger: from root 11900 (184, 102, 1,800) - the ramp's middle in the fifth loop, heading north -
+  [side left, yaw +0.8 deg, 0.6 s] -> [no keys, yaw -37 deg, 0.25 s] -> [side right, yaw -1.6 deg]
+  reaches the north walkway's east face at (-47, 1,347, 2,972) in 1.95 s, and a refinement touches
+  the platform's north face at (293, 1,328, 2,988). A turn UP the slope (west), then a right strafe:
+  the shape of the record's finish, found from the policy's own state by random macros.
+
+### Harness issue: a hull pressed against a face under a trigger never finishes in this core
+The core's goal test is the origin inside the trigger box inflated by the hull. A player touching
+the solid face directly under a trigger slab sits DIST_EPSILON (0.03125 u) off the face, so its
+origin is 0.03 u outside the inflated box however high it is: on this map the finish needs the
+hull ABOVE the platform's top (origin z >= 3,004 + 36 = 3,040 standing) and over its edge. GoldSrc's
+SV_TouchLinks compares abs boxes that SV_LinkEdict expands by 1 u, so in the game the same touch at
+z >= 2,972 counts (the record's demo: z 2,978 against the walkway face at 453.80 s; our clock has it
+at 453.98-454.01, when its hull clears the top). The 450.46 s bar was measured with our rule, so it
+is consistent; the effect is that a finish here needs ~70 u more height than the game does.
