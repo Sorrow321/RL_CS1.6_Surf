@@ -836,3 +836,6 @@ then the wrap-up).
   98.33% = ep8's apex at z 2,857 (E max 4,407) at 158.5 s, still outside the slab footprints; 3/9
   died early in the first troughs (22-28%). Hand-on for 98.329: ckpt_11096031232.pt (pulled, md5
   3c40f24d). 14:55: re-recording 11,096M to refresh the frontier pool.
+* 15:00 UTC: pool refreshed from rc10's 11,096M re-recording (8/9 at contact 85.5-85.6%, alive 35-46 s
+  past it - was ~15 s at 8,491M; 47,793 states, autoresearch/spines/zlr2b1_frontier_rc10.npy, md5
+  2b29ec9e).

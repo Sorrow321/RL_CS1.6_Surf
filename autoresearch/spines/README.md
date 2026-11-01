@@ -499,3 +499,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `zlr2b1_frontier_rc9.npy` (34,387 states): frontier_states --before 2 --stride 1 on zlr2b1_rc9's
   ckpt_9171369984 greedy re-recording (9/9 at contact 85.5-85.6% by 110-115 s, alive to 130-146 s).
   Swapped into rc9's --spawn-states file in place at ~12:57 UTC.
+* `zlr2b1_frontier_rc10.npy` (47,793 states): frontier_states --before 2 --stride 1 on zlr2b1_rc10's
+  ckpt_11096031232 greedy re-recording (8/9 at contact 85.5-85.6%, alive 35-46 s past it). Swapped
+  into rc10's --spawn-states file in place at ~15:00 UTC.
