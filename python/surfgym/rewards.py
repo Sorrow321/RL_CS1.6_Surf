@@ -1089,6 +1089,16 @@ class RaceReward:
         # on the way (so dying before the band forfeits it and is never the cheaper end; the
         # kinetic part, not z, so the map's coordinate origin does not enter)
         self.en_front_bonus = False
+        # --energy-pot-loss L (zlr2b3, 2026-11-01): the share of an energy LOSS the per-call term
+        # charges. 1.0 = the potential as it stood (a contact's lost normal component, friction and
+        # a crash are charged when they happen); L < 1 charges L x the loss and still pays every
+        # gain in full. Why: the energy height is the resource a loop builds, and a structural
+        # transition SPENDS it - a landing that turns speed into a stop on a higher ledge costs
+        # K x (lost u) / 1000 on one call, while what the landing buys is paid a minute later, past
+        # the horizon. 0 = gains only. Not a potential below 1 (it no longer telescopes): a
+        # lose-and-regain cycle earns the regain, which pumping caps at the strafe's constant
+        # ~0.5 u of h per frame at any speed. Default 1.0 = byte-identical.
+        self.en_loss_frac = 1.0
         # --energy-stall EPS (zlr1b4, 2026-10-31): ENERGY HEIGHT counts as progress for the stall
         # detector. The field watches where the player is; a surfer pumping a ramp for speed (a
         # loop, a half-pipe) makes no field progress while it builds the energy it needs, and the
@@ -1679,6 +1689,9 @@ class RaceReward:
                 self._en_off[ended] = d[ended] <= self.en_front_d
             elif self.en_front_bonus:
                 dh = np.zeros_like(dh)       # no band yet (an empty reservoir): nothing to pay
+            if self.en_loss_frac != 1.0:
+                # --energy-pot-loss: charge only that share of a loss (gains stay whole)
+                dh = np.where(dh < 0.0, dh * self.en_loss_frac, dh)
             r += ((self.energy_pot / 1000.0) * dh).astype(np.float32)
             self.en_gain += float(dh[dh > 0.0].sum())
             self.en_loss -= float(dh[dh < 0.0].sum())

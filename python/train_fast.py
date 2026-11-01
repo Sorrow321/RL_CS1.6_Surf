@@ -6609,6 +6609,13 @@ def main() -> None:
                          "the term stops for the rest of it, so energy carried to the frontier "
                          "counts and spending it there (or dying there) is free. A checkpoint "
                          "restores it. 0 = off (the term everywhere)")
+    ap.add_argument("--energy-pot-loss", type=float, default=None,   # None = 1.0
+                    help="with --energy-pot: the share of an energy-height LOSS the per-call term "
+                         "charges (gains are always paid whole). 1 = the potential (default, "
+                         "byte-identical); 0 = gains only - a landing that spends speed to stop on a "
+                         "higher ledge, or any contact, costs nothing; 0 < L < 1 in between. Below 1 "
+                         "it is not a potential (a lose-and-regain cycle earns the regain, capped by "
+                         "the strafe's constant ~0.5 u of h per frame). A checkpoint restores it")
     ap.add_argument("--energy-pot-front-bonus", type=int, default=None, choices=(0, 1),
                     help="with --energy-pot-front: 1 = pay nothing on the way and, ONCE per "
                          "episode on the call its record first enters the band, K x the kinetic "
@@ -8038,6 +8045,9 @@ def main() -> None:
         if args.energy_pot_front is None and ck_cfg.get("energy_pot_front") is not None:
             args.energy_pot_front = float(ck_cfg["energy_pot_front"])
             restored.append(f"energy_pot_front={args.energy_pot_front:g}")
+        if args.energy_pot_loss is None and ck_cfg.get("energy_pot_loss") is not None:
+            args.energy_pot_loss = float(ck_cfg["energy_pot_loss"])
+            restored.append(f"energy_pot_loss={args.energy_pot_loss:g}")
         if args.energy_pot_front_bonus is None and ck_cfg.get("energy_pot_front_bonus"):
             args.energy_pot_front_bonus = int(ck_cfg["energy_pot_front_bonus"])
             restored.append(f"energy_pot_front_bonus={args.energy_pot_front_bonus}")
@@ -9506,6 +9516,12 @@ def main() -> None:
             raise SystemExit("--energy-pot-front reads one map's reservoir band: single map only")
     if args.energy_pot_front_bonus is None:
         args.energy_pot_front_bonus = 0
+    if args.energy_pot_loss is None:
+        args.energy_pot_loss = 1.0
+    if not 0.0 <= float(args.energy_pot_loss) <= 1.0:
+        raise SystemExit("--energy-pot-loss L needs 0 <= L <= 1 (1 = the potential)")
+    if float(args.energy_pot_loss) != 1.0 and not float(args.energy_pot or 0.0) > 0.0:
+        raise SystemExit("--energy-pot-loss shapes --energy-pot: it needs --energy-pot K > 0")
     if args.energy_pot_front_bonus and not args.energy_pot_front > 0.0:
         raise SystemExit("--energy-pot-front-bonus pays at the band edge: it needs --energy-pot-front B > 0")
     if args.surf_bonus is None:
@@ -13879,6 +13895,7 @@ def main() -> None:
             # --energy-pot: the same, on z + |v|^2 / (2 g) (reward units per 1000 u)
             _s.reward_fn.energy_pot = float(args.energy_pot)
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
+            _s.reward_fn.en_loss_frac = float(args.energy_pot_loss)
             # --energy-stall: energy records re-arm the training stall clock (0 = off)
             _s.reward_fn.stall_energy = float(args.energy_stall)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
@@ -14640,6 +14657,9 @@ def main() -> None:
                           if args.reward == "race" and args.energy_pot_front else {}),
                        **({"energy_pot_front_bonus": int(args.energy_pot_front_bonus)}
                           if args.reward == "race" and args.energy_pot_front_bonus else {}),
+                       **({"energy_pot_loss": float(args.energy_pot_loss)}
+                          if args.reward == "race" and float(args.energy_pot_loss) != 1.0
+                          else {}),
                        "surf_bonus": (args.surf_bonus
                                       if args.reward == "race" else None),
                        "dive_pen": (args.dive_pen
@@ -16765,6 +16785,10 @@ def main() -> None:
     # it every head at 1 + T_F, outside it the global --unstuck temperature on its heads (1 when
     # there is none). The captured rollout graph reads them through the same sample_view call;
     # the update scores each row at the temperature it was drawn at (b_ftk / b_ftv, like b_cct).
+    if float(args.energy_pot_loss) != 1.0:
+        print(f"--energy-pot-loss {args.energy_pot_loss:g}: an energy-height loss is charged "
+              f"{args.energy_pot_loss:g} x K/1000 per u (gains whole) - spending speed is "
+              f"{'free' if float(args.energy_pot_loss) == 0.0 else 'cheaper'}")
     EN_FRONT = float(args.energy_pot_front or 0.0) > 0.0
     if EN_FRONT:
         print(f"--energy-pot-front {args.energy_pot_front:g}: the energy term is paid only until an "

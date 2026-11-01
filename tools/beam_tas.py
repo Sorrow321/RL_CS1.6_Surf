@@ -2251,6 +2251,10 @@ def main():
                     "deepest one. Off = byte-identical")
     ap.add_argument("--dump-every", type=int, default=14,
                     help="--dump-paths: ticks between two recorded rows")
+    ap.add_argument("--dump-full", action="store_true",
+                    help="--dump-paths: also store every env's FULL STATE_DTYPE row at each "
+                    "recorded tick (key 'states', (T, N)), so any lineage's states can seed a "
+                    "search or a spawn file. Off = positions only")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -3134,7 +3138,7 @@ def main():
               f"cap {max_ticks} ticks ({secs(max_ticks):.1f}s)"
               + (f", greedy prefix {prefix} ticks ({secs(prefix):.2f}s)"
                  if prefix else "") + f", score {args.score}")
-        dump_pos, dump_valid, dump_tick = [], [], []
+        dump_pos, dump_valid, dump_tick, dump_full = [], [], [], []
         t_loop = time.time()
         for t in range(t_start, max_ticks):
             d = t // K
@@ -3315,6 +3319,8 @@ def main():
                 # --dump-paths: every env's post-step origin and whether it is still its
                 # original live run (a dead env already holds its respawn)
                 dump_pos.append(np.asarray(coreN.states_view["origin"], np.float32).copy())
+                if args.dump_full:
+                    dump_full.append(np.array(coreN.states_view, copy=True))
                 dump_valid.append(valid.copy())
                 dump_tick.append(t + 1)
             if best is not None and args.gens > 0 \
@@ -3501,7 +3507,8 @@ def main():
                 tick=np.asarray(dump_tick, np.int64),
                 br_tag=(np.asarray(br_tag, bool) if br_kind is not None
                         else np.zeros(N, bool)),
-                br_fired=np.int64(br_fired), tick_ms=np.float64(TICK.ms))
+                br_fired=np.int64(br_fired), tick_ms=np.float64(TICK.ms),
+                **({"states": np.stack(dump_full)} if dump_full else {}))
             print(f"--dump-paths: {len(dump_tick)} rows x {N} envs -> {args.dump_paths}")
         fps = n_ticks * N / max(dt_loop, 1e-9)
         print(f"search done: {n_ticks} ticks x {N} envs in {dt_loop:.0f}s "
