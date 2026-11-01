@@ -697,3 +697,15 @@ from there. Budget 2e9.
   (-1,700 <-> +2,250), the east ramp (x ~100-230, z 1,750-1,990) in the middle and higher surfaces
   at the swing ends (z 2,180 -> 2,522), ~55 s pumping E 2,650 -> 4,070 (t+389..444), then the climb
   to the finish at t+450. The policy enters it (z ~2,380, E ~3,100) and dies after 1-3 swings.
+* rc4 last: 89.029 / 88.820 (6,790M, medians 88-89%). Stopped at 6,865.6M (ckpt_latest md5 c7061e31).
+  The 6,111M greedy re-recording (9 episodes): 4 reach contact 84.7-85.5%, 4 stop at the ridge top
+  (68.8-69.6%), and one sat in the FIRST trough for the whole 910 s cap (contact 11.7%) - the early
+  route has become fragile.
+
+### rc5 `zlr2b1_rc5` (08:51 UTC): rc4's weights + the policy's OWN line as the spine, band at the start
+`--demo-file autoresearch/spines/zlr2b1_rc4_6110_spine.npy` (its own greedy episode to contact
+85.55%) `--demo-tau0 0 --demo-milestones 5859,2030 --ckpt-every 2e8`: half the demo draws at the
+true start, half uniform over the whole own line (the early route trains again; every structure
+keeps its share); the success line moves to d <= 1,019 (84.0% contact), the ridge (2,030) and the
+old 9.48% line stay as milestones (all read on the contact record). Round 1's steady state (E3-E13)
+had the band at the start too.
