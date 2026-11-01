@@ -1706,7 +1706,7 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
             h = o[:, 2] + (v * v).sum(axis=-1) / (2.0 * float(gravity))
             return -d + float(energy_k) * h, d
         return score
-    if mode == "gap":
+    if mode in ("gap", "gaph"):
         # zlr3b1 (2026-11-01): -max(d, gap), gap = the EXACT distance from the player's hull
         # (standing or ducked, from the state) to the nearest finish trigger box. The field is
         # trilinear over honest corners, so beside a finish face (solid below the trigger, seed
@@ -1738,6 +1738,12 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
             g = np.maximum(0.0, np.maximum(rlo - o[:, None, :], o[:, None, :] - rhi))
             gap = np.sqrt((g * g).sum(-1)).min(axis=1)
             dg = np.maximum(d, gap)
+            if mode == "gaph":
+                # + K x the energy height, as 'dh' does for d: through the swings before the
+                # goal the lineages carrying more energy rank first; at the finish the gap does
+                v = np.asarray(states["velocity"], np.float64)
+                h = o[:, 2] + (v * v).sum(axis=-1) / (2.0 * float(gravity))
+                return -dg + float(energy_k) * h, dg
             return -dg, dg
         return score
     if mode in ("v", "dv"):
@@ -2173,7 +2179,7 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
-    ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh", "gap"],
+    ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh", "gap", "gaph"],
                     default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
                     "search), 'route' = route vertex index then d (wall "
@@ -2183,7 +2189,7 @@ def main():
                     "--score-energy x the energy height z + |v|^2/2g (an energy gate), "
                     "'gap' = -max(d, the exact hull-to-nearest-finish-box gap): the field is "
                     "trilinear and reads ~0 beside a finish face while the hull is still off "
-                    "the box")
+                    "the box; 'gaph' = gap + --score-energy x the energy height, like 'dh'")
     ap.add_argument("--score-energy", type=float, default=1.0,
                     help="--score dh: u of geodesic distance one u of energy height is worth")
     ap.add_argument("--v-switch", type=float, default=20000.0,
@@ -2898,7 +2904,7 @@ def main():
             return v.detach().float().reshape(-1).cpu().numpy()
     _gbx = zones["end"].get("boxes") or [{"mins": zones["end"]["mins"],
                                            "maxs": zones["end"]["maxs"]}]
-    _gfl = goal_box_floors(core1, _gbx) if args.score == "gap" else None
+    _gfl = goal_box_floors(core1, _gbx) if args.score in ("gap", "gaph") else None
     if _gfl is not None:
         print("--score gap: finish boxes " + ", ".join(
             f"[{b['mins']}..{b['maxs']}] floor {'-' if f is None else f'{f:.1f}'}"

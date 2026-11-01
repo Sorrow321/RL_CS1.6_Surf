@@ -80,3 +80,12 @@ def test_floors_on_za_loop():
     fl = beam_tas.goal_box_floors(core, z["end"]["boxes"])
     # the platform top is z 3008 (the trace stops 1/32 u above it), the boxes start there
     assert all(f is not None and abs(f - 3008.0) < 1.0 for f in fl), fl
+
+
+def test_gaph_adds_the_energy_height():
+    sc = beam_tas.make_scorer(ConstField(0.0), None, 0.0, "gaph", energy_k=0.5,
+                              gravity=800.0, goal_boxes=BOXES, goal_floors=[3008.0, 3008.0])
+    st = _states([((-336.0, 1450.0, 2982.5), 0)])
+    st["velocity"][0] = (0.0, 0.0, 400.0)            # h = z + 100
+    s, dg = sc(st)
+    assert np.isclose(dg[0], 3044.0 - 2982.5) and np.isclose(s[0], -dg[0] + 0.5 * 3082.5)
