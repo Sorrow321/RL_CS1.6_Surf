@@ -174,3 +174,14 @@ idle for the first third of its round.
   ~19 s, passes pumping E -3,020 -> -2,177, the west-end flight at 65 s. Arm B now uses it
   (launcher restarted 23:50). Fixed on the way: `auto_spine.chain_keys` re-decompressed the
   24M-row action table per chain link and kept every copy (OOM-killed locally).
+* **GE 128 u, 90 min (seed 9): the search's first loop-1 -> loop-2 TRANSFER.** 547,958 cells;
+  loop-1 E max **-1,765** (above the record's -1,956 at its exit); 57 states on loop 2's ramp
+  at (1,306..1,561, -390..-451, z -2,508..-2,596) - the record's landing area - arriving slowly
+  (100-300 u/s, E ~-2,450..-2,530; 10.2-10.8%); best **15.44%** at a mid-air apex above the slab
+  (389, 482, -2,416), E -1,962. With 128 u cells loop-1 energy grew about LINEARLY with search
+  time on one core: -2,223 (30 min) / -1,989 (60) / -1,765 (90); with 64 u cells it stalled
+  (-2,329 at 40 min). Spine `zlr1b3_ge90s` (10,258 states, 106/106 exact) to the 15.44% apex;
+  arm B now uses it (launcher restarted 01:30). Caveat for any spine on this map: the field
+  ranks open-air apexes above loop 1 (13-15%) ABOVE loop 2's ramp (10-11%), so a
+  --demo-success-d line drawn at a loop-2 state would be met by a high loop-1 swing instead.
+* 01:31 UTC: a 150-min local GE (seed 11) to see how far the search climbs past loop 2.
