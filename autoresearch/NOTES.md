@@ -932,3 +932,33 @@ Seed 0 idles in the first trough for 210 s (d 5,235); seeds 1-4 reach best d 286
 250-340 u under the trigger at almost exactly the record's entry point (-48, 2,017, 3,007).
 (ops: beam_tas without a finish loads --route-file for its death report and crashes on the default
 cannonball path: pass `--route-file none`.)
+
+### Finish search: policy beams from the incumbent's own greedy lines (17:45-18:05 UTC, box beside c1)
+`tools/beam_tas.py runs_ckpt.pt --envs 4096 --greedy-envs 1 --prefix-line <greedy line>:<T>
+--max-ticks T+SPAN --save-frontier --keep-finishers 16 --allow-nonfinisher --skip-gate --route-file
+none` (the greedy line = beam_tas `--envs 16 --greedy-envs 16 --save-frontier --frontier-last` at
+spawn seed s; the prefix is replayed open-loop, the search is the policy's own proposals, cloned
+every 25 decisions). ~270k env-steps/s on the 5080 beside training; a 42 s span takes ~1.5 min.
+* p3a (seed 3, T 145.6 s, 29 s span, score d): frontier d 129 (98.0%) at 163.8 s, 0 finishes.
+* q1d (seed 1, T 133 s, 42 s, d): d 77 (98.8%) at 165.8 s, 0 finishes.
+* q3dh (seed 3, T 145.6 s, 42 s, `--score dh --score-energy 1`: -d + energy height): d 80 at
+  176.4 s, E to 4,509, 0 finishes - the energy rank keeps lineages alive and pumping.
+* The near misses are all alike: the north swing's apex at x -348..-383 (the strip's west edge is
+  -336), y 2,630-2,790, z 2,830-2,890, heading north at |v_h| ~1,500 with vz ~0 and E ~4,300:
+  the apex needs E >= ~4,400 (z_apex = E - v_h^2/1600) and ~50 u further east.
+* **r3dhL (seed 3, T 145.6 s, 105 s span, dh): FINISH at tick 28,569 (199.98 s)**, env 1632, gen 77
+  - the first finishing line from the true start on this map (the greedy prefix + the policy's own
+  sampled actions, energy-ranked selection).
+  The line (`autoresearch/spines/zlr3b2_finish1.npy`, 28,569 states = 199.98 s, md5 0bb7d19e; the box's
+  runs/beam/r3dhL/beam_frontier.npz md5 07ffa6a5, replay bit-exact): the greedy prefix to 145.6 s, then
+  ~9 swings of the fifth loop pumping E 3,593 -> ~4,500 (the greedy dies at ~150-160 s with E ~4,300),
+  and at 198.5 s a swing WEST off the east ramp: up south-west to (-1,276, -1,065, 2,886) with vz +491,
+  a wall takes the horizontal speed (E 4,441 -> 3,054, v (-1,496, 96, 491) -> (-164, 0, 104)) and the
+  upward momentum carries it ~145 u into the south-west wide slab at (-1,792, -752, 3,030) (slab y
+  -736..40, hull edge -752). Not the record's north-strip entry: a route of its own. Physics checked:
+  vz 491 at z 2,886 gives z ~3,031 after 0.5 s of gravity.
+* 18:04 UTC: c1's pool swapped in place: `tools/finish_pool.py --base <rc10 frontier pool> --line
+  runs/beam/r3dhL/beam_frontier.npz --secs 30 --share 0.5` (95,586 states: the rc10 frontier pool +
+  the line's last 30 s x11.2 = half; md5 9f7b952e). Re-read by the trainer at step 11,452M. Its
+  training win rate jumped to 5-13% at "@ 0.1 s" - the pool's last-tick spawns finishing at once
+  (the harvest, CLAUDE.md section 3), not the policy; the greedy eval decides.
