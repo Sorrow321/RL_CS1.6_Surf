@@ -139,3 +139,5 @@ the numbers). Read it before you start; append to it before you wrap up.
   `tools/eval_energy_report.py` (h max climbing pass after pass = pumping; best progress at the
   turnarounds = the wall height), and expect the score to sit near the record's 8.7% wall height
   until something leaves the first half-pipe (the record does at ~70 s, to 17%+).
+* Wrap-up 04:30 UTC (ROUND OVER): no box was ever rented, `runs/zlr1b1/` is empty, score.py finds
+  0 valid evals; RESULT.json final with best null.
