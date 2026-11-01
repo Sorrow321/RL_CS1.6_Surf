@@ -988,3 +988,31 @@ every 25 decisions). ~270k env-steps/s on the 5080 beside training; a 42 s span 
   frontier states at 30% (159,310 states, md5 2dce6db4), swapped at ~11,589M: a manual backward step
   (the trainer's own curriculum holds the GE spine); widen the window once the training win rate
   shows finishes from further out.
+* r2dh2 (seed 2, T 136.5 s, 105 s span, dh 2): 36 finishers, the first at tick 25,845 (**180.91 s**),
+  into the north strip flying EAST at z 3,036 ((-344, 2,749, 3,036), v (1,493, -229, 11)) - no wall.
+* c1 final: evals 95.3 / 96.0 / 96.2 / 95.7 / 96.2 / 97.0 / 95.7 / 96.2 / 97.8 (11,096-11,700M; best
+  97.797), 0 finishes in any of them; stopped 18:15 UTC at ~11,725M.
+
+### Finish-probability bench (18:14 UTC): why a uniform pool window does not teach the finish
+c1's 11,6xxM weights spawned at r1dhL's line N seconds before its finish, 512 independent
+stochastic rollouts each (beam_tas --start-state, no cloning): **1 s: 170/512 finish (33%); 3 s: 17
+(3.3%); 6 s: 0; 10 s: 1; 20 s: 1.** The finish hinges on a swing 3-6 s before it; the 10-30 s pool
+windows spent most of their spawns where the policy's own samples never finish.
+
+### NEW `--finish-line` (commit 8c95f310, tests/python/test_finish_line.py)
+A SECOND backward curriculum (Salimans-Chen; the trainer's own DemoCurriculum, grow + front band) on
+a finishing line of the policy's own, on its own share of the spawn pool, beside the --demo-file
+curriculum (which keeps its spine, band and share): starts at the line's last state, walks back
+while the band FINISHES >= 20% (min 50 eps, cooldown 5, step 0.25 s doubling to 4 s, band 0.5 s,
+half the draws on the band), backs off below. Success = a finish (the core's goal hit). Flags:
+`--finish-line FILE --finish-line-frac 0.15` (+ window / grow / grow-max / rate in seconds). Off =
+byte-identical (every statement behind FINL / args.finish_line; DemoCurriculum without the new
+arguments = the base commit's class, run side by side over 400 iterations in the test).
+TRAIN_ONLY in record_ckpt. Generic: any map, any finishing line the policy's own search returns.
+
+### c2 `zlr3b2_c2` (18:17 UTC): c1's final weights + `--finish-line` on r2dh2's 180.91 s line
+c1's ckpt_latest (md5 e08fb8c1) + c1's flags with `--spawn-states runs/sp/base_rc10.npy` (the rc10
+frontier pool alone again) `--finish-line runs/sp/fin_r2dh2.npy --finish-line-frac 0.15` (the line:
+25,845 states, md5 0190559e = autoresearch/spines/zlr3b2_finish3.npy), `--demo-tau0 9215` (c1's
+last GE tau). First iterations: the finish-line band walked 0 -> 0.73 s before the finish at 57-95%
+band success.

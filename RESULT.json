@@ -3,10 +3,10 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 96.243,
-  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c1/traj_11247550464.jsonl",
+  "score": 97.797,
+  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c1/traj_11474042880.jsonl",
   "run": "zlr3b2_c1",
-  "step": 11247550464,
+  "step": 11474042880,
   "ckpt": null,
   "recipe": [
    "(resume of the incumbent ckpt_11096031232; every flag restored)",
@@ -30,5 +30,5 @@
   "resume_from": "incumbent r2 (zlr2b1_rc10 ckpt_11096031232)",
   "commit": "b11e95df"
  },
- "summary": "c1 = the incumbent continued (95.3-96.2, 0 finishes). Policy beams from the incumbent's own greedy lines (beam_tas --prefix-line, 4096 envs, --score dh: -d + energy height) FOUND FINISHES: r3dhL 199.98 s (south-west slab after a wall hit), r3dh2 211.5 s and r1dhL 192.7 s (north strip), all replay bit-exact from the true start. Their last 10-30 s go into c1's --spawn-states pool (tools/finish_pool.py, swapped in place). Waiting for a greedy finish from the true start."
+ "summary": "Policy beams (beam_tas --prefix-line from the incumbent's own greedy lines, 4096 envs, --score dh = -d + energy height) found the map's first finishing lines from the true start: 180.9 s (r2dh2), 192.7, 200.0, 211.5 s, all replay bit-exact. Uniform pool spawns on their last 10-30 s (c1, best 97.797) did not teach the greedy to finish: the policy's own samples finish 33% from 1 s out, 3% from 3 s, ~0 from 6+ s. NEW --finish-line: a second backward curriculum (DemoCurriculum) on an own finishing line, on its own pool share (c2, running since 18:17 UTC)."
 }
