@@ -1654,9 +1654,28 @@ def print_cadence(c, label="winner"):
           f"fwd key held on {100 * c['fwd_air']:.1f}%")
 
 
+def goal_box_floors(core, boxes, n=7, below=64.0):
+    """The solid floor top under each finish box (None = no floor): a point trace from the box's
+    top down to `below` u under its bottom at an n x n grid over its footprint (1 u in from the
+    edges); the median hit height when at least half the samples hit solid, else None. A finish
+    trigger standing on a platform is the common case; a mid-air curtain has no floor."""
+    out = []
+    for b in boxes:
+        lo, hi = np.asarray(b["mins"], np.float64), np.asarray(b["maxs"], np.float64)
+        hits = []
+        for x in np.linspace(lo[0] + 1.0, hi[0] - 1.0, n):
+            for y in np.linspace(lo[1] + 1.0, hi[1] - 1.0, n):
+                t = core.trace((x, y, hi[2]), (x, y, lo[2] - below), hull=2)
+                if t.startsolid or t.allsolid or t.fraction >= 1.0:
+                    continue
+                hits.append(float(t.endpos[2]))
+        out.append(float(np.median(hits)) if len(hits) * 2 >= n * n else None)
+    return out
+
+
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
                 v_switch: float = 0.0, energy_k: float = 1.0, gravity: float = 800.0,
-                goal_boxes=None):
+                goal_boxes=None, goal_floors=None):
     """-> score(states, obs) = (higher is better, geodesic d).
 
     mode 'd' is the plain -geodesic used by the spawn-to-finish search.
@@ -1694,7 +1713,15 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
         # voxels above) it reads ~0 while the hull is still 15-25 u off the box - d-ranking cannot
         # select the last few units of a finish. Far from the goal gap <= d and this is plain d.
         # Nothing map-specific: the boxes are the zones file's own finish (every map has one).
+        # The REACHABLE part of each box: where a box sits on a solid floor (a finish platform),
+        # a hull beside the platform's side touches the box's inflated face only while it is
+        # pressed against the solid below the floor top - the core's collision stops it 1/32 u
+        # short (measured: x -336.03 against the inflated face -336.0, no finish). So the origin
+        # must also clear the floor: z >= floor + the hull's lower half (36 standing, 18 ducked).
+        # goal_floors[b] = the floor top under box b (None = no floor, the box as it is).
         boxes = np.asarray(goal_boxes, np.float64)          # (B, 2, 3) mins, maxs
+        floors = np.array([np.nan if f is None else float(f)
+                           for f in (goal_floors or [None] * len(boxes))], np.float64)
         hull_lo = np.array([[-16.0, -16.0, -36.0], [-16.0, -16.0, -18.0]])
         hull_hi = -hull_lo
 
@@ -1702,9 +1729,13 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
             d = gf.sample(states["origin"]).astype(np.float64)
             o = np.asarray(states["origin"], np.float64)
             uh = (np.asarray(states["ducked"]) != 0).astype(np.int64)
-            lo, hi = o + hull_lo[uh], o + hull_hi[uh]
-            g = np.maximum(0.0, np.maximum(boxes[None, :, 0, :] - hi[:, None, :],
-                                           lo[:, None, :] - boxes[None, :, 1, :]))
+            # the ORIGIN's region per box and stance: the box inflated by the hull, its floor
+            # raised to clear a solid floor under the box
+            rlo = boxes[None, :, 0, :] - hull_hi[uh][:, None, :]          # (N, B, 3)
+            rhi = boxes[None, :, 1, :] - hull_lo[uh][:, None, :]
+            zf = floors[None, :] - hull_lo[uh][:, None, 2]                 # floor + lower half
+            rlo[:, :, 2] = np.where(np.isnan(zf), rlo[:, :, 2], np.maximum(rlo[:, :, 2], zf))
+            g = np.maximum(0.0, np.maximum(rlo - o[:, None, :], o[:, None, :] - rhi))
             gap = np.sqrt((g * g).sum(-1)).min(axis=1)
             dg = np.maximum(d, gap)
             return -dg, dg
@@ -2867,11 +2898,17 @@ def main():
             return v.detach().float().reshape(-1).cpu().numpy()
     _gbx = zones["end"].get("boxes") or [{"mins": zones["end"]["mins"],
                                            "maxs": zones["end"]["maxs"]}]
+    _gfl = goal_box_floors(core1, _gbx) if args.score == "gap" else None
+    if _gfl is not None:
+        print("--score gap: finish boxes " + ", ".join(
+            f"[{b['mins']}..{b['maxs']}] floor {'-' if f is None else f'{f:.1f}'}"
+            for b, f in zip(_gbx, _gfl)))
     scorer = make_scorer(ogf, args.route_file, args.corridor, args.score,
                          value_fn=value_fn, v_switch=args.v_switch,
                          energy_k=args.score_energy,
                          gravity=float(cfg.get("sv_gravity") or 800.0),
-                         goal_boxes=[[b["mins"], b["maxs"]] for b in _gbx])
+                         goal_boxes=[[b["mins"], b["maxs"]] for b in _gbx],
+                         goal_floors=_gfl)
 
     # ---- --branch-at / --branch-grid: the junction fork -----------------
     br_kind, br_val, br_n = None, 0.0, 0
