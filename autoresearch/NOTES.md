@@ -618,3 +618,30 @@ tests/python/test_auto_spine_beam_extra.py). Box pipeline (validated on CPU with
 3. frontier past 64.7% -> its per-tick states as the spine: resume the incumbent with
    `--demo-file <spine> --demo-milestones 5859 --ckpt-every 1e8` (the curriculum flags, fail-pen 3
    and the energy flags restore), backward curriculum from the climb.
+
+### CORRECTION (07:28 UTC): the Monte Carlo "climbs past 64.7%" above were an artifact
+The replay fed each recorded row's PRE-step yaw as the view target; the step moves with the
+POST-step view, so that replay drifted 300-850 u from the policy's own line within 0.7 s and the
+"perturbations" were a different control. Exact replay = the NEXT row's yaw relative to the sim's
+velocity (0.0-0.2 u over 4.9 s). Redone on the exact replay (analysis only, physics only):
+* held offsets z ~ N(0, 0.3 / 0.6) of 25 decisions at random phases, 24,000 lineage-passes at
+  E 1,600-3,400 and 8,000 at E 3,500-4,400: the face region is reached on 1-25% of passes, never
+  above z ~256 - no climb, no landing on top, nothing past 64.7%;
+* one constant offset c in [-4, +1] deg held from 0.5-3 s before the landing through the turn:
+  face hits only at E <= 2,355 and only at z -380..-500.
+So the pillar climb is NOT a small perturbation of the incumbent's line: the record's state at
+the landing differs (its arc turns ~20 deg further, landing heading 112 vs 116-137) and its turn
+is held at -1..-2 deg - two coordinated changes. The depth objective does not lead there either
+(the top, 61.6%, is below the loop's 64% arc top).
+
+### What a small perturbation DOES buy: +1-2.4 points of arc apex at the high-energy passes
+Exact replay + one held POSITIVE offset c (+0.5..+1 deg) from ~1 s before the ramp landing to
+0.4-1.6 s after: best progress per pass 65.0-65.4% (max 66.20% at E 4,304) vs 63.1-64.2%
+unperturbed (E 3,500-4,300). On the ramp the incumbent strafes D at offset 0.0; in the air it
+uses +-0.8-0.9 deg (the speed-optimal angle acos(30/|v|) off perpendicular); keeping the
+air-optimal forward offset through the ramp turn carries more speed into the exit -> higher apex.
+The depth reward pays this directly (no deceptive gap), so a spine on such a line has a success
+line ABOVE the policy's own pass (from the line's own state the policy's 0-offset turn gets
+~1.5% less). Plan: beam with --view-hold (positive draws are half of them) from the high-energy
+passes -> frontier line ~66% -> spine (success line d_end + 100 u ~ 64.4% > the policy's 63.8%
+from that state) -> curriculum (+ BC on the line's last seconds if the band stalls).
