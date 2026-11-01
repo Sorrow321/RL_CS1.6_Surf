@@ -432,3 +432,63 @@ comes, a stronger hand-on for the next round.
   impatience: E8 had ~600M steps past its jump, E13 ~1.3B). Hand-on for 64.241: ckpt_2900885504.pt
   (1M before the eval; pulled). Training frontier 64.6%.
 * E13 03:22 UTC: 64.428 at 3,506M (median 64.05%) - hand-on ckpt_3499622400.pt (6.3M before; pulled).
+* E13 03:52 UTC: 64.671 at 4,034M (median 64.57%) - hand-on ckpt_4032299008.pt (2.1M before; pulled).
+
+### zlr1b4 round-1 lesson (written 03:55 UTC; final numbers at wrap-up)
+
+**Result: 64.671** (E13 `zlr1b4_e13` at 4,034M; median 64.57%, 9/9 at the third structure's top) -
+surf_za_loop from the TRUE start, champion-free, no demo in training, from scratch on 2026-10-31
+(one RTX 3090 box, 0.20 $/h). Scratch control (the recipe as it stood): **0.587**. The record's
+progress for reference (analysis only): 11% at t+90 s, 43% at t+150, 63% at t+330 - the policy is at
+64% by ~160 s. Hand-on: ckpt_4032299008.pt. The lineage of weights: e2 (scratch, 559M) -> e3 1,088M
+-> e4 1,239M -> e8 1,844M -> e13.
+
+**What worked, in order (each a generic mechanism, constants that read nothing on the map):**
+1. **Energy as progress for the stall rules: NEW `--energy-stall 32`** (training stall kill AND eval
+   patience re-arm on an energy-height record, cumulative) + the per-call energy potential
+   everywhere (`--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0`, the form and K
+   the uf2/pb best policies trained with). Necessary (the record pumps 60 s with NEGATIVE field
+   progress; the 30 s eval patience would cut any pumping line) but NOT sufficient: E1 alone never
+   reached the ramp where pumping pays.
+2. **A Go-Explore line from the true spawn as the first spine**: `explore_phase1 --exact-chains
+   --cell 64 --cell-energy 32 --cell-heading 1 --view-follow=-90,...,90 --select-energy 3 --act-every 4
+   --maxvel 3500 --tick-ms 7`, 12 min of box CPU -> 9.48% (uniform bursts in the velocity frame DO
+   pump the start basin), `ge_replay` exact line -> backward curriculum (uf2 A13 constants) on top
+   of 1. **From scratch to 24% in 530M steps** (E2): the policy took the record's own start route
+   and pumped ~2x the record's rate.
+3. **`--auto-spine --auto-spine-async`** (beam from the true start on the policy's own weights ->
+   next spine): 24 -> 57.4% by 1,088M (E3). **But an async search can return STALE** (22 min on
+   the 711M weights, adopted when the greedy was 26 points further; it dragged the greedy back to
+   34% within 75M steps) -> **NEW `--auto-spine-recheck`** (adopt only if still ahead of the LATEST
+   greedy frontier).
+4. **`--fail-pen 3`** (E8): the policy at 57% pumped the third structure to E ~1,700 and died at
+   ~100 s by over-swinging out of it - dying was free. fail-pen 3 kept the pumping AND added
+   survival -> 62.8%; fail-pen 10 (E7) killed the pumping instead (survives at E ~1,040).
+5. **Training time** (E13 = E8's flags from its best snapshot, nothing changed): 62.8 -> 64.7% over
+   ~2.2B more steps, still creeping up at the end (alive ~200 s, E ~5,000). The 62% "plateau" of
+   E9-E12 was partly impatience.
+
+**What did not (all measured here, one seed each):** `--energy-pot-front 0.01` (energy free in the
+frontier band: dying becomes the better end there, the greedy died earlier); spines on the policy's
+own beam lines (E6, E9) and a wider `--front-band 0.05` (E11): no gain over plain training;
+`--int-coef 1.0` (E12, 4x novelty): NEGATIVE, 62 -> 53%; `--fail-pen 5` (E10) = 3. Searches past
+57-64% found nothing: Go-Explore x3 from the policy's own states (uniform bursts lose energy at
+1,000-3,000 u/s, the explorer never exceeds its roots' energy; auto_spine.py's fixed 64 u x energy-32
+cells hit the 4M cap in 3 min), an energy-ranked beam (all 4,096 of E4's lineages dead by 92 s), a
+depth-ranked beam on E8 (dead by 131 s) and 5 branched beams forked inside the third structure.
+
+**Where the next round starts (the open problem):** the FOURTH loop structure. ANALYSIS ONLY (the
+record): at E ~2,100 it flies, rising (vz +1,396), into the west face of a pillar at (-1,590, 1,790)
+(solid to z ~573), rises along it to the top (z ~617-641, 60.9%), then pumps a fourth structure above
+the third (x -1,600..-760, y 0..2,700, z 630-1,500) from E ~650 to ~2,600 (61-72%) and climbs out to
+the finish (84% at t+390, finish t+450 at z 3,029). The policy pumps the third structure to E ~5,000,
+survives ~200 s, its swing tops at z ~650 (64%), and dies off the north edge. It passes the pillar
+on DOWNswings. Ideas not tried: auto-spine with recheck on the E13 weights (its beams now live
+~200 s); a search that keeps the policy's own pumping actions but forks the swing TIMING; longer
+training of E13 (it never stopped improving).
+
+**Harness / ops notes:** a `box.py deploy` while a trainer runs fails gpu_health (the GPU is busy)
+after the checkout has already happened - run restamp_maps by hand; a box.py ssh command that kills
+by pattern (pgrep -f, grep '[x]yz') matches its own shell when the same command text names the
+target - kill by pid file, launch in a separate call; snapcopy can leave a 40M gap before an eval
+(pull --snapshot the newest at or before it).
