@@ -1102,3 +1102,27 @@ end to end on a box.
 c3's ckpt_latest (md5 bc51a503) + c3's flags with `--finish-line runs/sp/fin_fe10.npy` (the energy
 beam's line instead of r2dh2's 180.9 s one), `--demo-tau0 8000` (c3's last GE tau). Expert
 iteration (uf2's search -> own faster line -> curriculum loop): does the greedy follow the faster line?
+* c4 (21:20-22:10 UTC, 15.34-16.38B): 118.436 (9/9, 140.81 s) / 116.207 / 115.100 / 118.382 (9/9,
+  145.60) / 112.880 / 117.335 / 114.011 (5/9, 138.99 s) / 118.445 (9/9, 139.93 s) / 115.107 / 115.108 /
+  117.322 / 116.229 (7/9, 139.36 s) / 116.171 / 117.328 - **the curriculum on the faster line did
+  NOT speed the greedy up** (its best finishes 139-141 s, as c3's); no new best. Spawning along a
+  faster line teaches finishing from its states, not its pace.
+* Speed beams on c4's 15.9B weights from the true start: `--score dh --score-energy 10` -> 128.59 s
+  (13,055 finishers); `--score-energy 30` -> **127.95 s** (9,914 finishers) =
+  autoresearch/spines/zlr3b2_finish_ge30.npy. The search side of expert iteration keeps finding
+  faster own lines (139.4 greedy -> 134.6 -> 128.0 s); the policy side is what has to follow.
+
+### NEW `--finish-line-pace FRAC SECS` (+ `--finish-line-pace-bonus`, commits cc187785, 074c730c)
+uf2's speed mechanism (x11/x12: a pinned, pace-gated spine on the newest beam's line, 36.67 ->
+35.80 s) cannot run on this lineage's main spine: under --ratchet-contact the demo bonus pays only
+when the CONTACT record crosses the success line, and a finish here is airborne (the finishing row
+is an ended row, which the bonus never pays). So the pace gate is on the finish itself, in the
+finish-line curriculum: a finish from a finish-line row r pays the bonus (50, on top of the
+finish's own 50) and counts as the curriculum's success only within (rows left after r) x (1 +
+FRAC) + SECS; an unpaced finish is a curriculum failure. Off = byte-identical; TRAIN_ONLY.
+
+### c5 `zlr3b2_c5` (22:12 UTC): c4's 16.38B weights + the PACE-GATED finish line on the 127.95 s line
+c4's ckpt_latest (md5 5be13595) + c4's flags with `--finish-line runs/sp/fin_ge30.npy
+--finish-line-pace 0.05 1.0 --finish-line-pace-bonus 50` (5% + 1 s; from the true start that is
+135.4 s against the greedy's 139-141), `--demo-tau0 7710` (c4's last GE tau). The curriculum walks
+back from the line's end only as far as the policy keeps the line's pace.
