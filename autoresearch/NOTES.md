@@ -709,3 +709,14 @@ true start, half uniform over the whole own line (the early route trains again; 
 keeps its share); the success line moves to d <= 1,019 (84.0% contact), the ridge (2,030) and the
 old 9.48% line stay as milestones (all read on the contact record). Round 1's steady state (E3-E13)
 had the band at the start too.
+* **rc5 REGRESSED (08:51-09:17 UTC): 89.204 (its first = rc4's weights) / 65.368 / 63.785 / 60.800 /
+  61.432 / 62.572 (7,244M).** With the band at the true start the launch region gets ~2.5% of the
+  spawns and the greedy forgot the launch within 75M steps (back to the third-structure loop); the
+  curriculum backed off (0% success near the start). The launch is a fragile skill that needs heavy
+  training where it happens: keep the band inside the third structure. Stopped at ~7,285M.
+
+### rc6 `zlr2b1_rc6` (09:18 UTC): rc4's final weights + the own-line spine, band inside the third structure
+Resume of rc4's ckpt_latest (6,865.6M, md5 c7061e31 - not rc5's) + `--demo-file autoresearch/spines/
+zlr2b1_rc4_6110_spine.npy --demo-tau0 11400 --demo-milestones 5859,2030 --ckpt-every 2e8`: the band
+~57 s before the launch (where rc4's sat on the GE spine), uniform draws over the third structure,
+the launch, the ridge and the block's east side; success line 84.0% contact.
