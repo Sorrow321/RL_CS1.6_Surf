@@ -909,3 +909,26 @@ early-route fragility (2-6/9 episodes die in the first troughs) needs fresh star
   rc6 90.073, rc7 89.429, rc8 91.742, rc9 97.339, rc10 98.329, rc11 96.991). Hand-on
   **ckpt_11096031232.pt** (rc10, the eval's own step; md5 3c40f24d) with rc10's ckpt_final (md5
   d1a079ab), both pulled. Box 58621920 (RTX 5080, 0.34 $/h, 05:37-16:34 UTC, ~$3.7) released.
+
+## zlr3b2 (round 3, slot 2) - 2026-11-01 17:32 UTC start
+
+Box 58689691: RTX 5080 + Ryzen 9 7945HX (32 threads, quota 30.7 CPUs), 0.387 $/h, South Carolina
+(machine 154401), rented 17:39. c1 trains at ~236k steps/s with searches beside it.
+
+### Where the incumbent misses the slabs (17:35 UTC, analysis of incumbent/r2/traj_11096031232)
+The core's finish test (src/env.c): a STANDING player's origin inside [slab - hull] = z >= 2,972
+(3,008 - 36) and x/y within the slab footprint +16 u. The five slabs: two wide east-west bands
+(x -2,360..3,008, y -736..40 and 536..1,312), x -2,360..-64 y 40..536, and two strips x -320..-64
+north (y 1,312..3,360) and south (y -2,784..-736). In the 98.329 eval the best-progress points are at
+the footprint EDGE (gapH 0-46 u) but 115-350 u too LOW: ep8 (98.33%) at (-382, 2,627, 2,857)
+descending (vz -254, |v_h| 1,400, E 4,118); the others at z 2,628-2,740. The apexes at the swing ends
+(x 500-900) are 350-650 u outside the footprint. So the line is near; it needs ~120-350 u more height
+INSIDE a footprint.
+
+### The greedy in the beam core (beam_tas, 16 greedy envs, all identical in one batch)
+Seed 0 idles in the first trough for 210 s (d 5,235); seeds 1-4 reach best d 286 / 256 / 228 / 317
+(95.5 / 96.0 / 96.4 / 95.0%) and die at 155-168 s. Seeds 1 and 3 cross the NORTH STRIP rising at
+(-52, 1,995, 2,632) t146.0 and (-46, 2,036, 2,718) t156.9 (vz +450..480, |v_h| ~1,350, E ~3,950):
+250-340 u under the trigger at almost exactly the record's entry point (-48, 2,017, 3,007).
+(ops: beam_tas without a finish loads --route-file for its death report and crashes on the default
+cannonball path: pass `--route-file none`.)

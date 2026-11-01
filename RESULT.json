@@ -1,36 +1,34 @@
 {
- "agent": "zlr2b1",
- "round": 2,
- "final": true,
+ "agent": "zlr3b2",
+ "round": 3,
+ "final": false,
  "best": {
-  "score": 98.329,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc10/traj_11096031232.jsonl",
-  "run": "zlr2b1_rc10",
-  "step": 11096031232,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc10/ckpt_11096031232.pt",
+  "score": 96.243,
+  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c1/traj_11247550464.jsonl",
+  "run": "zlr3b2_c1",
+  "step": 11247550464,
+  "ckpt": null,
   "recipe": [
-   "(resume chain from the round-1 incumbent; every flag restored from the checkpoints)",
-   "--ratchet-contact",
-   "1 (NEW: the ratchet pays only progress reached at contact ticks)",
+   "(resume of the incumbent ckpt_11096031232; every flag restored)",
    "--demo-file",
-   "autoresearch/spines/zlr2b1_ge1_spine.npy (the incumbent's own greedy line + an exact Go-Explore line from its own crest contacts onto the ridge top)",
+   "autoresearch/spines/zlr2b1_ge1_spine.npy",
    "--demo-tau0",
-   "9800 (rc10; the band inside the third structure)",
+   "9500",
    "--demo-milestones",
    "5859",
    "--spawn-states",
-   "own frontier states (tools/frontier_states.py on own greedy re-recordings, refreshed in place)",
+   "runs/sp/pool.npy (= zlr2b1_frontier_rc10.npy)",
    "--spawn-states-frac",
    "0.15",
+   "--ratchet-contact",
+   "1",
    "--front-contact",
-   "1 (NEW: --front-temp's band read on the earned contact record)",
+   "1",
    "--front-temp",
-   "0.5 (T 1.5; T 2 collapsed in rc8)",
-   "--ckpt-every",
-   "2e8"
+   "0.5"
   ],
-  "resume_from": "zlr2b1_rc9 ckpt_final 10491527168 <- rc8 ckpt_8491368448 <- rc7 8113356800 <- rc4 6865551360 <- rc3 5430575104 <- rc2 4430233600 <- rc1 4354211840 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
-  "commit": "bb285780"
+  "resume_from": "incumbent r2 (zlr2b1_rc10 ckpt_11096031232)",
+  "commit": "b11e95df"
  },
- "summary": "98.329 (rc10 at 11,096M, median 95.4%, 0 finishes) from the incumbent's 64.671. The incumbent's 64.67% was ballistic apexes (contact progress 38.9%). Worked: NEW --ratchet-contact (pay only progress reached on surfaces); Go-Explore rooted at the policy's own crest contacts found the ridge-top exit in 6 min (NEW contact_roots / ge_contact_pick / contact_spine) -> a spine whose curriculum band sits inside the third structure taught the launch (72-81); the RL then found the big block's east side itself (90); 15% own frontier spawns refreshed in place and NEW --front-contact at T 1.5 climbed 91 -> 98.3. Did not: swapping a working spine (rc5/rc6 lost the launch), T 2 frontier temperature (rc8 collapsed), random-burst GE at high speed (ge2-ge6). Next: a finish - apexes reach z ~2,900 but only at swing ends, outside every finish slab; the record curves west into the x -320..-64 strip."
+ "summary": "c1 = the incumbent continued (control, 95.3-96.2 so far, 0 finishes). Finish search under way: 4,096-env policy beams (beam_tas --prefix-line) from the incumbent's own greedy lines in the fifth loop; every good greedy episode passes the north finish strip 200-330 u too low (E ~4,000-4,240). A finishing line would go into the 15% own-state spawn pool."
 }
