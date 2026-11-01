@@ -673,3 +673,12 @@ autoresearch/spines/zlr2b3_inc_early_route.npy --spawn-states-frac 0.3` (the inc
 recording, true start -> t 140.9 s, every 5th tick: 30% of every pool is uniform over the early
 route the curriculum's range no longer covers). Generic: a long spine's backward curriculum keeps
 the part of the route it has walked past in the pool; nothing reads the map.
+* S70b 07:33-07:56 (4.23-4.47B): no collapse (the early route holds: the start, the first loops,
+  the third bowl), but 0 launches in 4 evals: 61.6 / 59.8 / 59.8 / 60.8. The greedy's circuit now
+  carries only E ~1,900-2,030 (the incumbent's ~4,500) and at ~120-156 s tries the north-end
+  reversal and falls off the WEST edge (-3,120, 2,200-2,400) or the east (2,944, -400); 1/9 fell at
+  the start (8.9 s). The spine's launch (the incumbent's line at t 140.9 s) had E 3,190; the
+  policy's own circuit no longer matches it. Training: reservoir deepest 91.5%, band ~16,465
+  (t 115 s of the spine), 47% spine-episode success.
+* Beam from the TRUE start on S70b's newest weights (07:58, beam_tas --score d, 2,048 envs, 16
+  greedy, 210 s: round 1's auto-spine beam by hand): a spine through the policy's OWN launch.
