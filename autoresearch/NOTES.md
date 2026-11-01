@@ -759,3 +759,11 @@ Resume of S70d's ckpt_latest (4,678.7M) with S70d's flags at `--demo-tau0 14900`
   surface, so the old 0.25-2 s window sat mid-fall).
 Both generic (the policy's own states; a rule about ballistic deaths). Read it on: time alive in
 the upper loop, its E, swing tops above 92%, a finish.
+* S70e 10:00-10:23 (4.68-4.91B): 89.9 / 90.1 / 89.3 / 90.3 / 89.7 / 89.6 / 90.0 (frontiers 5,682-
+  5,743 u; means of the 9 episodes' best 66-89%): the level holds (most episodes reach the upper
+  loop's first swing top) but does not move; reservoir deepest 91.8%. The upper loop (ANALYSIS of
+  the geometry): at x 0 a solid slab z 1,630-1,950 over y ~-500..1,100, the finish-level blocks
+  z 2,782-2,974 above it (y -750..16 and 528..1,296); the policy's swing top sits ~450 u above the
+  slab and it falls off the slab's south edge. Without a finish the loop's tops cap at ~92-93%.
+* Upper-loop beams (10:25): S70e's newest snapshot, --score dh --score-energy 2 (lineages that keep
+  and pump energy survive selection), 1,024 envs, 63 s, from its own reservoir states >= 85%.
