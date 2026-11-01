@@ -652,3 +652,13 @@ from there. Budget 2e9.
   flip-flop: the greedy now leaves for the ridge in most episodes of every eval. Curriculum walking
   back from 12,000 at 86-87% success (11,935 at 5,833M). Hand-on for 81.217: ckpt_5582094336.pt
   (snapcopy, the eval's own step; pulled, md5 3d4f5bd9).
+* **The 76-81% is ballistic again.** The 81.2% eval's best episodes touch surfaces only up to
+  68.8-71.0% (the ridge top, (-734, 708, 1,598) at best); 80-81% are apexes over the structure
+  (z 1,700-1,780 at x ~-1,800, north-west of the big block), then a fall west. The grader scores
+  them, so 81.217 stands, but the surface frontier is ~71%. The training read-out's contact max
+  (~90%) is inflated the same way: front-perturb spawns at the reservoir's (all-state, apex)
+  frontier start their contact record at the spawn's d. The record's next surfaces (ANALYSIS
+  ONLY): east of the big block, x 0..300, z 1,700-2,200 (82-88%), reached by a fast launch east
+  from the ridge top's low part at t+381.
+* The 5,110M greedy re-recording (record_ckpt --dump-states, 9 episodes): its deepest contact line
+  ends at 69.82% - no deeper than the GE spine; not used.
