@@ -623,3 +623,16 @@ restored (per-call energy K 12, fail-pen 3, energy-stall 32, respawn-greedy, fro
 * GE stage 2 (06:27, box CPU, 18 min): rooted at the spine's last 450 rows (block landing + top)
   with the pb config (64 u x energy-32 x heading cells, --select-energy 3): can uniform macros pump
   the top structure and climb out (the record pumps it ~70 s from ~100 u/s, ANALYSIS ONLY)?
+* **S70 06:25-06:45 UTC (4.03-4.22B):** the curriculum walked from the spine's end (20,832) past
+  the launch (row 20,130) to ~19,830 (1.8 s before the north-wall hit) in ~180M steps - 28.6% band
+  success there, 8,144 wins over 10,907 spine episodes. The policy learned the block top AND what
+  lies past it on its own: the reservoir's deepest state is at **91.3%** (min depth 8.1%; the
+  frontier temperature band now >91%), 39 states >= 90% and 140 in [85, 90) at z ~2,340-2,460
+  around (-1,500..+700, -50..2,180), E ~3,100-3,600 - in the open air between the platforms at
+  z ~1,630-1,820 and the finish-level structure (solid z 2,814-3,006, the slabs on top at
+  3,008-3,210). (The record, ANALYSIS ONLY, passes that region at 78-90%, t+383..412.) GE stage 2
+  (pb energy cells from the block top) filled its 4M cells in 17 min with best 70.9%: the policy's
+  own pumping went where uniform macros could not.
+* The greedy from the true start has not taken the launch yet: 64.4 (4,032.8M) / 62.6 / 61.4
+  (4,184M); the circuit is in flux (E max 5,100 at 4,108M, ~2,400 at 4,184M; one episode died at
+  65 s). Box extended to 09:43 UTC.
