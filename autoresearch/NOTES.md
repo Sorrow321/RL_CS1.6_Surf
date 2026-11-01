@@ -826,3 +826,17 @@ ckpt_latest 5,061,476,352.
   pumped the loop for 24 s to d 169 (97.34%) at (78, -786, 2,789) - the policy's own proposals get
   within 169 u, energy-limited (E 2,890-3,456 along it).
 * Curriculum band at 20,900 (the seam into the block-top segment) at 12:34.
+* S70f 6.19-7.40B (37 evals, 0 finishes): 95.9 / 97.19 / 95.8 / 96.8 / 97.1 x7 / 95.3 / 97.25 / 97.33 /
+  96.9 / 97.2 / 96.6 / 96.9 / 97.25 / 96.9 / 97.1 / 97.35 / 97.30 / 97.59 / 97.50 / **97.75** / 96.8 /
+  96.7 / 97.4 / 97.36 (median 97.1%) / 97.0 / 96.9 / 97.47 - a slow climb, not a plateau: the launch
+  off the upper loop's north end gains energy (E max 3,756 at 6,081M -> 3,8xx-4,0xx).
+* **S70f at 7,440M = 98.099 - NEW BEST** (median 95.3%); **97.923 at 7,478M with median 97.5%** (9/9
+  episodes 96.5-97.9%, 8/9 apex at x -368..-401, y 1,601-1,799, z 2,781-2,829). Best episode (ep2,
+  176 s): E max 4,003 (the record's launch, ANALYSIS ONLY: ~4,090), apex (-370, 1,921, 2,837) with v
+  (192, 1,146, -62) - ABOVE the finish block's underside (z 2,814) for the first time but still ~50 u
+  west of its west face (x -320) and ~170 u under its top (solid 3,006, triggers 3,008-3,210). A finish
+  needs the same launch ~100 u east and ~170 u higher. Hand-on ckpt_7427063808.pt (13M before;
+  pulled, md5 68a0009a); also pulled ckpt_7477395456.pt (0.5M before the 97.923 eval, md5 caa7feea).
+  Training at 7.56B: win 0.00%, reservoir min depth 1.53% (deepest training state 98.47%), curriculum
+  window backed off to starts [20,730, 22,505] (0% success over 52 eps at the front).
+* (ops) Box 58621513 extended at 16:19 to 17:19:39 UTC so the 16:40 wrap-up can pull and release.

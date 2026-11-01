@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 97.164,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70f/traj_6081216512.jsonl",
+  "score": 98.099,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70f/traj_7440171008.jsonl",
   "run": "zlr2b3_s70f",
-  "step": 6081216512,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70f/ckpt_6068109312.pt",
+  "step": 7440171008,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70f/ckpt_7427063808.pt",
   "recipe": [
    "(incumbent ckpt, everything restored: per-call --energy-pot 12, --energy-stall 32, --fail-pen 3, respawn-greedy, front-perturb) -> S70d -> S70e -> S70f",
    "--demo-file",
@@ -48,5 +48,5 @@
   "resume_from": "S70e ckpt_latest 5,061,476,352 <- S70d ckpt_latest 4,678,746,112 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008, md5 036960d8)",
   "commit": "8459d093"
  },
- "summary": "97.164 (S70f at 6,081M, median 94.4%; 96.944 at 5,817M, median 95.1%): the greedy from the true start takes the new route north-end launch -> block top -> ramp launch -> the upper loop, and now PUMPS the upper loop to ~96-97% (the finish slabs are just above). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the early route (without it the curriculum forgot the early route and collapsed); a policy beam ranked on depth+energy found the upper-loop pumping line (94.49%) and the spine was extended with it. Training episodes reach 98%. No finish yet."
+ "summary": "98.099 (S70f at 7,440M, median 95.3%; 97.923 at 7,478M with median 97.5%, 9/9 episodes 96.5-97.9%): the greedy from the true start takes the new route north-end launch -> block top -> ramp launch -> the upper loop, PUMPS the upper loop and launches off its north end up the WEST side of the floating finish block (best ep: E max 4,003, apex z 2,837 at x -370, ~50 u west of the block, whose top/trigger is at z 3,006-3,008). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30-35% of spawns on the policy's own early-route/reservoir states (without it the curriculum forgot the early route and collapsed); a policy beam ranked on depth+energy found the upper-loop pumping line (94.49%) and the spine was extended with it. No finish yet (0 training wins, 0/67,845 frontier spawns)."
 }
