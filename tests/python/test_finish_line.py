@@ -190,4 +190,4 @@ def test_pace_limit_arithmetic():
     n, frac, slack = 1000, 0.05, 143
     rows = np.array([0, 500, 999])
     lim = np.floor((n - 1 - rows) * (1.0 + frac) + slack)
-    assert list(lim) == [1191.0, 667.0, 143.0]
+    assert list(lim) == [1191.0, 666.0, 143.0]
