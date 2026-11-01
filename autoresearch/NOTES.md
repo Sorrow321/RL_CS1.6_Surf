@@ -953,3 +953,21 @@ CPU analysis and tooling first.
    (round 2's lesson: never swap a working spine), NEW `tools/line_pool.py` (atomic in-place swap:
    the trainer re-reads the file).
 3. The trainer meanwhile: the incumbent continued with rc10's restored flags (control + lottery).
+* (geometry) The plate has a HOLE straight up to the sky over the middle of the fifth loop's ramp:
+  x > -64 (to the east wall), y 40..536 (no trigger there either; occ at z 2,900: open for x >= -44,
+  y 60..540). The field's shortest way up from the ramp's middle is through it; the record's
+  finish uses the north strip's east face instead. Every plate edge (the hole's faces, the band's
+  north face y 1,312 / south face y -736, the strips' faces x -320 / -64) is a finish at z >= ~2,972.
+* The record's finishing launch (ANALYSIS ONLY): at the ramp's north end (y ~760-1,030) it is LOW
+  on the 51-deg east-facing slope ((300, 758, 1,677), the slope's foot is x ~296 at z 1,632) and
+  rides diagonally UP the slope (vx -1,129) over its top edge (x ~40, z ~1,950): up-slope speed
+  turns into vz ~1,300. The policy rides the slope's upper part (x ~120, z ~1,870) and leaves north
+  with vz ~730-900. A search ranked by d every 0.7 s would cull a LOWER approach before its launch
+  pays (d is higher low on the ramp), so the search forks with protection (beam_tas --branch-at
+  ... --branch-protect: held view offsets for 1.5 s, exempt from culling for 4 generations).
+* 18:06 UTC: a background script (scratchpad autolaunch.sh) retries `box.py rent` every 2 min and,
+  when a box is granted, deploys, launches f1 (the incumbent resumed, rc10's restored flags + the
+  GE spine, --demo-tau0 8980, milestone 5859, the rc10 frontier pool at 15% as runs/sp3/pool.npy,
+  --ckpt-every 2e8) with snapcopy, and starts `finish_search.py --at -36:-4:4 --window 20 --envs
+  4096 --greedy-envs 512 --view-hold 1.0 12 --branch 2048 --branch-jitter 20 --branch-burst 1.5
+  --branch-hold 0.4 --branch-protect 4` (a fork every 4 s over the greedy's last 36 s).
