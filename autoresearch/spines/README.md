@@ -480,3 +480,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `zlr2b1_ge1_spine.npy` (20,103 states, 140.7 s): tools/contact_spine.py = the incumbent's own
   greedy episode 1 (dump key ep_0001) up to the root (index 19,656) + that line, cut at the
   deepest contact tick (69.66%, (-1,214, 1,334, 1,021)). No demo anywhere.
+* `zlr2b1_rc4_6110_spine.npy` (19,936 states, 139.6 s): the policy's OWN greedy line - tools/
+  record_ckpt.py --dump-states of zlr2b1_rc4's ckpt_6110576640 (9 greedy episodes), the episode
+  with the deepest contact (ep6), cut at that contact by tools/contact_spine.py '-' mode: true start
+  -> third structure -> crest launch -> ridge top -> the big block's east side, contact 85.55%
+  at (-21, 151, 2,037). No demo anywhere.
