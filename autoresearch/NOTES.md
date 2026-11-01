@@ -1088,3 +1088,10 @@ Generic: the roots are the policy's own states (its closest passes to the finish
 history), the search is physics with a finish objective, BC/spawns are the lineage's expert loop.
 Read it on: training wins and their time from spawn; the greedy evals from the true start (a
 finish, or swings taking the slot); BC head/joint accuracy.
+* **f1's BC broke the route (19:12 UTC):** first eval (11,692.1M, ONE update with BC 0.5) **4.600** - all
+  9 dead within 6-31 s at 0-5% progress; second (11,767.6M) **13.818** - all 9 stuck in the first
+  trough (~13%). BC memorised the 4,722 rows at once (head-acc / joint-acc 1.000, view-mse 0.026 by
+  ~70M steps); fps 144k once warm. Same as uf2 x4/x7's first update (0/9), but this route is 150 s,
+  not 40: the MPC's decisions are FOREIGN to the policy (strafe offsets tens of sigma from its yaw
+  mean, noisy duck presses), so the first BC gradients are huge and wreck shared features. One more
+  eval to see whether it recovers as BC decays; else restart from c1's weights with BC 0.05 -> 0.02.
