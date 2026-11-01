@@ -3,5 +3,5 @@
  "round": 2,
  "final": false,
  "best": null,
- "summary": "Round 2 start (05:21 UTC). Incumbent 64.671 (zlr1b4 E13). Analysis: the grader's field is ~height on this map (z 1,500 anywhere in open air = 76%); the policy carries E ~4,500 at its 3rd-structure loop tops (z ~716) but never converts it to height. Probing (CPU, physics only) whether a held macro from the policy's own states launches higher; box refused by the fleet budget (2 boxes running), retrying."
+ "summary": "Round 2 (zlr2b4). Incumbent 64.671. Analysis: the grader's field is ~height here; the incumbent pumps E to ~4,500 but its loops top out at z ~716. Scripted macros and a CPU fork sweep (new beam_tas --fork-sweep) from its own line: null. But its OWN 3rd-ramp states with the heading turned 60-90 deg toward the ramp (what --respawn-front-perturb does to a reservoir row) launch to 78-94% on a passive coast (11.7% of 3,024 perturbed rollouts > 64.7%). The recipe perturbs only the deepest 0.5% band (loop tops). Next (box pending, fleet at its budget limit): resume the incumbent with --respawn-front-perturb-band 0.99 (perturbed restarts along the whole route)."
 }
