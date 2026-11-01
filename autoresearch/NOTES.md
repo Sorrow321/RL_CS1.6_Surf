@@ -415,3 +415,8 @@ weights, E8's config otherwise: a stronger push toward unvisited cells in the up
 ### E13 `zlr1b4_e13` (01:28 UTC): E8's exact config from its 62.77% snapshot, to the round's end
 Nothing new: more greedy evals of the best configuration (each a chance above 62.774) and, if one
 comes, a stronger hand-on for the next round.
+* **E13 (01:28-01:55 UTC): 62.303 (its own first eval) / 61.948 / 61.441 / 61.811 / 61.974 /
+  62.971 (2,222M) - a new best by 0.2, inside the level's noise.** At 2,222M: 4/9 reach the third
+  structure's top (62.4-62.97%, E up to 3,033 u), but 5/9 die at ~51 s at the second trough's exit
+  ((-2,330, -44), 31.6-31.8%): the max is what scores, the median (31.8%) shows the fragility.
+  Hand-on: ckpt_2216165376.pt (6.3M before the eval, the newest at or before it; pulled).

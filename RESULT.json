@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 62.774,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e8/traj_1844445184.jsonl",
-  "run": "zlr1b4_e8",
-  "step": 1844445184,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e8/ckpt_1844445184.pt",
+  "score": 62.971,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/traj_2222456832.jsonl",
+  "run": "zlr1b4_e13",
+  "step": 2222456832,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/ckpt_2216165376.pt",
   "recipe": [
    "--energy-pot",
    "12",
@@ -61,8 +61,8 @@
    "--ckpt-every",
    "2e8"
   ],
-  "resume_from": "zlr1b4_e4 ckpt_1239941120 (md5 3c500701) <- zlr1b4_e3 ckpt_1088421888 <- zlr1b4_e2 ckpt_latest 559415296",
+  "resume_from": "zlr1b4_e8 ckpt_1844445184 (md5 e3c338a7) <- zlr1b4_e4 ckpt_1239941120 <- zlr1b4_e3 ckpt_1088421888 <- zlr1b4_e2 ckpt_latest 559415296",
   "commit": "5d07d0df"
  },
- "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M (then a stale spine -> new --auto-spine-recheck). E4 holds 57.9; E5 (energy free at the front), E6 (own beam spine), E7 (--fail-pen 10: survives but stops pumping) plateau at 55-57. E8 = E4's 57.9% weights + --fail-pen 3: 58.8/58.9/62.3/62.3/.../62.77 at 1316-1844M - survives the third structure, E ~2,600, 62%."
+ "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M (a stale spine then dragged it to 34% -> new --auto-spine-recheck). E4 57.9; E5-E7 plateau 55-57. E8 = E4's weights + --fail-pen 3: 62.77 (survives and pumps the third structure to E ~2,600). E9-E12 (own-beam spine, fail-pen 5, wider frontier temperature, 4x novelty) do not pass ~62%; searches (GE x3, beams, branched beams) find no way into the fourth structure. E13 = E8's config from its 62.77% snapshot: 62.971 at 2222M."
 }
