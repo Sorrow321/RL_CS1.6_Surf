@@ -485,3 +485,11 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
 * A9 5.81-6.34B: 25.258, 22.904, 23.702, 25.382, 25.720, 25.032, 25.747, 24.540 (medians
   22.8-25.6%): no record; the greedy holds ~25% while the TRAINING reservoir's deepest state is
   now **34.8%** (front band at 34.4%) - the stochastic policy explores well into the next loop.
+* A9 6.49-7.02B: 24.602, 24.652, 23.660, 24.908, 23.878, 25.998, 24.558, 25.805 (medians
+  23.3-25.7%): steady at ~25%, no record (best of A9: 26.858 at 5.28B).
+* The handoff (orchestrator rule): the best eval is A8's 3.74B (26.870); the snapshot at or before
+  it is runs/zlr1b2_aself/ckpt_3369598976.pt (3.37B), the one after it ckpt_3923247104.pt
+  (3.92B, 0.186B after vs 0.368B before: just short of "more than twice as near"). A9's
+  ckpt_5760352256.pt (medians 24-26%) is the stronger policy of this lineage if a later round
+  can reach it; its route is runs/ge/a9_route.npz on the box (181,632 u, also in this branch's
+  history only as a description: rebuild it from traj_3737649152 with arc_self_candidate tie 32).
