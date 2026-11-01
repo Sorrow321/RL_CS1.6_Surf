@@ -621,3 +621,12 @@ the curriculum's own backoff moves the band later if the launch from the root fa
   states that miss the ridge). Slow feedback, not a bug (DemoCurriculum.note_outcomes counts an
   episode when it ENDS).
 * ge2 stopped at 10.6 min (331k contact cells, nothing deeper than its roots).
+* **rc3 BREAKS THE THIRD STRUCTURE (06:23-06:55 UTC): 63.647 / 63.252 / 62.088 / 60.693 / 61.450 /
+  62.076 / 72.105 (4,884M, median 59.9%).** The curriculum backed off to ~19,690 at first, then
+  walked back PAST the root (19,576 by 4,906M) at 95-97% band success: from its own crest approach
+  the policy now launches onto the ridge top. At 4,884M 2/9 greedy episodes do it from the TRUE
+  start: ep4 lands (contact 68.8% at 148 s) and climbs to 72.10% (z 1,183, 151.9 s), ep2 to 70.87%
+  (contact 69.3%); five still fly the old loop (best 59.7-62.6%), two die early in the second
+  trough (60 s, 84 s). Training: contact records up to 92.0% per episode, reservoir deepest 92%
+  (8.0% of d0), unstuck T 0.20 -> 0.17 (the eval frontier moved). Hand-on: ckpt_4883742720.pt
+  (snapcopy, the eval's own step; pulled, md5 8b85ad3f). The incumbent never cleared this gate.

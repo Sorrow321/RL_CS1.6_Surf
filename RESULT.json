@@ -3,24 +3,26 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 64.719,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc1/traj_4032823296.jsonl",
-  "run": "zlr2b1_rc1",
-  "step": 4032823296,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc1/ckpt_4032823296.pt",
+  "score": 72.105,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/traj_4883742720.jsonl",
+  "run": "zlr2b1_rc3",
+  "step": 4883742720,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/ckpt_4883742720.pt",
   "recipe": [
-   "(resume of the incumbent, its flags restored)",
-   "--demo-file",
-   "autoresearch/spines/zlr1b4_ge1_line_a.npy",
-   "--demo-tau0",
-   "114",
-   "--ckpt-every",
-   "2e8",
+   "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3; flags restored)",
    "--ratchet-contact",
-   "1 (NEW)"
+   "1 (NEW, from rc1)",
+   "--demo-file",
+   "autoresearch/spines/zlr2b1_ge1_spine.npy (own greedy line + GE line from own crest contacts onto the ridge top)",
+   "--demo-tau0",
+   "19656 (the GE root)",
+   "--demo-milestones",
+   "5859",
+   "--ckpt-every",
+   "2e8"
   ],
-  "resume_from": "incumbent r1 ckpt.pt (zlr1b4_e13 ckpt_4032299008, md5 036960d8)",
-  "commit": "0bb26ad1"
+  "resume_from": "zlr2b1_rc2 ckpt_latest 4430233600 <- zlr2b1_rc1 4354211840 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
+  "commit": "338783b9"
  },
- "summary": "Round 2 so far: 64.719 is the first eval of rc1 (the incumbent's weights after 0.5M steps; eval noise, not an effect). Finding: the incumbent's 64.67% is ballistic apexes over open air - after 52 s it touches one ramp crest (contact progress 33-39%); the record's contact-only progress tracks its all-state progress within 2.6 points. NEW --ratchet-contact 1: the ratchet pays only progress reached at contact ticks. rc1 (warm, incumbent + the flag) running; next: Go-Explore rooted at the policy's own crest-contact states to find the launch onto the ridge top (the record's exit)."
+ "summary": "72.105 at 4,884M (rc3; median 59.9%): the greedy now leaves the third structure onto the ridge top. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%); NEW --ratchet-contact pays only progress reached at contact ticks. Go-Explore rooted at the policy's own crest contacts (NEW tools/contact_roots.py, ge_contact_pick.py, contact_spine.py) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine with the band at the GE root, the curriculum walked back past the launch at 95-97% success in ~30 min and training reaches contact 92%. Next: keep training rc3, make it reliable, extend the frontier."
 }
