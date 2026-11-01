@@ -816,3 +816,13 @@ ckpt_latest 5,061,476,352.
   reservoir deepest 96.9-98%.
 * Finish beams (12:22): S70f's 5,867M weights, its own proposals ranked by d, from 8 of its own
   95-96.7% reservoir states, 1,024 envs, 30 s, --keep-finishers 4.
+* **S70f at 6,081M = 97.164 - NEW BEST** (median 94.4%; 96.5 / 96.4 after). Its best episode (ep8)
+  launched off the upper loop's north end to (-368, 1,646, 2,777), E 3,430 (E max 3,756): exactly
+  where the 96.94% one peaked - flying up the WEST side of the finish block (a floating block x
+  -320..-64, z 2,814-3,006 at y 1,650, the finish trigger on its top) to just under its underside;
+  a finish needs ~230 u more of rise and a drift east onto its top. Hand-on ckpt_6068109312.pt (13M
+  before; pulled).
+* Finish beams (S70f 5,867M weights from its own 95-96.7% states, d-ranked, 30 s): 0 finishes; bf3_2
+  pumped the loop for 24 s to d 169 (97.34%) at (78, -786, 2,789) - the policy's own proposals get
+  within 169 u, energy-limited (E 2,890-3,456 along it).
+* Curriculum band at 20,900 (the seam into the block-top segment) at 12:34.
