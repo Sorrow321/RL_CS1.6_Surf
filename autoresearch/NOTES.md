@@ -721,3 +721,12 @@ incumbent ckpt with S70's exact flags (incl. --demo-front-temp 1 --demo-front-ti
 early-route spawns (30%) from the start, denser evals (--record-every 37.5e6: twice the greedy
 evals in the window where the launch appeared) and snapshots every 5e7 (a hand-on near any good
 eval).
+* **S70d WORKS (08:53-09:20 UTC): 64.9 / 63.2 / 63.5 / 63.8 / 75.8 (4,184M) / 78.789 (4,222M,
+  median 78.1%: 7/9 launches) / 78.858 (4,259M, median 77.3%) - NEW BEST.** With the early route in
+  the pool from the start and the incumbent's circuit intact, the policy learned the launch in
+  ~150M steps and took it reliably from the true start. Every launching episode now ends the same
+  way: off the block-top ramp east to ~78% at z ~1,570-1,610 (x ~-500..0), then a fall to the east
+  (2,000-2,300, 1,600-3,300). Training: reservoir deepest 93.8%, band ~19,177 (7 s before the
+  spine's launch), 45% band success. Hand-on: ckpt_4233625600.pt (25.7M before the eval, pulled).
+* Beam from the TRUE start on S70d's 4,284M snapshot (09:22; 2,048 envs, --score d, 238 s): the
+  auto-spine step by hand - a line past the greedy's 78% (into the upper loop) for the next spine.
