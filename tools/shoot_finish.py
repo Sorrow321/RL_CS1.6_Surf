@@ -60,11 +60,13 @@ def starts_from(spec: str, line_s: float):
     return [float(v) for v in out]
 
 
-def plan(rng, n: int, h_ticks: int, segments: int, yaw_max: float, side_flip: float):
+def plan(rng, n: int, h_ticks: int, segments: int, yaw_max: float, side_flip: float,
+         duck_flip: float = 0.0):
     """-> yaw offset (n, h_ticks) float32 deg, side override (n, h_ticks) int32 (-1 = the line's
     own key), one piecewise-constant plan per env; env 0 is the unperturbed control."""
     yaw = np.zeros((n, h_ticks), np.float32)
     side = np.full((n, h_ticks), -1, np.int32)
+    duck = np.full((n, h_ticks), -1, np.int32)
     for i in range(1, n):
         cuts = np.sort(rng.integers(1, h_ticks, size=max(0, segments - 1)))
         edges = np.concatenate([[0], cuts, [h_ticks]])
@@ -72,7 +74,31 @@ def plan(rng, n: int, h_ticks: int, segments: int, yaw_max: float, side_flip: fl
             yaw[i, a:b] = rng.uniform(-yaw_max, yaw_max)
             if rng.random() < side_flip:
                 side[i, a:b] = rng.integers(0, 3)
-    return yaw, side
+            if duck_flip > 0.0 and rng.random() < duck_flip:
+                duck[i, a:b] = rng.integers(0, 2)
+    return yaw, side, duck
+
+
+def mutate(rng, yaw_e, side_e, duck_e, n: int, h_ticks: int, segments: int, sigma: float,
+           side_p: float, duck_p: float = 0.0):
+    """--evolve: n children of the elite plans (yaw_e, side_e: (E, h_ticks)), each an elite plus
+    a piecewise-constant N(0, sigma) deg yaw noise over a fresh segmentation and, with
+    probability side_p per segment, a held random side key there."""
+    E = len(yaw_e)
+    pick = rng.integers(0, E, size=n)
+    yaw = yaw_e[pick].copy()
+    side = side_e[pick].copy()
+    duck = duck_e[pick].copy()
+    for i in range(n):
+        cuts = np.sort(rng.integers(1, h_ticks, size=max(0, segments - 1)))
+        edges = np.concatenate([[0], cuts, [h_ticks]])
+        for a, b in zip(edges[:-1], edges[1:]):
+            yaw[i, a:b] += rng.normal(0.0, sigma)
+            if rng.random() < side_p:
+                side[i, a:b] = rng.integers(-1, 3)
+            if duck_p > 0.0 and rng.random() < duck_p:
+                duck[i, a:b] = rng.integers(-1, 2)
+    return yaw, side, duck
 
 
 def main(argv=None):
@@ -91,6 +117,15 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--keep", type=int, default=8, help="finishing lines saved per start")
     ap.add_argument("--threads", type=int, default=2)
+    ap.add_argument("--evolve", type=int, default=0,
+                    help="rounds after the first draw their plans from the previous rounds' "
+                         "ELITES (the --evolve lowest min-d plans, finishers first): 75%% "
+                         "mutations (--mut-sigma deg of held yaw noise, --mut-side), 25%% fresh "
+                         "draws; 0 = every round is a fresh draw")
+    ap.add_argument("--mut-sigma", type=float, default=6.0)
+    ap.add_argument("--mut-side", type=float, default=0.15)
+    ap.add_argument("--duck-flip", type=float, default=0.0,
+                    help="probability a segment holds a random duck key (0 = the line's own)")
     a = ap.parse_args(argv)
     os.environ.setdefault("OMP_NUM_THREADS", str(a.threads))
 
@@ -127,6 +162,25 @@ def main(argv=None):
                           no_corner_cut=bool(int(cfg.get("race_no_corner_cut") or 0)))
     pool = map_spawn_pool(core1)
 
+    # the finish boxes grown by the standing hull (the core's own test for a plain-box trigger):
+    # near the goal the voxel field reads 0 within a voxel of them, so a near miss is scored by
+    # the exact distance of the origin to the nearest grown box
+    gb = zones["end"].get("boxes") or [{"mins": zones["end"]["mins"], "maxs": zones["end"]["maxs"]}]
+    b_lo = np.array([np.asarray(b["mins"], np.float64) for b in gb])
+    b_hi = np.array([np.asarray(b["maxs"], np.float64) for b in gb])
+
+    def score_d(o, ducked):
+        """field d, refined near the goal to the exact distance of the origin to the nearest
+        finish box grown by the player's CURRENT hull (standing 16/16/36, ducked 16/16/18:
+        the core's own rule, src/env.c)"""
+        dd = gf.sample(o).astype(np.float64)
+        ext = np.where(np.asarray(ducked)[:, None] != 0, (16.0, 16.0, 18.0), (16.0, 16.0, 36.0))
+        lo = b_lo[None] - ext[:, None, :]
+        hi = b_hi[None] + ext[:, None, :]
+        q = np.clip(o[:, None, :], lo, hi)
+        bd = np.linalg.norm(o[:, None, :] - q, axis=2).min(axis=1)
+        return np.where(dd < 48.0, np.minimum(bd, 48.0), dd)
+
     def arm(core):
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
         core.set_teleport_fail(True)
@@ -153,9 +207,15 @@ def main(argv=None):
         if t0 <= 0 or t0 >= n_line - 1:
             continue
         S = np.array(states[t0:t0 + 1], copy=True)
+        el_yaw = el_side = el_duck = el_sc = None
         for rnd in range(max(1, a.rounds)):
             t_start = time.time()
-            yaw, side = plan(rng, N, h_t, a.segments, a.yaw_max, a.side_flip)
+            yaw, side, duck = plan(rng, N, h_t, a.segments, a.yaw_max, a.side_flip, a.duck_flip)
+            if a.evolve > 0 and el_yaw is not None:
+                n_mut = int(0.75 * (N - 1))
+                my, ms, md = mutate(rng, el_yaw, el_side, el_duck, n_mut, h_t, a.segments,
+                                    a.mut_sigma, a.mut_side, a.duck_flip)
+                yaw[1:1 + n_mut], side[1:1 + n_mut], duck[1:1 + n_mut] = my, ms, md
             coreN.reset(gate_seed)
             for i in range(N):
                 coreN.set_state(i, S[0])
@@ -172,14 +232,18 @@ def main(argv=None):
                     V[:, 0] = ((V[:, 0] + yaw[:, k] + 180.0) % 360.0) - 180.0
                     m = side[:, k] >= 0
                     A[m, 3] = side[m, k]
+                    m = duck[:, k] >= 0
+                    A[m, 5] = duck[m, k]
                 _o, _r, done, trunc, _ = coreN.step(np.ascontiguousarray(A),
                                                      view=np.ascontiguousarray(V))
                 done = np.asarray(done, bool) | np.asarray(trunc, bool)
                 o = np.asarray(coreN.states_view["origin"], np.float64)
-                if k % 4 == 0 or done.any():
-                    dd = gf.sample(o).astype(np.float64)
-                    dmin = np.where(alive, np.minimum(dmin, dd), dmin)
-                    zmax = np.where(alive, np.maximum(zmax, o[:, 2]), zmax)
+                # a done env's state is already its autoreset spawn: score the live ones only
+                live = alive & ~done
+                if k % 2 == 0 or done.any():
+                    dd = score_d(o, coreN.states_view["ducked"])
+                    dmin = np.where(live, np.minimum(dmin, dd), dmin)
+                    zmax = np.where(live, np.maximum(zmax, o[:, 2]), zmax)
                 if done.any():
                     gh = np.asarray(coreN.goal_hits, bool)
                     hit = done & alive & gh
@@ -188,6 +252,17 @@ def main(argv=None):
                 if not alive.any():
                     break
             fins = np.flatnonzero(fin_t > 0)
+            if a.evolve > 0:
+                sc = np.where(fin_t > 0, -1e9 + fin_t, np.where(np.isfinite(dmin), dmin, 1e9))
+                sc[0] = 1e12                       # the control is not a parent
+                cy, cs, cd, cc = yaw[1:], side[1:], duck[1:], sc[1:]
+                if el_yaw is not None:
+                    cy = np.concatenate([el_yaw, cy])
+                    cs = np.concatenate([el_side, cs])
+                    cd = np.concatenate([el_duck, cd])
+                    cc = np.concatenate([el_sc, cc])
+                top = np.argsort(cc, kind="stable")[:a.evolve]
+                el_yaw, el_side, el_duck, el_sc = cy[top], cs[top], cd[top], cc[top]
             row = {"start_s": round(s, 2), "start_tick": t0, "round": rnd, "envs": N,
                    "finishes": int(len(fins)), "control_dmin": float(dmin[0]),
                    "best_dmin": float(dmin[np.isfinite(dmin)].min()) if np.isfinite(dmin).any()
@@ -209,6 +284,8 @@ def main(argv=None):
                         V[0, 0] = ((V[0, 0] + yaw[i, k] + 180.0) % 360.0) - 180.0
                         if side[i, k] >= 0:
                             A[0, 3] = side[i, k]
+                        if duck[i, k] >= 0:
+                            A[0, 5] = duck[i, k]
                     rows_a.append(A[0])
                     rows_v.append(V[0])
                     st_new.append(core1.get_states()[0].copy())
@@ -223,7 +300,8 @@ def main(argv=None):
                          replay_ok=np.int32(1 if ok else 0), start_tick=np.int32(t0),
                          finish_tick=np.int32(t0 + ft), acts=np.asarray(rows_a, np.int32),
                          view=np.asarray(rows_v, np.float32), act_every=np.int32(K),
-                         yaw_plan=yaw[i], side_plan=side[i], tick_ms=np.float64(tick_ms),
+                         yaw_plan=yaw[i], side_plan=side[i], duck_plan=duck[i],
+                         tick_ms=np.float64(tick_ms),
                          frontier_d=np.float64(0.0), frontier_tick=np.int32(t0 + ft))
                 saved.append({"tag": tag, "finish_s": round((t0 + ft) / tps, 2),
                               "replay_ok": int(ok)})

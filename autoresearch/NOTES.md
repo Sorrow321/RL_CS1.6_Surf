@@ -1013,3 +1013,18 @@ offsets, the map's own finish trigger.
   0 finishes in 70 batches, but the late starts come close: from 159.9 s best d 86 u (the control
   447) with an apex at z 2,973; from 156.9 s d 93; 153.9 s d 117. The earlier starts (E lower) top
   out at z ~2,770.
+* **FINISHES (21:06 UTC, CPU): the policy's own line has finishing neighbours.** shoot_finish
+  `--evolve 64` (each round 75% mutations of the 64 nearest misses, `--mut-sigma 4` deg) with the
+  near-goal score refined to the exact distance of the origin to the finish boxes grown by the
+  player's current hull (the voxel field reads 0 within a voxel of them; a ducked hull needs z
+  >= 2,990, not 2,972): from the policy's own state at 160.4 s, 7 replay-verified finishing lines
+  in 16 rounds, one from 159.9 s; all finish at 162.27-162.48 s from the TRUE start (the record:
+  453.99 s on the demo's clock). The manoeuvre (s01604_r11_e00266): a slightly different exit
+  off the ramp's north-end curve (vz 1,192 at z 1,992 vs the greedy's 1,106 at 1,971) while x
+  stays east of -64; at 160.80 s (-48, 1,086, 2,122) the player meets a THIN vertical wall under
+  the north strip's east edge (x -64; not in the 32 u occupancy grid), loses horizontal speed
+  (|vh| 1,382 -> 686: ~900 u of E) and slides north along it rising, to (-48, 1,968, 3,030) at
+  162.3 s - the strip's grown east face: the finish. The record finished the same way
+  ((-48, 2,021, 2,978)). The greedy passes x -64 at ~2,050, just under/west of that wall, and
+  drifts west (x -1,450 at 162.3 s) into its fatal fall. Plans: held yaw offsets of +5..+17 deg
+  for ~1-2.5 s around the launch, the line's own keys (side overrides rare).
