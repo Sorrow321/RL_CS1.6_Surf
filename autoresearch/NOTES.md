@@ -1174,3 +1174,14 @@ the route?), the greedy's fifth loop (does it turn up-slope early at E ~4,000 an
   swing would put the greedy where the labels are.
 * bc_dag2 (building): the conflict-free set - per greedy line (c1's g1-g5 = c1..c5 with p + q roots,
   f2's h7 = r7) the earliest finishing splice + every suffix x2.
+* f2 stopped at 12,120.5M (ckpt md5 720f5476, runs/f2_final.pt on the box). f2's 7 evals: 96.347 /
+  95.136 / 95.649 / 95.373 / 95.810 / 97.328 / (pulled), 0 finishes.
+* bc_dag2 (md5 e0468dbd, 29.6 MB): 6 conflict-free splices (34,329 own-route rows: c1's g1-g5 at their
+  earliest finishable root, f2's h7) + 62 finishing suffixes x2 = 130 lines.
+
+### f3 `zlr3b1_f3` (20:38 UTC): f2's final weights + bc_dag2 (conflict-free DAgger) + pool_f5 + cold keys
+f2's flags with `--bc-file runs/dag/bc_dag2.npz --bc-coef 0.3 --bc-coef-final 0.1 --bc-steps 4e8`
+(lower: the policy already memorised dag1's overlapping rows). `--resume` = f2 12,120.5M.
+* Beside it (CPU): NEW `dagger_finish --death-roots S,..`: roots S seconds before the greedy line's
+  END (its death), with "survive then finish" (`--objective finish --energy-w 1.0 --duration 12`): f2's
+  greedy dies one swing short of a finishable energy - labels there would sit where it actually goes.

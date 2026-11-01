@@ -14,5 +14,5 @@
   "resume_from": "incumbent r2 ckpt_11096031232",
   "commit": "0c47e014"
  },
- "summary": "c1 (incumbent resumed, RTX 5060 Ti): 8 evals 95.3-97.75, 0 finishes. NEW tools/finish_mpc.py (engine CEM from the policy's own pre-exit states, strafe-like prior, held per-decision controls) found 63 finishing lines of 144 roots (up through the platform's slot / sliding up its faces). f1 (19:05): c1's weights + BC on those MPC decisions (plan_to_bc, uf2 x7's schedule) + the lines as 10% of spawns + cold keys. Next: f1's evals; DAgger roots from f1's own greedy if it moves."
+ "summary": "Best 97.75 (c1). 0 finishes so far. NEW tools/finish_mpc.py + tools/dagger_finish.py: the engine MPC finishes from the policy's own pre-exit states at E >~4,000 (60 roots on c1's greedy lines; finishes 156 s after the true start), never below ~3,850. BC on MPC rows alone broke the route (f1); BC on the policy's own greedy route + MPC suffixes (DAgger, f2) kept it and made the early route reliable (9/9 to the fifth loop) but no finish: the greedy dies one swing short of E 4,000. f3 (20:38): conflict-free DAgger BC (bc_dag2). Next: labels that survive one more swing then finish."
 }
