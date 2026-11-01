@@ -466,3 +466,12 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `uf2r1b1_cut_k02.npy` (+ `.keys.npy`, 5,800 states, md5 6f13570545426fbf87856ec6c2846177): search
   2 of uf2r1b1_cut (7.93B weights, same rule): to d 386 = 98.7% - ends at (2,923, -2,052, -753)
   falling, below the finish box's floor (z -640), i.e. it passes UNDER the box; no finish.
+
+## zlr1b2 (surf_za_loop round 1) - --race-arc routes (route + spacing; ArcProgress.load)
+* `zlr1b2_zl12_route.npz`: the hand-joined Go-Explore line from the TRUE spawn (GE-1 to 9.48% +
+  GE-2 rooted on its half-pipe rows to 12.77%), 28,032 u @ 128 u. Reward-free search, no demo.
+  The A6 lineage's route (A6 -> A6c).
+* `zlr1b2_b1_ge_route.npz`: B1's own `--ge-arc` route (the trainer's 9-min search, seed 0 = GE-1's
+  line, 9.48%), 21,888 u.
+* `zlr1b2_a9_route.npz`: the policy's OWN greedy line from the true start (A8's 3.74B eval, the
+  shortest episode within 32 u of the deepest: 26.64% in 125.2 s), 181,632 u - A9's route.
