@@ -376,3 +376,16 @@ spawns there just died; E8's policy survives there now.
   (record_ckpt --dump-states, 4 episodes; the last ~25 s before each fatal fall of the 3 that
   reach 61.5-62.1%, every 20 ticks = 492 roots, E up to 2,431, z up to 580) - the first explorer
   roots with the energy the climb needs: does anything get up into the fourth structure?
+* GE zl5 (20 min, 492 roots from E8's own high-energy swing states, E up to 2,431): 3.25M cells, best
+  never past its roots' (2,376 on the explorer's field). Third explorer null at this stretch: uniform
+  bursts cannot hold or use the energy (zl3, zl4, zl5).
+* **E10 (23:46-00:06 UTC, 2.56-2.91B): 60.430 / 61.961 / 60.948 / 61.539 / 61.397** - fail-pen 5 =
+  fail-pen 3 here: the ~61-62% level. Stopped at 2,914M (ckpt 2,907,701,248, md5 12b2199e).
+
+### E11 `zlr1b4_e11` (00:08 UTC): E10's weights + `--front-band 0.05`
+The frontier temperature (`--front-temp 1`: every head sampled at T 2) applied in the top 5% of
+the explored progress range instead of the top 1% - i.e. over the upper part of every swing in the
+third structure, not only at the swing tops. The policy is near-deterministic there (yaw sigma
+0.04-0.08) and the climb is a different swing ENDING (into the pillar's face, rising) that its own
+samples never try (beam d2: no lineage). Evals stay greedy. Generic: a band relative to the run's
+own frontier; no map constant.
