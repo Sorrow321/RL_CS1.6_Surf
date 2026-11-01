@@ -971,3 +971,14 @@ CPU analysis and tooling first.
   --ckpt-every 2e8) with snapcopy, and starts `finish_search.py --at -36:-4:4 --window 20 --envs
   4096 --greedy-envs 512 --view-hold 1.0 12 --branch 2048 --branch-jitter 20 --branch-burst 1.5
   --branch-hold 0.4 --branch-protect 4` (a fork every 4 s over the greedy's last 36 s).
+* (18:20-18:38 UTC, local CPU) beam_tas runs on this machine's CPU (~60 ms per decision): the
+  incumbent's greedy line recorded on CPU (1 env) reaches the fifth loop like the eval's best
+  episodes - 165.9 s, best 95.83% at 155.9 s, E max 4,541, then a fall to the north. Its fifth-loop
+  launches all leave the ramp's TOP EDGE (x ~0-25, z ~2,000, y +-490..1,070) with vz rising
+  631 -> 1,154 as E grows 2,540 -> 4,260; apex heights 2,185 -> 2,849 at x 290-810 (it air-strafes
+  back east after a westward launch). From that edge a finish at the band's north face needs vz
+  >= ~1,250 (apex >= 2,972) and the apex just north of y 1,328 moving south. finish_search.py's
+  pipeline ran (greedy line, prefix replay of 21,984 ticks in 10 s, the fork); a CLI bug fixed on
+  the way (a negative --at range needs `--at=-36:-4:4`; beam_tas --branch-jitter is an int). The
+  CPU search was stopped after 5 generations (machine load 4.6 on 4 vCPU with another job): search
+  on a box only.
