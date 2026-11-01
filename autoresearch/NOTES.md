@@ -614,3 +614,10 @@ record (paid_record: an apex past it never counts). The old GE line's 9.48% stay
 The same spine and flags as rc2 plus `--demo-tau0 19656` (the root = the crest contact the GE line
 starts from): demo draws half on [19,656..19,660], half uniform over the GE part [19,656..20,102];
 the curriculum's own backoff moves the band later if the launch from the root fails.
+* rc3 evals: **63.647** (its first = rc2's 4,430M weights) / **63.252** (4,506M); greedy best contact
+  still the crest (38.2-38.8%), two episodes died early (13 s, 64 s). The band backed off 19,656 ->
+  19,676 at 0% success: spawns past the success line live long on the ridge top (mean episode
+  11,276 ticks = 79 s), so the curriculum's outcomes arrive from the FAST deaths first (flight
+  states that miss the ridge). Slow feedback, not a bug (DemoCurriculum.note_outcomes counts an
+  episode when it ENDS).
+* ge2 stopped at 10.6 min (331k contact cells, nothing deeper than its roots).
