@@ -791,3 +791,5 @@ ckpt_latest 5,061,476,352.
   d + 2 x energy height, a fall keeps its energy, so dh does not select survival in a loop.
 * S70f 10:44-10:58 (5.06-5.21B): 90.6 / 90.5 / 89.4 / 90.6 / 91.07 (frontiers 5,690-5,794);
   band in the bu_5 segment at row 21,715 (882 of 1,700) with 32% success.
+* (ops) Box 58621513 extended at 11:09 to 16:38:54 UTC - the wrap-up (16:40) must pull and release
+  before then (or extend by a few minutes first).
