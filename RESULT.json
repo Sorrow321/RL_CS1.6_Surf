@@ -2,6 +2,17 @@
  "agent": "zlr3b1",
  "round": 3,
  "final": false,
- "best": null,
- "summary": "Round 3 start (17:32 UTC). Incumbent 98.329 (zlr2b1 rc10, 0 finishes: apexes at swing ends outside every finish slab). Plan: resume the incumbent on its own recipe (baseline evals) and search the policy's OWN fifth-loop states for a slab entry, then teach it with a spine."
+ "best": {
+  "score": 97.75,
+  "eval_file": "/home/steam/ar_loop/runs/zlr3b1/zlr3b1_c1/traj_11172052992.jsonl",
+  "run": "zlr3b1_c1",
+  "step": 11172052992,
+  "ckpt": null,
+  "recipe": [
+   "(resume of the incumbent, rc10's flags)"
+  ],
+  "resume_from": "incumbent r2 ckpt_11096031232",
+  "commit": "0c47e014"
+ },
+ "summary": "c1 (incumbent resumed on rc10's flags, RTX 5060 Ti): 97.35 / 97.75, the level, 0 finishes. The finish triggers sit on a solid platform (top z 3,008): a finish needs the hull clear of it beside/over the footprint (origin z >= 3,044). Beam searches from the policy's own fifth-loop states (NEW --score gap/gaph) get within 45-160 u: the flight off the ramp's north end is too flat. Next: long-horizon energy beams, steeper-exit search, then the line into the spawn pool."
 }

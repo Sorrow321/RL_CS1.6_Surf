@@ -942,3 +942,30 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
 * Not a small perturbation by state distance: ~150-300 u of height at the right place. The apexes rose
   ~40 u per 1B steps late in round 2 (2,814 -> 2,857 over 9.6-11.1B): training time alone would need
   billions of steps more.
+
+### c1 evals and the finish search from the policy's own fifth-loop states (17:50-18:40 UTC)
+* c1: **97.353** (11,096.6M, the incumbent's weights' own first eval on this card) / **97.750**
+  (11,172M) - the level (95-98), 2-5/9 early deaths in the first troughs. Trainer 159k steps/s once
+  warm (the first minutes read ~100k).
+* **The platform top is z 3,008** (a point trace stops at 3,008.03; the triggers start there), so
+  the reachable finish = the hull overlapping a box with its bottom clear of the platform: origin
+  z >= 3,044 standing / 3,026 ducked beside or over the footprint. A hull pressed against the
+  platform's SIDE below that touches the box's inflated face only in theory: the core's collision
+  stops it 1/32 u short (measured: x -336.03 vs the inflated face -336.0, no finish).
+* Beam search on the incumbent's weights from its OWN frontier-pool states (roots = 1.5 and 3 s
+  before each episode's 4 closest passes to a trigger; `tools/beam_tas.py --start-state
+  autoresearch/spines/zlr2b1_frontier_rc10.npy:ROW --skip-gate --allow-nonfinisher --route-file
+  none --envs 4096 --greedy-envs 64 --view-temp 4 --keys-temp 2 --view-hold 2.0 8`): ~30 s per
+  root for 1,400 ticks beside the trainer. NEW `--score gap` (commits fe171ba7, 14a3944a, c30b1464;
+  tests/python/test_beam_score_gap.py): rank by max(field d, the exact hull gap to the REACHABLE
+  finish region; `goal_box_floors()` traces the floor under each box); `gaph` adds K x energy
+  height. Why: the field is trilinear over honest corners and reads 0 beside the platform's side
+  while the hull is 15-25 u off the box and blocked by solid - d-ranking selected lineages
+  stalled against the side (search 41221 with --score d: "d 0", no finish).
+* Sweeps sB (gap without floors) / sC (gaph 0.5), 24 roots: 0 finishes. Best TRUE gaps: 45 u (a
+  lineage that lost its speed on the platform's side and slid up it, E ~= z), 140-260 u for most
+  roots. The fast ones are the informative ones: (-728, 2,756, 2,978) flying straight east at the
+  strip at 1,421 u/s, ~80 u too low; (-343, 2,386, 2,828) heading north along the strip's west face
+  at 1,372 u/s, ~160 u too low. At those apexes ~1,400 u/s is still horizontal: the flight off the
+  ramp's north end is too FLAT (vz ~600-1,000 at the exit; reaching z 3,044 from the ramp's end at
+  z ~2,000 needs vz ~1,300: a ~43 deg exit at E ~4,250, or ~E 5,300 at the policy's ~34 deg).
