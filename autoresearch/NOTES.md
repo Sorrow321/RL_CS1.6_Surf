@@ -541,3 +541,31 @@ Generic: no field, route, region or record constant. tests/python/test_beam_nove
 CPU smoke 8 envs x 400 ticks ok. Plan: from the TRUE start on the incumbent weights, d-ranked to
 ~95 s (into the bowl), then --novelty 128 512 0.5 with --view-hold perturbations; any line deeper
 than 64.67% -> spine (backward curriculum from its end, the round-1 loop).
+
+### The incumbent's loop is mostly FREE FLIGHT; the record's climb is a turn on the same ramp (06:00 UTC)
+ANALYSIS ONLY (record_ckpt --dump-states of the incumbent on CPU, 190.8 s; slabocc surface fits):
+* Per loop (~5.0 s): it slides NORTH along the bottom of a ~52 deg ramp on the bowl's west side
+  (x -2,300..-2,040, z -1,320..-1,020; surface normal ~(-0.78, 0, 0.62): the ramp RISES EAST,
+  toward the pillar's west face at x -1,616), launches off its north end (v ~(1,230, 1,960, 1,420)),
+  flies ~3 s through OPEN AIR (up to 1,800 u from any solid) air-strafing a clockwise arc (top
+  (630, 650, 661), 62-64%), and lands back on the ramp's south part. The energy is gained in the
+  air (+36 u/s).
+* The record (ANALYSIS ONLY) flies the SAME loop at E ~2,000 (t+296-305), then at t+305.5, on that
+  ramp's bottom at (-2,261, 766, -1,264) heading north, turns UP-SLOPE: v (-330, 2,256, -383) ->
+  (821, 1,854, 952) -> (1,412, 69, 1,551) in 0.5 s, hits the pillar's west face (vx -> 0, E 1,899
+  -> 747) and rises along it with vz 1,349 onto the pillar top (z 642). The incumbent passes that
+  spot every 5 s with ~2x the record's energy: done at E ~4,000, the same turn would leave vz
+  ~2,000 at the wall, an apex near z 2,100; the field along the face pays 66.1% at z 900, 70.8%
+  at 1,200, 80.2% at 1,800, 84.9% at 2,100.
+* Physics probes from the incumbent's own ramp states (analysis): 8 roots (E 1,231-4,408) x 378
+  HELD (view offset, side, fwd, 0.25-1 s) combos: best 40-44% in 3 s (one reaches the face at
+  x -1,616 but at z -458, no vertical speed); CEM over 10 x 0.1 s piecewise controls: 41-49% -
+  below the policy's own loop (~60%): random controls lose the energy the policy's strafing
+  holds. Not a feasibility verdict; the record shows the climb exists at E 2,190.
+* So the search should PERTURB the policy's control rather than replace it: the beam with
+  --view-hold (held yaw offsets on the policy's own proposals, redrawn every 0.7 s; 1 sigma of
+  z = ~45 deg, most mass below 10 deg) - a lineage that turns up-slope and climbs is DEEPER than
+  its siblings at the next boundary, so even the d-ranked half keeps it. Round 1's branched
+  beams forked at 91/96/101/106/111 s - five forks on a 5.0 s loop, likely all the same phase.
+* --view-ou-sigma (trainer) does NOT teach a found offset: the stored z is the un-offset draw,
+  so PPO learns robustness to the offset, not the offset. A found line is taught by a spine.
