@@ -99,7 +99,10 @@ def run_root(core, rw, sv, row0, scorer, a, rng, K_ticks):
                 alive &= ~(ended & ~hit)
                 alive &= ftick < 0
                 if k % a.dist_every == 0 or k == Hp - 1:
-                    _s, g = scorer(sv)
+                    if a.objective == "height":
+                        g = -np.asarray(sv["origin"], np.float64)[:, 2]
+                    else:
+                        _s, g = scorer(sv)
                     mgap = np.where(alive, np.minimum(mgap, g), mgap)
             o = np.asarray(sv["origin"], np.float64)
             v = np.asarray(sv["velocity"], np.float64)
@@ -215,6 +218,10 @@ def main(argv=None):
                          "face, so among those the higher apex (clearing the floor, a definite "
                          "finish) ranks first")
     ap.add_argument("--mix-w", type=float, default=0.5)
+    ap.add_argument("--objective", choices=("finish", "height"), default="finish",
+                    help="height: a REACHABILITY probe - the plan's score is its highest z "
+                         "(alive), no finish term; says how high the physics can take the "
+                         "player from the root at all")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
     import torch
