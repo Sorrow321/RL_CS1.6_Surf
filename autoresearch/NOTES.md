@@ -720,3 +720,17 @@ Resume of rc4's ckpt_latest (6,865.6M, md5 c7061e31 - not rc5's) + `--demo-file 
 zlr2b1_rc4_6110_spine.npy --demo-tau0 11400 --demo-milestones 5859,2030 --ckpt-every 2e8`: the band
 ~57 s before the launch (where rc4's sat on the GE spine), uniform draws over the third structure,
 the launch, the ridge and the block's east side; success line 84.0% contact.
+* **rc6 REGRESSED too (09:18-09:45 UTC): 90.073 (its first = rc4's weights) / 63.837 / 32.013 /
+  60.628 / 59.969 / 62.266.** Same restored config and trainer code as rc4 (diffed); the differences
+  are the own-line spine and its 84% success line (band success 0%, backing off). Both rc5 and rc6
+  lost the launch within 75M steps of the spine switch: the greedy's launch is a close call that
+  flips under any change of the spawn mix (rc3 flip-flopped the same way). Lesson: once a spine
+  works, do not swap it; add frontier spawns BESIDE it.
+
+### rc7 `zlr2b1_rc7` (09:45 UTC): rc4's exact curriculum + 15% own frontier spawns
+rc4's final weights (6,865.6M) + `--demo-file autoresearch/spines/zlr2b1_ge1_spine.npy --demo-tau0
+11530 --demo-milestones 5859` (rc4's spine, band and milestone exactly) + NEW pool share
+`--spawn-states runs/sp2/frontier_6110.npy --spawn-states-frac 0.15` (= autoresearch/spines/
+zlr2b1_frontier_6110.npy: the policy's own states around its last contact-record improvement,
+tools/frontier_states.py, 4 episodes at contact 84.7-85.6%). The file is re-read when it changes,
+so the frontier pool can be refreshed from newer re-recordings without a restart.

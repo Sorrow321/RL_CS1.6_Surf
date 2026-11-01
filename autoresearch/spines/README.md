@@ -485,3 +485,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   with the deepest contact (ep6), cut at that contact by tools/contact_spine.py '-' mode: true start
   -> third structure -> crest launch -> ridge top -> the big block's east side, contact 85.55%
   at (-21, 151, 2,037). No demo anywhere.
+* `zlr2b1_frontier_6110.npy` (3,616 states): a --spawn-states pool, tools/frontier_states.py on the
+  same 6,111M greedy re-recording: the 4 episodes whose contact record reached >= 97% of the best
+  (84.7-85.6%), states from 8 s before the last contact-record improvement to 1.5 s before death
+  (the third structure's last laps, the launch, the ridge, the block's east side), stride 2.
