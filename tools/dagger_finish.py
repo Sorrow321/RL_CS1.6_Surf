@@ -71,6 +71,10 @@ def main(argv=None):
     ap.add_argument("--leads", default="0.25,0.45,0.65,0.9")
     ap.add_argument("--min-start-s", type=float, default=60.0,
                     help="ignore passes earlier than this (the route's first minutes)")
+    ap.add_argument("--death-roots", default=None, metavar="S1,S2,...",
+                    help="instead of the closest passes: roots these many seconds before the "
+                         "greedy line's END (its death), on the decision grid - where a greedy "
+                         "that dies one swing short of a finishable energy needs labels")
     # finish_mpc's planner
     ap.add_argument("--pop", type=int, default=1024)
     ap.add_argument("--iters", type=int, default=10)
@@ -144,7 +148,13 @@ def main(argv=None):
     gap = np.asarray(gap, np.float64).copy()
     gap[: int(round(a.min_start_s / a.tick_s))] = np.inf
     leads = [float(x) for x in a.leads.split(",")]
-    roots, picked = pass_roots(gst, gap, a.tick_s, K, a.passes, leads)
+    if a.death_roots:
+        n = len(gst)
+        roots = sorted({(n - int(round(float(x) / a.tick_s))) // K * K
+                        for x in a.death_roots.split(",")} - {0})
+        picked = [n - 1]
+    else:
+        roots, picked = pass_roots(gst, gap, a.tick_s, K, a.passes, leads)
     print(f"dagger_finish: {Path(a.greedy).parent.name}: {len(gst)} ticks, passes at "
           f"{[round(p * a.tick_s, 1) for p in picked]} s (gaps "
           f"{[round(float(gap[p]), 0) for p in picked]}), {len(roots)} roots", flush=True)
