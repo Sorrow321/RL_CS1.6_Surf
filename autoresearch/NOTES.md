@@ -1185,3 +1185,12 @@ f2's flags with `--bc-file runs/dag/bc_dag2.npz --bc-coef 0.3 --bc-coef-final 0.
 * Beside it (CPU): NEW `dagger_finish --death-roots S,..`: roots S seconds before the greedy line's
   END (its death), with "survive then finish" (`--objective finish --energy-w 1.0 --duration 12`): f2's
   greedy dies one swing short of a finishable energy - labels there would sit where it actually goes.
+* f3 evals: 94.984 (12,117M, one update; 4/9 died in the middle structures) / **96.839** (12,192.8M;
+  8/9 to the fifth loop, E at death 4,032-4,407). No finish. BC 0.22 by 12,271M, joint-acc 0.995.
+* d0-d5 ("survive then finish" from f2's greedy 1.5-8 s before its deaths, 12 s horizon): 0 of 26,
+  best gaps 183-3,199. From f2's last exits (E ~3,800) neither survival nor a finish was found.
+* DAgger round 3 (20:58 UTC): f3's own greedy (snapshot runs/f3_snap1.pt at ~12.27B), 12 seeds, late
+  passes labelled in 2 bounded streams (runs/dag/r3.sh) - f3's final swings reach E 4,000+.
+* (ops, AGAIN) two box.py ssh sessions killed themselves with `pkill -f '<a [b]racket pattern>'`: the
+  same command line also contained the plain script path the regex matches. Never pkill -f in a box
+  command; kill by pid (`ps` first, then `kill <pid>` in a separate call) or by pid file.
