@@ -14,5 +14,5 @@
   "resume_from": "incumbent r2 ckpt_11096031232",
   "commit": "0c47e014"
  },
- "summary": "c1 (incumbent resumed, rc10 flags, RTX 5060 Ti): 97.35 / 97.75 / 96.83 / 97.32 / 95.34, 0 finishes. NEW tools/finish_mpc.py (engine CEM from the policy's own pre-exit states, strafe-like prior) finds finishing lines in ~1 s each (22 of 39 roots): up through the platform's slot or against its faces. Their states are now 50% of c1's --spawn-states pool (swapped in place at 11,410M); training logs its first wins (harvest). Next: evals from the true start, more lines, a dedicated run if it learns."
+ "summary": "c1 (incumbent resumed, RTX 5060 Ti): 8 evals 95.3-97.75, 0 finishes. NEW tools/finish_mpc.py (engine CEM from the policy's own pre-exit states, strafe-like prior, held per-decision controls) found 63 finishing lines of 144 roots (up through the platform's slot / sliding up its faces). f1 (19:05): c1's weights + BC on those MPC decisions (plan_to_bc, uf2 x7's schedule) + the lines as 10% of spawns + cold keys. Next: f1's evals; DAgger roots from f1's own greedy if it moves."
 }

@@ -1067,3 +1067,24 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
 * (ops) `pkill -f 'fmpc/s[6]'` inside a box.py ssh command killed the session itself: the command
   text also held "runs/fmpc/s6.log", which the pattern matches (CLAUDE.md's warning, met again). Kill
   by pid file.
+* c1 last evals: 96.802 (11,549M, 5/9 early deaths at ~33 s) / 96.884 (11,625M, 7/9 to the fifth
+  loop). No finish in 8 evals (95.3-97.75). Stopped at 11,691.6M (ckpt_latest md5 3b35fe38, kept on
+  the box as runs/c1_latest.pt; the incumbent as runs/incumbent_r2.pt).
+* s7 (held MPC, 144 roots): **63 finishes**, each a plan. `plan_to_bc.py` per plan + `surfgym.bc
+  .merge_bc_files` -> **bc_s7.npz** (63 lines, ~70 decisions each; md5 0b100091; in git as
+  autoresearch/spines/zlr3b1_bc_s7.npz). Spawn pool **pool_f4** = frontier_rc10 + 85 lines (s7's
+  63 + the 22 definite of s5/s6; all lines in git as autoresearch/spines/zlr3b1_fmpc_lines_f4.npz)
+  at share 0.5 (95,563 rows, md5 b0b1f866; rebuild: tools/pool_add_lines.py).
+
+### f1 `zlr3b1_f1` (19:05 UTC): c1's final weights + BC on the MPC's decisions + line spawns + cold keys
+`--resume` (runs_ckpt.pt = c1's 11,691.6M) + c1's flags (`--ratchet-contact 1 --demo-file
+autoresearch/spines/zlr2b1_ge1_spine.npy --demo-tau0 9245 --demo-milestones 5859 --front-contact 1
+--front-temp 0.5 --ckpt-every 2e8`) + `--spawn-states runs/fmpc/pool_f4.npy --spawn-states-frac 0.2`
+(~10% of spawns on the lines) + `--bc-file runs/fmpc/bc_s7.npz --bc-coef 0.5 --bc-coef-final 0.1
+--bc-steps 6e8 --bc-target argmax --bc-pitch-coef 0 --bc-keys-engine` (uf2 x7's schedule; the MPC
+holds the camera at -10 deg, so the pitch head is not cloned; held keys scored by the engine action)
++ `--unstuck-max 0` (cold keys: uf2 x7 needed them for a precise key press). Box extended to 23:02.
+Generic: the roots are the policy's own states (its closest passes to the finish, by contact
+history), the search is physics with a finish objective, BC/spawns are the lineage's expert loop.
+Read it on: training wins and their time from spawn; the greedy evals from the true start (a
+finish, or swings taking the slot); BC head/joint accuracy.
