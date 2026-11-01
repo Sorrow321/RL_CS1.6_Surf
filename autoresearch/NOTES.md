@@ -420,3 +420,10 @@ comes, a stronger hand-on for the next round.
   structure's top (62.4-62.97%, E up to 3,033 u), but 5/9 die at ~51 s at the second trough's exit
   ((-2,330, -44), 31.6-31.8%): the max is what scores, the median (31.8%) shows the fragility.
   Hand-on: ckpt_2216165376.pt (6.3M before the eval, the newest at or before it; pulled).
+* **E13 02:20 UTC: 62.512 / 62.560 / 63.888 (2,600M) / 62.686.** At 2,600M 9/9 alike (median
+  63.69%): alive 190-215 s (E8: ~120 s), E max 4,780-5,070 (twice E8's), speed up to 3,800 u/s, swing
+  tops at z 623-663 (above the record's platform level z ~641) = 63.3-63.9%, dying at 190-215 s off
+  the NORTH edge ((-1,540..-2,640, 3,100-3,340)). The same flags as E8, ~750M steps later: longer
+  training keeps paying in survival and energy. Training frontier 64.4%, stall kills 0%. Hand-on:
+  ckpt_2559049728.pt (41M before the eval: the newest at or before it - snapcopy had no copy
+  between 2,559M and 2,620M); ckpt_2620391424.pt pulled too.

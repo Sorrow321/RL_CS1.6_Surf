@@ -3,11 +3,11 @@
  "round": 1,
  "final": false,
  "best": {
-  "score": 62.971,
-  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/traj_2222456832.jsonl",
+  "score": 63.888,
+  "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/traj_2599944192.jsonl",
   "run": "zlr1b4_e13",
-  "step": 2222456832,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/ckpt_2216165376.pt",
+  "step": 2599944192,
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/ckpt_2559049728.pt",
   "recipe": [
    "--energy-pot",
    "12",
@@ -64,5 +64,5 @@
   "resume_from": "zlr1b4_e8 ckpt_1844445184 (md5 e3c338a7) <- zlr1b4_e4 ckpt_1239941120 <- zlr1b4_e3 ckpt_1088421888 <- zlr1b4_e2 ckpt_latest 559415296",
   "commit": "5d07d0df"
  },
- "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M (a stale spine then dragged it to 34% -> new --auto-spine-recheck). E4 57.9; E5-E7 plateau 55-57. E8 = E4's weights + --fail-pen 3: 62.77 (survives and pumps the third structure to E ~2,600). E9-E12 (own-beam spine, fail-pen 5, wider frontier temperature, 4x novelty) do not pass ~62%; searches (GE x3, beams, branched beams) find no way into the fourth structure. E13 = E8's config from its 62.77% snapshot: 62.971 at 2222M."
+ "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M (a stale spine then dragged it to 34% -> new --auto-spine-recheck). E4 57.9; E5-E7 plateau 55-57. E8 = E4's weights + --fail-pen 3: 62.77 (survives and pumps the third structure to E ~2,600). E9-E12 (own-beam spine, fail-pen 5, wider frontier temperature, 4x novelty) do not pass ~62%; searches (GE x3, beams, branched beams) find no way into the fourth structure. E13 = E8's config from its 62.77% snapshot: 62.97 (2222M) -> 63.888 (2600M): 9/9 at 63.3-63.9%, alive 190-215 s, E ~5,000."
 }
