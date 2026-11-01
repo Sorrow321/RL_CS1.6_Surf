@@ -498,3 +498,42 @@ target - kill by pid file, launch in a separate call; snapcopy can leave a 40M g
   64.671** (best of 133 greedy evals over 13 runs; `score.py --best runs/zlr1b4/*/`), hand-on
   **ckpt_4032299008.pt** (zlr1b4_e13, 2.1M before the eval; pulled with E13's ckpt_latest). Box
   58559819 (RTX 3090, 0.20 $/h, ~11.2 h ~ $2.3) released.
+
+## zlr2b3 (round 2, slot 3) - 2026-11-01 05:21 UTC start
+
+Box 58621513: RTX 5060 Ti + Threadripper 3970X (64 threads), 0.189 $/h, Germany (rented 05:28,
+deployed 05:30 with the incumbent ckpt, md5 036960d8).
+
+### Where the incumbent fails (ANALYSIS ONLY for the record; CLAUDE.md section 0)
+* The incumbent's greedy (zlr1b4_e13 at 4,034M, 9/9 alike) flies ONE big circuit round the third
+  bowl, period ~15 s: north along the bowl's WEST bottom (x ~-2,300, z ~-1,300, 2,300-2,900 u/s),
+  up and round the north end (y ~3,000-3,300), south along the EAST side HIGH (x 0..+800, z
+  400-700: the 60-64.7% swing tops), west and down round the south end (y -300..-900) to the west
+  bottom again. E rises ~1,950 -> ~4,500 over 100-175 s (the energy potential pays every gain);
+  the circuit widens until it flies out east/north-east and falls (171-187 s).
+* The record flies THE SAME circuit at E ~1,900-2,100 (t+270..306). At t+305.9 it is at the west
+  bottom (-2,271, 973, -1,277) going north at 2,300 u/s - exactly where the policy passes every
+  ~15 s (t 100: (-2,309, 1,211, -1,332) v (-167, 2,287, -196)) - and instead of carrying on north it
+  curves EAST up the bowl's floor (vz 72 -> 1,556 in 0.3 s), hits the vertical WEST FACE of a solid
+  block in the middle of the bowl (x -1,616; at y 1,500 the block spans x -1,580..-1,150 from the
+  bottom up to z ~600, its top a ramp rising east to z ~990) at (-1,635, 1,539, -569) with v
+  (1,391, 267, 1,396), loses its horizontal speed there (E 1,903 -> 747), rises straight up the
+  face ballistically and lands on the block's top at z ~620 (t+308, 60.9%), then pumps that top
+  structure from ~100 u/s (the fourth structure).
+* So the missing skill is ONE turn: at the west bottom, turn right (east) into the block instead
+  of north. Both reward terms argue against it locally: the ratchet pays nothing for landing at
+  60.9% (the episode already reached ~64% on the circuit's east side) and the per-call energy
+  potential charges the impact (~1,250 u x 12/1000 = -15, more at the policy's speeds); the
+  payoff (pumping the top structure above 64.7%) is ~70 s away, past the 20 s horizon.
+  The policy is near-deterministic there (yaw sigma 0.04-0.05): it never samples the turn.
+
+### EZ1 `zlr2b3_ez1` (05:33 UTC): incumbent weights + ez-greedy `--ez-eps 0.01`
+Resume of the incumbent ckpt (4,032.3M; everything restored, the GE-line spine re-pointed at
+autoresearch/spines/zlr1b4_ge1_line_a.npy, `--demo-tau0 114`) + temporally-extended
+epsilon-greedy (Dabney et al. 2021: with prob 0.01 per decision an env holds ONE uniform random
+action - yaw offset in the velocity frame and keys - for n ~ zeta(2) decisions, cap 60 = 1.7 s;
+burst rows are excluded from the PPO loss). The paper's constants, nothing read off the map. Why:
+the turn is a COMMITTED deviation of ~0.5 s; i.i.d. per-decision noise never produces it, a held
+burst can. Read it on: does any training episode reach the block's top / fourth structure (the
+reservoir's deepest, the frontier perturb best), then the greedy evals vs the incumbent's
+progress.csv at matched steps (E13: 63.2-64.7% at 4.0-4.7B).
