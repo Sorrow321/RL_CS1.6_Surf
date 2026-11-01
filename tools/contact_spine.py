@@ -15,6 +15,10 @@ the deepest tick the map HOLDS (walkable ground, or a surfable face pushing vz b
 
     python tools/contact_spine.py runs/x/states.npz:ep_0000 runs/x/line.npy out.npy \\
         --field maps/X.goalc_32.npz --tick-ms 7 [--d0 6361.8]
+
+With chain "-" there is no chain: the spine is the base alone cut at its deepest contact tick, and
+a base given as an .npz without a key is the dumped episode whose deepest contact is deepest (the
+policy's own best line, e.g. a greedy re-recording of a snapshot).
 """
 from __future__ import annotations
 
@@ -53,6 +57,35 @@ def main(argv=None):
     ap.add_argument("--tick-ms", type=float, required=True)
     ap.add_argument("--d0", type=float, default=None)
     a = ap.parse_args(argv)
+    f = load_goal_field(a.field)
+    if a.chain == "-":
+        path, _, key = a.base.partition(":")
+        z = np.load(path)
+        eps = ([z[key]] if key else [z[k] for k in sorted(z.files)]) if hasattr(z, "files") \
+            else [z]
+        best = None
+        for k, st in enumerate(eps):
+            st = np.asarray(st, STATE_DTYPE)
+            if len(st) < 2:
+                continue
+            dd = f.sample(st["origin"].astype(np.float64)).astype(np.float64)
+            dd[dd >= f.reach_max - 0.5 * f.cell] = np.inf
+            dcm = np.where(contact_mask(st, a.tick_ms), dd, np.inf)
+            e = int(np.argmin(dcm))
+            if best is None or dcm[e] < best[0]:
+                best = (float(dcm[e]), k, st, e)
+        _, k, st, e = best
+        sp = np.array(st[:e + 1], copy=True)
+        sp["tick"] = 0
+        sp["stuck_ticks"] = 0
+        np.save(a.out, sp)
+        d0 = float(a.d0) if a.d0 else float(f.sample(st["origin"][:1].astype(np.float64))[0])
+        print(json.dumps({"episode": k, "n": int(len(sp)),
+                          "secs": round(len(sp) * a.tick_ms / 1000.0, 2),
+                          "end_d": best[0], "end_pct": round(100.0 * (d0 - best[0]) / d0, 2),
+                          "end_origin": np.asarray(sp[-1]["origin"]).round(0).tolist(),
+                          "md5": hashlib.md5(open(a.out, "rb").read()).hexdigest()}))
+        return 0
     base = np.asarray(load_line(a.base), STATE_DTYPE)
     gl = np.asarray(np.load(a.chain), STATE_DTYPE)
     o = gl[0]["origin"].astype(np.float64)
@@ -63,7 +96,6 @@ def main(argv=None):
                          "not rooted on this line")
     rest, m = canon_view(gl[1:])
     sp = np.concatenate([base[:j], gl[:1], np.asarray(rest, STATE_DTYPE)])
-    f = load_goal_field(a.field)
     d = f.sample(sp["origin"].astype(np.float64)).astype(np.float64)
     d[d >= f.reach_max - 0.5 * f.cell] = np.inf
     d0 = float(a.d0) if a.d0 else float(d[0])
