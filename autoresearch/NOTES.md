@@ -1046,3 +1046,24 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
   0.5-1.0 s from the spawn (the line's late states: harvest wins, CLAUDE.md's win-rate trap - not
   evidence by themselves; the evals from the true start are). Watch: the finish time from spawn
   growing (the policy finishing from EARLIER line states) and the greedy evals.
+* c1 evals after the line swaps: 95.337 (11,398.5M: 8/9 died in the FIRST trough, ~12% at 30-60 s -
+  the early-route fragility round 2 saw in 3-6/9 episodes, here worse once) / **96.849** (11,474M,
+  7/9 to the fifth loop). No finish. Training wins 1-7% per iteration at 0.5-1.0 s from the spawn.
+* c1 pool swap 3 at ~11,472M: all 22 definite lines of s5/s6 (s5: 67 finishes of 144 roots, 17
+  definite; s6, the floor-cleared objective: 21 of 42, 5 definite - the core fires on the side-face
+  creep before the planner can get higher), share 0.5 (95,577 rows, md5 2a72fccd).
+* **Why spawns alone should not be enough (this lineage's unitfarmer2 history, git b93a7151 NOTES,
+  x2-x7):** a found line as spawns/spine with RL only never carried over to the greedy (x2: "the
+  turn is a rare sample, PPO's p x A signal from the start is tiny"); BC on the divergence window
+  alone was memorised on the line's exact states and reverted by RL (x3, x4); what WORKED (x7) was
+  BC on the line + the line's states as spawns + cold keys (no unstuck key temperature) + a band at
+  the eval's own start. Our MPC roots ARE the greedy's own states 0.25-1.2 s before its exit, so BC
+  on the MPC's decisions there is the DAgger labelling uf2 wanted.
+* NEW `finish_mpc --hold`: each knot's controls held (no interpolation) with --knot / --exec
+  multiples of act_every, and a finish written as a beam_best-format plan (plan_r<row>.npz: the root
+  as spawn_state, per-decision engine rows + view targets, obs_start) that `tools/plan_to_bc.py`
+  turns into BC rows unchanged (keys rebuilt by the keep rule, view z from the view targets, value
+  targets 49-65). s7 = s5's config + --hold over the 144 roots: 18 of the first 23 finish.
+* (ops) `pkill -f 'fmpc/s[6]'` inside a box.py ssh command killed the session itself: the command
+  text also held "runs/fmpc/s6.log", which the pattern matches (CLAUDE.md's warning, met again). Kill
+  by pid file.
