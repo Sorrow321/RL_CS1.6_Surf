@@ -204,6 +204,12 @@ def main(argv=None):
     ap.add_argument("--sigma-min", type=float, default=2.0, help="deg")
     ap.add_argument("--energy-w", type=float, default=0.05)
     ap.add_argument("--dist-every", type=int, default=2)
+    ap.add_argument("--floors", choices=("none", "trace"), default="none",
+                    help="none (default): the gap to the hull-inflated finish boxes - a hull "
+                         "sliding up a platform's SIDE touches the box once its top passes the "
+                         "box bottom, which the core counts (the collision creeps onto the "
+                         "inflated face) and so does the grader (1 u slack); trace: the region "
+                         "must also clear a solid floor under each box (stricter)")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
     import torch
@@ -231,7 +237,7 @@ def main(argv=None):
         raise SystemExit(f"{a.states}: not a STATE_DTYPE array")
     boxes = zones["end"].get("boxes") or [{"mins": zones["end"]["mins"],
                                            "maxs": zones["end"]["maxs"]}]
-    floors = goal_box_floors(core1, boxes)
+    floors = goal_box_floors(core1, boxes) if a.floors == "trace" else None
     scorer = make_scorer(_ZeroField(), None, 0.0, "gap",
                          goal_boxes=[[b["mins"], b["maxs"]] for b in boxes], goal_floors=floors)
     print(f"finish_mpc: {Path(map_path).name} tick {a.tick_s * 1000:.2f} ms, maxvel "
