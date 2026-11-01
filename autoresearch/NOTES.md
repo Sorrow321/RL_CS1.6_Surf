@@ -909,3 +909,45 @@ early-route fragility (2-6/9 episodes die in the first troughs) needs fresh star
   rc6 90.073, rc7 89.429, rc8 91.742, rc9 97.339, rc10 98.329, rc11 96.991). Hand-on
   **ckpt_11096031232.pt** (rc10, the eval's own step; md5 3c40f24d) with rc10's ckpt_final (md5
   d1a079ab), both pulled. Box 58621920 (RTX 5080, 0.34 $/h, 05:37-16:34 UTC, ~$3.7) released.
+
+## zlr3b3 (round 3, slot 3) - 2026-11-01 17:32 UTC start
+
+Incumbent: zlr2b1_rc10 ckpt_11096031232 (98.329, median 95.4%, 0 finishes).
+
+### Why it never finishes: the finish slabs sit ON a solid platform (17:40 UTC, CPU probes)
+`core.point_contents` slices and vertical solid runs (scratch probes, nothing in training):
+* Every finish trigger (*15-*19, z 3,008-3,210) lies on the top face of ONE solid slab, z 2,812-3,004:
+  the middle band (y ~-736..1,312, x -2,360..3,008, with a hole at x > -64, y 40..536 right above
+  the fifth loop's ramp middle) and two 256 u walkways x -320..-64 running north (y 1,312..3,360)
+  and south (y -2,784..-736). Pillars hold it up (e.g. x -320..-64 at y ~880-1,000 and -440..-320).
+* The goal test is the origin's swept segment in the trigger box inflated by the hull, so a finish
+  is the origin at z >= 2,972 (standing; 2,990 ducked) while within 16 u of a slab face (touching a
+  walkway or the platform from the side) or above the top.
+* The incumbent's best swings (ep8, 98.33%) peak at z 2,857-2,897 at the swing ENDS beside the
+  walkways (e.g. (-556, 2,705, 2,884): 220 u west of the north walkway's west face, 88 u too low),
+  i.e. they pass under/beside the platform. Its launch at the north end: (-173, 1,215, 2,207)
+  v (-825, 1,062, 1,051) -> apex 2,207 + 1,051^2/1,600 = 2,897.
+* The record (ANALYSIS ONLY) launches from about the same place with vz ~1,295 (apex 3,110), is
+  turned north by a pillar face at x ~-64, flies along the north walkway's east face, touches it at
+  (-48, 2,023, 2,954) and rises to z ~3,100 against it: the same energy (E ~3,900-4,100), a line
+  ~100-200 u higher at one launch.
+* The fifth loop's swing apexes (incumbent 98.329 eval, 6 episodes that reach it; scratch script):
+  they alternate SOUTH (x 400-830, y -700..-1,550) and NORTH (x 450-700, y 1,600-2,000), all EAST of
+  the walkways and beyond the platform's north/south faces (y 1,312 / -736): 300-800 u horizontally
+  from the nearest slab face; apex z rises with E (2,350 at E 2,900 -> 2,750 at E 4,000). The last,
+  highest apex (z 2,771-2,897) is the swing that flies off north-west (x -759..-1,427) and kills
+  the episode. More energy alone does not bring an apex to a face.
+* The record's finish (ANALYSIS ONLY, 7 ms frames): on the block's east ramp (the slope from
+  (300, z 1,640) up to its top edge at x ~0, z ~1,980) it turns from north to WEST and surfs UP the
+  slope at ~1,950 u/s ((312, 563, 1,663) v (55, 1,967, -64) -> (2, 1,059, 2,023) v (-1,124, 264,
+  1,319)), pops over the top edge with vz ~1,300, slides off a pillar corner (vx -992 -> +548 in
+  0.2 s: a wall contact, not air strafe, which is capped at 21 u/s per 7 ms tick), flies north at
+  x ~10 rising, strafes west into the north walkway's east face at (-48, 2,014, 2,883) and rises
+  against it into the finish at z 2,978 (t 453.80). One manoeuvre the policy has never flown: up
+  the slope across the ramp, not along it.
+* A CPU check of `tools/beam_tas.py --start-state <rc10 pool>:<i> --skip-gate` ran end to end (8
+  envs, 120 ticks). The incumbent's yaw sigma there is 0.035 (z units: ~0.1 deg near the velocity
+  direction), so the policy's own samples barely move the line: a finish search needs held yaw
+  offsets (--view-hold) or a yaw temperature (--view-temp) on top of the policy's proposals.
+* (Budget, 17:39-17:56 UTC: every rent refused - the fleet's burn was 0.55 of the 0.645 $/h pace,
+  and no offer under 0.095 $/h exists.)
