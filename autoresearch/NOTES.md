@@ -1071,3 +1071,34 @@ restarts at its line's end - its position is not in a checkpoint), budget 6e9, s
   139.42 s)** / 113.969 (5/9). 5-9 finishes per eval; the best times creep down 144 -> 139 s. Hand-on
   for 118.451: snapcopy's ckpt_14356054016.pt (the eval's own step; pulled, md5 9693ab6b). The
   finish-line curriculum re-walked to 163 s before its line's finish within ~20 min of the launch.
+* c3 to 15.34B (stopped 21:20 UTC): 9/9 evals at 139.55 / 141.34 / 141.48 s besides the 139.42 s one;
+  4-9 finishes per eval; the best times flat at 139.4-141.5 s for ~1 h. Every greedy finish checked
+  real: the last ticks fly EAST at vx 1,100-1,250 u/s with the origin at z 3,050-3,100 (hull bottom
+  above the slab's z 3,008) and cross x -336 by ~8 u per tick, the finishing origin ~6-8 u INSIDE the
+  slab's clip hull, no wall contact; score.py's box_only 0 on every eval (the uf2 AABB lesson).
+* Pumping efficiency (13,564M-era greedy, 10 s windows): net +46-49 u/s of energy height over the
+  run, gross gains 52-69 u/s against the ~73 u/s an optimal air strafe adds (0.51 u per 7 ms
+  frame), losses 2-44 u/s at contacts (second trough -> third structure entry, the launch).
+
+### Speed search: an ENERGY-ranked beam is a speed search (21:17 UTC)
+beam_tas from the TRUE start on c3's 15.1B weights, 4,096 envs, `--score dh --score-energy 10` (the
+energy height dominates -d): **first crossing 134.60 s** (the greedy's best 139.42 s; all 4,096
+lineages finish; replay bit-exact) -> `autoresearch/spines/zlr3b2_finish_fe10.npy` (19,229 states,
+md5 3efae3ed). Earlier full-route beams on c2's weights: `--score d` 156.71 s (the greedy env itself),
+`--score dh 1` 147.55 s - a d rank selects the phase of the swing, not the pace. The 134.6 s line
+gains in the second trough (30% at 50.6 s vs the greedy's 56.3 s) and the third structure (60% at
+101.4 vs ~111 s); the fifth loop is the same ~30 s.
+
+### NEW `--auto-finish` + tools/finish_search.py (commit 7d84be4e)
+The round's manual loop as a trainer rule: after a greedy eval with fewer than --auto-finish-quorum
+(1) finishes and no --finish-line armed, finish_search.py runs BESIDE the training on a copy of
+ckpt_latest: greedy lines at 4 spawn seeds (beam_tas, all envs greedy, --frontier-last), the deepest
+one's own states 10 and 25 s before its end as roots, energy-ranked beams (dh 2, 105 s, 4,096 envs);
+the first finishing line becomes the --finish-line curriculum (its share and constants). Off =
+byte-identical; TRAIN_ONLY in record_ckpt; tests in tests/python/test_finish_line.py. Not yet run
+end to end on a box.
+
+### c4 `zlr3b2_c4` (21:24 UTC): c3's 15.34B weights + the finish-line curriculum on the 134.6 s line
+c3's ckpt_latest (md5 bc51a503) + c3's flags with `--finish-line runs/sp/fin_fe10.npy` (the energy
+beam's line instead of r2dh2's 180.9 s one), `--demo-tau0 8000` (c3's last GE tau). Expert
+iteration (uf2's search -> own faster line -> curriculum loop): does the greedy follow the faster line?
