@@ -1049,3 +1049,11 @@ band success.
   48% "@ 80 s". The greedy now finishes FASTER than the line it learned from (153-168 s vs 180.9 s).
   Hand-on for 117.151: snapcopy's ckpt_13035372544.pt (the eval's own step; pulled, md5 fe9c190b);
   ckpt_13110870016.pt (117.109) pulled too (md5 b712d950).
+* **c2 19:38 UTC: 117.272 (13,337M: 8/9, best 145.55 s) / 116.182 (7/9, 143.65 s) / 114.975 (6/9) /
+  118.403 (13,564M: 9/9, best 143.76 s).** Every greedy episode finishes. Hand-on: snapcopy's
+  ckpt_13563854848.pt (the eval's own step; pulled, md5 717b00cf). The finish-line band is at tau
+  ~1,364 = 171 s before the line's finish (9.5 s into the line); training win 67%.
+* Speed beams on c2's ~13.1B weights from the TRUE start (4,096 envs, no prefix): `--score d`: first
+  crossing 156.71 s (env 0, the greedy itself; 4 finishers); `--score dh 1`: 147.55 s (20,088
+  finishers - the whole population finishes). Both slower than the greedy's own 143.65-145.55 s by
+  then: the beam's resample-by-d is no speed search once the policy finishes.
