@@ -38,6 +38,9 @@ def main(argv=None):
     ap.add_argument("--finished-only", action="store_true",
                     help="skip a line whose npz does not say finished = 1")
     ap.add_argument("--merge", default=None, help="an existing pool to append to")
+    ap.add_argument("--share", type=float, default=None,
+                    help="with --merge: repeat the new rows (instead of --repeat) so they are this "
+                         "share of the merged pool, in (0, 1)")
     a = ap.parse_args(argv)
     n_t = int(round(a.secs * 1000.0 / a.tick_ms))
     parts = []
@@ -59,6 +62,16 @@ def main(argv=None):
     if a.merge and Path(a.merge).exists():
         old = np.asarray(np.load(a.merge), STATE_DTYPE)
         print(f"merge: {len(old)} rows from {a.merge}")
+        if a.share is not None:
+            if not 0.0 < a.share < 1.0:
+                raise SystemExit("--share must be in (0, 1)")
+            uniq = np.concatenate([p for i, p in enumerate(parts)
+                                   if i % max(1, a.repeat) == 0])
+            want = int(round(a.share / (1.0 - a.share) * len(old)))
+            reps = max(1, int(round(want / max(1, len(uniq)))))
+            new = np.concatenate([uniq] * reps)
+            print(f"--share {a.share:g}: the new rows x{reps} = {len(new)} "
+                  f"({100.0 * len(new) / (len(new) + len(old)):.1f}% of the pool)")
         new = np.concatenate([old, new])
     out = Path(a.out)
     tmp = out.with_name(out.name + ".tmp.npy")
