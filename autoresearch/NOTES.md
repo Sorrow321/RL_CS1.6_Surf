@@ -1151,3 +1151,16 @@ the route?), the greedy's fifth loop (does it turn up-slope early at E ~4,000 an
 * DAgger round 2 (20:08 UTC): f2's own greedy lines (snapshot runs/f2_snap1.pt, seeds 0-7) for labels
   at its states; e0 = finish_mpc's "pump then finish" (`--objective finish --energy-w 1.0 --duration
   10`) from g0's E 3,100-3,770 roots - can the physics reach the finish from where the greedy is?
+* f2 11,918.6M: **95.373** (7/9 to the fifth loop, E at death 4,041-4,407), no finish.
+* e0 ("pump then finish": `--objective finish --energy-w 1.0 --duration 10` from g0's E 3,100-3,770
+  roots): 0/8, best gaps 21-477 - within 10 s the physics planner cannot pump its way to a finish
+  from where the greedy usually is. Finishes come only from the E ~4,000+ swings.
+* **A flaw in bc_dag1:** when several roots on ONE greedy line finish, every later root's splice
+  carries the greedy's own (habit) decisions through the earlier roots' states - labels that
+  contradict the earlier roots' MPC decisions at the same states (g1: 9 splices in two clusters, so
+  the first cluster's states were labelled "habit" 4-8 times against 1-5 MPC labels plus the x5
+  suffixes). Fixed in the build (runs/dag/build_dag_bc2.sh): per greedy line only the EARLIEST
+  finishing root's splice keeps its prefix; every root contributes its suffix.
+* More labels: c1's greedy lines g1-g5 with --passes 10 (q1-q5) -> 60 finishing roots in total over
+  5 lines (c1..c5 = p + q). DAgger round 2 from f2's own greedy (runs/f2_snap1.pt, h0-h7: 152-163 s
+  each, h6 died at 17 s) running (r0-r7).
