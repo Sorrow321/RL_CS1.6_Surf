@@ -728,3 +728,6 @@ insight; nothing here entered training):**
    analysis scripts zl_perturb_search / zl_perturb_spine / zl_perturb_iter / zl_beam_box.
    Replay rule for a recording: feed each row's NEXT yaw relative to the sim's velocity (the
    pre-step yaw drifts 300-850 u in 0.7 s - it produced a false Monte Carlo result here, retracted).
+* **Wrap-up (16:42 UTC):** final - no eval this round (no box from 05:31 to the end; nothing to
+  pull, no box to release). The next round's most direct test of this branch's work is the
+  untested launch in point 2 above (the incumbent + the zlr2b2_p0 spine).

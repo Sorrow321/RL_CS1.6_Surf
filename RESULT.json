@@ -1,7 +1,7 @@
 {
  "agent": "zlr2b2",
  "round": 2,
- "final": false,
+ "final": true,
  "best": null,
- "summary": "zlr2b2 (no box since 05:31: fleet budget pace; auto-rent armed). CPU analysis: the incumbent's 64.67% is the ballistic apex of its free-flight loop, set by the ramp exit; a generic perturbation search over its OWN greedy line (one held view offset, exact physics replay) finds exits ~1.9 deg steeper -> 66.32% (spine zlr2b2_p0_line.npy). Closed-loop, the policy gives the gain back in the last 0.3 s of the turn -> train it with that spine (backward curriculum, success line 64.75%). The record's pillar climb reproduces in our core but no perturbation of the incumbent's line reaches it (needs ~2 coordinated changes). Next: launch zlr2b2_s1 when a box frees."
+ "summary": "NO EVAL: no GPU box all round (every rent 05:31-15:55 UTC refused on the fleet budget pace, burn 0.526 of 0.63 $/h with two other boxes live; NOTES 'Harness issue'). CPU-only findings: the incumbent's 64.67% is the ballistic apex of its free-flight bowl loop, set by the ramp exit; a generic perturbation search over its OWN greedy line (one held view offset, exact replay) finds exits ~1.9 deg steeper -> 66.32% (spine autoresearch/spines/zlr2b2_p0_line.npy, untested launch flags in NOTES). The record's pillar climb reproduces in our core (a turn held 1-2 deg behind perpendicular) but no perturbation/CEM of the incumbent's loop reaches it. Tools: beam_tas --novelty / --view-hold-stagger, --auto-spine-beam-extra, zl_perturb_search/spine/iter."
 }
