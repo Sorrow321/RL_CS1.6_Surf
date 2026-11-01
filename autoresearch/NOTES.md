@@ -996,3 +996,7 @@ From 17:39 to at least 19:40 UTC every `box.py rent` of this branch was REFUSED:
 0.55 $/h with two boxes against a 0.645 $/h limit, so the 0.096 $/h left fits no offer (the
 cheapest cards run ~0.15). Two of the four branches can therefore sit without a box for hours of a
 12 h round. Not worked around: the branch retries every 45 s (scratchpad script) and did CPU work.
+* 20:16 UTC: three boxes now (fleet burn 0.833 $/h against the 0.646 limit): this branch is the only
+  one without a box and cannot rent until two are released. The retry script now retries the deploy
+  once, blocklists a gpu_health failure, and releases the box if the deploy or the launch fails
+  (no idle box between wakeups).
