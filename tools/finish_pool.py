@@ -28,21 +28,40 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 
 
-def line_states(path: str, tick_ms: float, secs: float, tail_skip: float, stride: int,
-                need_finish: bool = True) -> np.ndarray:
+def load_lines(path: str, need_finish: bool = True) -> list:
+    """The finishing lines in PATH: a beam_frontier.npz (finished = 1), a
+    tools/finisher_states.py npz (line_000, line_001, ... - every one finished by construction;
+    PATH:KEY picks one), or a STATE_DTYPE .npy."""
     from surfgym.core import STATE_DTYPE
-    if path.endswith(".npz"):
-        z = np.load(path, allow_pickle=False)
+    key = None
+    if ".npz:" in path:
+        path, key = path.split(".npz:")
+        path += ".npz"
+    if not path.endswith(".npz"):
+        return [np.asarray(np.load(path, allow_pickle=False), STATE_DTYPE)]
+    z = np.load(path, allow_pickle=False)
+    if key is not None:
+        return [np.asarray(z[key], STATE_DTYPE)]
+    if "states" in z.files:
         if need_finish and ("finished" not in z.files or int(z["finished"]) != 1):
             raise SystemExit(f"{path}: not a finishing line (finished != 1)")
-        st = np.asarray(z["states"], STATE_DTYPE)
-    else:
-        st = np.asarray(np.load(path, allow_pickle=False), STATE_DTYPE)
+        return [np.asarray(z["states"], STATE_DTYPE)]
+    keys = sorted(k for k in z.files if k.startswith("line_"))
+    if not keys:
+        raise SystemExit(f"{path}: no states / line_* arrays")
+    return [np.asarray(z[k], STATE_DTYPE) for k in keys]
+
+
+def line_states(path: str, tick_ms: float, secs: float, tail_skip: float, stride: int,
+                need_finish: bool = True) -> np.ndarray:
     tps = 1000.0 / float(tick_ms)
-    n = len(st)
-    lo = max(0, n - int(round(secs * tps)))
-    hi = max(lo + 1, n - int(round(tail_skip * tps)))
-    out = st[lo:hi:max(1, int(stride))].copy()
+    outs = []
+    for st in load_lines(path, need_finish):
+        n = len(st)
+        lo = max(0, n - int(round(secs * tps)))
+        hi = max(lo + 1, n - int(round(tail_skip * tps)))
+        outs.append(st[lo:hi:max(1, int(stride))].copy())
+    out = np.concatenate(outs)
     out["tick"] = 0
     out["stuck_ticks"] = 0
     return out
