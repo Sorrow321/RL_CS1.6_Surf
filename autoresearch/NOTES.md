@@ -1036,3 +1036,10 @@ offsets, the map's own finish trigger.
   the 17 lines' last 3 s (7,293 rows x4 = 37.9% of 76,965), the file the box run copies to
   runs/sp3/pool.npy. 21:29 UTC: a second own line on CPU (beam_tas, 4 envs: 1 greedy + 3 sampled,
   ranked by d, --frontier-last) for finishing lines from a different trajectory.
+* All 17 finishing lines pass the GRADER's own finish test (score.py's GoalSet clip hulls on the
+  recorded rows), not only the core's. A curriculum on such a line would count a finish as success
+  (train_fast: goal_hits OR the paid record past the success line).
+* line2 (CPU beam, 4 envs ranked by d from the true start) is useless: the d-ranking at 0.7 s kills
+  the first loop's pumping (stuck at 21.5% for 182 s). Diversity has to come from the policy's own
+  greedy (the box's GPU line, tools/finish_chain.sh) or from earlier, longer shots (sf6: starts
+  156.4-158.9 s, 7 s horizon, 5 segments).
