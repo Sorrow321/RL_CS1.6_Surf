@@ -995,3 +995,32 @@ is consistent; the effect is that a finish here needs ~70 u more height than the
   with vz ~1,300 (apex 3,110); the macros get ~1,050.
 * mf_h (18:43 UTC): the same with a PER-ROOT elite (the best 16 plans of each of the 64 best roots)
   and 5 finer macros (holds 0.05-1 s).
+* mf_h (per-root elite over 64 roots): worse, best 147 u (an airborne root): spreading the elite
+  diluted the one ramp root that mattered, and 4-5 held macros cannot express the launch.
+
+### NEW tools/cem_finish.py: per-decision CEM planning FINDS FINISHES from the policy's own state (18:55 UTC)
+The cross-entropy method over whole action sequences at the policy's own decision rate (act_every
+4 = 28 ms, 89 decisions = 2.5 s): per decision a side key, a forward key, duck and a yaw TARGET
+offset from the velocity heading; the sampling distribution per decision (categoricals + a
+Gaussian), 4,096 sequences per iteration, the 64 closest (macro_finish.goal_score) refit it
+(alpha 0.7, sigma >= 0.5 deg). Physics only, 2 CPU threads, ~3.5 s per iteration.
+* **Root 47175 (the incumbent's own fifth-loop state on the ramp, (174, 623, 1,811) heading north
+  at 1,885 u/s, E 4,031): 8 distinct goal entries in 90 s (iterations 18-23), 1.72-2.03 s after the
+  root, every one replayed bit-exact on a fresh 1-env core** (`autoresearch/spines/zlr3b3_cem/
+  a_fin_00[1-8].npz`). fin_001, tick by tick: a hard left strafe turns the line UP the slope
+  (heading north -> west), it pops over the ramp's top edge at (-5, 998, 2,030) with vz 1,245,
+  hits a face at x -64 (n = +x; point traces pass through it, so a player-clip brush - the record
+  deflects off the same spot) and slides north along it rising, leaves it at y ~1,280 and
+  air-brakes its northward speed (keys against the motion: up to 100 x 250 x 0.007 = 175 u/s per
+  tick), rises almost vertically and meets the platform's north face (solid z 2,812-3,004 at y
+  1,312) from z ~2,780, touching it at y 1,328 up into trigger *15's inflated box at z 2,993. The
+  shape of the record's finish (analysis only), found from the policy's own state by a planner
+  that reads only the goal field and the trigger boxes.
+* (Correction: GoldSrc caps the speed ALONG the wish direction at 30 in the air, not the per-tick
+  acceleration - accelspeed is airaccelerate x wishspeed x frametime = 175 u/s per 7 ms tick when
+  the keys oppose the motion. The "21 u/s per tick" above is the strafing gain only.)
+* Pool A (`autoresearch/spines/zlr3b3_pool_a.npy`, md5 57ada05b, 79,368 states): the incumbent's
+  rc10 frontier pool (47,793) + every state of the 8 lines (root -> pre-finish) repeated to 39.8%
+  of the file (tools/finish_pool.py --secs 3 --frac 0.4).
+* cem_b (18:57 UTC): the same planner on 14 more contact roots of the pool (the macro search's
+  best ones, north- and south-heading), at most 3 finishes per root.
