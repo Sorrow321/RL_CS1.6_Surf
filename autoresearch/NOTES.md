@@ -734,3 +734,13 @@ rc4's final weights (6,865.6M) + `--demo-file autoresearch/spines/zlr2b1_ge1_spi
 zlr2b1_frontier_6110.npy: the policy's own states around its last contact-record improvement,
 tools/frontier_states.py, 4 episodes at contact 84.7-85.6%). The file is re-read when it changes,
 so the frontier pool can be refreshed from newer re-recordings without a restart.
+* **rc7 (09:45-10:10 UTC): 89.385 (its first) / 89.030 / 88.558 / 88.437 / 88.248 / 88.718 (7,244M),
+  medians 87-88.5%** - rc4's curriculum holds the level (the spine swap was the regression), no gain
+  past 90 yet.
+* The finish (ANALYSIS ONLY, t+441..450.6): the record pumps the fifth loop to E ~4,100, then rides
+  north up the end of the block's east ramp at ~1,960 u/s ((310, 504, 1,666) at t+449.0 -> (59, 1,048,
+  1,956) -> (13, 1,404, 2,434) -> (4, 1,860, 2,785)) and swings straight up into slab *16 at (-48,
+  2,017, 3,007). The policy enters the loop at E ~3,100 and dies after 1-3 swings: survival + pumping
+  there (~55 s for the record), then that swing.
+* 10:11 UTC: re-recording rc7's 7,302M weights (dump states) to REFRESH the --spawn-states pool in
+  place (the trainer re-reads the file when it changes; the 15% share stays).
