@@ -252,3 +252,34 @@ def test_paid_record_is_the_contact_record_under_the_flag():
     _step(on, _put(con, 300.0, 0.0, True), done=1)
     assert on.paid_record(boot=True)[0] == pytest.approx(10000.0 - fl[0][0])
     assert on.paid_record()[0] == pytest.approx(10000.0 - 300.0)
+
+
+# ==========================================================================
+# (g) the earned contact frontier (--front-contact reads it)
+# ==========================================================================
+def test_paid_min_d_counts_only_episodes_that_earned_contact_progress():
+    rr, core = _rr(True, n=2, z0=0.0)
+    # env 0 lands on a ledge at 300 (earned: record 9,700); env 1 spawned deep (z 5,000 ->
+    # record 5,000 from its spawn) never touches anything below it - an apex-initialised record
+    core.states_view["origin"][1, 2] = np.float32(5000.0)
+    rr.on_reset(core)
+    for z0, z1 in [(100.0, 4990.0), (300.0, 4980.0)]:
+        core.states_view["origin"][:, 2] = np.asarray([z0, z1], np.float32)
+        core.states_view["velocity"][:, 2] = 0.0
+        core.states_view["onground"][:] = [0, -1]
+        _step(rr, core)
+    # both end
+    core.states_view["origin"][:, 2] = 0.0
+    core.states_view["onground"][:] = 0
+    _step(rr, core, done=1)
+    st = rr.pop_stats()
+    assert st["rc_paid_min_d"] == pytest.approx(10000.0 - 300.0)
+    assert rr.pop_stats()["rc_paid_min_d"] == float("inf")      # reset after the pop
+
+
+def test_the_trainer_refuses_front_contact_without_its_parts():
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert "--front-contact reads the --front-temp band on the --ratchet-contact" in src
+    rec = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    head = rec[rec.index("TRAIN_ONLY = frozenset({"):]
+    assert '"front_contact"' in head[:head.index("})")]

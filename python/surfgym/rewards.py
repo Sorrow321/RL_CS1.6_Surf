@@ -873,6 +873,10 @@ class RaceReward:
         self.rc_end: list = []
         self.rc_all_end: list = []
         self.rc_paid_eps = 0
+        # the deepest contact record (d) of an ended episode that EARNED contact progress since
+        # the last pop_stats (inf = none): the real contact frontier, which a spawn-initialised
+        # record (a reservoir apex) cannot inflate. --front-contact reads it
+        self.rc_paid_min_d = float("inf")
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
@@ -2082,6 +2086,10 @@ class RaceReward:
                         self.rc_end.extend(((_d0 - self._rec_c[ei]) / _d0).tolist())
                         self.rc_all_end.extend(((_d0 - self._rec_boot[ei]) / _d0).tolist())
                         self.rc_paid_eps += int(np.count_nonzero(self.rc_paid_mask[ei]))
+                        _pm = self.rc_paid_mask[ei]
+                        if _pm.any():
+                            self.rc_paid_min_d = min(self.rc_paid_min_d,
+                                                     float(self._rec_c[ei][_pm].min()))
                     self._rec_c[ended] = d[ended]
                     self._rc_air[ended] = 0
                     self._rc_start[ended] = d[ended]
@@ -2349,9 +2357,11 @@ class RaceReward:
             out["rc_all_max"] = (float(np.max(self.rc_all_end)) if self.rc_all_end
                                  else float("nan"))
             out["rc_paid"] = (self.rc_paid_eps / len(self.rc_end)) if self.rc_end else float("nan")
+            out["rc_paid_min_d"] = self.rc_paid_min_d
             self.rc_end.clear()
             self.rc_all_end.clear()
             self.rc_paid_eps = 0
+            self.rc_paid_min_d = float("inf")
         if self.surf_air_ticks > 0.0:
             # the fraction of AIRBORNE ticks the bonus actually paid on.
             # Saturating near 1.0 means the agent found a way to be

@@ -6958,6 +6958,16 @@ def main() -> None:
                     help="--front-temp: the band B - an env is at the frontier when its "
                          "progress >= (1 - B) x the reservoir's deepest progress (the "
                          "--ez-front band); re-read every iteration")
+    ap.add_argument("--front-contact", type=int, default=None, choices=[0, 1],
+                    help="--front-temp + --ratchet-contact: 1 = the band is read on CONTACT "
+                         "progress - an env is hot while its episode's PAID record is within "
+                         "the band of the deepest contact record a training episode actually "
+                         "EARNED over the last 50 iterations (spawn-initialised records do not "
+                         "count) - instead of the current all-state progress against the "
+                         "reservoir, whose deepest states are ballistic apexes when the field "
+                         "flies through open air. Hot = where the line ends on a surface, from "
+                         "the moment the episode reaches it. 0 = the all-state band (today); "
+                         "ckpt restores")
     ap.add_argument("--unstuck-ent", type=int, default=None, choices=[0, 1],
                     help="--unstuck: entropy coefficient x (1+T); default 1")
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
@@ -8011,6 +8021,9 @@ def main() -> None:
         if args.front_temp is None and ck_cfg.get("front_temp"):
             args.front_temp = float(ck_cfg["front_temp"])
             restored.append(f"front_temp={args.front_temp:g}")
+        if args.front_contact is None and ck_cfg.get("front_contact") is not None:
+            args.front_contact = int(ck_cfg["front_contact"])
+            restored.append(f"front_contact={args.front_contact}")
         if args.front_band is None and ck_cfg.get("front_band"):
             args.front_band = float(ck_cfg["front_band"])
             restored.append(f"front_band={args.front_band:g}")
@@ -9402,6 +9415,11 @@ def main() -> None:
         args.front_temp = 0.0
     if args.front_band is None:
         args.front_band = 0.04
+    if args.front_contact is None:
+        args.front_contact = 0
+    if args.front_contact and not (float(args.front_temp) > 0.0 and args.ratchet_contact):
+        raise SystemExit("--front-contact reads the --front-temp band on the --ratchet-contact "
+                         "record: it needs --front-temp > 0 and --ratchet-contact 1")
     if float(args.front_temp) != 0.0:
         _bad = [f for f, on in (("--maps", args.maps),
                                 ("--rnn", args.rnn not in (None, "none")),
@@ -15390,6 +15408,9 @@ def main() -> None:
     if float(args.front_temp or 0.0) > 0.0:
         meta["config"]["front_temp"] = float(args.front_temp)
         meta["config"]["front_band"] = float(args.front_band)
+        if args.front_contact:
+            # --front-contact: written ONLY when on
+            meta["config"]["front_contact"] = 1
     # --demo-cooldown / --demo-grow-max: written ONLY when set (a record of the run)
     if args.demo_file and args.demo_cooldown is not None:
         meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
@@ -16820,6 +16841,8 @@ def main() -> None:
     gt_share = float("nan")
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
     front_thr = float("inf")             # d at the band's edge, re-read every iteration
+    FRONT_CONTACT = bool(args.front_contact)
+    FC_HIST = deque(maxlen=50)           # --front-contact: per-iteration paid contact minima
     front_share = float("nan")
     dft_share = float("nan")
     _dft_len = [None]                    # ep_len, once it exists (the rollout's tick counter)
@@ -16838,6 +16861,11 @@ def main() -> None:
                         if (UNSTUCK_TEMP and UNSTUCK_MASK_VIEW is not None)
                         else np.zeros(NZ, np.float32))
         _f_hot = 1.0 + float(args.front_temp or 0.0)
+        if FRONT_RES and FRONT_CONTACT:
+            print(f"--front-contact: the --front-temp band is read on the CONTACT record - an "
+                  f"env is hot (every head at {_f_hot:g}) while its episode's paid record is "
+                  f">= (1 - {args.front_band:g}) x the deepest contact progress an episode "
+                  f"EARNED over the last 50 iterations")
         if FRONT_RES:
             print(f"--front-temp {args.front_temp:g}: an env whose progress is >= "
                   f"(1 - {args.front_band:g}) x the reservoir's deepest samples every head at "
@@ -16866,7 +16894,7 @@ def main() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
         the post-step distance of every env, the new spawn's for an env that just ended)."""
         nonlocal front_share, dft_share, gt_share
-        d = reward_fn._d
+        d = reward_fn.paid_record() if FRONT_CONTACT else reward_fn._d
         band = (np.zeros(N, bool) if (d is None or not FRONT_RES)
                 else (np.asarray(d) <= front_thr))
         tb = FRONT_BASE[0]
@@ -19291,6 +19319,12 @@ def main() -> None:
             _d0f = float(fleet.slots[0].rf_d0 or 0.0)
             front_thr = (_d0f - (1.0 - float(args.front_band)) * _d0f * (1.0 - _mf)
                          if (_mf == _mf and _d0f > 0.0) else float("inf"))
+            if FRONT_CONTACT:
+                # --front-contact: the same band rule on the deepest EARNED contact record of
+                # the last 50 iterations (in d; inf until one is seen = no hot env)
+                _dc = min(FC_HIST) if FC_HIST else float("inf")
+                front_thr = (_d0f - (1.0 - float(args.front_band)) * (_d0f - _dc)
+                             if (_dc < float("inf") and _d0f > 0.0) else float("-inf"))
         if EN_FRONT:
             # --energy-pot-front: the band edge in d (the --front-temp rule with B =
             # --energy-pot-front), handed to every training slot's race reward
@@ -21028,6 +21062,8 @@ def main() -> None:
             else:
                 rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
+            if FRONT_CONTACT and rs.get("rc_paid_min_d", float("inf")) < float("inf"):
+                FC_HIST.append(float(rs["rc_paid_min_d"]))
             race_int = rs["int_per_ep"]
             if IMATCH:
                 # --int-match: this iteration's novelty paid vs the rest, over the same ticks
