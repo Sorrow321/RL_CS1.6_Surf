@@ -1236,7 +1236,7 @@ here by hand over 55 lines at once. Read it on: training win rate and its time-f
   spine's band (64 s on) trains only on fresh starts (now 7% of resets). Stopped at 12,012M
   (runs/f4_final.pt). c2's mix (pool 20%, keys as restored, T 0.2) was stable at 96.4-96.8.
 
-### f5 `zlr3b1_f5` (21:52 UTC): f4's curriculum on c1's weights with c2's stable mix
+### f5 `zlr3b1_f5` (21:49 UTC): f4's curriculum on c1's weights with c2's stable mix
 `--resume` (c1 11,691.6M) + c1's flags + `--demo-tau0 9170 --spawn-states runs/cur/pool_cur.npy
 --spawn-states-frac 0.2` (tails 1.0 s at launch, md5 68e3f8ad; lines = 10% of resets), keys as
 restored (no --unstuck-max). Tail schedule: 1.0 -> 1.5 -> 2.0 -> whole lines, gated on the probe.
