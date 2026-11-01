@@ -645,3 +645,8 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   (169.3 s: 78.7-79.4%; 164.4 s: 75.6-78.0%; 149.5 s: 71.1-75.1%). Origin jitter of +-4 u (x, y;
   +-1 u z) drops it to 33-58% - mostly an artefact (a jittered origin leaves the ramp surface a
   real flight is on). So the launch is a learnable control skill, not a knife-edge.
+* 11:35 UTC, still no box (refused since 05:37). The staged launch picks its spine by the grant
+  time: before 14:00 UTC the full 97.8% line (`zlr2b4_cem978_spine.npy`, milestones
+  5859,1334,422, run `zlr2b4_s1`); later the launch-only 79% spine (`zlr2b4_cem169_spine.npy`,
+  milestone 5859, run `zlr2b4_l1`), whose backward curriculum reaches the launch at once - a short
+  window cannot wait for the far stages of the full line.
