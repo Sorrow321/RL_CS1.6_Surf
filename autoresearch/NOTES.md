@@ -1036,3 +1036,13 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
   creeps at the band's north face y 1,312). The efficient up-slope turn is "hold A with 2-8 deg view
   offsets", which an independent 30-deg draw per knot almost never produces.
 * s5 (running): that config over all 144 pre-exit roots (0.25-1.2 s before the exits): 12/14 so far.
+* c1 evals: 97.322 (11,323M) / 95.337 (11,398.5M, 41M steps after the 1-line swap): the level.
+* **Definite vs creep:** of s5's first 21 lines, 6 end with the hull clear of the platform top
+  (rising through the SLOT and over its south edge y 40, or similar) and 15 are side-face creeps
+  (the band's north face y 1,312, the slot's south face, the strip's west face).
+* **c1 pool swap 2 at 11,410.08M (re-read logged):** `pool_add_lines.py --base frontier_rc10
+  --lines <the 6 definite lines> --share 0.5` (95,583 rows, md5 efabaa87): ~7.5% of training spawns
+  on finishing lines. Within 3M steps the training logs its first finishes: win 1-7% per iteration at
+  0.5-1.0 s from the spawn (the line's late states: harvest wins, CLAUDE.md's win-rate trap - not
+  evidence by themselves; the evals from the true start are). Watch: the finish time from spawn
+  growing (the policy finishing from EARLIER line states) and the greedy evals.

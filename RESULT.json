@@ -14,5 +14,5 @@
   "resume_from": "incumbent r2 ckpt_11096031232",
   "commit": "0c47e014"
  },
- "summary": "c1 (incumbent resumed on rc10's flags, RTX 5060 Ti): 97.35 / 97.75, the level, 0 finishes. The finish triggers sit on a solid platform (top z 3,008): a finish needs the hull clear of it beside/over the footprint (origin z >= 3,044). Beam searches from the policy's own fifth-loop states (NEW --score gap/gaph) get within 45-160 u: the flight off the ramp's north end is too flat. Next: long-horizon energy beams, steeper-exit search, then the line into the spawn pool."
+ "summary": "c1 (incumbent resumed, rc10 flags, RTX 5060 Ti): 97.35 / 97.75 / 96.83 / 97.32 / 95.34, 0 finishes. NEW tools/finish_mpc.py (engine CEM from the policy's own pre-exit states, strafe-like prior) finds finishing lines in ~1 s each (22 of 39 roots): up through the platform's slot or against its faces. Their states are now 50% of c1's --spawn-states pool (swapped in place at 11,410M); training logs its first wins (harvest). Next: evals from the true start, more lines, a dedicated run if it learns."
 }
