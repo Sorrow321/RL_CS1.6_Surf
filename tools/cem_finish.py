@@ -68,12 +68,22 @@ class Dist:
         return H
 
 
-def run_pop(core, root_state, side, fwd, duck, yaw, K, gf, boxes, reach, d_every=4):
-    """Roll every sequence from the root -> (fin tick (n,), min score (n,))."""
+def run_pop(core, root_state, side, fwd, duck, yaw, K, gf, boxes, reach, d_every=4,
+            perturb=None):
+    """Roll every sequence from the root -> (fin tick (n,), min score (n,)). ``perturb`` =
+    (rng, sigma_pos, sigma_vel, R): each env starts from the root with Gaussian noise on its
+    origin and velocity, except every R-th (env % R == 0: the exact copy) - the --robust copies."""
     n, H = side.shape
     core.reset(0)
     for e in range(n):
-        core.set_state(e, root_state)
+        if perturb is None or e % perturb[3] == 0:
+            core.set_state(e, root_state)
+        else:
+            rng, sp, sv, _R = perturb
+            st = root_state.copy()
+            st["origin"] += rng.normal(0.0, sp, 3).astype(np.float32)
+            st["velocity"] += rng.normal(0.0, sv, 3).astype(np.float32)
+            core.set_state(e, st)
     alive = np.ones(n, bool)
     fin = np.zeros(n, np.int32)
     best = np.full(n, np.inf)
@@ -144,6 +154,14 @@ def main(argv=None):
                     help="> 0: move on to the next root after this many finishes from one root")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--reach-cache", default=None)
+    ap.add_argument("--init", default=None,
+                    help="a fin_*.npz of the (single) root to start the distribution from")
+    ap.add_argument("--init-p", type=float, default=0.8,
+                    help="--init: the probability put on the line's own key bins")
+    ap.add_argument("--robust", type=int, default=1,
+                    help="> 1: score each sequence from this many noisy copies of the root")
+    ap.add_argument("--robust-pos", type=float, default=2.0)
+    ap.add_argument("--robust-vel", type=float, default=5.0)
     a = ap.parse_args(argv)
 
     import torch
@@ -191,11 +209,40 @@ def main(argv=None):
         n_root = 0
         for rs in range(a.restarts):
             dist = Dist(H, a.yaw_sd, a.p_duck)
+            if a.init:
+                # --init: start from a line already found (a fin_*.npz of this root): the keys'
+                # categoricals peaked on its keys, the yaw mean on its yaw, sigma --yaw-sd
+                zi = np.load(a.init)
+                if int(zi["root"]) != r:
+                    raise SystemExit(f"--init {a.init} is a line of root {int(zi['root'])}, not {r}")
+                n0 = min(H, len(zi["side"]))
+                for arr, key in ((dist.ps, "side"), (dist.pf, "fwd")):
+                    arr[:n0] = (1.0 - a.init_p) / 2.0
+                    arr[np.arange(n0), np.asarray(zi[key][:n0], np.int64)] = a.init_p
+                dist.pd[:n0] = np.where(np.asarray(zi["duck"][:n0]) > 0, a.init_p, 1 - a.init_p)
+                dist.mu[:n0] = np.asarray(zi["yaw"][:n0], np.float64)
             rst = pool[r:r + 1]
             best_ever = np.inf
             for it in range(a.iters):
-                side, fwd, duck, yaw = dist.sample(rng, a.pop)
-                fin, sc = run_pop(core, rst, side, fwd, duck, yaw, K, gf, boxes, reach)
+                side, fwd, duck, yaw = dist.sample(rng, a.pop // max(1, a.robust))
+                if a.robust > 1:
+                    # --robust M: every sequence runs from M copies of the root - copy 0 exact, the
+                    # others with Gaussian noise on origin and velocity; its score is the MEAN of
+                    # the copies' closest approaches (a finish counts 0), so the elite are the
+                    # sequences that finish from a neighbourhood of the root. A finish of copy 0
+                    # is an exact one and is replayed and saved like any other.
+                    R = a.robust
+                    sideR, fwdR, duckR, yawR = (np.repeat(x, R, axis=0)
+                                                for x in (side, fwd, duck, yaw))
+                    finR, scR = run_pop(core, rst, sideR, fwdR, duckR, yawR, K, gf, boxes,
+                                        reach, perturb=(rng, a.robust_pos, a.robust_vel, R))
+                    sc = scR.reshape(-1, R).mean(axis=1)
+                    frac = (finR.reshape(-1, R) > 0).mean(axis=1)
+                    fin = finR.reshape(-1, R)[:, 0].copy()
+                    print(f"   robust: best finish share {frac.max():.0%}, "
+                          f"{int((frac > 0).sum())} sequences finish from some copy", flush=True)
+                else:
+                    fin, sc = run_pop(core, rst, side, fwd, duck, yaw, K, gf, boxes, reach)
                 order = np.argsort(sc)
                 el = order[:a.elite]
                 best_ever = min(best_ever, float(sc[order[0]]))
