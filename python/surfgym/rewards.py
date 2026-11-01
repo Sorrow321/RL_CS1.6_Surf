@@ -849,6 +849,29 @@ class RaceReward:
                                  else 1.0))
         self._rec: np.ndarray | None = None
         self._rec_boot: np.ndarray | None = None
+        # --ratchet-contact (zlr2b1, 2026-11-01): the ratchet PAYS on a second record that moves
+        # only on ticks where the map holds the player up - walkable ground (onground != -1) or
+        # a surfable face (the --surf-bonus contact test below: airborne AND vz gave back more
+        # than free fall, the -sv_maxvelocity clamp excluded). Why: the goal field is a voxel
+        # BFS that lets a player fly through open air in any direction, so a ballistic APEX in
+        # open air reads as progress the map never supports. surf_za_loop's 64.67% incumbent
+        # touches one ramp crest (contact progress 33-39%) and gets the rest from flight apexes
+        # over open air, while the record's contact-only progress tracks its all-state progress
+        # within 0.1-2.6 points the whole way (autoresearch/NOTES.md, zlr2b1). Generic: no
+        # constant reads a map; on any map the record a policy is paid for becomes the furthest
+        # SURFACE it has reached. `_rec` (all states) is kept unchanged for everything else it
+        # feeds - the (d - b)/d0 observation column, ratchet_boot, --demo-success-d, the death
+        # charge, --energy-pot-front - so the policy's input is the control's exactly. Set by
+        # the trainer after construction (like energy_pot); False = no array, no branch, the
+        # control path byte for byte.
+        self.ratchet_contact = False
+        self._rec_c: np.ndarray | None = None
+        self._rc_air: np.ndarray | None = None
+        # diagnostics (pop_stats): per ended episode, the contact record's and the all-state
+        # record's progress (fractions of ratchet_d0) and whether any contact progress was paid
+        self.rc_end: list = []
+        self.rc_all_end: list = []
+        self.rc_paid_eps = 0
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
@@ -1342,6 +1365,14 @@ class RaceReward:
                 self._rec_ring = np.tile(self._rec, (self._dc_n, 1))
                 self._ring_pos = 0
             self._rec_boot = self._rec.copy()
+            if self.ratchet_contact:
+                # --ratchet-contact: the paid record starts where the all-state one does (the
+                # episode's own start d), so a start can never generate contact progress either;
+                # _rc_air counts the calls since the last supported one (the flight's clip budget)
+                self._rec_c = self._d.copy()
+                self._rc_air = np.zeros(len(self._d), np.int64)
+                self._rc_start = self._d.copy()
+                self.rc_paid_mask = np.zeros(len(self._d), bool)
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
         if self.stall_energy > 0.0:
@@ -1578,11 +1609,29 @@ class RaceReward:
                 # contract latch_boot has.
                 self._rec_boot = self._rec.copy()
                 new_rec = np.minimum(self._rec, d)
-                delta = self._rec - new_rec
-                # same teleport guard as the control: a relocation must not
-                # cash shaping. The record still moves, so the ground the
-                # teleport covered is simply never paid for.
-                np.clip(delta, -clip, clip, out=delta)
+                if self.ratchet_contact:
+                    # --ratchet-contact: the PAID record moves only on a supported call
+                    # (_contact_mask: ground, or a surfable face pushing back up); an ended
+                    # row's state is already the next episode's spawn, so it never moves it
+                    sup = self._contact_mask(core) & ~ended
+                    new_rc = np.where(sup, np.minimum(self._rec_c, d), self._rec_c)
+                    delta = self._rec_c - new_rc
+                    # the teleport guard, scaled to the flight: a landing legitimately moves
+                    # the contact record by everything flown since the last supported call,
+                    # and a legal call moves d by <= clip, so the bound is clip x (calls since
+                    # the last support + 1) - one call's clip when the player never left a
+                    # surface, exactly the control's guard
+                    np.minimum(delta, clip * (self._rc_air + 1).astype(np.float64), out=delta)
+                    self._rc_air = np.where(sup, 0, self._rc_air + 1)
+                    self._rec_c = new_rc
+                    if sup.any():
+                        self.rc_paid_mask |= sup & (new_rc < self._rc_start)
+                else:
+                    delta = self._rec - new_rec
+                    # same teleport guard as the control: a relocation must not
+                    # cash shaping. The record still moves, so the ground the
+                    # teleport covered is simply never paid for.
+                    np.clip(delta, -clip, clip, out=delta)
                 self._rec = new_rec
             elif self.sr:
                 # Sibling Rivalry: the potential difference on d_eff
@@ -1722,6 +1771,10 @@ class RaceReward:
             self.dive_ticks += float(np.count_nonzero(airborne & ~supported))
             self.surf_air_ticks += float(np.count_nonzero(airborne))
             self._vz = vz.astype(np.float64)
+        elif self.ratchet_contact:
+            # --ratchet-contact alone: its contact test (_contact_mask, above) reads the previous
+            # call's vz, which the surf block keeps when it runs and this keeps otherwise
+            self._vz = v[:, 2].astype(np.float64)
 
         if self.speed_equiv > 0.0:
             # potential term for d_eff = d - beta*s: gaining speed pays now,
@@ -2014,6 +2067,20 @@ class RaceReward:
                 self._rec0[ended] = d[ended]
                 if self._dip_paid is not None:
                     self._dip_paid[ended] = 0.0
+                if self.ratchet_contact:
+                    # --ratchet-contact: the dying episode's two records for the read-out (its
+                    # all-state record is the one BEFORE this call: `_rec` has just been min-ed
+                    # with the next spawn's d), then the paid record restarts at the new spawn
+                    ei = np.flatnonzero(ended)
+                    if len(ei):
+                        _d0 = self.ratchet_d0
+                        self.rc_end.extend(((_d0 - self._rec_c[ei]) / _d0).tolist())
+                        self.rc_all_end.extend(((_d0 - self._rec_boot[ei]) / _d0).tolist())
+                        self.rc_paid_eps += int(np.count_nonzero(self.rc_paid_mask[ei]))
+                    self._rec_c[ended] = d[ended]
+                    self._rc_air[ended] = 0
+                    self._rc_start[ended] = d[ended]
+                    self.rc_paid_mask[ended] = False
             if self._d0 is not None:
                 self._d0[ended] = d[ended]
             self._since[ended] = 0
@@ -2229,6 +2296,23 @@ class RaceReward:
             return None
         return self._dip.pop_raw()
 
+    def _contact_mask(self, core) -> np.ndarray:
+        """--ratchet-contact: the calls on which the map holds the player up.
+
+        Walkable ground (onground != -1), or airborne with the --surf-bonus contact test:
+        vz gave back more than free fall over the call (dev > surf_dvz; a near-vertical wall
+        clips only horizontal velocity and reads 0, a ceiling pushes down and reads < 0), and
+        not a fall pinned at the -sv_maxvelocity clamp (which stops losing vz in free fall).
+        Reads the previous call's vz from ``self._vz``; does not update it."""
+        st = _states(core)
+        vz = st["velocity"][:, 2].astype(np.float64)
+        airborne = st["onground"] == -1
+        dev = (vz - self._vz) + self._g_tick * float(self.every)
+        surf = airborne & (dev > self.surf_dvz)
+        if self._vmax > 0.0:
+            surf = surf & (vz > -(self._vmax - 0.5))
+        return (~airborne) | surf
+
     def pop_stats(self) -> dict:
         """Episode outcomes since the last call (per-iteration logging)."""
         n_ep = self.n_success + self.n_fail + self.n_trunc
@@ -2240,6 +2324,20 @@ class RaceReward:
             "episodes": n_ep,
             "int_per_ep": (self.int_paid / n_ep) if n_ep else float("nan"),
         }
+        if self.ratchet_contact:
+            # --ratchet-contact: per ended episode, the PAID (contact) record and the all-state
+            # record as progress fractions; the gap between the two is the free-flight credit
+            # the control would have paid. rc_paid = the share that earned any contact progress
+            out["rc_mean"] = float(np.mean(self.rc_end)) if self.rc_end else float("nan")
+            out["rc_max"] = float(np.max(self.rc_end)) if self.rc_end else float("nan")
+            out["rc_all_mean"] = (float(np.mean(self.rc_all_end)) if self.rc_all_end
+                                  else float("nan"))
+            out["rc_all_max"] = (float(np.max(self.rc_all_end)) if self.rc_all_end
+                                 else float("nan"))
+            out["rc_paid"] = (self.rc_paid_eps / len(self.rc_end)) if self.rc_end else float("nan")
+            self.rc_end.clear()
+            self.rc_all_end.clear()
+            self.rc_paid_eps = 0
         if self.surf_air_ticks > 0.0:
             # the fraction of AIRBORNE ticks the bonus actually paid on.
             # Saturating near 1.0 means the agent found a way to be

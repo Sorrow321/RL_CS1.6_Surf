@@ -6680,6 +6680,16 @@ def main() -> None:
                          "it needs; the field-only rules end it. Nothing adds energy at rest, "
                          "at a constant speed or in free fall, so those still stall. A "
                          "checkpoint restores it. 0 = off (the field alone)")
+    ap.add_argument("--ratchet-contact", type=int, default=None,   # 0 = off
+                    help="race + --race-ratchet: 1 = the ratchet PAYS a record that moves only "
+                         "on ticks where the map holds the player up - walkable ground, or a "
+                         "surfable face pushing back up (the --surf-bonus contact test) - so a "
+                         "ballistic apex over open air, which the free-flight goal field reads "
+                         "as progress, pays nothing until the player lands on a surface that "
+                         "far along. The landing pays everything flown since the last contact "
+                         "(the teleport clip scales with the flight). The (d - b)/d0 "
+                         "observation column keeps the all-state record. A checkpoint "
+                         "restores it. 0 = off (every tick moves the paid record)")
     ap.add_argument("--stall-arc", type=int, default=None,        # 0
                     help="race + --race-arc: 1 = the stall detector watches the ROUTE ARC (a "
                          "new record along the route by more than --stall-eps in one call "
@@ -8064,6 +8074,10 @@ def main() -> None:
             # --energy-stall: a stall CONDITION, carried across a resume like stall_secs
             args.energy_stall = float(ck_cfg["energy_stall"])
             restored.append(f"energy_stall={args.energy_stall:g}")
+        if args.ratchet_contact is None and ck_cfg.get("ratchet_contact") is not None:
+            # --ratchet-contact: the reward's record rule, carried across a resume
+            args.ratchet_contact = int(ck_cfg["ratchet_contact"])
+            restored.append(f"ratchet_contact={args.ratchet_contact}")
         if args.max_step is None and ck_cfg.get("max_step") is not None:
             args.max_step = float(ck_cfg["max_step"])
             restored.append(f"max_step={args.max_step:g}")
@@ -9543,6 +9557,11 @@ def main() -> None:
         raise SystemExit(f"--energy-stall EPS needs EPS >= 0 (0 = off), got {args.energy_stall:g}")
     if args.energy_stall > 0.0 and args.reward != "race":
         raise SystemExit("--energy-stall re-arms the race reward's stall rule: it needs --reward race")
+    if args.ratchet_contact is None:
+        args.ratchet_contact = 0
+    args.ratchet_contact = int(args.ratchet_contact)
+    if args.ratchet_contact not in (0, 1):
+        raise SystemExit("--ratchet-contact is 0 or 1")
     args.stall_arc = int(args.stall_arc)
     if args.stall_arc not in (0, 1):
         raise SystemExit("--stall-arc is 0 or 1")
@@ -9756,6 +9775,9 @@ def main() -> None:
         args.race_latch_frac = 0.0
     if args.race_ratchet is None:
         args.race_ratchet = False
+    if args.ratchet_contact and (args.reward != "race" or not args.race_ratchet):
+        raise SystemExit("--ratchet-contact moves the race ratchet's PAID record: it needs "
+                         "--reward race and --race-ratchet")
     if args.race_sr is None:
         args.race_sr = False
     if args.sr_eps_frac is None:
@@ -13881,6 +13903,9 @@ def main() -> None:
             _s.reward_fn.en_front_bonus = bool(args.energy_pot_front_bonus)
             # --energy-stall: energy records re-arm the training stall clock (0 = off)
             _s.reward_fn.stall_energy = float(args.energy_stall)
+            # --ratchet-contact: the paid record moves only on supported ticks (on_reset
+            # allocates its state; the attribute is read there and in every call)
+            _s.reward_fn.ratchet_contact = bool(args.ratchet_contact)
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
             _s.reward_fn.surf_hspd = float(args.surf_hspd)
@@ -14003,6 +14028,11 @@ def main() -> None:
     if EVAL_PATIENCE:
         print(f"--eval-patience: a greedy eval episode ends once its best field progress "
               f"has not grown by 32u for {args.eval_patience:g}s ({EVAL_PATIENCE:,} ticks)")
+    if args.ratchet_contact:
+        print("--ratchet-contact: the ratchet PAYS a record that moves only on supported ticks "
+              "(walkable ground, or a surfable face pushing back up); an apex over open air "
+              "pays at the landing that reaches it, or never. The (d - b)/d0 column keeps the "
+              "all-state record")
     if args.reward == "race" and float(args.energy_stall) > 0.0:
         print(f"--energy-stall {args.energy_stall:g}: an energy-height record "
               f"(z + |v|^2 / 2g, {args.energy_stall:g}u above the last energy re-arm, "
@@ -15350,6 +15380,9 @@ def main() -> None:
     # --energy-stall: written ONLY when on, like the patience rule above
     if args.reward == "race" and float(args.energy_stall) > 0.0:
         meta["config"]["energy_stall"] = float(args.energy_stall)
+    # --ratchet-contact: written ONLY when on
+    if args.ratchet_contact:
+        meta["config"]["ratchet_contact"] = 1
     # --eval-parallel: written ONLY when on, like the patience rule above
     if N_EVAL_PAR:
         meta["config"]["eval_parallel"] = 1
@@ -21967,6 +22000,12 @@ def main() -> None:
                 # being watched, not only after it
                 race_note += (f"  surf {rs['surf_paid_frac']:5.1%}"
                               f"/dive {rs['dive_frac']:5.1%}")
+            if "rc_mean" in rs and rs["rc_mean"] == rs["rc_mean"]:
+                # --ratchet-contact: the PAID (contact) record vs the all-state record per ended
+                # training episode, mean / max progress, and the share paid any contact progress
+                race_note += (f"  rc {rs['rc_mean']:.1%}/{rs['rc_max']:.1%}"
+                              f" all {rs['rc_all_mean']:.1%}/{rs['rc_all_max']:.1%}"
+                              f" paid {rs['rc_paid']:.0%}")
             if "en_gain_per_ep" in rs and rs["en_gain_per_ep"] == rs["en_gain_per_ep"]:
                 # --energy-pot: energy height gained / lost per ended training episode
                 race_note += (f"  en +{rs['en_gain_per_ep']:,.0f}"

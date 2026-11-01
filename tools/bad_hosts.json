@@ -2941,6 +2941,15 @@
       "detail": "RTX 3090 SW Power Cap: 240 W of 350 W, bf16 GEMM 58 TFLOPS vs ref 69 (84%), sm 930 MHz under load (zlop bake, 2026-10-31)",
       "run": "",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "64.53.129.104",
+      "machine_id": 153342,
+      "host_id": 256863,
+      "date": "2026-11-01",
+      "detail": "RTX 3090 power limit 260 W of 420 W default (SW Power Cap active), bf16 GEMM 61 TFLOPS vs ref 69 (89%), machine 153342 Illinois; zlr2b1 2026-11-01 05:32 UTC",
+      "run": "",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [

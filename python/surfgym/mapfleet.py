@@ -797,7 +797,9 @@ class MapFleet:
             # of guard (a per-map d0 makes "progress" a different quantity
             # on every slot) and pass through the same way.
             for k, v in st.items():
-                if k.startswith("arc_") or k.startswith("front_") or k.startswith("en_"):
+                if (k.startswith("arc_") or k.startswith("front_") or k.startswith("en_")
+                        or k.startswith("rc_")):
+                    # rc_*: --ratchet-contact's read-out (a diagnostic; the last slot's on a pool)
                     tot[k] = v
             # --surf-bonus / --dive-pen: pooled over maps by AIRBORNE TICKS,
             # the fraction's own denominator - a mean of per-map means would
