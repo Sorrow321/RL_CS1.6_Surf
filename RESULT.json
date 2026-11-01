@@ -2,6 +2,23 @@
  "agent": "zlr2b3",
  "round": 2,
  "final": false,
- "best": null,
- "summary": "Round 2 start 05:21 UTC. Analysis: the incumbent flies the record's own third-bowl circuit and misses ONE turn (east into the block at the west bottom, onto the fourth structure). EZ1 (05:33): incumbent weights + ez-greedy 0.01 (temporally-extended exploration) - running."
+ "best": {
+  "score": 65.04,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_ctl/traj_4032823296.jsonl",
+  "run": "zlr2b3_ctl",
+  "step": 4032823296,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_ctl/ckpt_4032299008.pt",
+  "recipe": [
+   "(the incumbent's checkpoint, everything restored)",
+   "--demo-file",
+   "autoresearch/spines/zlr1b4_ge1_line_a.npy (its own GE-line spine, re-pointed)",
+   "--demo-tau0",
+   "114",
+   "--ckpt-every",
+   "1e8"
+  ],
+  "resume_from": "incumbent r1 ckpt.pt = zlr1b4_e13 ckpt_4032299008 (md5 036960d8)",
+  "commit": "401f4007 (deployed base)"
+ },
+ "summary": "65.040 = the incumbent's own weights (one PPO iteration in) evaluated on this box's card (RTX 5060 Ti): ep0 survived 198 s and pumped to E 4,970, swing top z 734 - eval variance of the circuit, NOT a mechanism. Analysis: the policy flies the record's third-bowl circuit and turns up the curved floor ~600 u north of the record, passing the block's north end; held 1-8 deg yaw nudges and velocity rotations from its own states never land it on the block (0/47). EZ1 (ez-greedy 0.01): negative (54%). Running: a batched held-offset search from the policy's own states (beam_tas --dump-paths)."
 }

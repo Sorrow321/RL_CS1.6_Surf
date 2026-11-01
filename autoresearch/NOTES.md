@@ -565,3 +565,19 @@ progress.csv at matched steps (E13: 63.2-64.7% at 4.0-4.7B).
   15 / 35 decisions) from the policy's states 2.0 / 1.4 / 0.8 s before the turn.
 * Control `zlr2b3_ctl` (05:49 UTC): the incumbent's exact config continued on this box (same-card
   baseline; every eval a chance above 64.671).
+* Diagnostic 2 result: 0/30 - held yaw offsets of -1..-8 deg for 0.4-1.0 s from 2.0 / 1.4 / 0.8 s
+  before the turn never reach the block top; nudges from 2.0 / 1.4 s are corrected (the circuit
+  resumes), and from 0.8 s most kill it within 5-6 s at the block's NORTH-WEST corner
+  (-1,500..-1,780, 1,900-2,200) - the crash zone between the policy's line and the record's.
+* **Control `zlr2b3_ctl` first eval (4,032.8M, the incumbent's weights + one PPO iteration) =
+  65.040** (median 64.6%, 9/9 alive to 186-198 s; ep0 pumped to E 4,970 and its swing top reached
+  z 734). Eval variance of the same circuit on this card (RTX 5060 Ti; the lidar march is not
+  bit-identical across GPU architectures), not a mechanism: in the circuit regime the progress is
+  the swing-top height, which rises with the energy, i.e. with how long the episode survives.
+  Hand-on: ckpt_4032299008.pt (= the incumbent ckpt, md5 036960d8, copied into the run dir on the
+  box and pulled as the snapshot at or before the eval). Next evals 63.0 / 63.1 (4,108 / 4,184M).
+* (tool) `tools/beam_tas.py --dump-paths NPZ --dump-every K`: every env's position and live flag
+  every K ticks in population mode (off = byte-identical), so a sweep can be read for WHERE its
+  lineages went. 1,024 envs x 30 s from a start state in 23 s on this box (193k env-steps/s).
+  Sweep 1 (one start state 0.7 s before... ±6 deg held 0.5 s, redrawn for 5 s): 0/1,024 on the block,
+  no new cell above z 500, the swing tops LOWER (z <= 408: the offsets cost energy).
