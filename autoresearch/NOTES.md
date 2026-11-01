@@ -784,3 +784,14 @@ harmless for training.)
 * 11:36 UTC: the frontier pool refreshed from rc8's 8,491M greedy re-recording (9/9 at contact
   85.5-85.6%, ~15 s of survival past it; 21,157 states, autoresearch/spines/zlr2b1_frontier_rc8.npy,
   md5 50ed1814), swapped in place. Box extended to 14:28 UTC.
+* **rc8 later: 91.742 (8,567M; 5/9 at 88.8-91.7%) then COLLAPSE: 30.320 (8,642M) / 30.634 / 63.706 /
+  60.738 / 61.746 / 61.168 (9,020M)** - back to the third-structure loop, stall kills 21%, reward
+  18/ep. The collapse precedes the 8,668.6M pool swap, so it is the run's own: --front-contact made
+  26% of envs hot at 8,548M (every successful episode reaches the 85.5% frontier and stays hot ~15 s;
+  every frontier-pool spawn starts hot) - a quarter of the batch at T 2 on every head, against ~1-6%
+  under the all-state band. Hand-on for 91.742: ckpt_8566865920.pt (pulled, md5 9762d1a1).
+
+### rc9 `zlr2b1_rc9` (12:01 UTC): rc8's 8,491M weights + the same mix + a GENTLER --front-contact
+Resume of ckpt_8491368448 (the steadier 91.505 point, 9/9 at contact 85.6%) + rc8's flags with
+`--front-temp 0.5` (hot = every head at T 1.5 instead of 2), `--demo-tau0 10735` (rc8's tau then).
+If it collapses again: drop --front-contact (rc7's stable mix).
