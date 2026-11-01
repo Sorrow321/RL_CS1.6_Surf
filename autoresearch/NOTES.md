@@ -427,3 +427,7 @@ comes, a stronger hand-on for the next round.
   training keeps paying in survival and energy. Training frontier 64.4%, stall kills 0%. Hand-on:
   ckpt_2559049728.pt (41M before the eval: the newest at or before it - snapcopy had no copy
   between 2,559M and 2,620M); ckpt_2620391424.pt pulled too.
+* **E13 02:50 UTC: ... / 64.241 (2,902M, median 64.0%) / 63.947 / 64.008 / 63.578 (3,128M).** Still
+  creeping up with nothing changed - training time alone (the 62% plateau of E8-E12 was partly just
+  impatience: E8 had ~600M steps past its jump, E13 ~1.3B). Hand-on for 64.241: ckpt_2900885504.pt
+  (1M before the eval; pulled). Training frontier 64.6%.
