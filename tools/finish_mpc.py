@@ -89,7 +89,8 @@ def run_root(core, rw, sv, row0, scorer, a, rng, K_ticks):
             for k in range(Hp):
                 j, f = divmod(k, a.knot)
                 j1 = min(j + 1, Kn - 1)
-                view[:, 0] = off[:, j] + (off[:, j1] - off[:, j]) * (f / a.knot)
+                view[:, 0] = off[:, j] if a.hold else \
+                    off[:, j] + (off[:, j1] - off[:, j]) * (f / a.knot)
                 act[:, 3] = side[:, j]
                 act[:, 5] = duck[:, j]
                 _o, _rr, done, trunc, _t = core.step(act, view=view)
@@ -136,7 +137,8 @@ def run_root(core, rw, sv, row0, scorer, a, rng, K_ticks):
         for k in range(Hp if plan_fin else a.exec):
             j, f = divmod(k, a.knot)
             j1 = min(j + 1, Kn - 1)
-            view[:, 0] = off_b[j] + (off_b[j1] - off_b[j]) * (f / a.knot)
+            view[:, 0] = off_b[j] if a.hold else \
+                off_b[j] + (off_b[j1] - off_b[j]) * (f / a.knot)
             act[:, 3] = side_b[j]
             act[:, 5] = duck_b[j]
             ex_off.append(float(view[0, 0]))
@@ -222,6 +224,11 @@ def main(argv=None):
                     help="height: a REACHABILITY probe - the plan's score is its highest z "
                          "(alive), no finish term; says how high the physics can take the "
                          "player from the root at all")
+    ap.add_argument("--hold", action="store_true",
+                    help="hold each knot's view offset constant (no interpolation): with --knot a "
+                         "multiple of the checkpoint's act_every and --exec too, every decision's "
+                         "controls are constant and the line is written as a beam_best-format "
+                         "plan (plan_r<row>.npz) that tools/plan_to_bc.py turns into BC rows")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
     import torch
@@ -287,6 +294,29 @@ def main(argv=None):
             states, ft = replay(core1, row0, res)
             line["replay_finish_tick"] = ft
             line["replay_ok"] = ft == res["finish_tick"]
+            if ft is not None and a.hold:
+                K = int(cfg.get("act_every") or 1)
+                if a.knot % K or a.exec % K:
+                    raise SystemExit("--hold plans need --knot and --exec multiples of act_every")
+                n_dec = -(-len(res["off"]) // K)
+                acts = np.zeros((n_dec, 6), np.int8)
+                acts[:, 0], acts[:, 1], acts[:, 2] = 7, 3, 1
+                acts[:, 3] = res["side"][::K][:n_dec]
+                acts[:, 5] = res["duck"][::K][:n_dec]
+                vw = np.zeros((n_dec, 2), np.float32)
+                vw[:, 0] = res["off"][::K][:n_dec]
+                vw[:, 1] = -10.0
+                core1.set_spawn_pool(row0[None].copy())
+                obs0 = np.array(core1.reset(0))[0].astype(np.float32)
+                np.savez(out / f"plan_r{r}.npz", spawn_state=row0[None].copy(), obs_start=obs0,
+                         gate_seed=0, act_every=K, map=Path(map_path).stem, greedy_ticks=0,
+                         finish_ticks=int(ft), acts=acts, view=vw, view_continuous=1,
+                         view_mode=1, tick_ms=a.tick_s * 1000.0,
+                         tick_ms_requested=float(cfg.get("tick_ms") or 10.0),
+                         tick_pattern_ms=np.array([int(round(a.tick_s * 1000.0))]),
+                         objective="finish", source="tools/finish_mpc.py")
+                core1.set_spawn_pool(pool[:1].copy())
+                core1.reset(0)
             if ft is not None:
                 np.save(out / f"line_r{r}.npy", states)
                 np.savez(out / f"line_r{r}_acts.npz", off=res["off"], side=res["side"],
