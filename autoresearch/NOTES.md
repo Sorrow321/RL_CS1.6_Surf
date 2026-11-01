@@ -630,3 +630,10 @@ the curriculum's own backoff moves the band later if the launch from the root fa
   trough (60 s, 84 s). Training: contact records up to 92.0% per episode, reservoir deepest 92%
   (8.0% of d0), unstuck T 0.20 -> 0.17 (the eval frontier moved). Hand-on: ckpt_4883742720.pt
   (snapcopy, the eval's own step; pulled, md5 8b85ad3f). The incumbent never cleared this gate.
+* **rc3 07:21 UTC: 60.963 / 62.777 / 77.176 (5,110M, median 71.7%) / 61.657 / 62.264 / 59.033
+  (5,337M).** At 5,110M 7/9 greedy episodes leave the third structure onto the ridge (67-77%);
+  best 77.18% at z 1,506 (136 s; the record has 76% at z ~1,580 at t+370), all dead by 127-241 s.
+  The next three evals fell back to the old loop (59-62%): the launch is a close call in the
+  greedy and flips. Curriculum band at 19,346 (310 states before the root) at 93-96% success;
+  training contact records up to 93.9%, reservoir deepest 94% (6.0% of d0). Hand-on for 77.176:
+  ckpt_5110235136.pt (snapcopy, the eval's own step; pulled, md5 e3b26209).

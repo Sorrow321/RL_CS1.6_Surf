@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 72.105,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/traj_4883742720.jsonl",
+  "score": 77.176,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/traj_5110235136.jsonl",
   "run": "zlr2b1_rc3",
-  "step": 4883742720,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/ckpt_4883742720.pt",
+  "step": 5110235136,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/ckpt_5110235136.pt",
   "recipe": [
    "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3; flags restored)",
    "--ratchet-contact",
@@ -24,5 +24,5 @@
   "resume_from": "zlr2b1_rc2 ckpt_latest 4430233600 <- zlr2b1_rc1 4354211840 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
   "commit": "338783b9"
  },
- "summary": "72.105 at 4,884M (rc3; median 59.9%): the greedy now leaves the third structure onto the ridge top. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%); NEW --ratchet-contact pays only progress reached at contact ticks. Go-Explore rooted at the policy's own crest contacts (NEW tools/contact_roots.py, ge_contact_pick.py, contact_spine.py) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine with the band at the GE root, the curriculum walked back past the launch at 95-97% success in ~30 min and training reaches contact 92%. Next: keep training rc3, make it reliable, extend the frontier."
+ "summary": "77.176 at 5,110M (rc3; median 71.7%, 7/9 on the ridge top): the greedy now leaves the third structure onto the ridge top. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%); NEW --ratchet-contact pays only progress reached at contact ticks. Go-Explore rooted at the policy's own crest contacts (NEW tools/contact_roots.py, ge_contact_pick.py, contact_spine.py) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine with the band at the GE root, the curriculum walked back past the launch at 95-97% success in ~30 min and training reaches contact 92%. Next: keep training rc3, make it reliable, extend the frontier."
 }
