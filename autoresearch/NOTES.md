@@ -574,3 +574,11 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   pay the ratchet +40..60 progress points; the critic learns that up-slope speed on the ramp is
   worth a lot; the policy's own turns into the ramp get credited; and the launch states enter
   the reservoir (real episodes are harvested), so the upper structures get practised too.
+* The POLICY keeps the launch (07:15 UTC): `beam_tas --start-state` (greedy, 1 env, 7 s) from
+  6 of those heading-turned states of its own line (all on the NORTH part of the 3rd ramp,
+  y 2,380-2,880, turned 41-78 deg toward the ramp, speed x1.17-1.30): frontier d 312 / 711 /
+  743 / 1,345 / 1,496 / 1,632 u = **95.1 / 88.8 / 88.3 / 78.9 / 76.5 / 74.3%** (sampled every
+  0.7 s; no finish). The weights fly the launch up toward the finish height on their own: what
+  they lack is the turn that puts them into it.
+* Box: still refused at 07:07 (fleet burn 0.526 of 0.624 $/h; the cheapest acceptable offer is
+  now 0.387 $/h, so it fits only when the other 5080 is released).
