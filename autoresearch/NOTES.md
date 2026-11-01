@@ -1121,3 +1121,21 @@ suffix alone (to up-weight it by merging it again).
   4,000+ only at ~150-175 s, just before it dies off a swing end: SURVIVAL while pumping in the fifth
   loop is the other half of the finish.
 * p1-p5 (running): the late passes (--min-start-s 140), leads 0.25-1.2 s.
+* p1-p5 (late passes of greedy lines g1-g5, 151-168 s): **19 finishing DAgger lines** (g1 9 of 25
+  roots, g2 4, g3 1, g4 5, g5 0 of the first 19) - from E ~4,000+ states only, i.e. the last swings
+  before the greedy's death. The spliced lines finish 156.5 s after the TRUE start (the record: 450 s
+  on our clock).
+* c2 (spawn-only, 85 lines at ~10% of spawns): 96.783 / 96.503 / 96.441 (11.69-11.84B), no finish;
+  stopped at 11,881M.
+* **bc_dag1.npz** (md5 cc6526ba, 79.6 MB): plan_to_bc of the 19 spliced plans (one call per greedy
+  line: 109,921 rows of c1's OWN greedy decisions from the true start + the finishing suffixes) + the
+  19 suffix plans merged 5 times (~7k rows): 117,061 rows, 114 lines; suffix share ~6%.
+  pool_f5 = frontier_rc10 + 109 lines (the 85 + 24 DAgger lines) at share 0.5 (md5 40d2b934).
+
+### f2 `zlr3b1_f2` (19:42 UTC): c1's final + DAgger BC + line spawns + cold keys
+`--resume` (c1 11,691.6M, the policy the labels came from) + c1's flags + `--spawn-states
+runs/fmpc/pool_f5.npy --spawn-states-frac 0.2 --bc-file runs/dag/bc_dag1.npz --bc-coef 0.5
+--bc-coef-final 0.1 --bc-steps 6e8 --bc-target argmax --bc-pitch-coef 0 --bc-keys-engine --unstuck-max
+0`. BC at the start: head-acc 0.967, joint-acc 0.878, nll 0.15 (f1's foreign rows: memorised from a
+huge loss) - the rows mostly ARE the policy. Read it on: the first eval (one update: did BC break
+the route?), the greedy's fifth loop (does it turn up-slope early at E ~4,000 and finish?).
