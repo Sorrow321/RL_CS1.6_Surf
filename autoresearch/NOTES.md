@@ -1022,3 +1022,17 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
   (`--spawn-states-frac 0.15`). The line: autoresearch/spines/zlr3b1_fmpc_line_r41316.npy (md5
   7836d8a6) + its controls (_acts.npz). Provenance: the root is the incumbent's own greedy state
   (frontier pool row 41316); the rest is the engine MPC above. No demo. The trainer logged the re-read.
+* **The policy cannot reproduce a side-face (creep) finish:** beam_tas from the first line's states
+  4 / 12 / 32 / 72 ticks before its finish, 256 policy lineages each: 0 finishes. c1's training win
+  rate stayed 0.00% for 40M steps after the swap (~3.75% of spawns on the line). The line's finish is
+  the collision creeping 1/64 u onto the inflated face while standing (hull top 3,014); the policy
+  habitually ducks at apexes (hull top 18 u lower) and does not push into the face.
+* **The MPC's prior was the problem, not the physics.** NEW `--objective height` (reachability probe:
+  the plan's highest z): with sigma0 30 deg per independent 4-tick knot the best apex was 2,790-2,940;
+  the physics bound from these states is ~3,300 (a straight up-slope launch off a 49-deg ramp at
+  ~1,800 u/s). With a strafe-like prior (`--knot 8 --sigma0 5 --sigma-min 1 --max-offset 90 --iters
+  10`) the probe FINISHED 3/3 roots in 0.4-1.3 s of CPU, apexes to 3,076 (one definite finish: up
+  through the slot, over its south edge (y 40) with the hull clear of the platform top; two side-face
+  creeps at the band's north face y 1,312). The efficient up-slope turn is "hold A with 2-8 deg view
+  offsets", which an independent 30-deg draw per knot almost never produces.
+* s5 (running): that config over all 144 pre-exit roots (0.25-1.2 s before the exits): 12/14 so far.
