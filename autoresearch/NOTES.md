@@ -806,3 +806,8 @@ If it collapses again: drop --front-contact (rc7's stable mix).
   yet. 12:52: re-recording 9,171M to refresh the frontier pool; box extended.
 * 12:57 UTC: pool refreshed from rc9's 9,171M re-recording (9/9 at contact 85.5-85.6% by 110-115 s,
   alive 20-30 s past it; 34,387 states, autoresearch/spines/zlr2b1_frontier_rc9.npy, md5 771c31ea).
+* **rc9 13:19 UTC: 95.689 (9,549M) / 95.049 / 95.708 / 96.101 (9,775M, median 95.4%).** 8/9 at
+  95.0-96.1%, apexes to z 2,814 (194 u under the finish slabs, z 3,008), E max 3,900-4,390 (the
+  record's finish swing had ~4,100): the energy is there; the swing shape (horizontal speed at the
+  apex) is what still keeps them under the slabs. Training's deepest state 98.4%. No finish yet.
+  Hand-on for 96.101: ckpt_9775349760.pt (pulled, md5 aa33a79a).
