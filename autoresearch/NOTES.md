@@ -656,3 +656,39 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   The 97.8% route exists from the 169.3 s launch only (its arc heads north-east first), found by
   STAGED search (launch, then air control from the arc). The late fallback spine is the 164.4 s
   launch (77.68%, 5 s more margin before the incumbent's eval deaths at 171-187 s).
+
+### zlr2b4 round-2 lesson (DRAFT 14:10 UTC; the box never came - see Harness issue)
+
+**No eval this round**: `box.py rent` refused every attempt from 05:37 to at least 14:05 UTC
+(~350 tries) - two boxes of other branches held the fleet's budget pace all round. Everything
+below is CPU work on the droplet; nothing was trained. What the next round can use:
+
+1. **The field is ~height on this map** (z 1,500 in open air = 76%, z 2,500 = 93%), and the
+   incumbent carries E ~4,500 at its loop tops (z ~716): its frontier is a CONVERSION problem.
+2. **NEW `tools/cem_launch.py`** (tests/python/test_cem_launch.py): physics-exact CEM from the
+   policy's OWN saved greedy line (`beam_tas --save-frontier --frontier-last`), per-knot view
+   offsets IN UNITS OF atan(30/|v|) + side / forward keys, then no keys; scored on the grader's
+   max progress; `--spine` writes the line's prefix + the replayed flight as a curriculum spine.
+   The unit is the whole trick: offsets drawn in degrees almost never strafe (a wish direction
+   more than ~0.7 deg off perpendicular adds nothing at 2,300-2,900 u/s) and the same search was
+   null.
+3. **Physical lines from the incumbent's own states** (`autoresearch/spines/zlr2b4_*`): a launch
+   off the bottom of its 3rd ramp (y ~1,650, heading north at >= 2,750 u/s) on every lap from
+   149 s: 75-79%; from the 169.3 s launch, STAGED air-control searches reach a higher ramp and
+   surf up it: 93.4%, then 97.8% (under the finish platform; the way round its edge not found,
+   best 98.07%). Robust to +-2 deg heading / +-3% speed at the root (12/12 > 70%).
+4. NEW `beam_tas --fork-sweep` (tests/python/test_fork_sweep.py): the policy forked off its own
+   line at every tick of a window. Its first use (1 s random-view bursts) was a null: too
+   destructive. Kept as a tool.
+5. Rejected on evidence: held scripted macros + coast (null from 49k rollouts); the record's turn
+   toward the pillar is not reproducible by macros even from its own states (ANALYSIS ONLY);
+   heading-perturbed restarts (`--respawn-front-perturb-band 0.99`) launch to 75-95% but those
+   turns are not physical (a 60-90 deg instant turn), so the plan moved to physical CEM lines.
+
+**What to run first next round** (the staged command in this branch's history): resume the
+incumbent with `--demo-file autoresearch/spines/zlr2b4_cem978_spine.npy --demo-cooldown 5
+--demo-grow-max 40 --demo-milestones 5859,1334,422 --fail-pen 3` (backward curriculum from the
+97.8% end; the launch apex and the first air line pay as milestones), launched with
+`--self-states` naming the provenance above. If the curriculum stalls at the far stages, the
+launch-only spines (`zlr2b4_cem164_spine.npy` 77.7%, `zlr2b4_cem169_spine.npy` 79.0%) teach the
+launch alone.
