@@ -744,3 +744,7 @@ so the frontier pool can be refreshed from newer re-recordings without a restart
   there (~55 s for the record), then that swing.
 * 10:11 UTC: re-recording rc7's 7,302M weights (dump states) to REFRESH the --spawn-states pool in
   place (the trainer re-reads the file when it changes; the 15% share stays).
+* 10:17 UTC: rc7's 7,302M greedy re-recording: 6/9 reach contact 85.5% at 114-119 s (20 s faster
+  than at 6,111M) and die ~7 s later; 2/9 sit 910 s in the first trough (contact ~20%). The new pool
+  (tools/frontier_states.py, 4,859 states, autoresearch/spines/zlr2b1_frontier_rc7.npy, md5
+  a64769ff) replaced the spawn-states file in place.

@@ -489,3 +489,7 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   same 6,111M greedy re-recording: the 4 episodes whose contact record reached >= 97% of the best
   (84.7-85.6%), states from 8 s before the last contact-record improvement to 1.5 s before death
   (the third structure's last laps, the launch, the ridge, the block's east side), stride 2.
+* `zlr2b1_frontier_rc7.npy` (4,859 states): the same rule on zlr2b1_rc7's 7,302M weights (greedy
+  re-recording, 9 episodes: 6 reach contact 85.5% at 114-119 s, die ~7 s later; 2 stuck 910 s in the
+  first trough). Swapped in place into rc7's --spawn-states file (runs/sp2/frontier_6110.npy on the
+  box) at ~10:17 UTC; the trainer re-reads it on the mtime change.
