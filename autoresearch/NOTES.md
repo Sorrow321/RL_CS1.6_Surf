@@ -569,3 +569,25 @@ ANALYSIS ONLY (record_ckpt --dump-states of the incumbent on CPU, 190.8 s; slabo
   beams forked at 91/96/101/106/111 s - five forks on a 5.0 s loop, likely all the same phase.
 * --view-ou-sigma (trainer) does NOT teach a found offset: the stored z is the un-offset draw,
   so PPO learns robustness to the offset, not the offset. A found line is taught by a spine.
+
+### The pillar climb in OUR core: it is a 1-2 deg held yaw offset during the right-strafe turn (07:10 UTC)
+ANALYSIS ONLY (the record's state and inputs fed to our core; physics-only probes from the
+incumbent's own states):
+* Our core reproduces the record's climb from its own state with its own inputs (keys + yaw
+  offset relative to the SIM's velocity) to within 1-30 u for 2.7 s: up the face at x -1,616 to
+  z 642, onto the pillar top. The move exists in the simulator.
+* What it takes (same record state, its keys, only the yaw offset during its 0.81 s right-strafe
+  hold changed): offset 0 / -0.5 deg -> no climb at all; -1.0 -> z 432-462; -1.5 -> 521;
+  -2.0 -> 558; the record's own (-0.2..-1.7, -5 at the landing) -> 642. A wish direction a degree
+  BEHIND the perpendicular raises GoldSrc's addspeed (30 - v.wishdir) and the turn rate ~2.6x.
+  The incumbent strafes the same ramp with the same key (D, 1.06-1.37 s from its landing) at
+  offset 0.0 (+-0.1): its yaw z-sigma 0.043 is ~0.15 deg, so a held 1-2 deg offset is ~10 sigma
+  and never explored. Its arc also lands heading 116-137 deg (the record 112): from the
+  incumbent's own landing state the record's control sequence does not climb (z -617), and
+  constant held offsets reach the face only at z 150-350 (E 2,000-3,500; the top is 573-640).
+* Search plan for the box (generic): beam from the true start on the incumbent, the policy's own
+  proposals + --view-hold SIGMA ~0.3 (z; ~1-3 deg held, the scale above), resampling every
+  ~10 decisions to refine a turn inside one pass, novelty half from ~60 s (position cells: the
+  face and the pillar top are new places; the top, 61.6%, is BELOW the loop's 64% arc top, so
+  depth alone never keeps it). A full spine needs climb + landing + pumping the pillar-top ramp
+  past ~z 750 (>64.7%; the record's swing tops there reach z 797 after ~6 s, 881 after ~10 s).
