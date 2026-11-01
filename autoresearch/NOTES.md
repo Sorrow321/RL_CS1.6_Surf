@@ -537,3 +537,31 @@ the turn is a COMMITTED deviation of ~0.5 s; i.i.d. per-decision noise never pro
 burst can. Read it on: does any training episode reach the block's top / fourth structure (the
 reservoir's deepest, the frontier perturb best), then the greedy evals vs the incumbent's
 progress.csv at matched steps (E13: 63.2-64.7% at 4.0-4.7B).
+* **EZ1 = NEGATIVE, stopped at ~4,165M (05:47 UTC, ~130M steps).** Evals: 64.1% (4,032.8M, the
+  resumed weights) / **54.07** (4,108M: 9/9 die at 57-96 s, several off the WEST side at the west
+  bottom). Training: yaw sigma 0.044 -> 0.077, the frontier band 63.6% -> 59.3% (the reservoir's
+  deepest receding), stall kills ~17%. Why: the burst rows are dropped from the PPO loss but the
+  GAE returns of the ON-policy rows before a burst include the burst's outcome (often a fall), so
+  those actions get noise advantages - the policy is pushed off its own line (sigma inflates).
+  ez-greedy as implemented here is not sound for an on-policy learner at eps 0.01; the trace would
+  have to be cut at the burst start (bootstrap V there). Pulled; ckpt_4132438016 not handed on.
+
+### The turn, measured (ANALYSIS of the record + a diagnostic on the policy; nothing enters training)
+* The incumbent makes the SAME right turn up the bowl's curved floor at the west bottom as the
+  record - side key held right, view on the velocity - but ~600 u further NORTH: its heading
+  passes 88 deg at y ~1,476 and 12 deg at y ~2,340 (t 94.9-95.5 s), so it rises past the block's
+  NORTH end (the block spans y ~400..2,000) into open air and carries on round the circuit. The
+  record bottoms out at y ~973 and is heading east at y ~1,567, into the block's west face. In the
+  velocity frame the record holds its view ~1.5 deg RIGHT of the velocity through the curve
+  (yaw - v-heading -1.2..-1.7), the policy 0..+0.3 deg; their approaches differ too (heading 116 vs
+  131 deg at the same point, the policy's south loop is wider). So the gap is a held ~1-2 deg view
+  offset / a tighter approach, not a big discrete manoeuvre - but between the policy's line and the
+  record's lies the block's north end (a crash zone), which the policy has learned to clear.
+* Diagnostic 1 (record_ckpt --spawn-states from the policy's own greedy states at the west bottom,
+  the velocity ROTATED 15-75 deg east, 20 s greedy): 0/17 reach the block top - an instant velocity
+  rotation slams the player into the curved floor (E 2,001 -> 1,449 / 883 / 286 within 0.1 s at
+  30 / 45 / 60 deg). A bad proxy: the record turns by surfing the curvature (E ~conserved).
+* Diagnostic 2 (running): a HELD yaw-command offset (record_ckpt --nudge-yaw -1..-8 deg, --nudge-hold
+  15 / 35 decisions) from the policy's states 2.0 / 1.4 / 0.8 s before the turn.
+* Control `zlr2b3_ctl` (05:49 UTC): the incumbent's exact config continued on this box (same-card
+  baseline; every eval a chance above 64.671).

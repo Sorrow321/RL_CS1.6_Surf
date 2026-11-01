@@ -2243,6 +2243,14 @@ def main():
                     "starts a search from the greedy's own state at any tick (the --keys-hold-"
                     "safe twin of --greedy-prefix, which refuses a --keys-hold checkpoint). "
                     "Off = the deepest-d rule, byte-identical")
+    ap.add_argument("--dump-paths", default=None, metavar="NPZ",
+                    help="population mode: also write EVERY env's position (and whether its "
+                    "lineage is still the original live run) every --dump-every ticks to this "
+                    ".npz (pos (T, N, 3) float32, valid (T, N) bool, tick (T,), plus the branch "
+                    "tags), so a sweep can be read for WHERE its lineages went, not only for the "
+                    "deepest one. Off = byte-identical")
+    ap.add_argument("--dump-every", type=int, default=14,
+                    help="--dump-paths: ticks between two recorded rows")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -3126,6 +3134,7 @@ def main():
               f"cap {max_ticks} ticks ({secs(max_ticks):.1f}s)"
               + (f", greedy prefix {prefix} ticks ({secs(prefix):.2f}s)"
                  if prefix else "") + f", score {args.score}")
+        dump_pos, dump_valid, dump_tick = [], [], []
         t_loop = time.time()
         for t in range(t_start, max_ticks):
             d = t // K
@@ -3302,6 +3311,12 @@ def main():
                                        None if hist_p is None else hist_p[:d + 1, i].copy(),
                                        None if hist_z is None else hist_z[:d + 1, i].copy())))
                 valid &= ~dead
+            if args.dump_paths and (t + 1) % max(1, int(args.dump_every)) == 0:
+                # --dump-paths: every env's post-step origin and whether it is still its
+                # original live run (a dead env already holds its respawn)
+                dump_pos.append(np.asarray(coreN.states_view["origin"], np.float32).copy())
+                dump_valid.append(valid.copy())
+                dump_tick.append(t + 1)
             if best is not None and args.gens > 0 \
                     and gen - best_gen >= args.gens:
                 break
@@ -3478,6 +3493,16 @@ def main():
                           + f"finishes={len(finishes)}")
         dt_loop = time.time() - t_loop
         n_ticks = t + 1 - t_start
+        if args.dump_paths:
+            np.savez_compressed(
+                args.dump_paths,
+                pos=(np.stack(dump_pos) if dump_pos else np.zeros((0, N, 3), np.float32)),
+                valid=(np.stack(dump_valid) if dump_valid else np.zeros((0, N), bool)),
+                tick=np.asarray(dump_tick, np.int64),
+                br_tag=(np.asarray(br_tag, bool) if br_kind is not None
+                        else np.zeros(N, bool)),
+                br_fired=np.int64(br_fired), tick_ms=np.float64(TICK.ms))
+            print(f"--dump-paths: {len(dump_tick)} rows x {N} envs -> {args.dump_paths}")
         fps = n_ticks * N / max(dt_loop, 1e-9)
         print(f"search done: {n_ticks} ticks x {N} envs in {dt_loop:.0f}s "
               f"({fps:,.0f} env-steps/s), {len(finishes)} finishes, "
