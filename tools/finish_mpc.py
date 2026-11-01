@@ -204,12 +204,17 @@ def main(argv=None):
     ap.add_argument("--sigma-min", type=float, default=2.0, help="deg")
     ap.add_argument("--energy-w", type=float, default=0.05)
     ap.add_argument("--dist-every", type=int, default=2)
-    ap.add_argument("--floors", choices=("none", "trace"), default="none",
+    ap.add_argument("--floors", choices=("none", "trace", "mix"), default="none",
                     help="none (default): the gap to the hull-inflated finish boxes - a hull "
                          "sliding up a platform's SIDE touches the box once its top passes the "
                          "box bottom, which the core counts (the collision creeps onto the "
                          "inflated face) and so does the grader (1 u slack); trace: the region "
-                         "must also clear a solid floor under each box (stricter)")
+                         "must also clear a solid floor under each box (stricter); mix: none "
+                         "+ --mix-w x trace - at a platform's side the hull touches the box "
+                         "(gap ~0) but the core fires only when the collision creeps onto the "
+                         "face, so among those the higher apex (clearing the floor, a definite "
+                         "finish) ranks first")
+    ap.add_argument("--mix-w", type=float, default=0.5)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
     import torch
@@ -237,9 +242,19 @@ def main(argv=None):
         raise SystemExit(f"{a.states}: not a STATE_DTYPE array")
     boxes = zones["end"].get("boxes") or [{"mins": zones["end"]["mins"],
                                            "maxs": zones["end"]["maxs"]}]
-    floors = goal_box_floors(core1, boxes) if a.floors == "trace" else None
-    scorer = make_scorer(_ZeroField(), None, 0.0, "gap",
-                         goal_boxes=[[b["mins"], b["maxs"]] for b in boxes], goal_floors=floors)
+    floors = goal_box_floors(core1, boxes) if a.floors in ("trace", "mix") else None
+    _bx = [[b["mins"], b["maxs"]] for b in boxes]
+    scorer = make_scorer(_ZeroField(), None, 0.0, "gap", goal_boxes=_bx,
+                         goal_floors=floors if a.floors == "trace" else None)
+    if a.floors == "mix":
+        _plain, _floored = scorer, make_scorer(_ZeroField(), None, 0.0, "gap", goal_boxes=_bx,
+                                               goal_floors=floors)
+
+        def scorer(states):
+            _s, g0 = _plain(states)
+            _s, g1 = _floored(states)
+            g = g0 + float(a.mix_w) * g1
+            return -g, g
     print(f"finish_mpc: {Path(map_path).name} tick {a.tick_s * 1000:.2f} ms, maxvel "
           f"{cfg.get('maxvel')}, view {cfg.get('view_absolute')}, floors {floors}; pop {a.pop} "
           f"plan {a.plan}s exec {a.exec} knot {a.knot} iters {a.iters}", flush=True)
