@@ -188,3 +188,8 @@ idle for the first third of its round.
 * 03:46 UTC: still no box (10 h 36 min of refusals since 17:10). The launcher is stopped: a box
   from now on would train ~20 min before the 04:29 wrap-up (deploy + compile + record gate take
   ~25 min), too little for an eval worth its rent. Nothing was ever rented by this branch.
+* GE 128 u, **150 min, seed 11**: 455,728 cells, loop-1 E max -2,044, best 12.77% at
+  (841, 81, -2,592) (186 u/s, on the slab's east edge), **no loop-2 state** - against seed 9's
+  -1,765 / 15.44% / 57 loop-2 states in 90 min. The search's seed variance is large: one seed
+  pumped ~280 u further in 60% of the time. Run several seeds in parallel (one core each) rather
+  than one long run.
