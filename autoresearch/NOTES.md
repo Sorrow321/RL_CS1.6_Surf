@@ -1066,3 +1066,8 @@ band success.
 ### c3 `zlr3b2_c3` (20:13 UTC): c2 continued
 c2's ckpt_final + c2's exact flags (`--demo-tau0 8510` = c2's last GE tau; the finish-line curriculum
 restarts at its line's end - its position is not in a checkpoint), budget 6e9, snapcopy beside it.
+* c3 20:41 UTC (13.75-14.43B): 117.284 (8/9, 144.48 s) / 116.204 (7/9, 141.61 s) / 116.156 / **118.426
+  (13,979M: 9/9, 141.68 s)** / 116.201 / 116.210 / 115.086 / 115.101 / **118.451 (14,356M: 9/9, best
+  139.42 s)** / 113.969 (5/9). 5-9 finishes per eval; the best times creep down 144 -> 139 s. Hand-on
+  for 118.451: snapcopy's ckpt_14356054016.pt (the eval's own step; pulled, md5 9693ab6b). The
+  finish-line curriculum re-walked to 163 s before its line's finish within ~20 min of the launch.

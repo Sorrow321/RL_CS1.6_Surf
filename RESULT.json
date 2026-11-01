@@ -3,11 +3,11 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 118.403,
-  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c2/traj_13563854848.jsonl",
-  "run": "zlr3b2_c2",
-  "step": 13563854848,
-  "ckpt": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c2/ckpt_13563854848.pt",
+  "score": 118.451,
+  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c3/traj_14356054016.jsonl",
+  "run": "zlr3b2_c3",
+  "step": 14356054016,
+  "ckpt": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c3/ckpt_14356054016.pt",
   "recipe": [
    "(resume of c1's ckpt_latest <- incumbent ckpt_11096031232; every flag restored)",
    "--demo-file",
@@ -31,8 +31,8 @@
    "--front-temp",
    "0.5"
   ],
-  "resume_from": "zlr3b2_c1 ckpt_latest (md5 e08fb8c1) <- incumbent r2",
+  "resume_from": "zlr3b2_c2 ckpt_final (md5 e1234304) <- c1 ckpt_latest (e08fb8c1) <- incumbent r2 (zlr2b1_rc10 ckpt_11096031232)",
   "commit": "2b320cf4"
  },
- "summary": "118.403: c2 at 13,564M finishes surf_za_loop from the true start 9/9 (best 143.76 s; the record is 450.46 s on our clock), from the incumbent's 98.329 (0 finishes). How: policy beams from the incumbent's own greedy lines (beam_tas --prefix-line, 4096 envs, --score dh = -d + energy height, ~100 s spans) found finishing lines (180.9-211.5 s); NEW --finish-line runs a second backward curriculum (the trainer's DemoCurriculum) on the 180.9 s line on its own 15% pool share beside the GE spine curriculum: walked back 0 -> 159 s before the finish in ~60 min; first greedy finish after ~35 min, 4-8/9 after ~60. Uniform pool spawns on the same lines (c1, 97.797) did not teach it. Next: speed."
+ "summary": "118.451: c3 (c2 continued) at 14,356M finishes surf_za_loop from the true start 9/9 (best 139.42 s; the record is 450.46 s on our clock), from the incumbent's 98.329 (0 finishes). How: policy beams from the incumbent's own greedy lines (beam_tas --prefix-line, 4096 envs, --score dh = -d + energy height, ~100 s spans) found finishing lines (180.9-211.5 s); NEW --finish-line runs a second backward curriculum (the trainer's DemoCurriculum) on the 180.9 s line on its own 15% pool share beside the GE spine curriculum: walked back 0 -> 159 s before the finish in ~60 min; first greedy finish after ~35 min, 4-8/9 after ~60. Uniform pool spawns on the same lines (c1, 97.797) did not teach it. Next: speed."
 }
