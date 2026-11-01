@@ -1024,3 +1024,14 @@ Gaussian), 4,096 sequences per iteration, the 64 closest (macro_finish.goal_scor
   of the file (tools/finish_pool.py --secs 3 --frac 0.4).
 * cem_b (18:57 UTC): the same planner on 14 more contact roots of the pool (the macro search's
   best ones, north- and south-heading), at most 3 finishes per root.
+* cem_b (14 more contact roots, 25 iterations): 0 finishes; the closest north-heading ramp roots
+  ended 17-72 u short (47150 17, 39575 32, 27950 45, 27925 65, 41375 72), the south-heading ones
+  222-305 u short. cem_c (the close ones, 50 iterations, seed 1): **9 finishes** - root 47150 x4
+  (iterations 33-38), 39575 x1 (iteration 48), 5300 x4 (iterations 23-25), 1.89-2.05 s each, all
+  replayed exact; 47175 with seed 1 found none (best 99): a CEM run per root is a coin flip, so more
+  roots beat more iterations. 17 lines from 3 of the re-recording's 8 episodes; every successful root
+  is the swing's north-going bottom on the ramp ((174-190, 293-623, ~1,800), 1,850-1,910 u/s).
+* Pool B (`autoresearch/spines/zlr3b3_pool_b.npy`, md5 0389cae8, 80,280 states): the rc10 frontier
+  pool + the 17 lines at 40.5%.
+* cem_d (19:34 UTC): 16 roots from all 8 episodes, the contact states nearest (position / 200 +
+  velocity / 300) to the successful roots, 50 iterations, at most 2 finishes each.
