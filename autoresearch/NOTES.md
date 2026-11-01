@@ -990,3 +990,9 @@ CPU analysis and tooling first.
   own within ~0.6-1.0 s of the launch. Flying north along x ~0 alone would bring the policy's apex
   (2,845) within ~130-180 u of the strip's top; it needs ~150 u more apex too (vz ~1,300 at the edge).
 * 19:07 UTC: still no box (fleet burn 0.55 of 0.646 $/h, 2 boxes); the retry interval cut to 45 s.
+
+### Harness issue (zlr3b4, 19:40 UTC): two boxes hold the whole pace
+From 17:39 to at least 19:40 UTC every `box.py rent` of this branch was REFUSED: the fleet burn was
+0.55 $/h with two boxes against a 0.645 $/h limit, so the 0.096 $/h left fits no offer (the
+cheapest cards run ~0.15). Two of the four branches can therefore sit without a box for hours of a
+12 h round. Not worked around: the branch retries every 45 s (scratchpad script) and did CPU work.
