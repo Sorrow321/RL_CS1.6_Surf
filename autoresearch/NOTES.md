@@ -498,3 +498,30 @@ target - kill by pid file, launch in a separate call; snapcopy can leave a 40M g
   64.671** (best of 133 greedy evals over 13 runs; `score.py --best runs/zlr1b4/*/`), hand-on
   **ckpt_4032299008.pt** (zlr1b4_e13, 2.1M before the eval; pulled with E13's ckpt_latest). Box
   58559819 (RTX 3090, 0.20 $/h, ~11.2 h ~ $2.3) released.
+
+## zlr2b4 (round 2, slot 4) - 2026-11-01 05:21 UTC start
+
+Fork of zlr1b4's winning branch (base 401f4007). Incumbent: 64.671 (zlr1b4_e13 at 4,034M,
+ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the fleet's burn
+0.526 of 0.623 $/h with two boxes up; analysis on the droplet's CPU meanwhile.
+
+### The map past 64% (ANALYSIS ONLY; collision traces, no demo in training)
+* `maps/*.occ_32.npz` is stored [iz, iy, ix] (z first): a first plot read it as x-first and showed
+  nonsense. The loop ramps are thin brushes the 32 u occupancy barely sees; point traces from
+  above (core.trace, 48 u grid) find the surfaces.
+* The THIRD structure is ONE long ramp along y (x -2,400..-2,000, z -1,350..-900, facing WEST-up,
+  ~48 deg) with curved "loops" at both ends (y ~0 and ~2,800) that turn a rider through 180 deg
+  and lift it: the incumbent's swing tops (z ~650-716, 64.5%) are the tops of those loops, at
+  x 0..+600 east of the pillar. Its oval circles the pillar; the energy it adds goes into a wider
+  oval (E ~4,500 at the end) until it flies off it eastward and falls (172-187 s, 9/9).
+* The FOURTH structure: a 45-deg ramp facing WEST on top of a solid pillar (x -1,650..-1,250,
+  y 450..1,900, z 620 at its west edge -> 1,020 at its east edge; a flat top z ~1,020 east of it).
+  The pillar is solid from the floor to z ~620 under the ramp; its west face is x = -1,600.
+* **The grader's field is ~height here**: d at (x, y, z) in open air ~ (3,008 - z) + detours:
+  z 700 = 64.4%, z 1,020 = 68.7%, z 1,200 = 71.6%, z 1,500 = 76.3%, z 1,800 = 81.0%, z 2,100 =
+  86%, z 2,500 = 92.7% (sampled with score.field()). The score is max progress over an episode,
+  so a transient apex counts in full.
+* So the policy has the ENERGY to score far more (E ~4,500 = the height it could reach) and lacks
+  only a way to convert it: a launch with a large vertical speed (off the 3rd ramp's top edge
+  toward the pillar - the record rises 1,200 u up the pillar's west face that way - or onto the
+  4th ramp from the west, which would throw a fast rider up-slope).
