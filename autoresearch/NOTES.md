@@ -957,7 +957,7 @@ every 25 decisions). ~270k env-steps/s on the 5080 beside training; a 42 s span 
   upward momentum carries it ~145 u into the south-west wide slab at (-1,792, -752, 3,030) (slab y
   -736..40, hull edge -752). Not the record's north-strip entry: a route of its own. Physics checked:
   vz 491 at z 2,886 gives z ~3,031 after 0.5 s of gravity.
-* 18:04 UTC: c1's pool swapped in place: `tools/finish_pool.py --base <rc10 frontier pool> --line
+* 18:00 UTC: c1's pool swapped in place: `tools/finish_pool.py --base <rc10 frontier pool> --line
   runs/beam/r3dhL/beam_frontier.npz --secs 30 --share 0.5` (95,586 states: the rc10 frontier pool +
   the line's last 30 s x11.2 = half; md5 9f7b952e). Re-read by the trainer at step 11,452M. Its
   training win rate jumped to 5-13% at "@ 0.1 s" - the pool's last-tick spawns finishing at once
@@ -971,7 +971,7 @@ every 25 decisions). ~270k env-steps/s on the 5080 beside training; a 42 s span 
   touched (the core's inclusive hull box; GoldSrc's absmin/absmax are even 1 u wider). Saved:
   `autoresearch/spines/zlr3b2_finish2.npy` (30,219 states, md5 96d6fe85). A higher energy weight
   (2 vs 1) found 11 finishers to 1: the selection keeps the lineages that pump.
-* 18:14 UTC: c1's pool rebuilt from BOTH routes (`--line r3dhL --line r3dh2 --secs 30 --share 0.5`,
+* 18:04 UTC: c1's pool rebuilt from BOTH routes (`--line r3dhL --line r3dh2 --secs 30 --share 0.5`,
   95,586 states, md5 a95d0112).
 * Side effect to watch: the reservoir harvests a finishing episode's whole chain (no pre-end margin
   on a success), so its deepest states are now beside the slab, and --respawn-front-perturb (25% of
@@ -984,7 +984,7 @@ every 25 decisions). ~270k env-steps/s on the 5080 beside training; a 42 s span 
 * c1 evals after the pool swap: 11,474M 0/9 (deaths 157-188 s), 11,549M 0/9 (deaths 128-229 s; 3/9
   stalled in the first trough at ~30 s). Training win rate 0-1.2% "@ 0.7 s": the policy's own
   samples rarely reproduce a finish from a pool state more than ~1 s out.
-* 18:22 UTC: pool -> the last 10 s of the three winners (r3dhL, r3dh2, r1dhL) at 70% + the rc10
+* 18:08 UTC: pool -> the last 10 s of the three winners (r3dhL, r3dh2, r1dhL) at 70% + the rc10
   frontier states at 30% (159,310 states, md5 2dce6db4), swapped at ~11,589M: a manual backward step
   (the trainer's own curriculum holds the GE spine); widen the window once the training win rate
   shows finishes from further out.
