@@ -552,3 +552,25 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   after its fork (the grader's max progress); `--save-frontier` writes the deepest env's line
   (prefix + its own flight, replayed exact). Generic: the junction search of --branch-at asked at
   every tick of a window. CPU smoke (8 envs, 3 forks at 140-142 s): replay exact, prefix identical.
+
+### The lead: perturbed restarts BEHIND the frontier (06:45 UTC, physics probe; ANALYSIS)
+* CPU fork sweep (`--fork-sweep`, 1 env per 0.5 s over 90-170 s of the incumbent's own greedy
+  line, a 1 s held random-view burst, then the sampled policy): NULL - best 64.49% vs the greedy's
+  64.41%. The absolute random view targets were too destructive: most forks never rose above
+  their fork point. (The record's own launch is not reproduced by held macros either, even from
+  its own states: a held command + coast tops out at z -43 where the record went to z 644.)
+* **But the policy's OWN states with the HEADING TURNED do launch** (`probe/rot_probe.py`: 252
+  of its greedy states over 90-178 s, 12 draws each of turn U(-90, 90) deg and speed x U(1, 1.3)
+  - exactly what `--respawn-front-perturb` does to a reservoir row - then a passive coast):
+  **11.7% of the 3,024 rollouts beat 64.7%, 7.9% beat 66%, p99 73.9%, max 94.05% (apex z
+  2,869)**. The deep ones all start ON the 3rd ramp (own progress ~29%), velocity turned
+  60-90 deg toward the ramp (up-slope): the ramp itself throws them up to z 1,600-2,900.
+* So the transition is decided BEHIND the frontier (on the 3rd ramp at ~29-32%), where the
+  recipe never perturbs: `--respawn-front-perturb 0.25` (incumbent) touches only the reservoir's
+  deepest 0.5% (`--respawn-front-perturb-band 0.005`) = the loop tops in mid-air, where a turn
+  does nothing. Generic fix: widen the band to the whole route (B = 0.99; B must be < 1). The
+  class's own docstring is this case ("the same place, another heading, more energy"), only
+  behind the frontier instead of at it. The hoped-for pathway: perturbed episodes that launch
+  pay the ratchet +40..60 progress points; the critic learns that up-slope speed on the ramp is
+  worth a lot; the policy's own turns into the ramp get credited; and the launch states enter
+  the reservoir (real episodes are harvested), so the upper structures get practised too.
