@@ -3,16 +3,23 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 97.75,
-  "eval_file": "/home/steam/ar_loop/runs/zlr3b1/zlr3b1_c1/traj_11172052992.jsonl",
-  "run": "zlr3b1_c1",
-  "step": 11172052992,
-  "ckpt": null,
+  "score": 98.407,
+  "eval_file": "/home/steam/ar_loop/runs/zlr3b1/zlr3b1_f5/traj_11843141632.jsonl",
+  "run": "zlr3b1_f5",
+  "step": 11843141632,
+  "ckpt": "/home/steam/ar_loop/runs/zlr3b1/zlr3b1_f5/ckpt_11891900416.pt",
   "recipe": [
-   "(resume of the incumbent, rc10's flags)"
+   "(resume of c1's final 11,691.6M = the incumbent + 595M steps of rc10's flags)",
+   "--spawn-states",
+   "runs/cur/pool_cur.npy (frontier_rc10 + the last 1.0 s of 55 definite finishing lines from tools/finish_mpc.py / dagger_finish.py, share 0.5; NEW pool_add_lines --tail-s)",
+   "--spawn-states-frac",
+   "0.2",
+   "--demo-tau0",
+   "9170",
+   "(the rest restored: --ratchet-contact 1, GE spine, --front-contact 1 --front-temp 0.5)"
   ],
-  "resume_from": "incumbent r2 ckpt_11096031232",
-  "commit": "0c47e014"
+  "resume_from": "zlr3b1_c1 ckpt_latest 11691622400 <- incumbent r2 ckpt_11096031232",
+  "commit": "de64878f"
  },
- "summary": "Best 97.75 (c1). 0 finishes so far. NEW tools/finish_mpc.py + tools/dagger_finish.py: the engine MPC finishes from the policy's own pre-exit states at E >~4,000 (60 roots on c1's greedy lines; finishes 156 s after the true start), never below ~3,850. BC on MPC rows alone broke the route (f1); BC on the policy's own greedy route + MPC suffixes (DAgger, f2) kept it and made the early route reliable (9/9 to the fifth loop) but no finish: the greedy dies one swing short of E 4,000. f3 (20:38): conflict-free DAgger BC (bc_dag2). Next: labels that survive one more swing then finish."
+ "summary": "98.407 (f5 at 11,843M: one episode passes 116 u from the finish at z 2,856; 0 finishes) > the incumbent's 98.329. NEW tools/finish_mpc.py: engine MPC from the policy's own pre-exit states finds finishes from E >~3,950 exits (145 lines, 55 definite). BC on them failed (f1 broke the route; DAgger f2/f3 kept it but could not reproduce knife-edge MPC finishes). Working now: a backward curriculum over the lines' tails by RL (f4 finished from 1.0 s out, then its route collapsed at a 30% pool share; f5 = c1 + 20% share). Next: extend the tails toward the policy's own exits."
 }
