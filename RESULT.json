@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 78.858,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/traj_4259315712.jsonl",
+  "score": 89.519,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/traj_4334813184.jsonl",
   "run": "zlr2b3_s70d",
-  "step": 4259315712,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/ckpt_4233625600.pt",
+  "step": 4334813184,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/ckpt_4334288896.pt",
   "recipe": [
    "(incumbent ckpt, everything restored: per-call --energy-pot 12, --energy-stall 32, --fail-pen 3, respawn-greedy, front-perturb)",
    "--demo-file",
@@ -47,5 +47,5 @@
   "resume_from": "incumbent r1 ckpt.pt = zlr1b4_e13 ckpt_4032299008 (md5 036960d8)",
   "commit": "3e4860dd"
  },
- "summary": "78.858 (S70d at 4,259M; 78.789 at 4,222M with 7/9 greedy episodes from the true start taking the new route: north-end launch -> block top -> ramp launch to ~78%). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top (the fourth structure) in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the recording's early route (without it the anchored curriculum forgot the early route and collapsed, S70). Training episodes reach 93.8% (the upper loop). Next barrier: the greedy flies east off the ramp launch at ~78% and falls instead of entering the upper loop."
+ "summary": "89.519 (S70d at 4,335M: a greedy episode from the true start took the north-end launch -> block top -> ramp launch -> the upper loop's swing top at 89.52%, z 2,291; 78.79 at 4,222M with 7/9 launches). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top (the fourth structure) in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the recording's early route (without it the anchored curriculum forgot the early route and collapsed, S70). Training episodes reach 93.8%. Next: launch reliability (2-7/9 per eval) and the finish (the record pumps the upper loop to E ~4,000 and launches onto the top platform)."
 }
