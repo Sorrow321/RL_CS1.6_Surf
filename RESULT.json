@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 89.519,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/traj_4334813184.jsonl",
+  "score": 91.729,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/traj_4523556864.jsonl",
   "run": "zlr2b3_s70d",
-  "step": 4334813184,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/ckpt_4334288896.pt",
+  "step": 4523556864,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/ckpt_4485283840.pt",
   "recipe": [
    "(incumbent ckpt, everything restored: per-call --energy-pot 12, --energy-stall 32, --fail-pen 3, respawn-greedy, front-perturb)",
    "--demo-file",
@@ -47,5 +47,5 @@
   "resume_from": "incumbent r1 ckpt.pt = zlr1b4_e13 ckpt_4032299008 (md5 036960d8)",
   "commit": "3e4860dd"
  },
- "summary": "89.519 (S70d at 4,335M: a greedy episode from the true start took the north-end launch -> block top -> ramp launch -> the upper loop's swing top at 89.52%, z 2,291; 78.79 at 4,222M with 7/9 launches). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top (the fourth structure) in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the recording's early route (without it the anchored curriculum forgot the early route and collapsed, S70). Training episodes reach 93.8%. Next: launch reliability (2-7/9 per eval) and the finish (the record pumps the upper loop to E ~4,000 and launches onto the top platform)."
+ "summary": "91.729 (S70d at 4,524M, median 90.9%; 91.691 at 4,486M, median 90.8%): most greedy episodes from the true start now take the north-end launch -> block top -> ramp launch -> the upper loop's swing tops (~91%). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top (the fourth structure) in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the recording's early route (without it the anchored curriculum forgot the early route and collapsed, S70). Next: the finish (the record pumps the upper loop to E ~4,000 and launches north onto the top platform; no finish yet)."
 }
