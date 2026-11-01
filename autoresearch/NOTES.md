@@ -748,3 +748,13 @@ so the frontier pool can be refreshed from newer re-recordings without a restart
   than at 6,111M) and die ~7 s later; 2/9 sit 910 s in the first trough (contact ~20%). The new pool
   (tools/frontier_states.py, 4,859 states, autoresearch/spines/zlr2b1_frontier_rc7.npy, md5
   a64769ff) replaced the spawn-states file in place.
+* **rc7 10:46 UTC: 88.654 / 88.416 / 88.636 / 88.532 / 89.429 / 88.688 (7,848M)** - flat. All 8 good
+  episodes of 7,848M die the same way at ~122 s: the block's east side at ~112 s, z ~2,250 (88%) at
+  114 s, then on the swing back NORTH along the east ramp ((307, 803, 1,657) at 1,300 u/s) they reach
+  the north end heading north-west, low (z ~1,680), and fly off; the record rides up that north end
+  to z ~2,190 at the same energy (E ~2,800, t+393.5): a line problem, not energy.
+* 10:48 UTC: the pool narrowed to that struggle stretch (frontier_states --before 2 --stride 1: 2 s
+  before the last contact-record improvement to 1.5 s before death, 5,431 states, md5 d1518d2f),
+  swapped in place. GE ge5 (ge1's config, 15 min): roots = the same episodes' contact ticks after the
+  record (contact_roots --stride 1 --min-record-frac 0.97, 582 roots at 78-83% on the block's east
+  ramp) - can random bursts ride up the north end (contacts at 87-88%)?
