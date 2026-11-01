@@ -1711,6 +1711,77 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
     return score
 
 
+class NoveltyCount:
+    """--novelty CELL EBIN FRAC (zlr2b2, 2026-11-01): count-based novelty over (position x energy)
+    cells for the population search's selection.
+
+    A depth-ranked beam keeps only the lineages that are deepest NOW, so a line that has to give
+    up depth for a while to reach a new place (land on a ledge below the swing tops it already
+    reaches, leave a structure it pumps in for the one above it) is cloned over at the next
+    boundary, however new the place is. Go-Explore keeps such states because they are NEW, but its
+    uniform bursts cannot hold the energy a pumping policy builds (zlr1b4: three searches from the
+    policy's own states never exceeded their roots' energy). This keeps the policy as the proposal
+    distribution and gives part of the elite slots to the lineages whose current cell the whole
+    search has visited least: Go-Explore's count rule (Ecoffet et al. 2021; W = 1/sqrt(n + 1))
+    inside the lockstep beam, so the depth half keeps the frontier alive and the novelty half
+    keeps whatever is new.
+
+    The cell is (x, y, z) // CELL plus the energy height h = z + |v|^2 / (2 g) // EBIN (EBIN 0 =
+    position only). Counts are the number of resample boundaries at which a live lineage stood in
+    the cell, accumulated over the whole search. Nothing here reads a field, a route, a region or
+    a record: the same constants on every map."""
+
+    def __init__(self, cell: float, ebin: float, frac: float, gravity: float = 800.0):
+        if not cell > 0.0:
+            raise SystemExit(f"--novelty CELL must be > 0, got {cell:g}")
+        if ebin < 0.0:
+            raise SystemExit(f"--novelty EBIN must be >= 0 (0 = position only), got {ebin:g}")
+        if not 0.0 < frac <= 1.0:
+            raise SystemExit(f"--novelty FRAC must be in (0, 1], got {frac:g}")
+        self.cell, self.ebin, self.frac = float(cell), float(ebin), float(frac)
+        self.g = float(gravity)
+        self.counts = {}
+        self.boundaries = 0
+
+    def keys(self, states, idx):
+        o = np.asarray(states["origin"], np.float64)[idx]
+        q = np.floor(o / self.cell).astype(np.int64) + (1 << 15)
+        k = (q[:, 0] << 48) | (q[:, 1] << 32) | (q[:, 2] << 16)
+        if self.ebin > 0.0:
+            v = np.asarray(states["velocity"], np.float64)[idx]
+            h = o[:, 2] + (v * v).sum(axis=-1) / (2.0 * self.g)
+            k = k | (np.floor(h / self.ebin).astype(np.int64) + (1 << 15))
+        return k
+
+    def visit(self, states, idx):
+        """Count this boundary's live lineages (idx) in their cells; -> each one's count AFTER
+        the visit (1 = no lineage had stood there at any earlier boundary)."""
+        k = self.keys(states, idx)
+        u, inv, c = np.unique(k, return_inverse=True, return_counts=True)
+        tot = np.empty(len(u), np.int64)
+        for j, (kk, cc) in enumerate(zip(u.tolist(), c.tolist())):
+            n = self.counts.get(kk, 0) + cc
+            self.counts[kk] = n
+            tot[j] = n
+        self.boundaries += 1
+        return tot[inv]
+
+    def split(self, elig, counts, dgeo, n_elite: int):
+        """elig is in --score order (best first). -> keep: the best (n_elite - n_nov) by score,
+        then the n_nov rarest (ties by the smaller d) of the rest - disjoint, score half first so
+        keep[0] stays the score leader (the frontier the search reports)."""
+        n_nov = min(len(elig), int(round(self.frac * n_elite)))
+        n_dep = max(1, n_elite - n_nov) if len(elig) else 0
+        dep = elig[:n_dep]
+        rest = elig[n_dep:]
+        if len(rest) == 0 or n_nov <= 0:
+            return dep, 0
+        cr = counts[n_dep:]
+        o = np.lexsort((dgeo[rest], cr))
+        nov = rest[o[:n_nov]]
+        return np.concatenate([dep, nov]), len(nov)
+
+
 def _spearman(x, y):
     rx = np.argsort(np.argsort(x)).astype(np.float64)
     ry = np.argsort(np.argsort(y)).astype(np.float64)
@@ -2119,6 +2190,17 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
+    ap.add_argument("--novelty", type=float, nargs=3, default=None,
+                    metavar=("CELL", "EBIN", "FRAC"),
+                    help="population mode: give FRAC of the elite slots at every resample to the "
+                         "lineages whose (x, y, z) // CELL x energy-height // EBIN cell the search "
+                         "has visited least (counted at every boundary, all lineages; EBIN 0 = "
+                         "position only), the rest by --score as before (NoveltyCount). Keeps a "
+                         "line that gives up depth to reach a new place. None = off, "
+                         "byte-identical")
+    ap.add_argument("--novelty-after", type=int, default=0, metavar="TICKS",
+                    help="--novelty: count and select by novelty only from this tick on (before "
+                         "it the search is the plain --score beam)")
     ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh"],
                     default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
@@ -2843,6 +2925,16 @@ def main():
                          value_fn=value_fn, v_switch=args.v_switch,
                          energy_k=args.score_energy,
                          gravity=float(cfg.get("sv_gravity") or 800.0))
+    nov = None
+    if args.novelty is not None:
+        if args.commit > 0 or progress_mode:
+            raise SystemExit("--novelty is a population-mode selection on the --score order: "
+                             "it excludes --commit and --objective progress/auto")
+        nov = NoveltyCount(*args.novelty, gravity=float(cfg.get("sv_gravity") or 800.0))
+        print(f"--novelty: {args.novelty[2]:g} of the {n_elite} elite slots to the rarest "
+              f"lineages from tick {int(args.novelty_after)} ({secs(int(args.novelty_after)):.1f}s); "
+              f"cell {args.novelty[0]:g}u x energy {args.novelty[1]:g}u"
+              + (" (position only)" if args.novelty[1] <= 0 else ""))
 
     # ---- --branch-at / --branch-grid: the junction fork -----------------
     br_kind, br_val, br_n = None, 0.0, 0
@@ -3338,6 +3430,11 @@ def main():
                 assert int(states["tick"][elig[0]]) == t + 1, \
                     (int(states["tick"][elig[0]]), t + 1)
                 keep = elig[:n_elite]
+                nov_n = 0
+                if nov is not None and t + 1 >= int(args.novelty_after):
+                    # --novelty: count every live lineage's cell, then the score half + the
+                    # rarest half (keep[0] is still the score leader)
+                    keep, nov_n = nov.split(elig, nov.visit(states, elig), dgeo, n_elite)
                 keep_set = np.zeros(N, bool)
                 keep_set[keep] = True
                 if args.greedy_envs > 0 and valid[0]:
@@ -3472,6 +3569,9 @@ def main():
                              if arcp is not None else "")
                           + f"min_d={dgeo[keep[0]]:8.0f} "
                           f"med_d={np.median(dgeo[keep]):8.0f} "
+                          + (f"nov={nov_n} cells={len(nov.counts)} "
+                             f"zmax={float(np.asarray(states['origin'])[elig, 2].max()):6.0f} "
+                             if nov is not None else "")
                           + (f"br={br_live:4d}/{br_el:4d}el "
                              f"brd={br_d:8.0f} "
                              if br_fired >= 0 else "")
