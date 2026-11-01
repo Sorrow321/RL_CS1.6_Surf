@@ -80,7 +80,9 @@ def main(argv=None):
     ap.add_argument("--greedy-ticks", type=int, default=26000,
                     help="--max-ticks of the greedy recording (it ends where the greedy dies)")
     ap.add_argument("--at", default="120,130,140,150",
-                    help="start seconds on the greedy line (comma list)")
+                    help="start seconds on the greedy line: a comma list of seconds and/or "
+                         "FROM:TO:STEP ranges; a negative second counts back from the line's end "
+                         "(-40:-4:2 = every 2 s over the greedy's last 40 s)")
     ap.add_argument("--window", type=float, default=30.0, help="search seconds after the start")
     ap.add_argument("--seeds", default="0", help="torch seeds (comma list)")
     ap.add_argument("--envs", type=int, default=4096)
@@ -94,6 +96,18 @@ def main(argv=None):
     ap.add_argument("--keys-temp", type=float, default=None)
     ap.add_argument("--tick-ms", type=float, default=None,
                     help="seconds -> ticks; default: the greedy line's own (the checkpoint's)")
+    ap.add_argument("--branch", type=int, default=0,
+                    help="fork this many envs at the search's first resample boundary into held "
+                         "view offsets (beam_tas --branch-at --branch-view-only: the policy's own "
+                         "keys); 0 = off")
+    ap.add_argument("--branch-jitter", type=float, default=20.0,
+                    help="--branch: held yaw offset in degrees, uniform in [-J, J], on the "
+                         "policy's own target")
+    ap.add_argument("--branch-burst", type=float, default=1.5, help="--branch: seconds of burst")
+    ap.add_argument("--branch-hold", type=float, default=0.4,
+                    help="--branch: seconds one offset is held")
+    ap.add_argument("--branch-protect", type=int, default=4,
+                    help="--branch: generations the forked lineages are exempt from culling")
     ap.add_argument("--timeout", type=float, default=2400.0, help="wall cap per search (s)")
     ap.add_argument("--stop-on-finish", action="store_true")
     a = ap.parse_args(argv)
@@ -129,14 +143,28 @@ def main(argv=None):
             tick_ms = 7.0
     k = int(gi["act_every"])
     n_line = int(gi["decisions"]) * k
-    for s in [float(x) for x in str(a.at).split(",") if x.strip()]:
+    line_s = n_line * tick_ms / 1000.0
+    starts = []
+    for x in str(a.at).split(","):
+        x = x.strip()
+        if not x:
+            continue
+        if ":" in x:
+            lo, hi, st = (float(u) for u in x.split(":"))
+            lo, hi = (lo + line_s if lo < 0 else lo), (hi + line_s if hi < 0 else hi)
+            starts += list(np.arange(lo, hi + 1e-9, st))
+        else:
+            v = float(x)
+            starts.append(v + line_s if v < 0 else v)
+    print(f"greedy line {line_s:.1f}s; starts {[round(float(v), 1) for v in starts]}", flush=True)
+    for s in starts:
         t0 = int(round(s * 1000.0 / tick_ms))
         t0 -= t0 % k
         if t0 <= 0 or t0 >= n_line:
             print(f"start {s:g}s = tick {t0} is outside the greedy line ({n_line} ticks)")
             continue
         for seed in [int(x) for x in str(a.seeds).split(",") if x.strip()]:
-            tag = f"s{int(round(s))}_k{seed}"
+            tag = f"s{int(round(s))}_k{seed}" + (f"_b{int(a.branch)}" if a.branch > 0 else "")
             sd = out / tag
             sd.mkdir(parents=True, exist_ok=True)
             cmd = base + ["--prefix-line", f"{line}:{t0}", "--envs", a.envs,
@@ -151,6 +179,13 @@ def main(argv=None):
                 cmd += ["--view-temp", a.view_temp]
             if a.keys_temp is not None:
                 cmd += ["--keys-temp", a.keys_temp]
+            if a.branch > 0:
+                tps = 1000.0 / tick_ms
+                cmd += ["--branch-at", f"t{t0 + a.resample_every * k}:{int(a.branch)}",
+                        "--branch-view-only", "--branch-jitter", a.branch_jitter,
+                        "--branch-burst", int(round(a.branch_burst * tps)),
+                        "--branch-hold", int(round(a.branch_hold * tps)),
+                        "--branch-protect", int(a.branch_protect)]
             print(f"search {tag}: start tick {t0} ({s:g}s), window {a.window:g}s", flush=True)
             t1 = time.time()
             rc = run(cmd, out / f"{tag}.log", a.timeout)
