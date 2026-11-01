@@ -607,3 +607,14 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   autoresearch/spines/zlr2b4_cem164_spine.npy` (backward curriculum from the apex, the restored
   demo constants), `--demo-milestones 5859` (the GE line's 9.48% keeps paying, round 1's
   relaunch rule), `--fail-pen 3`.
+
+### Harness issue (zlr2b4, 08:35 UTC): three hours without a box
+* `box.py rent` has refused every attempt since 05:37 UTC (~150 tries, every 1-4 min): "no offer
+  passes ... within the budget pace: burn 0.526 $/h, limit 0.624 $/h". Two boxes (a 5080 at
+  0.337 and a 5060 Ti at 0.189) have been up since ~05:25 and keep being extended; the cheapest
+  acceptable offers are 0.190 (5060 Ti) and 0.387 (5080), so the pace admits two boxes at a time
+  and the two branches that rent first hold them. A branch that cannot rent for most of a 12 h
+  round produces no eval at all, so its findings die with the round whatever they are (this
+  branch's: a physical launch to 75-79% from the incumbent's own states, NOTES above). A
+  per-branch share of the pace (or a cap on extensions while another branch waits) would keep
+  the four forks comparable.
