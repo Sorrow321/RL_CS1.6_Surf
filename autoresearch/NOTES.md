@@ -1217,3 +1217,12 @@ NEW `pool_add_lines --tail-s W` (commit b28b6763). W = 0.5 s at launch (md5 21b4
 rebuilt in place with a longer W once training finishes from the current tails (the trainer re-reads
 it) - the round-2 ridge launch was taught exactly this way (spawns walking back along a search line),
 here by hand over 55 lines at once. Read it on: training win rate and its time-from-spawn, then evals.
+* f4 (21:20-21:36 UTC): training finishes from the 0.5 s tails at once (win 5-16% of ended episodes
+  per iteration, mean 0.26 s after the spawn = about half the tail: nearly every tail spawn finishes);
+  171k steps/s. **Tail -> 1.0 s at ~11,857.8M** (pool md5 68e3f8ad, 7,865 line states).
+* f4 evals: 96.129 (11,692M, c1's weights) / **97.331** (11,767.6M; closest pass 184 u at E 3,972; E
+  4,000-4,280 at several passes, c1-like) / **25.931** (11,843M: all 9 died in the second trough at
+  26-62 s - the early-route fragility, the spawn pool now takes 30% of spawns; training reward 50-56/ep
+  and the GE curriculum (tau ~9,170) look healthy, so watching the next eval).
+* Probe (NEW runs/probe.sh, box): f4's weights spawned on 6 definite lines at 0.5/1.0/1.5/2.0 s before
+  their finishes (4 greedy + 12 sampled lineages each) - how far back it already finishes.
