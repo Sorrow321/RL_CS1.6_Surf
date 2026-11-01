@@ -193,3 +193,53 @@ idle for the first third of its round.
   -1,765 / 15.44% / 57 loop-2 states in 90 min. The search's seed variance is large: one seed
   pumped ~280 u further in 60% of the time. Run several seeds in parallel (one core each) rather
   than one long run.
+
+### zlr1b3 round-1 lesson (wrap-up)
+
+**Result: no box all round, so no eval and no score (RESULT.json best null).** The fleet's budget pace (credit - reserve) /
+hours left x 1.1 = 0.62 $/h fitted ~1.6 boxes for four agents; two boxes held it from ~17:15 to
+the wrap-up, and the offer pool was thin (cheapest acceptable 0.41 $/h at 20:06). Every `rent`
+from 17:15 on was refused "within the budget pace". All the work below is CPU-side and
+unmeasured on a policy.
+
+**What this branch leaves (all generic, all tested on CPU, all pushed):**
+1. `--stall-energy EPS` (51b5b635): the stall clock, the reservoir's stagnant mask and
+   --eval-patience also re-arm on energy-height records. On this map the record itself would be
+   stall-killed at ~t+47 and eval-patience-cut at ~t+62 without it.
+2. `--energy-pot-rel KAPPA` (235bde20): the energy term in the map's own progress units
+   (K = KAPPA x 1000 x 100/d0); KAPPA 1 = one unit of energy height shaped like one of progress.
+3. `--energy-death-window W` (e17b8429): a death takes back the energy term's net gain of its
+   last W s (no "strafe on the way into a fatal fall" farm).
+4. Go-Explore that PUMPS: `explore_phase1 --cell 128 --cell-energy 32 --cell-heading 1
+   --select-energy 30 --view-follow=-90..90 --tick-ms 7 --maxvel 3500` from the true spawn, one
+   local core: loop-1 energy -2,223 / -1,989 / -1,765 at 30 / 60 / 90 min (~linear), the
+   loop-1 -> loop-2 transfer at 90 min (seed 9), best 15.44%. With 64 u cells or
+   --select-energy 3 it stalls (-2,329 at 40 min; -2,948 at 3 min).
+5. Spines from those archives (`autoresearch/analysis/zl_ge_spine.py`: ge_replay + the chain's own
+   keys + views along the velocity): zlr1b3_ge30w (10.65%), zlr1b3_ge60w (13.94%), zlr1b3_ge90s
+   (15.44%); provenance in autoresearch/spines/README.md. `auto_spine.chain_keys` no longer
+   re-decompresses the action table per link (OOM on big archives).
+6. Analysis (record = instrument only): loop 1 is one long surf ramp ridden end to end; pumping
+   is the plain air-strafe turn at each end (view along the velocity, one strafe key held toward
+   the inside of the turn, +40-55 u of E per turn); the transfer to loop 2 is a RIGHT turn up the
+   east end with E >= ~-2,226 (ballistic floor; the record -1,923); the field is deceptive here:
+   loop 1's ridge (5%), the slab top (11.6%) and open-air apexes above loop 1 (13-15%) all rank
+   above loop 2's ramp (10-11%).
+
+**The untested plan, ready to launch** (scratchpad launcher, flags in NOTES above): arm B
+`zlr1b3_cur` = recipe + `--stall-energy 32 --energy-pot-rel 1 --energy-pot-front 0
+--energy-pot-front-bonus 0 --energy-death-window 2 --time-pen 0 --death-charge 1
+--death-charge-window 2` + a backward curriculum on zlr1b3_ge90s (`--demo-file/--demo-keys
+--demo-success-d 100 --demo-success-bonus 50 --demo-window 5 --demo-grow 5 --demo-grow-max 40
+--demo-cooldown 5 --demo-front-frac 0.5 --demo-front-temp 0.5 --demo-front-ticks 40
+--demo-front-view 6 --no-respawn-novel --respawn-backward-mix 0 --int-real-only 0`,
+`box.py launch --self-states`), then the plain-recipe control (4e8). Arm A = the same without
+the spine.
+7. The search's seed variance is large: seed 9 made the transfer in 90 min, seed 11 stalled at
+   12.77% (loop-1 E -2,044) in 150 min. Run several GE seeds side by side, one core each.
+
+**What I would do first with a box:** arm B as written above (it is the round's untested bet:
+the energy reward makes pumping pay as it happens, the curriculum hands the policy states where
+pumping is already under way), the plain-recipe control beside or after it, and GE seeds on the
+box's idle cores toward a spine that ends ON loop 2's ramp (with a success line the loop-1 apexes
+cannot satisfy: the field ranks them higher).

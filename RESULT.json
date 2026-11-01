@@ -1,7 +1,8 @@
 {
  "agent": "zlr1b3",
  "round": 1,
- "final": false,
+ "final": true,
  "best": null,
- "summary": "No box yet (21:45 UTC, 4.5 h): the fleet's budget pace fits ~1 box and two boxes have held it since ~17:15. Built --stall-energy, --energy-pot-rel, --energy-death-window (tested, pushed). Local Go-Explore (40 min, 1 core): loop-1 energy -2,329 but no transfer to loop 2 (best 9.35%). Queued: arm A zlr1b3_enr = recipe + --stall-energy 32 --energy-pot-rel 1 --energy-pot-front 0 --energy-pot-front-bonus 0 --energy-death-window 2 --time-pen 0 --death-charge 1 --death-charge-window 2 (6e8), then the recipe control (4e8) with GE beside it."
+ "summary": "No box all round: every rent from 17:10 to 03:46 UTC was refused by the fleet's budget pace (two boxes held ~0.59 of the 0.62 $/h pace), so no run, no eval, no score. CPU-side work, all tested and pushed: --stall-energy (stall clock/eval patience re-arm on energy-height records), --energy-pot-rel (energy term in progress units), --energy-death-window (no strafe-into-death farm). Go-Explore from the true spawn with 128 u energy cells and --select-energy 30 pumps loop 1 on one local core (E -2,223/-1,989/-1,765 at 30/60/90 min) and made the loop-1->loop-2 transfer at 90 min (seed 9; best 15.44%); seed 11 stalled at 12.77% in 150 min. Spines zlr1b3_ge30w/ge60w/ge90s built from it. Next: arm B = recipe + those three flags + --time-pen 0 + death charge + a backward curriculum on zlr1b3_ge90s (flags in NOTES.md), with a recipe control.",
+ "commit": "099c6c71141dfd46b395897fa8dde40b12134a95"
 }
