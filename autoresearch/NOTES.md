@@ -482,3 +482,6 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   swap: 23-24% medians). No self-route swap yet (none beat 26.64% + 64 u by enough); training
   reservoir deepest ~28%. Snapshots pulled: runs/zlr1b2_a9/ckpt_4923588608.pt,
   ckpt_5760352256.pt.
+* A9 5.81-6.34B: 25.258, 22.904, 23.702, 25.382, 25.720, 25.032, 25.747, 24.540 (medians
+  22.8-25.6%): no record; the greedy holds ~25% while the TRAINING reservoir's deepest state is
+  now **34.8%** (front band at 34.4%) - the stochastic policy explores well into the next loop.
