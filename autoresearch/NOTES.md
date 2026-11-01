@@ -1000,3 +1000,16 @@ cheapest cards run ~0.15). Two of the four branches can therefore sit without a 
   one without a box and cannot rent until two are released. The retry script now retries the deploy
   once, blocklists a gpu_health failure, and releases the box if the deploy or the launch fails
   (no idle box between wakeups).
+
+### NEW tools/shoot_finish.py: physics-only random shooting around the policy's own line (20:45 UTC, CPU)
+Clones the policy's own line state at a start second into N envs and replays the line's own engine
+rows with piecewise-constant perturbations (3 segments: a held yaw offset U(-30, 30) deg on the
+line's own velocity-frame target, a held random side key with p 0.3) for 4 s, then 2 s of the line's
+own rows; env 0 is the unperturbed control; a finish is the core's own trigger test, replay-verified;
+finishing lines saved for tools/line_pool.py. No policy forward: 2,048 envs x 6 s in ~2.3 s on 2
+CPU threads, so it runs on this machine while no box is free. Generic: own states, own rows, held
+offsets, the map's own finish trigger.
+* sf1 (the CPU greedy line of the incumbent, starts every 1 s over its last 36 s, 2 rounds x 2,048):
+  0 finishes in 70 batches, but the late starts come close: from 159.9 s best d 86 u (the control
+  447) with an apex at z 2,973; from 156.9 s d 93; 153.9 s d 117. The earlier starts (E lower) top
+  out at z ~2,770.
