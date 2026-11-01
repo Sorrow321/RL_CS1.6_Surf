@@ -450,3 +450,10 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   9.9% at 676M, 14.1% at 1.2B) - one seed each through a binary gate (the ramp -> half-pipe
   transition), and the route here ends at 9.48% (one 9-minute search) where A6's joined line
   ended at 12.77% (two searches). Box extended to 04:39 UTC (the round's wrap-up is 04:29).
+* **B1 takes off (00:06 UTC): 1.43B 6.954, 1.51B 8.328 (median 7.9%), 1.59B 8.491 (median 8.4%),
+  1.66B 13.401 (median 9.0%), 1.74B 0.009, 1.81B 12.546 (median 11.2%), 1.89B 12.770 (median
+  12.4%), 1.96B 13.752 (median 12.9%).** Its own self-route swap at 1.66B (route end d 5,509 =
+  13.4%, 55,808 u - the tie-break kept it short). Training at 2.0B: reward 68/ep, reservoir
+  deepest 20.6% (stochastic episodes already leave loop 1), tail 283 u/ep, arc 25k u/ep. The
+  one-launch recipe reproduces the A6 lineage's path with no hand-made step, a few hundred
+  million steps behind it (A6c: 19.7% at 1.53B, 21.4% at 1.91B).
