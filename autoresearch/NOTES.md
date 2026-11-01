@@ -498,3 +498,46 @@ target - kill by pid file, launch in a separate call; snapcopy can leave a 40M g
   64.671** (best of 133 greedy evals over 13 runs; `score.py --best runs/zlr1b4/*/`), hand-on
   **ckpt_4032299008.pt** (zlr1b4_e13, 2.1M before the eval; pulled with E13's ckpt_latest). Box
   58559819 (RTX 3090, 0.20 $/h, ~11.2 h ~ $2.3) released.
+
+## zlr2b2 (round 2, slot 2) - 2026-11-01 05:20 UTC start
+
+### What the 64.67% incumbent does, and why it stops (05:20-05:45 UTC, CPU analysis)
+* **It dies at its energy peak, by the objective's choice.** zl_eval_ends on traj_4034396160: 9/9
+  reach 64.2-64.7% at ~145-165 s, then keep pumping and die at 171-187 s with E max = E at death
+  (4,383-4,618: free fall keeps h). The per-call energy term pays K x dh with NO death refund, so a
+  death keeps the whole energy bank (12 x (4,500 + 3,074) / 1000 = ~91 reward); with --time-pen
+  0.1/s and --fail-pen 3, once the energy saturates dying is the better end. The over-swing that
+  kills it is the policy's way of ending the episode at max bank.
+* **Its loop (ep0/4/6, t 145-175 s), a 5 s circle around the big pillar:** west bottom
+  (-2,280, 1,250, -1,300) heading +y -> north side rising (-1,230, 3,260, -300, vz +1,270) -> east
+  top (300..700, 250..2,500, z ~550-650, |v| ~2,100 mostly -y, prog 58-63%) -> south side falling
+  (-1,250, -750, -100) -> west bottom. E +36 u/s. The pillar (occupancy: solid x -1,620..-1,200,
+  y 400..1,900, top sloping from z ~560 at its west edge to ~1,000 at its east edge) stands INSIDE
+  the circle; the policy never touches it. Ballistic apex (z + vz^2/1600) max 688-718 in all 9
+  (max vz ~1,616 at z -918, (-1,950, 2,790)).
+* **The record (ANALYSIS ONLY) uses a different line:** it swings the trough BETWEEN the outer west
+  wall (x ~-2,300) and the pillar's west face (x -1,616) along y, flies up that face (vz +1,396 at
+  z -569) onto the pillar top's west edge (z ~640) and pumps the ramp on the pillar's top (its
+  "fourth structure"), then climbs out (z 1,272 at t+382 ... 2,041 at t+390), pumps a top
+  structure (x -500..330, z 1,700-2,400) to E ~4,100, and hops onto the slab floor (finish at
+  (-137, 1,905, 3,044), og 1, nearly at rest; E 4,130 -> 3,045).
+* **The field above the bowl is open air to the finish level and pays height.** (occ / goalc are
+  indexed [z, y, x]; mins = (x, y, z).) Columns at (0, 1,400), (0, 2,014), (100, 2,500), (0, 3,000)
+  are air from z -1,500 to 3,400; on the grader field: 64% at z 700, 69% at 1,000, 78.7% at
+  1,600, 87.7% at 2,200, 97.3% at 2,800. Above the pillar (x -1,600..-1,200) the same from its
+  top up (61.6% at z 700 -> 93.5% at 3,100). The five slabs sit on a solid floor at z 2,820-3,012
+  (enter them from the side above it: the record enters slab *16's east face at x -48). So any
+  upward flight above the bowl or the pillar beats 64.67% (a fatal one too: the grader takes the
+  max), and the incumbent carries the energy for it (E 4,500 at the loop top z ~650 = 3,850 u of
+  kinetic height) - it has no ramp line that turns that speed upward.
+
+### Tool: beam_tas --novelty CELL EBIN FRAC (+ --novelty-after TICKS) - commit 202547df
+A depth-ranked beam clones over any lineage that gives up depth to reach a new place (round 1:
+d / dh / branched beams all stopped at 57-62.8%, GE's uniform bursts lost the energy). With
+--novelty, FRAC of the elite slots at every resample go to the lineages whose (x,y,z)//CELL x
+energy-height//EBIN cell the search has visited least (counted at every boundary; Go-Explore's
+count rule inside the lockstep beam), the rest stay --score ranked (keep[0] = the frontier).
+Generic: no field, route, region or record constant. tests/python/test_beam_novelty.py (7 pass);
+CPU smoke 8 envs x 400 ticks ok. Plan: from the TRUE start on the incumbent weights, d-ranked to
+~95 s (into the bowl), then --novelty 128 512 0.5 with --view-hold perturbations; any line deeper
+than 64.67% -> spine (backward curriculum from its end, the round-1 loop).
