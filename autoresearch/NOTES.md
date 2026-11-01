@@ -1059,3 +1059,10 @@ Gaussian), 4,096 sequences per iteration, the 64 closest (macro_finish.goal_scor
   pool C (0.15) + `--bc-file zlr3b3_bc_c.npz --bc-coef 0.5 --bc-coef-final 0.05 --bc-steps 4e8
   --bc-target argmax` (no value term); beside it the CEM on the box's CPU from the NEW greedy's own
   fifth-loop states (record_ckpt --dump-states -> frontier_states.py), refreshing the pool in place.
+* cem_e (24 more roots ranked by similarity to the successful ones, stopped after 15): 2 finishes
+  (root 40437); the less similar roots end 200-335 u short - diminishing returns: 35 lines in all.
+* NEW tools/finish_roots.py (the policy's own CONTACT states nearest to earlier roots, or the deepest
+  by the field when none) and tools/finish_loop.sh (beside a training run, every N min: record 6
+  greedy episodes of ckpt_latest with --dump-states, frontier_states, finish_roots, cem_finish on
+  spare CPU threads, finish_pool -> the trainer's --spawn-states file, atomically): the DAgger-style
+  loop uf2r2b4 named as its next step - plan from the CURRENT greedy's own states.
