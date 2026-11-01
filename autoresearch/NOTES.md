@@ -669,3 +669,11 @@ from there. Budget 2e9.
   with contact records 69.2-69.7%, apexes to 82.0%; contact_roots --stride 4 --min-record-frac 0.9
   = 462 roots at 60-70%, E ~2,500-2,900). Looking for the next SURFACE (the record's: east of the
   big block, 82-88%).
+* ge3 snapshot (6 min, 2.48M cells): 4,614 contact cells, deepest **70.05%** (flat ground on the
+  ridge top at (-1,151, 1,345, 1,052)); only 2 contact cells above 70%. Deepest cell overall an apex,
+  81.91% at (-22, 2,588, 1,807) north of the big block.
+* The next surface (ANALYSIS ONLY: core.trace point probes under the record's 82-88% contacts): the
+  big block's EAST face is a surf ramp (normal (0.76, 0, 0.65), ~49 deg, facing east) at x ~175-253,
+  z ~1,670-1,780 (y -950..1,370); the record flies UNDER the block's underside (z ~1,630, x
+  -2,900..250, y -470..1,000) from the fourth structure at t+381 and lands on that east-facing
+  slope, then pumps it along y up to z ~2,180 (87.75%). The policy's apexes go up NORTH of the block.
