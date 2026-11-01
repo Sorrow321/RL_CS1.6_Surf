@@ -784,3 +784,10 @@ old lines keep paying: `--demo-milestones 5859,1965` (the GE line's 9.48% and th
 69.1%). Spawn file `zlr2b3_early_upper2.npy` (md5 4bccafdf): the early route + S70e's own reservoir
 states at 75-93.6% (2,586) + bu_5's line, 35% of the pool. Else S70e's flags. Resumed from S70e's
 ckpt_latest 5,061,476,352.
+* Finish beams (S70e 4,880M weights from bu_5's own rows 1,100 / 1,350 / 1,600 / 1,699, --score d
+  and dh, 1,024 envs, 63 s): no finish; no frontier past the start state (d 351-460); from the
+  line's last rows (94%, E 3,150) every lineage falls within 4-6 s. bu_5's own population "survived"
+  63 s only by falling onto LOWER structures (d 5,944 = 6.6% at 35 s, 5,072 at 60 s): ranked on
+  d + 2 x energy height, a fall keeps its energy, so dh does not select survival in a loop.
+* S70f 10:44-10:58 (5.06-5.21B): 90.6 / 90.5 / 89.4 / 90.6 / 91.07 (frontiers 5,690-5,794);
+  band in the bu_5 segment at row 21,715 (882 of 1,700) with 32% success.
