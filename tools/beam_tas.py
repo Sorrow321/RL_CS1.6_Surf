@@ -982,7 +982,8 @@ class MixedTorchPolicy(SampledTorchPolicy):
     arrives at the finish window late, low, and dead."""
 
     def __init__(self, *a, n_greedy: int, view_temp=None, keys_temp=None, view_hold=None,
-                 hold_seed: int = 0, pitch_hold=None, pitch_hold_for: int = 0, **kw):
+                 hold_seed: int = 0, pitch_hold=None, pitch_hold_for: int = 0,
+                 view_hold_stagger: bool = False, **kw):
         super().__init__(*a, **kw)
         self._ng = int(n_greedy)
         # --view-hold SIGMA PERIOD (None = off, nothing below runs): each PROPOSAL env adds a
@@ -998,6 +999,13 @@ class MixedTorchPolicy(SampledTorchPolicy):
             self._vh_k = 0
             self._vh_seed = int(hold_seed)
             self._vh_gen = None
+            # --view-hold-stagger (zlr2b2, 2026-11-01; False = every env redraws on the same
+            # decision, byte-identical): each env redraws at its OWN phase of the PERIOD (drawn
+            # once), so at any moment some lineages start a fresh hold - a manoeuvre that has to
+            # be held from one particular moment (a ramp turn from its landing) is tried at every
+            # phase of every pass, not only when the global redraw happens to line up with it
+            self._vh_stagger = bool(view_hold_stagger)
+            self._vh_ph = None
         # --pitch-hold SIGMA PERIOD (uf2r2b4, 2026-10-31; None = off, nothing below runs): the
         # same held offset on the PITCH z (the last view column: pitch = -20 + 50 tanh z). Pitch
         # has no physics effect but it moves the depth image, so a held camera direction is a
@@ -1036,7 +1044,18 @@ class MixedTorchPolicy(SampledTorchPolicy):
                 if self._vh_gen is None:
                     self._vh_gen = torch.Generator(device=z.device)
                     self._vh_gen.manual_seed(self._vh_seed)
-                if self._vh_k % self._vh[1] == 0 or self._vh_c is None:
+                if self._vh_stagger:
+                    if self._vh_ph is None:
+                        self._vh_ph = torch.randint(0, self._vh[1], (n,), generator=self._vh_gen,
+                                                    device=z.device)
+                    fresh = torch.randn(n, generator=self._vh_gen, device=z.device,
+                                        dtype=z.dtype) * self._vh[0]
+                    if self._vh_c is None:
+                        self._vh_c = fresh
+                    else:
+                        redraw = (self._vh_ph + self._vh_k) % self._vh[1] == 0
+                        self._vh_c = torch.where(redraw, fresh, self._vh_c)
+                elif self._vh_k % self._vh[1] == 0 or self._vh_c is None:
                     self._vh_c = torch.randn(n, generator=self._vh_gen, device=z.device,
                                              dtype=z.dtype) * self._vh[0]
                 self._vh_k += 1
@@ -2012,6 +2031,11 @@ def main():
                          "offset per sigma near the velocity direction. A held manoeuvre is what "
                          "i.i.d. noise at a collapsed yaw sigma never proposes (train_fast "
                          "--view-ou-sigma's argument, for the planner). None = off, byte-identical")
+    ap.add_argument("--view-hold-stagger", action="store_true",
+                    help="--view-hold: each proposal env redraws its held offset at its own "
+                         "random phase of PERIOD (drawn once) instead of all envs on the same "
+                         "decision, so a hold starts at every moment of a pass. Off = "
+                         "byte-identical")
     ap.add_argument("--pitch-hold", type=float, nargs=2, default=None, metavar=("SIGMA", "PERIOD"),
                     help="--greedy-envs + --view-continuous: --view-hold's twin on the PITCH z "
                          "(pitch target = -20 + 50 tanh z): every proposal env adds a held offset "
@@ -2833,6 +2857,8 @@ def main():
     if args.pitch_hold is not None and (args.greedy_envs <= 0 or not VIEWC):
         raise SystemExit("--pitch-hold offsets the proposal envs' pitch draws: needs "
                          "--greedy-envs and a --view-continuous checkpoint")
+    if args.view_hold_stagger and args.view_hold is None:
+        raise SystemExit("--view-hold-stagger staggers --view-hold's redraws: needs --view-hold")
     if args.view_hold is not None and (args.greedy_envs <= 0 or not VIEWC):
         raise SystemExit("--view-hold offsets the proposal envs' yaw draws: needs --greedy-envs "
                          "and a --view-continuous checkpoint")
@@ -2848,6 +2874,7 @@ def main():
                                 K, stack, n_greedy=args.greedy_envs,
                                 view_temp=args.view_temp, keys_temp=args.keys_temp,
                                 view_hold=args.view_hold, hold_seed=int(args.torch_seed) + 7919,
+                                view_hold_stagger=bool(args.view_hold_stagger),
                                 pitch_hold=args.pitch_hold, pitch_hold_for=args.pitch_hold_for,
                                 extra_slot=esN, extra_fn=efN,
                                 latch_fn=latchN, cc_fn=cc_fnN, keys_hold=KEYS, **xkwN)
