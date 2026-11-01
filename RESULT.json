@@ -3,22 +3,26 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 97.797,
-  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c1/traj_11474042880.jsonl",
-  "run": "zlr3b2_c1",
-  "step": 11474042880,
+  "score": 97.95,
+  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c2/traj_12053905408.jsonl",
+  "run": "zlr3b2_c2",
+  "step": 12053905408,
   "ckpt": null,
   "recipe": [
-   "(resume of the incumbent ckpt_11096031232; every flag restored)",
+   "(resume of c1's ckpt_latest <- incumbent ckpt_11096031232; every flag restored)",
    "--demo-file",
    "autoresearch/spines/zlr2b1_ge1_spine.npy",
    "--demo-tau0",
-   "9500",
+   "9215",
    "--demo-milestones",
    "5859",
    "--spawn-states",
-   "runs/sp/pool.npy (= zlr2b1_frontier_rc10.npy)",
+   "runs/sp/base_rc10.npy (= zlr2b1_frontier_rc10.npy)",
    "--spawn-states-frac",
+   "0.15",
+   "--finish-line",
+   "runs/sp/fin_r2dh2.npy (= autoresearch/spines/zlr3b2_finish3.npy, the policy's own 180.91 s search line)",
+   "--finish-line-frac",
    "0.15",
    "--ratchet-contact",
    "1",
@@ -27,8 +31,8 @@
    "--front-temp",
    "0.5"
   ],
-  "resume_from": "incumbent r2 (zlr2b1_rc10 ckpt_11096031232)",
-  "commit": "b11e95df"
+  "resume_from": "zlr3b2_c1 ckpt_latest (md5 e08fb8c1) <- incumbent r2",
+  "commit": "2b320cf4"
  },
  "summary": "Policy beams (beam_tas --prefix-line from the incumbent's own greedy lines, 4096 envs, --score dh = -d + energy height) found the map's first finishing lines from the true start: 180.9 s (r2dh2), 192.7, 200.0, 211.5 s, all replay bit-exact. Uniform pool spawns on their last 10-30 s (c1, best 97.797) did not teach the greedy to finish: the policy's own samples finish 33% from 1 s out, 3% from 3 s, ~0 from 6+ s. NEW --finish-line: a second backward curriculum (DemoCurriculum) on an own finishing line, on its own pool share (c2, running since 18:17 UTC)."
 }

@@ -1023,3 +1023,13 @@ band success.
   E max 4,145-4,361 at death; 3/9 die at the fifth loop's entry (~78%, z ~1,650, 126-147 s).
 * More lines: r4dh2 (seed 4, T 129.5 s, dh 2) 1 finisher at 205.35 s; r1dh2 (seed 1, dh 2, on c1's
   weights) 0 finishers (frontier d 0 at 186.9 s without a goal hit).
+* **Bench of c2's weights (~12.0B, 18:31 UTC) on r2dh2's line, 512 own samples each: 2 s: 218/512
+  (43%); 4 s: 128 (25%); 6 s: 7 (1.4%); 10 s: 215 (42%); 20 s: 6 (1.2%); 40 s: 0** - against c1's
+  33 / 3.3 / 0 / 0.2 / 0.2% (1/3/6/10/20 s, r1dhL). The curriculum teaches the finish; 10 s (42%) >
+  6 s (1.4%) says the 10 s state has a finish on an earlier swing the 6 s one has already missed.
+* c2 18:38 UTC: finish-line band at 7.35 s (16-30% band success); training win 7.3% "@ 4.1 s" (finishes
+  now ~4 s after a finish-line spawn). Greedy evals 97.950 (12,054M) / 95.250 / 97.344 (12,205M), 0
+  finishes. The greedy's behaviour moved: at 12,205M the good episodes cross the NORTH STRIP rising
+  (x -55..-67, y 1,769-2,036; ep5 97.34% at (-368, 2,542, 2,789) heading east at 180.5 s) - the
+  line's finishing swing - but with E 3,440-3,990, 190-420 u short: it swings for the slab before it
+  has pumped (the line swings at E ~4,300+). The curriculum has not yet reached the pumping part.
