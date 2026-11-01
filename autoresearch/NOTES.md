@@ -707,3 +707,17 @@ costs E 3,190 -> 1,565 = -19.5 reward on one call under the full potential, more
 top's ratchet pays - so under the full potential every exploratory reversal from the policy's own
 states is punished before its payoff. Generic (the flag reads nothing on the map; 0 = gains
 only). Read against S70b at matched steps: greedy launches and the eval level.
+* **S70c = NEGATIVE** (08:27-08:52, stopped at ~4.49B): 61.9 / 57.5 / 58.7 / 53.3 vs S70b's 61.8 /
+  60.0 / 60.1 / 60.8 at matched steps, 0 launches. With losses free the policy bleeds energy and
+  the --energy-stall rule (re-arm only on a NEW energy record) then cannot re-arm: training stall
+  kills 5-8% -> **74%**, and 5-7 of 9 greedy episodes per eval end by the patience cut. A loss-free
+  energy term needs a stall rule that does not read the episode's energy record; not pursued.
+
+### S70d `zlr2b3_s70d` (08:53 UTC): S70 from the INCUMBENT again, with the early route in the pool
+S70's one greedy launch came ~230M steps into the curriculum from the incumbent (4,259M), while
+the incumbent's circuit (E ~4,500) was still intact; afterwards the circuit lost its energy and
+the launch never came back (S70 later, S70b, S70c: 0/~180 greedy episodes). S70d restarts from the
+incumbent ckpt with S70's exact flags (incl. --demo-front-temp 1 --demo-front-ticks 300) + the
+early-route spawns (30%) from the start, denser evals (--record-every 37.5e6: twice the greedy
+evals in the window where the launch appeared) and snapshots every 5e7 (a hand-on near any good
+eval).
