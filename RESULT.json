@@ -1,7 +1,7 @@
 {
  "agent": "zlr2b3",
  "round": 2,
- "final": false,
+ "final": true,
  "best": {
   "score": 98.099,
   "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70f/traj_7440171008.jsonl",
@@ -45,8 +45,8 @@
    "5e7",
    "(launch --record-every 37.5e6)"
   ],
-  "resume_from": "S70e ckpt_latest 5,061,476,352 <- S70d ckpt_latest 4,678,746,112 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008, md5 036960d8)",
+  "resume_from": "S70e ckpt_latest 5,061,476,352 <- S70d ckpt_latest 4,678,746,112 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008, md5 036960d8). Hand-on = ckpt_7427063808.pt (13.1M steps before the best eval, md5 68a0009a); S70f ended at its step budget 7,561,805,824 (ckpt_final.pt md5 a34befa1, also pulled). Trainer code = b266e9ad as deployed (identical code to 8459d093, which adds the two spine files, md5 5c25bdff / 4bccafdf)",
   "commit": "8459d093"
  },
- "summary": "98.099 (S70f at 7,440M, median 95.3%; 97.923 at 7,478M with median 97.5%, 9/9 episodes 96.5-97.9%): the greedy from the true start takes the new route north-end launch -> block top -> ramp launch -> the upper loop, PUMPS the upper loop and launches off its north end up the WEST side of the floating finish block (best ep: E max 4,003, apex z 2,837 at x -370, ~50 u west of the block, whose top/trigger is at z 3,006-3,008). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30-35% of spawns on the policy's own early-route/reservoir states (without it the curriculum forgot the early route and collapsed); a policy beam ranked on depth+energy found the upper-loop pumping line (94.49%) and the spine was extended with it. No finish yet (0 training wins, 0/67,845 frontier spawns)."
+ "summary": "98.099 vs incumbent 64.671 (S70f at 7,440M, median 95.3%; 97.923 at 7,478M with median 97.5%); 0 finishes. The greedy from the true start flies everything but the last jump: north-end launch -> block top -> ramp launch -> pumps the upper loop -> launches off its north end up the WEST side of the floating finish block (best ep: E max 4,003, apex z 2,837, ~50 u west of it and ~170 u under the trigger). What worked: (1) Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY 128 u cells found the block top in 4 min; (2) spine = own greedy recording + that chain, backward curriculum warm from the incumbent, with 30-35% of spawns on the policy's own early-route/reservoir states (without them it forgot the early route and collapsed); (3) a policy beam ranked on depth + 2x energy height from the policy's own 90% state found the upper-loop pumping line (94.49%), appended to the spine: 92.4 -> 96.9 -> 98.1 over 2.2B steps, still rising slowly. Nulls: gains-only energy reward (stall kills), GE/beams from the 95-97% states (0 finishes, 169-192 u short: energy-limited). Next: an energy-directed search (d + energy ranking) from the policy's own 98% states for a line onto the platform, spliced into the spine."
 }

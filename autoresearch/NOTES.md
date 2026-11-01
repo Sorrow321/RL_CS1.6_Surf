@@ -840,3 +840,40 @@ ckpt_latest 5,061,476,352.
   Training at 7.56B: win 0.00%, reservoir min depth 1.53% (deepest training state 98.47%), curriculum
   window backed off to starts [20,730, 22,505] (0% success over 52 eps at the front).
 * (ops) Box 58621513 extended at 16:19 to 17:19:39 UTC so the 16:40 wrap-up can pull and release.
+* S70f ended at its step budget, 7,561,805,824 (~16:19 UTC); last evals 97.32 (median 62.8%) / 97.37
+  (7,553M). ckpt_final.pt (md5 a34befa1) and ckpt_latest.pt (md5 17da0b8e) pulled at the wrap-up.
+
+### zlr2b3 wrap-up (16:45 UTC): the round's lesson
+
+**Final 98.099** (S70f at 7,440M, median 95.3%; hand-on ckpt_7427063808.pt, md5 68a0009a) against the
+incumbent's 64.671 (+33.4). **0 finishes**: 0 training wins in S70d/e/f, 0 of 67,845 front-perturb
+spawns, 0 in GE stage 5 and in every finish beam. Lineage: incumbent r1 -> S70d (4.68B) -> S70e
+(5.06B) -> S70f (7.56B); trainer code b266e9ad, spines in 8459d093.
+
+What worked, in the order it moved the frontier (score from the true start):
+1. **Go-Explore cells on POSITION ONLY** (--cell 128 --cell-energy 0), rooted at the policy's OWN
+   greedy states: found the fourth structure (the block top, 70.69%) in 4 min, where speed/energy-keyed
+   cells farmed in place. A spine = the incumbent's greedy recording + that exact chain.
+2. **The backward curriculum needs the early route in its spawn pool**: S70 (spine alone) forgot the
+   early route and collapsed; S70d with 30% of spawns on the policy's own early-route states learned
+   the launch reliably (64.7 -> ~71 -> 80-90%).
+3. **Rank beams on depth + 2 x energy height** (beam_tas --score dh --score-energy 2) from the policy's
+   own 90% state: found the upper-loop PUMPING line (94.49%) that d-ranked beams and GE missed. Appended
+   to the spine (S70f), the greedy learned to pump: 92.4 (5.25B) -> 96.9 (5.82B) -> 97.2 (6.08B) -> 97.75
+   (7.14B) -> 98.1 (7.44B), with the median rising to 97.5% - still climbing slowly at the end.
+
+What did not:
+* `--energy-pot-loss 0` (gains-only energy reward; S70c): combined with --energy-stall it turned 74% of
+  episodes into stall kills - abandoned.
+* A policy beam from the true start: collapsed onto a ledge at 21%.
+* GE stage 5 (119 of the policy's own 95-96.7% states, 733k cells) and d-ranked finish beams: 0
+  finishes, closest 192 u and 169 u - uniform macros and the policy's own proposals cannot add the
+  energy the last launch lacks.
+
+The open problem, for the next round: the finish is a floating platform above the upper loop's north
+end. The greedy launches there with E max ~4,000 (the record, ANALYSIS ONLY, has ~4,090 at that launch)
+and peaks ~50 u west of the platform and ~170 u under its trigger. Two generic next steps: (a) an
+energy-directed search (d + energy ranking, as in step 3) rooted at the policy's own 98% states, for a
+line that pumps longer before the launch, spliced into the spine; (b) keep training S70f's final weights
+(still +0.5-1% per ~1B steps at the end). Cost of the round's frontier: S70f 10:44-16:19 UTC (5.6 h,
+2.5B steps at ~165k fps) on one RTX 5060 Ti at 0.19 $/h; the box ran 11.3 h in all.
