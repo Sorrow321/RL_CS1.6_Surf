@@ -981,3 +981,17 @@ SV_TouchLinks compares abs boxes that SV_LinkEdict expands by 1 u, so in the gam
 z >= 2,972 counts (the record's demo: z 2,978 against the walkway face at 453.80 s; our clock has it
 at 453.98-454.01, when its hull clears the top). The 450.46 s bar was measured with our rule, so it
 is consistent; the effect is that a finish here needs ~70 u more height than the game does.
+* Reach score: in the hull-inflated trigger boxes the standing hull fits only at origin z >= 3,044
+  (1,129,128 of 1,539,090 grid points, 16 u x 16 u x 8 u), the ducked one at z >= 3,030: every
+  trigger lies on solid, so the finish is literally "the hull on top of the platform". macro_finish
+  now scores max(field d, inflated-box distance, distance to those free origins), KD-tree queried
+  only within 300 u of a box (a far query costs ~0.1 ms a row).
+* mf_g (1,912 roots x 32 plans x 12 CEM rounds, 4 macros, 3 s, 12 min on 2 threads): no finish;
+  the CEM collapsed onto ONE root, 47,175 (174, 623, 1,811) v (-247, 1,847, 283), on the ramp
+  heading north - the best line meets the north walkway's east face / the platform's north face at
+  its apex, z 2,941: 104 u under the top. Only 7 roots came within 150 u, and all but that one are
+  already AIRBORNE (the policy's own north-west launches, apex fixed by vz: 2,887); a root on the
+  ramp is the only kind that can change its launch. The record launches over the ramp's top edge
+  with vz ~1,300 (apex 3,110); the macros get ~1,050.
+* mf_h (18:43 UTC): the same with a PER-ROOT elite (the best 16 plans of each of the 64 best roots)
+  and 5 finer macros (holds 0.05-1 s).

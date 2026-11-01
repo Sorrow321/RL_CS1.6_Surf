@@ -151,13 +151,18 @@ class Reach:
                   + (f", z {pts[:, 2].min():.0f}..{pts[:, 2].max():.0f}" if len(pts) else ""),
                   flush=True)
 
-    def dist(self, o, ducked):
+    def dist(self, o, ducked, near=None, cap: float = 600.0):
+        """Distance to the nearest free goal origin of each state's hull; only the rows in
+        ``near`` are queried (a KD query far from every point costs ~0.1 ms a row) and a row
+        with nothing within ``cap`` reads inf - callers keep max(field, box) there."""
         out = np.full(len(o), np.inf)
         h = (np.asarray(ducked) != 0).astype(np.int64)
         for k in (0, 1):
             m = h == k
+            if near is not None:
+                m &= near
             if m.any() and self.trees[k] is not None:
-                out[m] = self.trees[k].query(o[m])[0]
+                out[m] = self.trees[k].query(o[m], distance_upper_bound=cap)[0]
         return out
 
 
@@ -168,9 +173,13 @@ def goal_score(o, ducked, gf, boxes, reach=None):
     distance to the part of those boxes the hull fits in (Reach)."""
     d = gf.sample(o).astype(np.float64)
     if boxes:
-        d = np.maximum(d, box_dist(o, ducked, boxes))
-    if reach is not None:
-        d = np.maximum(d, reach.dist(o, ducked))
+        db = box_dist(o, ducked, boxes)
+        d = np.maximum(d, db)
+        if reach is not None:
+            near = db < 300.0
+            if near.any():
+                dr = reach.dist(o, ducked, near=near)
+                d = np.where(near & np.isfinite(dr), np.maximum(d, dr), d)
     return d
 
 
@@ -271,6 +280,10 @@ def main(argv=None):
     ap.add_argument("--rounds", type=int, default=1)
     ap.add_argument("--elite", type=float, default=0.05)
     ap.add_argument("--jit", type=float, default=2.0)
+    ap.add_argument("--elite-roots", type=int, default=0,
+                    help="> 0: the elite is the best --elite-per plans of each of this many roots "
+                         "(diversity across roots) instead of the global --elite share")
+    ap.add_argument("--elite-per", type=int, default=16)
     ap.add_argument("--max-fin", type=int, default=20, help="stop after this many finishes")
     ap.add_argument("--max-minutes", type=float, default=0.0)
     ap.add_argument("--seed", type=int, default=0)
@@ -377,7 +390,22 @@ def main(argv=None):
         rpos = np.searchsorted(roots, r_idx)
         np.minimum.at(best_by_root, rpos, all_d)
         k = max(1, int(round(a.elite * len(r_idx))))
-        top = np.argsort(all_d)[:k]
+        if a.elite_roots > 0:
+            # per-root elite: the best --elite-per plans of each of the --elite-roots roots whose
+            # best plan this round came closest, so one root cannot take the whole next round
+            rbest = {}
+            for j in np.argsort(all_d):
+                r = int(r_idx[j])
+                if r not in rbest:
+                    if len(rbest) >= a.elite_roots:
+                        continue
+                    rbest[r] = []
+                if len(rbest[r]) < a.elite_per:
+                    rbest[r].append(int(j))
+            top = np.array([j for v in rbest.values() for j in v], np.int64)
+            top = top[np.argsort(all_d[top])]
+        else:
+            top = np.argsort(all_d)[:k]
         elite_plans, elite_roots = plans[top], r_idx[top]
         fin_d = all_d[np.isfinite(all_d)]
         msg = {"round": rnd, "rollouts": int(len(r_idx)), "finishes_total": n_fin,
