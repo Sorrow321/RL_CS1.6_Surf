@@ -123,7 +123,8 @@ def _parser():
 def test_trainer_wiring():
     src = _parser()
     for flag in ("--finish-line", "--finish-line-frac", "--finish-line-window",
-                 "--finish-line-grow", "--finish-line-grow-max", "--finish-line-rate"):
+                 "--finish-line-grow", "--finish-line-grow-max", "--finish-line-rate",
+                 "--finish-line-tau0"):
         assert f'ap.add_argument("{flag}"' in src
     # off: every new statement sits behind FINL / args.finish_line
     assert 'if args.finish_line:\n        meta["config"]["finish_line"]' in src

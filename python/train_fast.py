@@ -7510,6 +7510,11 @@ def main() -> None:
     ap.add_argument("--finish-line-rate", type=float, default=0.2,
                     help="--finish-line: the band finish rate that advances it (Salimans-Chen's "
                          "rho = 0.2); below it the band backs off")
+    ap.add_argument("--finish-line-tau0", type=float, default=None,
+                    help="--finish-line: start the curriculum this many SECONDS before the line's "
+                         "finish instead of at its end - the position is not in a checkpoint, so a "
+                         "continuation passes where the previous run's log left it ('starts from "
+                         "X s before the line's finish'). None = the line's end")
     ap.add_argument("--ge-minutes", type=float, default=None,      # 0 = off
                     help="Go-Explore phase 1 BEFORE training (tools/explore_phase1.py; Ecoffet "
                          "et al., Nature 2021): a REWARD-FREE archive search from the map's true "
@@ -12282,10 +12287,15 @@ def main() -> None:
         _fw = max(1, TICK.secs_to_ticks(float(args.finish_line_window)))
         _fg = max(1, TICK.secs_to_ticks(float(args.finish_line_grow)))
         _fgm = max(_fg, TICK.secs_to_ticks(float(args.finish_line_grow_max)))
+        _ft0 = (None if args.finish_line_tau0 is None
+                else max(0, len(_fl) - 1 - TICK.secs_to_ticks(float(args.finish_line_tau0))))
         FINL = DemoCurriculum(_fl, window=_fw, rate=float(args.finish_line_rate),
                               min_ep=50.0, seed=31, grow=_fg, front_frac=0.5,
-                              tau0=None, cooldown=5, grow_max=_fgm,
+                              tau0=_ft0, cooldown=5, grow_max=_fgm,
                               name="finish-line curriculum")
+        if _ft0 is not None:
+            print(f"--finish-line-tau0 {args.finish_line_tau0:g}: the curriculum starts at line "
+                  f"state {FINL.tau} of {FINL.n}")
         print(f"--finish-line: {FINL.n:,} states ({FINL.n * TICK.ms / 1000.0:.1f} s) from "
               f"{args.finish_line}; {FINL_FRAC:.0%} of every training spawn pool drawn from "
               f"its last states, half on the frontier band ({_fw} ticks), half uniform behind "
