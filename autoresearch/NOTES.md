@@ -431,3 +431,4 @@ comes, a stronger hand-on for the next round.
   creeping up with nothing changed - training time alone (the 62% plateau of E8-E12 was partly just
   impatience: E8 had ~600M steps past its jump, E13 ~1.3B). Hand-on for 64.241: ckpt_2900885504.pt
   (1M before the eval; pulled). Training frontier 64.6%.
+* E13 03:22 UTC: 64.428 at 3,506M (median 64.05%) - hand-on ckpt_3499622400.pt (6.3M before; pulled).
