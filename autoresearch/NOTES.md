@@ -525,3 +525,30 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   only a way to convert it: a launch with a large vertical speed (off the 3rd ramp's top edge
   toward the pillar - the record rises 1,200 u up the pillar's west face that way - or onto the
   4th ramp from the west, which would throw a fast rider up-slope).
+
+### Probes on the droplet's CPU (05:40-06:05 UTC; ANALYSIS, nothing reaches training)
+* The incumbent's own greedy line, recorded on CPU (`beam_tas --envs 1 --greedy-envs 1
+  --save-frontier --frontier-last --max-ticks 26000`, 265 s): best 64.41% at 141.9 s, alive at
+  181 s (cut). It laps an OVAL every ~4.9-5.0 s: north along the bottom of the 3rd ramp at
+  (-2,300, 1,200, -1,330) at 2,100 -> 2,900 u/s (E 1,566 -> 4,248 from 90 to 179 s, +35 u/s), up
+  the north loop, south along the east side at z ~600-700 (its best progress each lap, at
+  y ~1,330: the north edge of the big finish slab overhead), round the south end. The loop tops
+  move EAST as E grows (x -900 at 90 s, 0 at 110-130 s, +870 at 174 s): more energy = a wider
+  oval, away from the pillar, until it flies off it.
+* Scripted macro + passive coast (physics only: from the policy's own states every 0.5 s over
+  60-176 s, 264 held (view offset from the velocity, side key, forward key, 0.15-1 s) macros, then
+  5 s with no keys and the view along the velocity; 49k rollouts): NULL - the best is 64.62% vs the
+  policy's own 64.55%. A held command cannot launch higher than the loops lift it.
+* The record's pillar approach (ANALYSIS ONLY) is NOT passive: in the core a coast from its
+  states slides along the 3rd ramp's plane and falls through, while the record's speed rises
+  1,770 -> 2,300 u/s on the ramp and its heading swings 116 -> 5 deg in 0.8 s - active strafing
+  (the demo parse's button column is empty, not evidence of no keys). The launch is a control
+  skill on the ramp, i.e. the policy's job, not a scripted macro's.
+* NEW `tools/beam_tas.py --fork-sweep T0:T1:STEP` (commit 87668145,
+  tests/python/test_fork_sweep.py): every env replays the policy's own saved line and FORKS off it
+  at its own tick (round-robin over the window), then flies as the policy's own sampled proposal,
+  optionally with a held view perturbation (`--fork-burst/--fork-hold/--fork-jitter`, keys stay
+  the policy's: keys-hold safe); no resampling; each env ranked by the deepest d it reached alive
+  after its fork (the grader's max progress); `--save-frontier` writes the deepest env's line
+  (prefix + its own flight, replayed exact). Generic: the junction search of --branch-at asked at
+  every tick of a window. CPU smoke (8 envs, 3 forks at 140-142 s): replay exact, prefix identical.
