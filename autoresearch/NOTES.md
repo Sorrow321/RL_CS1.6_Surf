@@ -1179,7 +1179,7 @@ the route?), the greedy's fifth loop (does it turn up-slope early at E ~4,000 an
 * bc_dag2 (md5 e0468dbd, 29.6 MB): 6 conflict-free splices (34,329 own-route rows: c1's g1-g5 at their
   earliest finishable root, f2's h7) + 62 finishing suffixes x2 = 130 lines.
 
-### f3 `zlr3b1_f3` (20:38 UTC): f2's final weights + bc_dag2 (conflict-free DAgger) + pool_f5 + cold keys
+### f3 `zlr3b1_f3` (20:34 UTC): f2's final weights + bc_dag2 (conflict-free DAgger) + pool_f5 + cold keys
 f2's flags with `--bc-file runs/dag/bc_dag2.npz --bc-coef 0.3 --bc-coef-final 0.1 --bc-steps 4e8`
 (lower: the policy already memorised dag1's overlapping rows). `--resume` = f2 12,120.5M.
 * Beside it (CPU): NEW `dagger_finish --death-roots S,..`: roots S seconds before the greedy line's
