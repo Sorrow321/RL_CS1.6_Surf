@@ -1098,7 +1098,7 @@ the first finishing line becomes the --finish-line curriculum (its share and con
 byte-identical; TRAIN_ONLY in record_ckpt; tests in tests/python/test_finish_line.py. Not yet run
 end to end on a box.
 
-### c4 `zlr3b2_c4` (21:24 UTC): c3's 15.34B weights + the finish-line curriculum on the 134.6 s line
+### c4 `zlr3b2_c4` (21:20 UTC): c3's 15.34B weights + the finish-line curriculum on the 134.6 s line
 c3's ckpt_latest (md5 bc51a503) + c3's flags with `--finish-line runs/sp/fin_fe10.npy` (the energy
 beam's line instead of r2dh2's 180.9 s one), `--demo-tau0 8000` (c3's last GE tau). Expert
 iteration (uf2's search -> own faster line -> curriculum loop): does the greedy follow the faster line?
