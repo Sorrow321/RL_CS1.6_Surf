@@ -3,26 +3,26 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 77.176,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/traj_5110235136.jsonl",
-  "run": "zlr2b1_rc3",
-  "step": 5110235136,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc3/ckpt_5110235136.pt",
+  "score": 81.217,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/traj_5582094336.jsonl",
+  "run": "zlr2b1_rc4",
+  "step": 5582094336,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/ckpt_5582094336.pt",
   "recipe": [
-   "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3; flags restored)",
+   "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3 -> rc4; flags restored)",
    "--ratchet-contact",
    "1 (NEW, from rc1)",
    "--demo-file",
    "autoresearch/spines/zlr2b1_ge1_spine.npy (own greedy line + GE line from own crest contacts onto the ridge top)",
    "--demo-tau0",
-   "19656 (the GE root)",
+   "12000 (rc4; rc3: 19656)",
    "--demo-milestones",
    "5859",
    "--ckpt-every",
    "2e8"
   ],
-  "resume_from": "zlr2b1_rc2 ckpt_latest 4430233600 <- zlr2b1_rc1 4354211840 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
+  "resume_from": "zlr2b1_rc3 ckpt_final 5430575104 <- rc2 4430233600 <- rc1 4354211840 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
   "commit": "338783b9"
  },
- "summary": "77.176 at 5,110M (rc3; median 71.7%, 7/9 on the ridge top): the greedy now leaves the third structure onto the ridge top. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%); NEW --ratchet-contact pays only progress reached at contact ticks. Go-Explore rooted at the policy's own crest contacts (NEW tools/contact_roots.py, ge_contact_pick.py, contact_spine.py) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine with the band at the GE root, the curriculum walked back past the launch at 95-97% success in ~30 min and training reaches contact 92%. Next: keep training rc3, make it reliable, extend the frontier."
+ "summary": "81.217 at 5,582M (rc4; median 78.3%; evals since 79/81/77/77/78 with medians 73-78%): the greedy leaves the third structure onto the ridge top and climbs. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%). NEW --ratchet-contact pays only progress reached at contact ticks; Go-Explore rooted at the policy's own crest contacts (NEW contact_roots / ge_contact_pick / contact_spine) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine (band at the GE root, then back inside the third structure). Next: keep training rc4, push past ~81% (the record's launch east past the big block, 82-87%)."
 }

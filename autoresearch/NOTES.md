@@ -647,3 +647,8 @@ the curriculum's own backoff moves the band later if the launch from the root fa
 Same spine and flags, `--demo-tau0 12000` (84 s on the spine): uniform demo draws over [12,000,
 20,102] cover the pumping, the launch and the ridge top; the curriculum's own rule moves the band
 from there. Budget 2e9.
+* **rc4 (07:26-07:50 UTC): 60.143 (its first) / 79.168 / 81.217 (5,582M, median 78.3%) / 77.242 /
+  77.148 / 78.103 (5,809M, median 76.0%).** Moving the band back into the third structure fixed the
+  flip-flop: the greedy now leaves for the ridge in most episodes of every eval. Curriculum walking
+  back from 12,000 at 86-87% success (11,935 at 5,833M). Hand-on for 81.217: ckpt_5582094336.pt
+  (snapcopy, the eval's own step; pulled, md5 3d4f5bd9).
