@@ -466,3 +466,17 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `uf2r1b1_cut_k02.npy` (+ `.keys.npy`, 5,800 states, md5 6f13570545426fbf87856ec6c2846177): search
   2 of uf2r1b1_cut (7.93B weights, same rule): to d 386 = 98.7% - ends at (2,923, -2,052, -753)
   falling, below the finish box's floor (z -640), i.e. it passes UNDER the box; no finish.
+
+# surf_za_loop, zlr2b2 (round 2)
+
+* `zlr2b2_p0_line.npy` (22,565 states = 158.0 s, md5 d5d27af7394b0aff6ff52cf3f18eee26): the
+  incumbent's OWN greedy line from the TRUE start (zlr1b4_e13 ckpt_4032299008, `record_ckpt
+  --episodes 1 --dump-states` on CPU) up to tick 21,916, then the exact physics continuation with
+  ONE held view offset of -2.0 deg for 70 ticks added to the policy's own replayed controls, up to
+  its best progress: 66.32% at z 815 (the line's own best 64.49%). Found by
+  `autoresearch/analysis/zl_perturb_search.py` (roots every 35 ticks from t 100 s along the
+  policy's own line, offsets +-0.5..+-2 deg held 0.5/1/2 s, kept by the grader field's progress;
+  no region, no record, no map constant) and rebuilt by `zl_perturb_spine.py`. Clocks zeroed.
+  No demo, no record data.
+* `zlr2b2_p1_line.npy` (24,725 states = 173.1 s, md5 521b1b229f43ac7db0fd360263348aac): the same
+  search's other top line: root tick 24,156, +1.0 deg held 140 ticks -> 66.31% at z 816.
