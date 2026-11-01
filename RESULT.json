@@ -3,15 +3,15 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 91.729,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/traj_4523556864.jsonl",
-  "run": "zlr2b3_s70d",
-  "step": 4523556864,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/ckpt_4485283840.pt",
+  "score": 92.433,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70f/traj_5250744320.jsonl",
+  "run": "zlr2b3_s70f",
+  "step": 5250744320,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70f/ckpt_5212471296.pt",
   "recipe": [
-   "(incumbent ckpt, everything restored: per-call --energy-pot 12, --energy-stall 32, --fail-pen 3, respawn-greedy, front-perturb)",
+   "(incumbent ckpt, everything restored: per-call --energy-pot 12, --energy-stall 32, --fail-pen 3, respawn-greedy, front-perturb) -> S70d -> S70e -> S70f",
    "--demo-file",
-   "autoresearch/spines/zlr2b3_ge1_s70.npy (NEW: the incumbent's own greedy recording to t 140.9 s + a reward-free Go-Explore exact chain with POSITION-ONLY 128 u cells rooted at that recording's states, onto the block top, 70.69%)",
+   "autoresearch/spines/zlr2b3_s70_bu5.npy (the incumbent's own greedy recording to t 140.9 s + a reward-free Go-Explore chain with POSITION-ONLY 128 u cells onto the block top + a policy beam (--score dh) from the policy's own 90% state pumping the upper loop to 94.49%)",
    "--demo-window",
    "5",
    "--demo-grow",
@@ -31,21 +31,22 @@
    "--demo-success-bonus",
    "50",
    "--demo-milestones",
-   "5859",
+   "5859,1965",
    "--demo-front-temp",
    "1",
    "--demo-front-ticks",
    "300",
    "--spawn-states",
-   "autoresearch/spines/zlr2b3_inc_early_route.npy (NEW: the same recording's first 140.9 s every 5th tick)",
+   "autoresearch/spines/zlr2b3_early_upper2.npy (the recording's early route + the policy's own reservoir states at 75-93.6% + the beam line)",
    "--spawn-states-frac",
-   "0.3",
+   "0.35",
+   "--respawn-greedy-contact",
    "--ckpt-every",
    "5e7",
    "(launch --record-every 37.5e6)"
   ],
-  "resume_from": "incumbent r1 ckpt.pt = zlr1b4_e13 ckpt_4032299008 (md5 036960d8)",
-  "commit": "3e4860dd"
+  "resume_from": "S70e ckpt_latest 5,061,476,352 <- S70d ckpt_latest 4,678,746,112 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008, md5 036960d8)",
+  "commit": "8459d093"
  },
- "summary": "91.729 (S70d at 4,524M, median 90.9%; 91.691 at 4,486M, median 90.8%): most greedy episodes from the true start now take the north-end launch -> block top -> ramp launch -> the upper loop's swing tops (~91%). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top (the fourth structure) in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the recording's early route (without it the anchored curriculum forgot the early route and collapsed, S70). Next: the finish (the record pumps the upper loop to E ~4,000 and launches north onto the top platform; no finish yet)."
+ "summary": "92.433 (S70f at 5,251M; S70d 91.729 at 4,524M with median 90.9%): most greedy episodes from the true start take the new route north-end launch -> block top -> ramp launch -> the upper loop's swing tops. How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top (the fourth structure) in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the recording's early route (without it the anchored curriculum forgot the early route and collapsed, S70); then a policy beam ranked on depth+energy found the upper-loop pumping line (94.49%) and the spine was extended with it (S70f). Negative: ez-greedy, held-offset sweeps, --energy-pot-loss 0 (x energy-stall), true-start beams. No finish yet."
 }
