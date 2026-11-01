@@ -740,3 +740,22 @@ eval).
   place (all 2,048 lineages at d 5,046 = 20.7% for 80 generations) - killed. (A d-ranked beam
   over a 200 s line on this map keeps whatever lineage is momentarily deepest; a lineage parked
   on a ledge at 20% outlived every flying one.)
+* **S70d 4,410-4,675M: 89.8 / 90.0 / 91.691 (4,486M, median 90.8%) / 91.729 (4,524M, median
+  90.9%) / 90.9 / 89.4 / 90.8 / 89.8 (mean of the 9 episodes' best up to 87%) - NEW BEST 91.729.**
+  Most greedy episodes from the true start now take the whole new route to the upper loop's first
+  swing top (z 2,350-2,430, ~91%). All of them then fall out of it within ~5 s (E 2,800-3,100 at
+  the top; the record, ANALYSIS ONLY, pumps that loop for 65 s to E ~4,000 and launches north onto
+  the top platform). One of 9 at 4,524M died at the start (13 s). Hand-on: ckpt_4485283840.pt (the
+  newest at or before the 4,524M eval, 0.5M before the 91.69 eval; pulled). Stopped 09:59 at
+  4,679M (ckpt_latest pulled, md5 5b7eea3f).
+
+### S70e `zlr2b3_s70e` (10:00 UTC): S70d continued + practice in the upper loop
+Resume of S70d's ckpt_latest (4,678.7M) with S70d's flags at `--demo-tau0 14900` (its band), plus:
+* `--spawn-states autoresearch/spines/zlr2b3_early_plus_upper.npy --spawn-states-frac 0.35`: the
+  early route as before + S70d's OWN reservoir states at 75-92% (1,609 from its 4,384M checkpoint)
+  - spawns where the greedy now arrives and falls out;
+* `--respawn-greedy-contact`: the greedy-failure rows anchored at the failed episode's LAST MAP
+  CONTACT instead of its last tick (its deaths are ballistic falls after leaving the loop's
+  surface, so the old 0.25-2 s window sat mid-fall).
+Both generic (the policy's own states; a rule about ballistic deaths). Read it on: time alive in
+the upper loop, its E, swing tops above 92%, a finish.
