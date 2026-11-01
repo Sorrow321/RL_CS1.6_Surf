@@ -758,3 +758,20 @@ so the frontier pool can be refreshed from newer re-recordings without a restart
   swapped in place. GE ge5 (ge1's config, 15 min): roots = the same episodes' contact ticks after the
   record (contact_roots --stride 1 --min-record-frac 0.97, 582 roots at 78-83% on the block's east
   ramp) - can random bursts ride up the north end (contacts at 87-88%)?
+* rc7 last: 88.870 / 89.115 / 88.349 (8,074M); stopped at 8,113.4M (ckpt_latest md5 50f1485a). ge5
+  (from the policy's own contacts on the block's east ramp): deepest contact 85.91% at 6 min - a
+  walkable ledge at z ~2,045 (x -100..0, y 80-550) the policy already reaches; no north-end ride.
+  Stopped. Random-burst search does not ride the high-speed swings (ge2, ge3, ge5).
+
+### NEW `--front-contact 1` (commit bb285780) and rc8 `zlr2b1_rc8` (11:01 UTC)
+Under --ratchet-contact the reservoir's deepest states are ballistic apexes, so `--front-temp`'s
+all-state band heated envs at the apexes (z ~2,300, 89-90%), not where the line ends on a surface.
+With `--front-contact 1` an env is hot (every head at T 2) while its episode's PAID record is within
+the band (1%) of the deepest contact record a training episode EARNED over the last 50 iterations
+(RaceReward.rc_paid_min_d: paid episodes only, so spawn-initialised apex records cannot inflate
+it). Generic (the same band rule, on the record the run is paid for). Off = unchanged.
+rc8 = rc7's 8,113M weights + rc7's exact mix (GE spine, `--demo-tau0 10930` = rc7's last tau,
+milestone 5859, the 15% frontier pool) + `--front-contact 1`. At start 4-6% of envs hot, band edge
+85.1% (the struggle after the 85.5% contact). (ops: `train_fast.py --help` crashes on three
+pre-existing help strings with stray '%' - --demo-success-strict/-alive, --auto-spine-recheck;
+harmless for training.)
