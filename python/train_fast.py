@@ -7510,6 +7510,22 @@ def main() -> None:
     ap.add_argument("--finish-line-rate", type=float, default=0.2,
                     help="--finish-line: the band finish rate that advances it (Salimans-Chen's "
                          "rho = 0.2); below it the band backs off")
+    ap.add_argument("--auto-finish", action="store_true",
+                    help="search for a FINISHING line of the policy's own (tools/finish_search.py: "
+                         "greedy lines of the newest weights, energy-ranked beams rooted at the "
+                         "deepest one's own states before its end) when a greedy eval finishes "
+                         "fewer than --auto-finish-quorum episodes and no --finish-line is armed; "
+                         "the search runs BESIDE the training on a copy of ckpt_latest, and the "
+                         "first finishing line becomes the --finish-line curriculum (its share and "
+                         "constants). Off = none; config only when on; never restored")
+    ap.add_argument("--auto-finish-quorum", type=int, default=1,
+                    help="--auto-finish: search while a greedy eval finishes fewer episodes")
+    ap.add_argument("--auto-finish-retry", type=float, default=3e8,
+                    help="--auto-finish: steps to wait after a search that found no line")
+    ap.add_argument("--auto-finish-delay", type=float, default=0.0,
+                    help="--auto-finish: no search before this many steps after the launch")
+    ap.add_argument("--auto-finish-timeout", type=float, default=3000.0,
+                    help="--auto-finish: wall-clock cap (s) of one search")
     ap.add_argument("--finish-line-tau0", type=float, default=None,
                     help="--finish-line: start the curriculum this many SECONDS before the line's "
                          "finish instead of at its end - the position is not in a checkpoint, so a "
@@ -12269,17 +12285,12 @@ def main() -> None:
     # FINISH rate holds. The --demo-file curriculum keeps its spine, band and share untouched.
     FINL = None
     FINL_FRAC = 0.0
-    if args.finish_line:
-        if args.maps:
-            raise SystemExit("--finish-line is single-map")
-        FINL_FRAC = float(args.finish_line_frac)
-        if not 0.0 < FINL_FRAC < 1.0:
-            raise SystemExit("--finish-line-frac must be in (0, 1)")
-        if SPAWN_STATES is not None and FINL_FRAC + float(SS_FRAC) >= 1.0:
-            raise SystemExit("--finish-line-frac + --spawn-states-frac must stay below 1")
-        _fl = np.load(args.finish_line, allow_pickle=False)
+
+    def _make_finl(_fl, _src, _tau0_s=None):
+        """--finish-line / --auto-finish: the second backward curriculum on a finishing line."""
+        _fl = np.asarray(_fl)
         if _fl.dtype != STATE_DTYPE or _fl.ndim != 1 or len(_fl) < 2:
-            raise SystemExit(f"--finish-line {args.finish_line}: a 1-D STATE_DTYPE array is "
+            raise SystemExit(f"--finish-line {_src}: a 1-D STATE_DTYPE array is "
                              f"needed, got {_fl.dtype} {_fl.shape}")
         _fl = _fl.copy()
         _fl["tick"] = 0
@@ -12287,21 +12298,36 @@ def main() -> None:
         _fw = max(1, TICK.secs_to_ticks(float(args.finish_line_window)))
         _fg = max(1, TICK.secs_to_ticks(float(args.finish_line_grow)))
         _fgm = max(_fg, TICK.secs_to_ticks(float(args.finish_line_grow_max)))
-        _ft0 = (None if args.finish_line_tau0 is None
-                else max(0, len(_fl) - 1 - TICK.secs_to_ticks(float(args.finish_line_tau0))))
-        FINL = DemoCurriculum(_fl, window=_fw, rate=float(args.finish_line_rate),
-                              min_ep=50.0, seed=31, grow=_fg, front_frac=0.5,
-                              tau0=_ft0, cooldown=5, grow_max=_fgm,
-                              name="finish-line curriculum")
+        _ft0 = (None if _tau0_s is None
+                else max(0, len(_fl) - 1 - TICK.secs_to_ticks(float(_tau0_s))))
+        _c = DemoCurriculum(_fl, window=_fw, rate=float(args.finish_line_rate),
+                            min_ep=50.0, seed=31, grow=_fg, front_frac=0.5,
+                            tau0=_ft0, cooldown=5, grow_max=_fgm,
+                            name="finish-line curriculum")
         if _ft0 is not None:
-            print(f"--finish-line-tau0 {args.finish_line_tau0:g}: the curriculum starts at line "
-                  f"state {FINL.tau} of {FINL.n}")
-        print(f"--finish-line: {FINL.n:,} states ({FINL.n * TICK.ms / 1000.0:.1f} s) from "
-              f"{args.finish_line}; {FINL_FRAC:.0%} of every training spawn pool drawn from "
+            print(f"--finish-line-tau0 {_tau0_s:g}: the curriculum starts at line "
+                  f"state {_c.tau} of {_c.n}")
+        print(f"--finish-line: {_c.n:,} states ({_c.n * TICK.ms / 1000.0:.1f} s) from "
+              f"{_src}; {FINL_FRAC:.0%} of every training spawn pool drawn from "
               f"its last states, half on the frontier band ({_fw} ticks), half uniform behind "
               f"it to the finish; the start widens {_fg} ticks per advance (doubling to {_fgm}) "
               f"while the band FINISHES >= {float(args.finish_line_rate):.0%} (min 50 eps, "
-              f"cooldown 5 iterations), backs off below")
+              f"cooldown 5 iterations), backs off below", flush=True)
+        return _c
+
+    if args.finish_line or args.auto_finish:
+        if args.maps:
+            raise SystemExit("--finish-line / --auto-finish are single-map")
+        if args.finish_line and args.auto_finish:
+            raise SystemExit("--auto-finish finds its own finishing line: not with --finish-line")
+        if not 0.0 < float(args.finish_line_frac) < 1.0:
+            raise SystemExit("--finish-line-frac must be in (0, 1)")
+        if SPAWN_STATES is not None and float(args.finish_line_frac) + float(SS_FRAC) >= 1.0:
+            raise SystemExit("--finish-line-frac + --spawn-states-frac must stay below 1")
+    if args.finish_line:
+        FINL_FRAC = float(args.finish_line_frac)
+        FINL = _make_finl(np.load(args.finish_line, allow_pickle=False), args.finish_line,
+                          args.finish_line_tau0)
 
     # ---- --respawn-frontier: the forward potential curriculum -----------
     # Built AFTER the reservoir, because it needs it: the reservoir supplies
@@ -15469,6 +15495,10 @@ def main() -> None:
     # --ratchet-contact: written ONLY when on
     if args.ratchet_contact:
         meta["config"]["ratchet_contact"] = 1
+    # --auto-finish: written ONLY when on (a record of the run; never restored)
+    if args.auto_finish:
+        meta["config"]["auto_finish"] = 1
+        meta["config"]["finish_line_frac"] = float(args.finish_line_frac)
     # --finish-line: written ONLY when on (a record of the run; never restored)
     if args.finish_line:
         meta["config"]["finish_line"] = str(args.finish_line)
@@ -16628,6 +16658,122 @@ def main() -> None:
     if AUTO_SPINE and args.auto_spine_async:
         import atexit
         atexit.register(_auto_spine_kill)
+
+    # --auto-finish: a finishing line from the policy's own search (tools/finish_search.py), run
+    # beside the training after a greedy eval that finishes fewer than the quorum; the first line
+    # found becomes the --finish-line curriculum. AFIN["eval"] is set by the greedy eval below.
+    AFIN = {"eval": None, "proc": None, "retry_at": 0, "k": 0, "field": None}
+    if args.auto_finish and float(args.auto_finish_delay) > 0:
+        AFIN["retry_at"] = int(global_step + float(args.auto_finish_delay))
+        print(f"--auto-finish-delay: no search before step {AFIN['retry_at']:,}")
+
+    def _eval_finishes(ev_path):
+        """(finishes, longest episode in seconds) of a greedy eval file's first eval_eps episodes."""
+        n_fin, n_ep, longest, rows = 0, 0, 0, 0
+        with open(ev_path, encoding="utf-8") as _fh:
+            for _ln in _fh:
+                if _ln.startswith("["):
+                    rows += 1
+                    continue
+                try:
+                    _o = json.loads(_ln)
+                except ValueError:
+                    continue
+                if not isinstance(_o, dict):
+                    continue
+                if "map" in _o:
+                    rows = 0
+                elif "end" in _o:
+                    if n_ep < max(1, int(args.eval_eps or 9)):
+                        n_fin += int(_o.get("end") == "done")
+                        longest = max(longest, rows)
+                    n_ep += 1
+        return n_fin, longest * TICK.ms / 1000.0
+
+    def _auto_finish_after_eval(ev_path):
+        if FINL is not None or AFIN.get("proc") is not None:
+            return
+        n_fin, longest = _eval_finishes(ev_path)
+        go = n_fin < int(args.auto_finish_quorum) and global_step >= AFIN["retry_at"]
+        print(f"[{global_step:>13,d}] auto-finish: {n_fin} greedy finish(es), longest episode "
+              f"{longest:.1f} s" + ("  -> SEARCH" if go else ""), flush=True)
+        if not go:
+            return
+        import shutil as _sh
+        import subprocess as _sp
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        fdir = out / "fin"
+        fdir.mkdir(parents=True, exist_ok=True)
+        if AFIN["field"] is None:
+            AFIN["field"] = fdir / "field.npz"
+            np.savez(AFIN["field"], grid=np.asarray(_f.grid, np.float32),
+                     quant=np.float64(1.0), mins=np.asarray(_f.mins, np.float64),
+                     cell=np.float64(_f.cell), reach_max=np.float64(_f.reach_max))
+        save_ckpt("latest")
+        AFIN["k"] += 1
+        kdir = fdir / f"k{AFIN['k']:02d}"
+        kdir.mkdir(parents=True, exist_ok=True)
+        _sh.copyfile(out / "ckpt_latest.pt", kdir / "ckpt.pt")
+        cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
+                                         / "finish_search.py"),
+               "--ckpt", str(kdir / "ckpt.pt"), "--out", str(kdir), "--field", str(AFIN["field"]),
+               "--max-secs", f"{longest + 30.0:.1f}", "--act-every", str(int(K)),
+               "--timeout", f"{float(args.auto_finish_timeout):g}"]
+        try:
+            fh = open(kdir / "finish_search.log", "w", encoding="utf-8", errors="replace")
+            proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT)
+        except OSError as ex:
+            AFIN["retry_at"] = int(global_step + float(args.auto_finish_retry))
+            print(f"!! auto-finish search {AFIN['k']} did not start: {ex}", flush=True)
+            return
+        AFIN["proc"] = (proc, fh, time.time(), kdir)
+        print(f"[{global_step:>13,d}] auto-finish search {AFIN['k']}: running beside the "
+              f"training (pid {proc.pid}): " + " ".join(cmd), flush=True)
+
+    def _auto_finish_poll():
+        nonlocal FINL, FINL_FRAC
+        pr = AFIN.get("proc")
+        if pr is None:
+            return
+        proc, fh, t0, kdir = pr
+        if proc.poll() is None:
+            if time.time() - t0 <= float(args.auto_finish_timeout) + 600:
+                return
+            proc.kill()
+            proc.wait()
+            print(f"!! auto-finish search {AFIN['k']} killed after {time.time() - t0:.0f}s",
+                  flush=True)
+        fh.close()
+        AFIN["proc"] = None
+        res = None
+        try:
+            txt = (kdir / "finish_search.log").read_text(encoding="utf-8", errors="replace")
+            for _ln in txt.splitlines()[::-1]:
+                if _ln.startswith("AUTO_FINISH "):
+                    res = json.loads(_ln[len("AUTO_FINISH "):])
+                    break
+        except (OSError, ValueError) as ex:
+            print(f"!! auto-finish search {AFIN['k']} failed: {ex}", flush=True)
+        if not res or not res.get("line"):
+            AFIN["retry_at"] = int(global_step + float(args.auto_finish_retry))
+            print(f"[{global_step:>13,d}] auto-finish search {AFIN['k']}: NO finishing line in "
+                  f"{time.time() - t0:.0f}s ({res}); next try at step {AFIN['retry_at']:,}",
+                  flush=True)
+            return
+        FINL_FRAC = float(args.finish_line_frac)
+        FINL = _make_finl(np.load(res["line"], allow_pickle=False), res["line"])
+        print(f"[{global_step:>13,d}] auto-finish search {AFIN['k']}: a {res.get('finish_s')} s "
+              f"finishing line ({res.get('how')}) in {time.time() - t0:.0f}s -> the finish-line "
+              f"curriculum", flush=True)
+
+    def _auto_finish_kill():
+        pr = AFIN.get("proc")
+        if pr is not None and pr[0].poll() is None:
+            pr[0].kill()
+
+    if args.auto_finish:
+        import atexit
+        atexit.register(_auto_finish_kill)
 
     def _auto_spine_finish(res, dt, med):
         """A search's result: no spine -> retry later; a spine -> it replaces the curriculum's."""
@@ -21709,6 +21855,8 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 if AUTO_SPINE and _i == 0 and not _s.heldout:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
+                if args.auto_finish and _i == 0 and not _s.heldout:
+                    AFIN["eval"] = path     # --auto-finish: read after the eval block
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0
@@ -21978,6 +22126,20 @@ def main() -> None:
                 AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
                 print(f"!! auto-spine: {type(_ex).__name__}: {_ex}; next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
+        if args.auto_finish and AFIN.get("proc") is not None:
+            try:
+                _auto_finish_poll()
+            except Exception as _ex:         # a failed search never ends the run
+                AFIN["proc"] = None
+                AFIN["retry_at"] = int(global_step + float(args.auto_finish_retry))
+                print(f"!! auto-finish: {type(_ex).__name__}: {_ex}", flush=True)
+        if args.auto_finish and AFIN["eval"] is not None:
+            _afp, AFIN["eval"] = AFIN["eval"], None
+            try:
+                _auto_finish_after_eval(_afp)
+            except Exception as _ex:         # a failed search never ends the run
+                AFIN["retry_at"] = int(global_step + float(args.auto_finish_retry))
+                print(f"!! auto-finish: {type(_ex).__name__}: {_ex}", flush=True)
         if AUTO_SPINE and AUTO["eval"] is not None:
             # --auto-spine: the greedy eval just written decides whether to search
             _ap, AUTO["eval"] = AUTO["eval"], None

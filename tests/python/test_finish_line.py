@@ -134,3 +134,34 @@ def test_trainer_wiring():
     for k in ("finish_line", "finish_line_frac", "finish_line_window", "finish_line_grow",
               "finish_line_grow_max", "finish_line_rate"):
         assert f'"{k}"' in rc
+
+
+def test_finish_search_helpers():
+    sys.path.insert(0, str(ROOT / "tools"))
+    import finish_search as FS
+    # roots: seconds before the line's end, on a decision boundary, inside the line
+    assert FS.root_ticks(20000, [10, 25], 1000 / 7.0, 4) == [18568, 16428]
+    assert FS.root_ticks(500, [10], 1000 / 7.0, 4) == []          # a line shorter than the root
+    # the deepest line by the field; a missing line is skipped; ties go to the longer line
+    a, b, c = _spine(300, 1), _spine(500, 2), _spine(400, 3)
+
+    def d_fn(o):
+        return np.asarray(o, np.float64)[:, 2]
+    lines = [a, None, b, c]
+    depths = [float(np.min(d_fn(L["origin"]))) if L is not None else None for L in lines]
+    want = int(np.nanargmin([x if x is not None else np.nan for x in depths]))
+    assert FS.pick_deepest(lines, d_fn) == want
+    assert FS.pick_deepest([None, None], d_fn) == -1
+    assert FS.crossed("beam TAS: SPLICED CROSSING in 180.91s") and not FS.crossed("no crossing")
+
+
+def test_auto_finish_wiring():
+    src = _parser()
+    for flag in ("--auto-finish", "--auto-finish-quorum", "--auto-finish-retry",
+                 "--auto-finish-delay", "--auto-finish-timeout"):
+        assert f'ap.add_argument("{flag}"' in src
+    assert "--auto-finish finds its own finishing line: not with --finish-line" in src
+    assert 'if args.auto_finish:\n        meta["config"]["auto_finish"] = 1' in src
+    assert "nonlocal FINL, FINL_FRAC" in src and "finish_search.py" in src
+    rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"auto_finish"' in rc

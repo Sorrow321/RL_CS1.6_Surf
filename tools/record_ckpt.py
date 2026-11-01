@@ -103,6 +103,8 @@ TRAIN_ONLY = frozenset({
     # finishing line); a recording spawns at the map start like the trainer's eval
     "finish_line", "finish_line_frac", "finish_line_window", "finish_line_grow",
     "finish_line_grow_max", "finish_line_rate",
+    # --auto-finish: the trainer's own search for a finishing line (a training spawn curriculum)
+    "auto_finish",
     # --yaw-entropy: the yaw head's share of the TRAINING entropy bonus; a recording runs no update
     "yaw_entropy",
     # --demo-success-d: the TRAINING backward curriculum's success rule; a recording spawns at the start
