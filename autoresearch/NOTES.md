@@ -795,3 +795,7 @@ harmless for training.)
 Resume of ckpt_8491368448 (the steadier 91.505 point, 9/9 at contact 85.6%) + rc8's flags with
 `--front-temp 0.5` (hot = every head at T 1.5 instead of 2), `--demo-tau0 10735` (rc8's tau then).
 If it collapses again: drop --front-contact (rc7's stable mix).
+* **rc9 (12:01-12:23 UTC): 91.204 (its first) / 92.324 / 91.536 / 92.327 (8,718M, median 91.0%) /
+  92.126 / 90.458** - T 1.5 holds where T 2 collapsed (rc8 fell at the same step); hot envs still
+  ~23%; training apexes to 96-97% (reservoir deepest 96.1%). Hand-on for 92.327: ckpt_8718385152.pt
+  (pulled, md5 f3d4a750).
