@@ -1138,6 +1138,46 @@ def branch_apply_view(act, view, idx, yaw, side, jitter: float,
     return a, v
 
 
+def fork_sweep_apply(t, k, act, view, fork_tick, line_acts, line_view, off, rng,
+                     burst: int, hold: int, jitter: float, view_absolute=None, keys=None):
+    """--fork-sweep, one tick: envs whose fork tick is still ahead fly the LINE's engine row
+    and view (what the prefix replay fed them), and at a decision tick their held keys are set
+    to that row's fwd / side / duck as prefix_sync does, so the policy's first own decision
+    reads the state the line put it in; envs inside [fork, fork + burst) get a held VIEW offset
+    (redrawn every ``hold`` ticks from the fork, the keys stay the policy's own). Everyone else
+    keeps the policy's own row. Returns NEW arrays (act', view') - the wrapper's held buffers
+    are never written through. ``off`` (the drawn offsets) and ``keys`` are updated in place."""
+    rep = t < fork_tick
+    inb = ((t >= fork_tick) & (t < fork_tick + burst)
+           if burst > 0 and view is not None else None)
+    if not rep.any() and (inb is None or not inb.any()):
+        return act, view
+    a = np.array(act, np.int32)
+    v = None if view is None else np.array(view, np.float32)
+    if rep.any():
+        row = line_acts[t // k]
+        a[rep] = row
+        if v is not None and line_view is not None:
+            v[rep] = line_view[t // k]
+        if t % k == 0 and keys is not None:
+            keys.state[rep] = np.asarray(row)[list(HELD_HEADS)]
+            keys.boot[rep] = keys.state[rep]
+    if inb is not None and inb.any():
+        rd = inb & (((t - fork_tick) % max(k, int(hold))) == 0)
+        if rd.any():
+            n = int(rd.sum())
+            off[rd] = (rng.uniform(-float(jitter), float(jitter), size=n) if jitter > 0 else
+                       off_warp(rng.uniform(-1.0, 1.0, size=n)) if view_absolute == "velocity"
+                       else rng.uniform(-1.0, 1.0, size=n) * 180.0 if view_absolute
+                       else warp(rng.uniform(-1.0, 1.0, size=n)))
+        if view_absolute:
+            v[inb, 0] = wrap180(v[inb, 0] + off[inb]) if jitter > 0 else wrap180(off[inb])
+        else:
+            v[inb, 0] = (np.clip(v[inb, 0] + off[inb], -K_MAX, K_MAX) if jitter > 0
+                         else np.clip(off[inb], -K_MAX, K_MAX))
+    return a, v
+
+
 def branch_grid_parse(spec: str, K: int, view: bool = False,
                       view_absolute=None):
     """--branch-grid SPEC -> (plans, meta). ``view`` (--view-continuous):
@@ -2226,6 +2266,31 @@ def main():
                     "VIEW yaw target (held for --branch-hold ticks), never a key - so it writes no "
                     "raw engine key row and runs on a --keys-hold checkpoint (whose fwd/side/duck "
                     "bin 0 is 'keep'). Off = the burst sets the side key too, as before")
+    ap.add_argument("--fork-sweep", default=None, metavar="T0:T1:STEP",
+                    help="SEARCH ALONG THE POLICY'S OWN LINE (zlr2b4, 2026-11-01): every env "
+                    "replays the --prefix-line line open-loop and FORKS off it at its own tick - "
+                    "the envs spread round-robin over the fork ticks T0, T0+STEP, .., T1 (ticks, "
+                    "rounded to decisions) - after which it is the policy's own sampled proposal "
+                    "(plus --fork-burst). No resampling: every env is one independent rollout, "
+                    "ranked by the deepest d it reached alive after its fork (the grader's max "
+                    "progress, so a transient apex counts in full); the deepest is the frontier "
+                    "(--save-frontier writes its line: the prefix up to its fork + its own "
+                    "flight). --branch-at forks ONE junction 0.5 s before the greedy's death; "
+                    "this asks the same question at every tick of a window. Needs --prefix-line "
+                    "(its TICKS is set to T0); excludes --branch-*, --macro-hold, --commit, "
+                    "--greedy-prefix, --greedy-envs. Off = the tool as it was")
+    ap.add_argument("--fork-burst", type=int, default=0,
+                    help="--fork-sweep: ticks of held VIEW perturbation right after each env's "
+                    "fork (the keys stay the policy's own, so a --keys-hold checkpoint is fine); "
+                    "0 = none, the policy's own sampling is the only diversity")
+    ap.add_argument("--fork-hold", type=int, default=70,
+                    help="--fork-sweep: ticks one drawn view offset is held before it is redrawn")
+    ap.add_argument("--fork-jitter", type=float, default=0.0,
+                    help="--fork-sweep burst: J > 0 = an offset uniform in [-J, J] deg on the "
+                    "policy's own view target; 0 = an absolute target drawn in the policy's own "
+                    "squashed coordinate (branch_draw_view's rule)")
+    ap.add_argument("--fork-seed", type=int, default=0,
+                    help="--fork-sweep: private numpy RNG for the burst draws")
     ap.add_argument("--save-frontier", action="store_true",
                     help="no crossing: also replay the FRONTIER lineage (the one that held the "
                     "deepest --score d at a resample) open-loop and save it - "
@@ -2587,6 +2652,32 @@ def main():
     # gate seed and the action prefix all come out of the npz, and rolling a
     # gate episode would only re-derive a spawn this file already carries.
     pre_acts, pre_ticks = None, 0
+    fs_spec = None
+    if args.fork_sweep:
+        # --fork-sweep T0:T1:STEP (ticks): the prefix replays to T0, the rest forks in the loop
+        try:
+            fs_spec = [int(float(x)) for x in str(args.fork_sweep).split(":")]
+            assert len(fs_spec) == 3
+        except (ValueError, AssertionError):
+            raise SystemExit("--fork-sweep wants T0:T1:STEP in ticks, e.g. 12000:24000:140")
+        fs_spec = [x - x % K for x in fs_spec]
+        if not (0 < fs_spec[0] <= fs_spec[1]) or fs_spec[2] <= 0:
+            raise SystemExit(f"--fork-sweep: need 0 < T0 <= T1 and STEP > 0 (decision-rounded "
+                             f"{fs_spec})")
+        if not args.prefix_line:
+            raise SystemExit("--fork-sweep forks off a saved line: pass --prefix-line NPZ")
+        for _bad, _nm in ((args.branch_at, "--branch-at"), (args.branch_grid, "--branch-grid"),
+                          (args.macro_hold, "--macro-hold"), (args.commit > 0, "--commit"),
+                          (args.greedy_prefix > 0, "--greedy-prefix"),
+                          (args.greedy_envs > 0, "--greedy-envs")):
+            if _bad:
+                raise SystemExit(f"--fork-sweep excludes {_nm}")
+        for _nm in ("fork_burst", "fork_hold"):
+            _v = int(getattr(args, _nm))
+            if _v % K:
+                _v += K - _v % K
+                print(f"--{_nm.replace('_', '-')} rounded up to {_v} (act_every {K})")
+                setattr(args, _nm, _v)
     if args.prefix_line:
         spec = str(args.prefix_line)
         pspec, _, tspec = spec.rpartition(":")
@@ -2594,6 +2685,8 @@ def main():
             pl_path, pl_ticks = Path(pspec), int(tspec)
         else:
             pl_path, pl_ticks = Path(spec), 0
+        if fs_spec is not None:
+            pl_ticks = fs_spec[0]          # the common prefix ends at the first fork
         pz = np.load(pl_path, allow_pickle=False)
         if int(pz["act_every"]) != K:
             raise SystemExit(f"--prefix-line act_every {int(pz['act_every'])}"
@@ -2906,6 +2999,27 @@ def main():
                     setattr(args, _nm, _v)
     if args.prefix_line and (args.commit > 0 or args.greedy_prefix > 0):
         raise SystemExit("--prefix-line excludes --commit/--greedy-prefix")
+    # ---- --fork-sweep: per-env fork ticks along the prefix line ---------
+    FS = fs_spec is not None
+    if FS:
+        _fs_ticks = np.arange(fs_spec[0], fs_spec[1] + 1, fs_spec[2], dtype=np.int64)
+        if int(_fs_ticks[-1]) > len(pre_acts) * K:
+            raise SystemExit(f"--fork-sweep T1 {int(_fs_ticks[-1])} is past the line's end "
+                             f"({len(pre_acts) * K} ticks)")
+        if int(_fs_ticks[-1]) >= max_ticks:
+            raise SystemExit("--fork-sweep: --max-ticks must leave a horizon after T1")
+        FS_tick = _fs_ticks[np.arange(N) % len(_fs_ticks)]   # round-robin: every fork tick gets
+        FS_bd = np.full(N, np.inf)                            # floor(N/G) or one more env
+        FS_bt = np.full(N, -1, np.int64)
+        FS_off = np.zeros(N, np.float64)
+        fs_rng = np.random.default_rng(int(args.fork_seed))
+        gen_ticks = max_ticks + K       # no resampling: every env is its own rollout
+        print(f"--fork-sweep: {len(_fs_ticks)} fork ticks {int(_fs_ticks[0])}..{int(_fs_ticks[-1])} "
+              f"({secs(int(_fs_ticks[0])):.2f}-{secs(int(_fs_ticks[-1])):.2f}s, every "
+              f"{secs(fs_spec[2]):.2f}s) x {N // len(_fs_ticks)}-{-(-N // len(_fs_ticks))} envs, "
+              f"burst {int(args.fork_burst)} ticks (hold {int(args.fork_hold)}, jitter "
+              f"{float(args.fork_jitter):g}), horizon to tick {max_ticks} "
+              f"({secs(max_ticks):.1f}s); no resampling")
 
     # ---- --macro-hold: the held-key proposal ---------------------------
     macro, macro_lo, macro_hi = None, 0.0, 0.0
@@ -3195,6 +3309,11 @@ def main():
                 else:
                     a = branch_apply(a, br_idx, br_act,
                                      int(args.branch_jitter))
+            if FS:
+                a, v = fork_sweep_apply(t, K, a, v, FS_tick, pre_acts, pre_view, FS_off, fs_rng,
+                                        int(args.fork_burst), int(args.fork_hold),
+                                        float(args.fork_jitter), VIEW_ABS,
+                                        keys=(spol.keys if KEYS else None))
             if t % K == 0:
                 hist[d] = a                # bins < 15: int8 is lossless
                 if VIEWC:
@@ -3221,6 +3340,17 @@ def main():
                 obs, _rew, done, trunc, _term = coreN.step(a)
             gh = coreN.goal_hits
             dead = np.asarray(done, bool) | np.asarray(trunc, bool)
+            if FS:
+                # the deepest d each env reaches ALIVE after its fork (a dead env already holds
+                # its respawn, so this tick does not count for it)
+                _live = valid & ~dead & ((t + 1) > FS_tick)
+                if _live.any():
+                    _dd = np.asarray(ogf.sample(np.asarray(coreN.states_view["origin"],
+                                                           np.float64)), np.float64)
+                    _imp = _live & (_dd < FS_bd)
+                    if _imp.any():
+                        FS_bd[_imp] = _dd[_imp]
+                        FS_bt[_imp] = t + 1
             if arcp is not None:
                 # the post-step position of every LIVE lineage; an env that
                 # died this tick already holds its respawn, so its arc is
@@ -3302,6 +3432,15 @@ def main():
                                        None if hist_p is None else hist_p[:d + 1, i].copy(),
                                        None if hist_z is None else hist_z[:d + 1, i].copy())))
                 valid &= ~dead
+            if FS and not valid.any():
+                print(f"--fork-sweep: every env died by tick {t + 1} ({secs(t + 1):.1f}s); "
+                      "stopping")
+                break
+            if FS and t % (K * 250) == 0:
+                _done = int((t + 1 > FS_tick).sum())
+                _bd = float(FS_bd.min())
+                print(f"fork-sweep t={t + 1:6d} ({secs(t + 1):6.1f}s) forked {_done:5d}/{N} "
+                      f"alive {int(valid.sum()):5d} best d {_bd:8.0f}", flush=True)
             if best is not None and args.gens > 0 \
                     and gen - best_gen >= args.gens:
                 break
@@ -3477,6 +3616,35 @@ def main():
                              if br_fired >= 0 else "")
                           + f"finishes={len(finishes)}")
         dt_loop = time.time() - t_loop
+        if FS:
+            # per fork tick: the deepest d any of its envs reached alive after the fork, and the
+            # frontier = the deepest env overall (its own action table: the line's prefix up to
+            # its fork, then its own flight), saved by --save-frontier like any frontier
+            _fs_d0 = float(np.asarray(ogf.sample(np.asarray(row0["origin"], np.float64)
+                                                .reshape(1, 3)))[0])
+            def _pct(dv):
+                return 100.0 * (_fs_d0 - dv) / _fs_d0 if np.isfinite(dv) else float("nan")
+            fs_rows = []
+            for ft in _fs_ticks:
+                m = FS_tick == ft
+                j = int(np.flatnonzero(m)[np.argmin(FS_bd[m])])
+                fs_rows.append((int(ft), j, float(FS_bd[j]), int(FS_bt[j])))
+            print("--fork-sweep per fork tick: tick (s) -> best d (progress%) at tick (s) [env]")
+            for ft, j, bdv, btk in fs_rows:
+                print(f"  {ft:6d} ({secs(ft):6.1f}s) -> d {bdv:8.0f} ({_pct(bdv):6.2f}%) at "
+                      f"{btk:6d} ({secs(max(btk, 0)):6.1f}s) [env {j}]")
+            jb = int(np.argmin(FS_bd))
+            if np.isfinite(FS_bd[jb]) and FS_bt[jb] > 0:
+                _dlast = (int(FS_bt[jb]) + K - 1) // K
+                frontier = {"vert": -1, "d": float(FS_bd[jb]), "tick": int(FS_bt[jb]),
+                            "acts": hist[:_dlast, jb].copy(),
+                            "view": (hist_v[:_dlast, jb].copy() if VIEWC else None)}
+                print(f"--fork-sweep frontier: env {jb} forked at {int(FS_tick[jb])} "
+                      f"({secs(int(FS_tick[jb])):.1f}s), d {FS_bd[jb]:,.0f} "
+                      f"({_pct(float(FS_bd[jb])):.2f}%) at tick {int(FS_bt[jb])} "
+                      f"({secs(int(FS_bt[jb])):.1f}s)")
+            np.savez(out_dir / "fork_sweep.npz", fork_tick=FS_tick, best_d=FS_bd,
+                     best_tick=FS_bt, d0=np.float64(_fs_d0))
         n_ticks = t + 1 - t_start
         fps = n_ticks * N / max(dt_loop, 1e-9)
         print(f"search done: {n_ticks} ticks x {N} envs in {dt_loop:.0f}s "
