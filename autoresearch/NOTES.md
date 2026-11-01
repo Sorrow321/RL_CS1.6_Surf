@@ -692,3 +692,21 @@ incumbent with `--demo-file autoresearch/spines/zlr2b4_cem978_spine.npy --demo-c
 `--self-states` naming the provenance above. If the curriculum stalls at the far stages, the
 launch-only spines (`zlr2b4_cem164_spine.npy` 77.7%, `zlr2b4_cem169_spine.npy` 79.0%) teach the
 launch alone.
+
+### zlr2b4 round-2 lesson (FINAL, wrap-up 16:40 UTC)
+
+**Result: no eval, no score.** `box.py rent` refused every attempt from 05:37 to 16:00 UTC (~500
+tries, every 1-4 min; fleet burn 0.526 of a ~0.63 $/h pace with two other branches' boxes up all
+round; the cheapest acceptable offer was 0.19 $/h). Nothing was trained. The draft lesson above
+(14:10) stands as the round's lesson; in short:
+* The incumbent's frontier on this map is CONVERSION, not energy: the field is ~height, and it
+  carries E ~4,500 at loop tops of z ~716.
+* `tools/cem_launch.py` (physics-exact CEM from the policy's own line; offsets in atan(30/|v|)
+  units - in degrees the search is blind) finds physical lines from the incumbent's own states:
+  launches of 75-79% on every lap from 149 s, and from the 169.3 s launch, staged air-control
+  stages to 93.4% and 97.8% (`autoresearch/spines/zlr2b4_cem978_spine.npy`).
+* The run that was staged all day and never got a box: `autoresearch/analysis/zlr2b4_box_go.sh`
+  (resume the incumbent on the 97.8% spine, backward curriculum from its end, milestones
+  5859,1334,422, `--fail-pen 3`; after 14:00 the 164.4 s launch-only spine).
+* Harness: the budget pace admits two boxes while four branches compete; first-come boxes kept by
+  extension lock the other two branches out of the whole round (Harness issue above).

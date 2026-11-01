@@ -1,7 +1,7 @@
 {
  "agent": "zlr2b4",
  "round": 2,
- "final": false,
+ "final": true,
  "best": null,
- "summary": "Round 2 (zlr2b4). Incumbent 64.671 (loops top out at z ~716 while it carries E ~4,500). NEW tools/cem_launch.py: physics-exact CEM from the policy's own greedy states (view offsets in atan(30/|v|) units + keys), scored on max progress. From the incumbent's own state at 169.3 s, chained stages find a PHYSICAL line: launch off its 3rd ramp 79.0% -> air line onto a higher ramp 93.4% -> up it to the underside of the finish platform 97.8% (spine autoresearch/spines/zlr2b4_cem978_spine.npy; launches 75-79% exist on every lap from 149 s). Staged run: resume the incumbent on that spine (backward curriculum from the end, milestones 9.5/79/93.4%). No box since 05:37: the fleet budget pace admits two boxes and two other branches hold them (Harness issue in NOTES)."
+ "summary": "NO EVAL: box.py rent refused every attempt from 05:37 to 16:00 UTC (~500 tries; the fleet's budget pace admitted two boxes, held by two other branches all round), so nothing was trained. CPU findings (NOTES.md): the field is ~height here and the incumbent carries E ~4,500 at z ~716 tops. NEW tools/cem_launch.py (physics-exact CEM from the policy's own greedy states, view offsets in atan(30/|v|) units + keys, scored on max progress) finds PHYSICAL lines from the incumbent's own states: a launch off its 3rd ramp on every lap from 149 s (75-79%), and from the 169.3 s launch staged air-control stages to 93.4% and 97.8% (under the finish platform). Spines in autoresearch/spines/zlr2b4_*; NEW beam_tas --fork-sweep. Next: resume the incumbent on zlr2b4_cem978_spine.npy (autoresearch/analysis/zlr2b4_box_go.sh has the exact launch)."
 }
