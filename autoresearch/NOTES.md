@@ -674,3 +674,13 @@ from that state) -> curriculum (+ BC on the line's last seconds if the band stal
   heading spans 90-135 deg (the record lands at 112) but the face is climbed only to z -360..-457
   (E <= 2,355), never at E >= 2,481. The pillar route stays out of reach of perturbations of the
   incumbent's own line; this round goes for the exit-precision gain.
+
+### Harness issue (09:36 UTC): one branch can be starved of a box for most of a round
+box.py's pace (credit - reserve) / hours left = 0.569 $/h (+10% = 0.626) admits two boxes at
+~0.26 $/h; from 05:31 to at least 09:36 UTC the fleet's burn stayed at 0.526 $/h with two boxes
+live and every `rent` of this branch was refused (no offer under 0.10 $/h exists). The protocol's
+"release the box while you analyse" is what makes room, but nothing obliges it, so with four
+branches one of them can spend most of its 12 h without a GPU. A fair-share rule (e.g. a box
+older than N hours yields to a branch that has had none this round) would keep all four slots
+alive. This branch worked CPU-only meanwhile (analysis, tools, a spine) and keeps a 45 s
+auto-rent poll (rent -> deploy -> launch) so it takes the first room that opens.
