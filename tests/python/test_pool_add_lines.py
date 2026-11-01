@@ -33,3 +33,16 @@ def test_share_and_tiling():
 def test_no_lines_is_the_base():
     base = np.zeros(5, STATE_DTYPE)
     assert np.array_equal(pool_add_lines.build(base, [], 0.3), base)
+
+
+def test_tail_cli(tmp_path):
+    base = np.zeros(70, STATE_DTYPE)
+    ln = np.zeros(100, STATE_DTYPE)
+    ln["origin"][:, 0] = np.arange(100)
+    np.save(tmp_path / "b.npy", base)
+    np.save(tmp_path / "l.npy", ln)
+    pool_add_lines.main(["--base", str(tmp_path / "b.npy"), "--lines", str(tmp_path / "l.npy"),
+                         "--share", "0.5", "--tail-s", "0.07", "--tick-ms", "7",
+                         "--out", str(tmp_path / "o.npy")])
+    out = np.load(tmp_path / "o.npy")
+    assert set(np.unique(out[70:]["origin"][:, 0])) == set(range(90, 100))   # the last 10 ticks

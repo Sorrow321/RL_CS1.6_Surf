@@ -44,6 +44,12 @@ def main(argv=None):
     ap.add_argument("--base", required=True)
     ap.add_argument("--lines", nargs="+", required=True, help="line .npy files (globs ok)")
     ap.add_argument("--share", type=float, default=0.3)
+    ap.add_argument("--tail-s", type=float, default=0.0,
+                    help="keep only each line's LAST this-many seconds (0 = the whole line): a "
+                         "backward curriculum over search lines - refresh the pool file in place "
+                         "(the trainer re-reads it) with a longer tail as the policy finishes from "
+                         "the shorter one")
+    ap.add_argument("--tick-ms", type=float, default=7.0, help="--tail-s: the lines' tick")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     base = np.load(a.base)
@@ -53,6 +59,8 @@ def main(argv=None):
         ln = np.load(f)
         if ln.dtype != STATE_DTYPE or ln.ndim != 1 or len(ln) < 1:
             raise SystemExit(f"{f}: not a 1-D STATE_DTYPE array")
+        if a.tail_s > 0:
+            ln = ln[-max(1, int(round(a.tail_s * 1000.0 / a.tick_ms))):]
         lines.append(ln)
     if base.dtype != STATE_DTYPE:
         raise SystemExit(f"{a.base}: not a STATE_DTYPE array")
