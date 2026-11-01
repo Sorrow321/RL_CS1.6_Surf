@@ -1028,3 +1028,11 @@ offsets, the map's own finish trigger.
   ((-48, 2,021, 2,978)). The greedy passes x -64 at ~2,050, just under/west of that wall, and
   drifts west (x -1,450 at 162.3 s) into its fatal fall. Plans: held yaw offsets of +5..+17 deg
   for ~1-2.5 s around the launch, the line's own keys (side overrides rare).
+* sf5 (21:11-21:25 UTC, the hull-aware score, `--duck-flip 0.1`): 9 more finishing lines, all from
+  159.4 s; none from 153.4-154.4 / 147.4-147.9 / 160.9 (best misses 82-293 u; the earlier north
+  launches carry E ~3,700-3,950, too little for the wall-slide apex). 17 lines in all, every one
+  from the line's LAST north launch (~160.7 s, E ~4,150).
+* Pool `autoresearch/spines/zlr3b4_pool.npy` (md5 75eb40c7): rc10's 47,793 own frontier states +
+  the 17 lines' last 3 s (7,293 rows x4 = 37.9% of 76,965), the file the box run copies to
+  runs/sp3/pool.npy. 21:29 UTC: a second own line on CPU (beam_tas, 4 envs: 1 greedy + 3 sampled,
+  ranked by d, --frontier-last) for finishing lines from a different trajectory.
