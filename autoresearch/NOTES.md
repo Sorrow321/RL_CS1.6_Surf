@@ -902,3 +902,5 @@ iteration showed a frontier-pool spawn flying into a slab in 0.8 s: the slabs ar
 away. Ideas: a search on the policy's own fifth-loop states for a slab entry with the POLICY's actions
 plus held view offsets (beam_tas --branch-at with a finish objective) rather than uniform bursts; the
 early-route fragility (2-6/9 episodes die in the first troughs) needs fresh starts in the mix.
+* rc11 (16:07-16:31 UTC, 12,491.7-12,891.7M): 96.814 / 96.238 / 95.598 / 95.808 / 96.991 / 94.463 - no
+  gain on 98.329. Box 58621920 released at 16:34 UTC (idle; every cited run pulled).
