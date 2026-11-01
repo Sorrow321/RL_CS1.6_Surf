@@ -1016,3 +1016,10 @@ frontier pool alone again) `--finish-line runs/sp/fin_r2dh2.npy --finish-line-fr
 25,845 states, md5 0190559e = autoresearch/spines/zlr3b2_finish3.npy), `--demo-tau0 9215` (c1's
 last GE tau). First iterations: the finish-line band walked 0 -> 0.73 s before the finish at 57-95%
 band success.
+* c2 18:29 UTC (11,75-11,98B): greedy evals 96.706 / 95.603 / 96.757 / 95.654, 0 finishes. The
+  finish-line band reached ~4.2 s before the line's finish in ~10 min and oscillates there at 16-22%
+  band finish rate (advance/backoff around the 20% rule) - the bench's hard zone. The greedy's good
+  episodes pass the middle band's north edge (x 740-840, y ~1,300-1,360) 290-350 u under the slab with
+  E max 4,145-4,361 at death; 3/9 die at the fifth loop's entry (~78%, z ~1,650, 126-147 s).
+* More lines: r4dh2 (seed 4, T 129.5 s, dh 2) 1 finisher at 205.35 s; r1dh2 (seed 1, dh 2, on c1's
+  weights) 0 finishers (frontier d 0 at 186.9 s without a goal hit).
