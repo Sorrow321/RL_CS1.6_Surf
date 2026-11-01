@@ -662,3 +662,10 @@ from there. Budget 2e9.
   from the ridge top's low part at t+381.
 * The 5,110M greedy re-recording (record_ckpt --dump-states, 9 episodes): its deepest contact line
   ends at 69.82% - no deeper than the GE spine; not used.
+* rc4 later: 75.617 (5,884M) / 77.850 (5,960M, median 77.2%) - the ~76-81% level holds; curriculum
+  at 11,865 (81% success).
+* GE ge3 (07:58 UTC, 15 min, ge1's config): roots = the 5,582M policy's OWN contact ticks after its
+  contact record stopped improving (record_ckpt --dump-states, 9 greedy episodes, 8 on the ridge
+  with contact records 69.2-69.7%, apexes to 82.0%; contact_roots --stride 4 --min-record-frac 0.9
+  = 462 roots at 60-70%, E ~2,500-2,900). Looking for the next SURFACE (the record's: east of the
+  big block, 82-88%).
