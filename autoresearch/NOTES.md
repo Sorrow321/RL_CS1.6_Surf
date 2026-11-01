@@ -434,7 +434,7 @@ comes, a stronger hand-on for the next round.
 * E13 03:22 UTC: 64.428 at 3,506M (median 64.05%) - hand-on ckpt_3499622400.pt (6.3M before; pulled).
 * E13 03:52 UTC: 64.671 at 4,034M (median 64.57%) - hand-on ckpt_4032299008.pt (2.1M before; pulled).
 
-### zlr1b4 round-1 lesson (written 03:55 UTC; final numbers at wrap-up)
+### zlr1b4 round-1 lesson (FINAL, wrap-up 04:31 UTC)
 
 **Result: 64.671** (E13 `zlr1b4_e13` at 4,034M; median 64.57%, 9/9 at the third structure's top) -
 surf_za_loop from the TRUE start, champion-free, no demo in training, from scratch on 2026-10-31
@@ -492,3 +492,9 @@ after the checkout has already happened - run restamp_maps by hand; a box.py ssh
 by pattern (pgrep -f, grep '[x]yz') matches its own shell when the same command text names the
 target - kill by pid file, launch in a separate call; snapcopy can leave a 40M gap before an eval
 (pull --snapshot the newest at or before it).
+
+* **Wrap-up (04:31 UTC):** E13 stopped at ~4.66B with the round; its last evals 63.81 / 63.94 / 63.46 /
+  63.60 / 64.03 / 63.23 (4.26-4.64B, medians 63.0-63.9%) - the level holds, 9/9 every eval. **Final:
+  64.671** (best of 133 greedy evals over 13 runs; `score.py --best runs/zlr1b4/*/`), hand-on
+  **ckpt_4032299008.pt** (zlr1b4_e13, 2.1M before the eval; pulled with E13's ckpt_latest). Box
+  58559819 (RTX 3090, 0.20 $/h, ~11.2 h ~ $2.3) released.

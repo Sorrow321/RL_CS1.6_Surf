@@ -1,7 +1,7 @@
 {
  "agent": "zlr1b4",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 64.671,
   "eval_file": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/traj_4034396160.jsonl",
@@ -9,6 +9,7 @@
   "step": 4034396160,
   "ckpt": "/home/steam/ar_loop/runs/zlr1b4/zlr1b4_e13/ckpt_4032299008.pt",
   "recipe": [
+   "(incumbent_recipe) +",
    "--energy-pot",
    "12",
    "--energy-pot-front",
@@ -16,9 +17,9 @@
    "--energy-pot-front-bonus",
    "0",
    "--energy-stall",
-   "32",
+   "32 (NEW)",
    "--demo-file",
-   "runs/ge/zl1/line_a.npy (autoresearch/spines/zlr1b4_ge1_line_a.npy)",
+   "runs/ge/zl1/line_a.npy (= autoresearch/spines/zlr1b4_ge1_line_a.npy, Go-Explore from the true spawn, ge_replay exact)",
    "--demo-window",
    "5",
    "--demo-grow",
@@ -42,27 +43,16 @@
    "0",
    "--int-real-only",
    "0",
-   "--ckpt-every",
-   "2e8",
+   "(resumes:) --auto-spine --auto-spine-async --auto-spine-recheck (NEW) [e3/e4]",
+   "--fail-pen",
+   "3 [e8, e13]",
    "--demo-tau0",
    "114",
-   "--demo-cooldown",
-   "5",
-   "--demo-grow-max",
-   "40",
-   "(E8 resume of E4-1239M) --fail-pen",
-   "3",
-   "--demo-tau0",
-   "114",
-   "--demo-cooldown",
-   "5",
-   "--demo-grow-max",
-   "40",
    "--ckpt-every",
    "2e8"
   ],
-  "resume_from": "zlr1b4_e8 ckpt_1844445184 (md5 e3c338a7) <- zlr1b4_e4 ckpt_1239941120 <- zlr1b4_e3 ckpt_1088421888 <- zlr1b4_e2 ckpt_latest 559415296",
-  "commit": "5d07d0df"
+  "resume_from": "zlr1b4_e8 ckpt_1844445184 (md5 e3c338a7) <- zlr1b4_e4 ckpt_1239941120 <- zlr1b4_e3 ckpt_1088421888 <- zlr1b4_e2 ckpt_latest 559415296 (scratch)",
+  "commit": "906e5619"
  },
- "summary": "Control (recipe) 0.587. E1 (per-call energy K12 + new --energy-stall 32) null. Go-Explore from the true spawn (energy cells, 12 min) reached the first trough (9.48%). E2 = E1 + backward curriculum on that GE line, from scratch: 24.0 at 529M. E3 = + --auto-spine: 57.4 at 1088M (a stale spine then dragged it to 34% -> new --auto-spine-recheck). E4 57.9; E5-E7 plateau 55-57. E8 = E4's weights + --fail-pen 3: 62.77 (survives and pumps the third structure to E ~2,600). E9-E12 (own-beam spine, fail-pen 5, wider frontier temperature, 4x novelty) do not pass ~62%; searches (GE x3, beams, branched beams) find no way into the fourth structure. E13 = E8's config from its 62.77% snapshot, trained on: 62.97 (2222M) / 63.89 (2600M) / 64.24 (2902M) / 64.43 (3506M) / 64.671 (4034M, median 64.57%): alive ~200 s, E ~5,000; the fourth structure is still not entered."
+ "summary": "From scratch (control 0.587) to 64.671 (9/9 at the third structure's top, median 64.57%; record 63% at 330 s, policy 64% at ~160 s). Worked: NEW --energy-stall 32 + per-call --energy-pot 12; a Go-Explore line from the true spawn (9.48%) as the first backward-curriculum spine (24% at 529M from scratch); --auto-spine (57% by 1088M) with NEW --auto-spine-recheck after a stale async spine dragged it to 34%; --fail-pen 3 (survive AND pump: 62.8%); then plain training (64.7%, still rising). Did not: energy free at the front, fail-pen 10, own-beam spines, wider front band, 4x novelty (negative); GE x3 / beams / branched beams past 57-64%. Next: the fourth loop structure (a climb along a pillar face, rising, at E ~2,100); keep training the 64.7% weights; auto-spine+recheck on them."
 }
