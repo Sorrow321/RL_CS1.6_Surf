@@ -730,3 +730,13 @@ eval).
   spine's launch), 45% band success. Hand-on: ckpt_4233625600.pt (25.7M before the eval, pulled).
 * Beam from the TRUE start on S70d's 4,284M snapshot (09:22; 2,048 envs, --score d, 238 s): the
   auto-spine step by hand - a line past the greedy's 78% (into the upper loop) for the next spine.
+* **S70d 4,297-4,373M: 77.227 / 89.519 (4,335M) / 80.648 - NEW BEST 89.519.** At 4,335M 2/9
+  launched: ep3 80.4%, ep8 **89.52%** (z 2,291, 141.2 s): north-end launch at ~130 s, the block at
+  137 s, the ramp launch (-1,043, 1,148, 1,190) at 138 s, then INTO THE UPPER LOOP (x ~0..300,
+  y 300-1,400, z 1,700-2,270; the record's fifth structure, ANALYSIS ONLY) to its swing top at
+  141 s, then out east (717, 1,266, 1,706) and a fall. Launch reliability swings between evals
+  (7/9 at 4,222M, 2/9 at 4,335M). Hand-on: ckpt_4334288896.pt (0.5M before the eval, pulled).
+* Beam from the true start on S70d's 4,284M weights: the population collapsed into one stuck
+  place (all 2,048 lineages at d 5,046 = 20.7% for 80 generations) - killed. (A d-ranked beam
+  over a 200 s line on this map keeps whatever lineage is momentarily deepest; a lineage parked
+  on a ledge at 20% outlived every flying one.)
