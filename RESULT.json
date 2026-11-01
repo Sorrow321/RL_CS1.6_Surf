@@ -3,11 +3,11 @@
  "round": 3,
  "final": false,
  "best": {
-  "score": 110.409,
-  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c2/traj_12506890240.jsonl",
+  "score": 117.151,
+  "eval_file": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c2/traj_13035372544.jsonl",
   "run": "zlr3b2_c2",
-  "step": 12506890240,
-  "ckpt": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c2/ckpt_12352225280.pt",
+  "step": 13035372544,
+  "ckpt": "/home/steam/ar_loop/runs/zlr3b2/zlr3b2_c2/ckpt_13035372544.pt",
   "recipe": [
    "(resume of c1's ckpt_latest <- incumbent ckpt_11096031232; every flag restored)",
    "--demo-file",
@@ -34,5 +34,5 @@
   "resume_from": "zlr3b2_c1 ckpt_latest (md5 e08fb8c1) <- incumbent r2",
   "commit": "2b320cf4"
  },
- "summary": "110.409: the first greedy FINISHES on surf_za_loop from the true start (c2 at 12,507M: 2/9, best 163.15 s; 450.46 s is the record on our clock), from the incumbent's 98.329. How: policy beams from the incumbent's own greedy lines (beam_tas --prefix-line, 4096 envs, --score dh = -d + energy height, ~100 s spans) found finishing lines (180.9-211.5 s); NEW --finish-line runs a second backward curriculum (the trainer's DemoCurriculum) on the 180.9 s line on its own 15% pool share beside the GE spine curriculum: walked back 0 -> 64 s before the finish in ~35 min, and the greedy finished. Uniform pool spawns on the same lines (c1) did not (own samples finish 3% from 3 s out). Next: reliability (2/9) and early-route deaths."
+ "summary": "117.151: c2 at 13,035M finishes surf_za_loop from the true start 8/9 (best 156.45 s; the record is 450.46 s on our clock), from the incumbent's 98.329 (0 finishes). How: policy beams from the incumbent's own greedy lines (beam_tas --prefix-line, 4096 envs, --score dh = -d + energy height, ~100 s spans) found finishing lines (180.9-211.5 s); NEW --finish-line runs a second backward curriculum (the trainer's DemoCurriculum) on the 180.9 s line on its own 15% pool share beside the GE spine curriculum: walked back 0 -> 159 s before the finish in ~60 min; first greedy finish after ~35 min, 4-8/9 after ~60. Uniform pool spawns on the same lines (c1, 97.797) did not teach it. Next: 9/9, speed."
 }

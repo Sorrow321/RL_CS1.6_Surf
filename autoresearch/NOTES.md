@@ -1042,3 +1042,10 @@ band success.
   Hand-on candidates pulled: ckpt_12352225280.pt (154.7M before the 110.409 eval, md5 0c8a37fe) and
   ckpt_12552503296.pt (45.6M after, md5 5d587b5b); snapcopy started beside c2 (18:54) so later evals
   get a checkpoint at their own step.
+* **c2 19:17 UTC: 116.037 (12,733M: 7/9, best 156.69 s) / 114.960 (6/9, 153.56 s) / 112.611 (4/9) /
+  112.582 (4/9) / 117.151 (13,035M: 8/9, best 156.45 s, median 100%) / 117.109 (13,111M: 8/9, 160.15 s).**
+  Within ~25 min of the first finish the greedy finishes 4-8 of 9. The finish-line band is at tau 3,149
+  of 25,845 = 158.9 s before the line's finish (nearly the whole line, 66% band success); training win
+  48% "@ 80 s". The greedy now finishes FASTER than the line it learned from (153-168 s vs 180.9 s).
+  Hand-on for 117.151: snapcopy's ckpt_13035372544.pt (the eval's own step; pulled, md5 fe9c190b);
+  ckpt_13110870016.pt (117.109) pulled too (md5 b712d950).
