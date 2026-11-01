@@ -1194,3 +1194,26 @@ f2's flags with `--bc-file runs/dag/bc_dag2.npz --bc-coef 0.3 --bc-coef-final 0.
 * (ops, AGAIN) two box.py ssh sessions killed themselves with `pkill -f '<a [b]racket pattern>'`: the
   same command line also contained the plain script path the regex matches. Never pkill -f in a box
   command; kill by pid (`ps` first, then `kill <pid>` in a separate call) or by pid file.
+* f3 evals: 94.984 / 96.839 / (12,268M) / 95.910 (12,343.8M) / 96.430 (12,419.3M) / ...; stopped at
+  12,489M (ckpt -> runs/f3_final.pt). No finish.
+* **DAgger round 3 on f3's own greedy (12 lines, ~130+ roots): 0 finishes.** The late exits of the
+  BC'd policies carry E 3,520-3,910 (k0/k3/k8); c1's greedy (g1/g4) reached 3,920-4,043 at its last
+  exits. The MPC finishes only from E >~3,950 exits. At that energy the 1,400 u ramp no longer holds
+  the loop (each swing end carries the player too far to turn back): the finish has to be taken on
+  the last one or two swings, as the record does at E ~4,100.
+* **Closest approach per eval episode (exact hull gap to a finish box):** f3 215-388 u; c1 160-257;
+  the incumbent's 98.33 eval 124 u (its 98.33% is that pass). BC made the late swings MORE
+  conservative.
+* **BC does not even reproduce at its own labelled states:** f3 placed on c1-line roots it has BC rows
+  for (joint-acc 0.995), 4 greedy + 60 sampled lineages per root, 5 roots: 0 finishes. The MPC's
+  finishes are knife-edge optima (the CEM stops at the first finish) and a ~2-deg imitation error per
+  decision misses them. (uf2 x7 needed the curriculum's RL on the line too, not BC alone.)
+
+### f4 `zlr3b1_f4` (21:28 UTC): c1's weights, NO BC, a backward curriculum over the finishing lines' tails
+`--resume` (c1 11,691.6M) + c1's flags with `--spawn-states runs/cur/pool_cur.npy --spawn-states-frac
+0.3 --unstuck-max 0`. pool_cur = frontier_rc10 + the last W s of the 55 DEFINITE finishing lines (of
+145: the hull clears the platform top; creeps are not reproducible), share 0.5 -> 15% of spawns.
+NEW `pool_add_lines --tail-s W` (commit b28b6763). W = 0.5 s at launch (md5 21b42683); the file is
+rebuilt in place with a longer W once training finishes from the current tails (the trainer re-reads
+it) - the round-2 ridge launch was taught exactly this way (spawns walking back along a search line),
+here by hand over 55 lines at once. Read it on: training win rate and its time-from-spawn, then evals.
