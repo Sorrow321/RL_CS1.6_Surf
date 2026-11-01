@@ -684,3 +684,11 @@ branches one of them can spend most of its 12 h without a GPU. A fair-share rule
 older than N hours yields to a branch that has had none this round) would keep all four slots
 alive. This branch worked CPU-only meanwhile (analysis, tools, a spine) and keeps a 45 s
 auto-rent poll (rent -> deploy -> launch) so it takes the first room that opens.
+* (10:10 UTC, analysis) CEM over 12 x 0.35 s segments of (held view offset, forced side key) added
+  to the incumbent's exact replayed controls, from 3 s before its ramp landings at E 2,021-2,481
+  (the record's energy band), scored by the highest z on the pillar face (+ the top): best face z
+  -106..+127 (iteration 0's random draws), the elite settles at -300..-470, no landing on top. The
+  climb is not a bend of the incumbent's bowl loop: the record approaches the face from a
+  different state (it lands on the same ramp ~100 u lower, heading 112, and its turn is held at
+  -1..-2 deg). A future search for it needs other roots than this loop's states (e.g. the record's
+  structure: swinging the trough between the outer west wall and the pillar), not perturbations.
