@@ -487,3 +487,11 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   onto loop 1 at ~19 s, then end-to-end pumping passes, E -3,020 (19 s) -> -2,177 (63 s), and a
   flight north off loop 1's WEST end to its apex (-1,874, 1,337, -2,517) = 13.94% on
   config.field (E -2,200, 713 u/s, open air). No demo, no record data, no policy.
+* `zlr1b3_ge90s.npy` (10,258 states = 71.8 s at 7 ms, md5 2e96685e42c206857544905234a6bdcf) +
+  `zlr1b3_ge90s.keys.npy` (md5 68d2e9d594811cd62adfe3436e30a590): the same construction from a
+  90-min archive (128 u cells, --select-energy 30, seed 9, 768 envs, one local core; 547,958
+  cells, 106/106 links exact). From the TRUE spawn, pumping loop 1 to E -1,962 and flying to a
+  mid-air apex above the slab over loop 1, (389, 482, -2,416) = 15.44% on config.field. The same
+  archive also holds 57 states on loop 2's ramp at (1,306..1,561, -390..-451, z -2,508..-2,596)
+  (10.2-10.8%, the record's landing area, arriving slowly at E ~-2,450..-2,530): the search's
+  first loop-1 -> loop-2 transfer. No demo, no record data, no policy.
