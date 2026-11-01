@@ -498,3 +498,60 @@ target - kill by pid file, launch in a separate call; snapcopy can leave a 40M g
   64.671** (best of 133 greedy evals over 13 runs; `score.py --best runs/zlr1b4/*/`), hand-on
   **ckpt_4032299008.pt** (zlr1b4_e13, 2.1M before the eval; pulled with E13's ckpt_latest). Box
   58559819 (RTX 3090, 0.20 $/h, ~11.2 h ~ $2.3) released.
+
+## zlr2b1 (round 2, slot 1) - 2026-11-01 05:20 UTC start
+
+Box 58621920: RTX 5080, 0.337 $/h, Quebec CA (machine 153623), 96 threads (quota 92 CPUs), rented
+05:37. 249-271k steps/s on the incumbent's resume. (The first rent, 58621552, a 3090 on machine
+153342, was power-capped at 260 W: gpu_health 89% of reference -> blocklisted, released.)
+
+### The incumbent's 64.67% is BALLISTIC: free-flight apexes the map never supports (05:45 UTC)
+Analysis of `incumbent/r1/traj_4034396160.jsonl` (score 64.671), ep6; contact = a tick whose vz
+change departs from free fall (air strafing never changes vz) or onground:
+* after 52 s it touches EXACTLY ONE surface, every ~5 s for ~1 s: the crest of the west ramp of
+  the third structure (x ~-1,965..-2,000, z ~-930..-1,000, sliding along y 300 -> 2,800). Contact
+  progress there 32.6-33.1% (best ever at contact 38.89%, at 53 s). Everything else is flight: a
+  giant ballistic loop (west ramp crest -> north-east up -> apex over open air east of x -400 at
+  z ~600-710 -> south -> back to the crest), pumping E 1,261 -> 4,500 (~33 u/s) at 2,000-2,900
+  u/s. The apex height rises with E, and the free-flight field reads apex height as progress:
+  that is the whole 64.7% and the slow creep of E13 (62.8 -> 64.7 over 2.2B steps).
+* The occupancy (`maps/surf_za_loop.occ_32.npz`, axes [z, y, x]) at y 1,539: the west ramp is a
+  320 u wide pillar whose top slopes UP eastward (~50 deg, z -1,404 at x -2,276 -> -1,020 at
+  -1,956, the crest), then a void (x -1,956..-1,636, down to the bottom teleport), then the RIDGE
+  (x -1,636..-1,188, y 430..1,950): vertical west face up to z ~560-605, top sloping up east to
+  ~950-1,150, vertical east face. Above z ~1,600 a huge block (x -2,900..250, y -470..1,000).
+* The record (ANALYSIS ONLY): at t+306 it rides UP the west ramp's slope eastward (not along the
+  crest), leaves the crest at ~45 deg (v (1,391, 267, 1,396) at (-1,635, 1,539, -569): vz ~1,620 at
+  crest height), flies across the void into the ridge's west face, wall-slides up ~600 u
+  (v (0, 104, 996)) and pops onto the ridge top at z ~620 (60.8%), then surfs the ridge's top
+  along y up to z ~1,500 (76% by t+370) and launches east past the big block (82% at t+384).
+* **The record's contact-only progress tracks its all-state progress within 0.1-2.6 points the
+  whole way; the incumbent's gap is 26 points (64.7% vs 38.9%).** On the field the true exit (the
+  ridge top, 60.9%) reads LOWER than the policy's apexes (64.5%), so the ratchet pays nothing for
+  it and the energy term charges the wall impact (~-15): the objective says the dead end is ahead.
+
+### NEW `--ratchet-contact 1` (commit 0bb26ad1, tests/python/test_ratchet_contact.py)
+The ratchet PAYS a second record that moves only on supported ticks (walkable ground, or the
+--surf-bonus contact test: airborne and vz gave back > 1 u/s more than free fall; the
+-sv_maxvelocity clamp excluded; a vertical wall or a ceiling never counts). A landing pays
+everything flown since the last contact (the teleport clip scales with the flight:
+max_step x (calls since the last support + 1), the control's clip on a surface). The (d - b)/d0
+observation column keeps the ALL-STATE record, so the policy's input is the control's exactly
+(no recorder mirror needed: TRAIN_ONLY). Off = bit-identical to the base commit (the test runs
+`git show 401f4007:python/surfgym/rewards.py` side by side over 600 random calls). Generic: no
+constant reads a map; the record a policy is paid for becomes the furthest SURFACE it reached.
+Step line: `rc <mean>/<max> all <mean>/<max> paid <share>` (contact vs all-state record per ended
+training episode; the max includes reservoir spawns, whose record starts at the spawn's d).
+
+### c1 `zlr2b1_c1` (05:39-05:55 UTC): the control - a plain resume of the incumbent
+`--resume` (every flag restored) + `--demo-file autoresearch/spines/zlr1b4_ge1_line_a.npy
+--demo-tau0 114 --ckpt-every 2e8` (the curriculum's tau is NOT in a checkpoint; the incumbent's
+spine path `runs/ge/zl1/line_a.npy` does not exist on a new box). Evals **64.417** (its own first,
+4,033M) / **63.050** / **63.289** (4,184M): the level, on this card. Stopped at 4,240M.
+
+### rc1 `zlr2b1_rc1` (05:56 UTC): the incumbent + `--ratchet-contact 1` (warm, measuring AT the wall)
+c1's flags + `--ratchet-contact 1`. Evals **64.719** (its own first at 4,032.8M = the incumbent's
+weights after 0.5M steps - eval noise, but the round's best so far; hand-on ckpt_4032823296.pt,
+pulled) / **60.672** (4,108M: the apex credit is gone, swing tops z ~450 instead of ~700, dying
+at 146-155 s). Training: reward ~53/ep (c1 ~115), contact record 38-46% mean per episode against
+48-54% all-state.
