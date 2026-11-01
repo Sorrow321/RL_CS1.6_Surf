@@ -3,15 +3,15 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 77.956,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70/traj_4259315712.jsonl",
-  "run": "zlr2b3_s70",
+  "score": 78.858,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/traj_4259315712.jsonl",
+  "run": "zlr2b3_s70d",
   "step": 4259315712,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70/ckpt_4232577024.pt",
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b3/zlr2b3_s70d/ckpt_4233625600.pt",
   "recipe": [
    "(incumbent ckpt, everything restored: per-call --energy-pot 12, --energy-stall 32, --fail-pen 3, respawn-greedy, front-perturb)",
    "--demo-file",
-   "autoresearch/spines/zlr2b3_ge1_s70.npy (NEW: the incumbent's own greedy recording to t 140.9 s + a Go-Explore exact chain with POSITION-ONLY 128 u cells rooted at that recording's states, onto the block top, 70.69%)",
+   "autoresearch/spines/zlr2b3_ge1_s70.npy (NEW: the incumbent's own greedy recording to t 140.9 s + a reward-free Go-Explore exact chain with POSITION-ONLY 128 u cells rooted at that recording's states, onto the block top, 70.69%)",
    "--demo-window",
    "5",
    "--demo-grow",
@@ -36,11 +36,16 @@
    "1",
    "--demo-front-ticks",
    "300",
+   "--spawn-states",
+   "autoresearch/spines/zlr2b3_inc_early_route.npy (NEW: the same recording's first 140.9 s every 5th tick)",
+   "--spawn-states-frac",
+   "0.3",
    "--ckpt-every",
-   "1e8"
+   "5e7",
+   "(launch --record-every 37.5e6)"
   ],
   "resume_from": "incumbent r1 ckpt.pt = zlr1b4_e13 ckpt_4032299008 (md5 036960d8)",
-  "commit": "44a2fc2a (spine) on deployed 401f4007 + scp'd spine"
+  "commit": "3e4860dd"
  },
- "summary": "77.956 (S70 at 4,259M: 1/9 greedy episodes from the true start took the new north-end launch onto the block top and climbed to 77.96%). How: Go-Explore rooted at the incumbent's own greedy states with POSITION-ONLY cells found the block top (70.69%); spine = greedy recording + chain; backward curriculum. S70 then collapsed (greedy stuck on the start platform) from catastrophic forgetting: the anchored curriculum's draws covered only the last 30 s of the 145 s spine. S70b (07:33): from the 77.96% snapshot with 30% of spawns on the policy's own early-route states. Training episodes reach 85-92% (upper region); no finish yet (GE3 and policy beams stop at 85-92%)."
+ "summary": "78.858 (S70d at 4,259M; 78.789 at 4,222M with 7/9 greedy episodes from the true start taking the new route: north-end launch -> block top -> ramp launch to ~78%). How: Go-Explore rooted at the incumbent's OWN greedy states with POSITION-ONLY cells found the block top (the fourth structure) in 4 min; spine = greedy recording + chain; backward curriculum from the incumbent + 30% of spawns on the recording's early route (without it the anchored curriculum forgot the early route and collapsed, S70). Training episodes reach 93.8% (the upper loop). Next barrier: the greedy flies east off the ramp launch at ~78% and falls instead of entering the upper loop."
 }
