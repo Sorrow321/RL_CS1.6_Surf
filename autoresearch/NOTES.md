@@ -844,3 +844,61 @@ then the wrap-up).
   One training iteration logged win 0.91% @ 0.8 s - a frontier-pool spawn beside a slab flying in
   (harvest, CLAUDE.md's win-rate trap), not a policy finish; it does say a slab is within a small
   perturbation of the policy's own fifth-loop states.
+* rc10 final (16:02 UTC, 12,491.7M): last evals 95.5-96.9; best 98.329 (11,096M). Pulled ckpt_final
+  (md5 d1a079ab) and ckpt_11096031232 (md5 3c40f24d). rc11 (16:07 UTC) = rc10 continued for 4e8 steps
+  (a few more greedy evals before the wrap-up), same flags, `--demo-tau0 8980`.
+
+### zlr2b1 round-2 lesson
+
+**Result: 98.329** (rc10 at 11,096M, median 95.4%; 0 finishes) from the round-1 incumbent's 64.671 -
+surf_za_loop from the TRUE start, champion-free, no demo in training, one RTX 5080 (0.34 $/h, ~11 h).
+Hand-on: `runs/zlr2b1/zlr2b1_rc10/ckpt_11096031232.pt`. Weights: incumbent -> rc1 -> rc2 -> rc3 ->
+rc4 -> rc7 -> rc8 (8,491M snapshot) -> rc9 -> rc10. Evals over time: 64 -> 72 (rc3, the launch) -> 81
+(rc4) -> 90 (rc4, the block found by the RL) -> 91.7 (rc8) -> 93.9 / 96.1 / 97.3 (rc9) -> 98.3 (rc10).
+
+**The insight: the incumbent's 64.67% was ballistic.** After 52 s it touched one surface (a ramp
+crest, contact progress 38.9%); the rest was flight apexes over open air, which the free-flight voxel
+field reads as progress. The record's contact-only progress tracks its all-state progress within
+2.6 points. On the field the true exit (the ridge top, 60.9%) read LOWER than the dead-end apexes.
+
+**What worked, in order (each generic, no constant reads the map):**
+1. NEW `--ratchet-contact 1`: the ratchet pays a record that moves only on supported ticks (ground,
+   or a surface pushing vz back up); a landing pays everything flown since the last contact. Alone it
+   did not find the exit (rc1, 320M steps), but it is what makes the exit worth taking.
+2. Go-Explore rooted at the policy's OWN contact ticks after its contact record stopped improving
+   (NEW tools/contact_roots.py; ge1's config: --cell 128 --cell-energy 64 --cell-heading 1
+   --view-follow=-90..90 --select-energy 3, 40 threads beside the trainer): 232 contact cells on the
+   ridge top within 6 min. NEW tools/ge_contact_pick.py picks the deepest CONTACT cell (one null tick
+   shows the surface pushing back), ge_replay makes the exact line (an air-braked reversal off the
+   crest), NEW tools/contact_spine.py splices it onto the policy's own greedy line (record_ckpt
+   --dump-states), cut at the deepest contact -> autoresearch/spines/zlr2b1_ge1_spine.npy.
+3. The spine's curriculum with the band where the decision is made: at the GE root (rc3:
+   --demo-tau0 19656) the greedy launched in 2/8 evals (72, 77); moving the band back into the third
+   structure (rc4: --demo-tau0 12000) trained the long pumping before the launch too -> 79-81 steadily,
+   then the RL found the big block's east ramp BY ITSELF (contact 85.6%, 89.9%).
+4. 15% own frontier spawns (NEW tools/frontier_states.py: states from 2 s before the last contact-record
+   improvement to 1.5 s before death, from greedy re-recordings) via --spawn-states, REFRESHED in place
+   (the trainer re-reads the file) every ~1-2 h as the frontier moved.
+5. NEW `--front-contact 1` (--front-temp's band read on the EARNED contact record, not the all-state
+   reservoir whose deepest states are apexes): broke the 88-90 plateau (rc8). At T 2 it collapsed after
+   ~450M steps (26-38% of envs hot); at `--front-temp 0.5` (T 1.5) it held and climbed 91 -> 98.3.
+
+**What did not / what to avoid:**
+* Never swap a working spine: rc5 (own-line spine, band at the start) and rc6 (own-line spine, band in
+  the third structure) both lost the launch within 75M steps (back to ~61%). The launch is a close call
+  in the greedy; add frontier states BESIDE the spine instead (rc7).
+* Random-burst Go-Explore cannot ride the high-speed loops: ge2 (ridge top, contact-only cells), ge3/ge4
+  (fourth structure), ge5/ge6 (fifth loop) found nothing past their roots. It found the low-speed exit
+  (ge1) only.
+* T 2 frontier temperature on a large hot fraction destabilises (rc8).
+
+**Where the next round starts:** the greedy reaches the fifth loop on the big block's east side every
+time (contact 85.5% at ~110-115 s, alive 35-46 s past it, E up to ~4,400 = the record's finish
+energy) and its apexes reach z ~2,900 (98.3%). No finish: every apex is at a SWING END (x ~500-900,
+y +1,600..2,300 / -1,100..-1,500), outside every finish slab's footprint (zones.json: the middle band
+y -736..1,312 and the strip x -320..-64). The record (ANALYSIS ONLY) finishes by riding up the east
+ramp's north end at ~1,960 u/s and curving WEST into the strip at (-48, 2,017, 3,007). One training
+iteration showed a frontier-pool spawn flying into a slab in 0.8 s: the slabs are a small perturbation
+away. Ideas: a search on the policy's own fifth-loop states for a slab entry with the POLICY's actions
+plus held view offsets (beam_tas --branch-at with a finish objective) rather than uniform bursts; the
+early-route fragility (2-6/9 episodes die in the first troughs) needs fresh starts in the mix.
