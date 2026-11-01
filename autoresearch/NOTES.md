@@ -476,3 +476,9 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   ckpt_2000683008, ckpt_3001024512.
 * A9 `zlr1b2_a9` (01:06 UTC): A8's 3.92B weights resumed on runs/ge/a9_route.npz (181,632 u),
   self-route + tie-break + tail - the last ~3 h of the round.
+* **A9 (A8's weights on the shortest route): 3.92-5.66B scores 22.7-26.9 with medians mostly
+  23-26%: 4.83B 25.979, 5.06B 26.449 (median 26.1%), 5.28B 26.858 (median 26.6%), 5.51B 26.531,
+  5.66B 26.248 (median 26.0%)** - level with A8's best (26.870) and steadier (A8 after its third
+  swap: 23-24% medians). No self-route swap yet (none beat 26.64% + 64 u by enough); training
+  reservoir deepest ~28%. Snapshots pulled: runs/zlr1b2_a9/ckpt_4923588608.pt,
+  ckpt_5760352256.pt.
