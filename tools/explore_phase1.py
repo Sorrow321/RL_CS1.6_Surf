@@ -784,6 +784,13 @@ def explore(args) -> int:
     core = SurfCore(str(bsp), cfg)
     if not args.keep_teleports:
         core.set_teleport_fail(True)
+    contact_rule = None
+    if getattr(args, "cell_contact", False):
+        # --cell-contact: the free-fall vz step per tick and the clamp (contact_rows)
+        contact_rule = (float(cfg.phys.sv_gravity) * float(cfg.phys.msec) / 1000.0,
+                        float(cfg.phys.sv_maxvelocity))
+        print(f"--cell-contact: only states the map holds are archived (ground, or a tick whose "
+              f"vz gives back > 1 u/s more than the {contact_rule[0]:g} u/s free-fall step)")
 
     zones = load_zones(str(bsp))
     if not zones.get("end"):
@@ -1038,7 +1045,8 @@ def explore(args) -> int:
                     break
 
             n_runs += len(r_t0)
-            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h)
+            fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h,
+                       contact=contact_rule)
             it += 1
             if (max_minutes > 0.0 and not stop
                     and time.perf_counter() - t_start >= 60.0 * max_minutes):
@@ -1121,11 +1129,31 @@ def _goal_meta(extra, arch, spawns, cell, minutes=None):
     return m
 
 
+def contact_rows(hist: np.ndarray, rid_h: np.ndarray, g_step: float, vmax: float,
+                 tol: float = 1.0) -> np.ndarray:
+    """--cell-contact: (T, N) bool, True where the state at the start of tick t is HELD by the
+    map - walkable ground (onground != -1), or the tick that starts there ends with vz given
+    back more than free fall by more than ``tol`` (a surfable face pushing up; a vertical wall
+    clips only horizontal velocity, a ceiling pushes down), the -sv_maxvelocity clamp excluded.
+    The last tick of the chunk and a tick whose successor belongs to another run read their
+    ground flag alone."""
+    og = np.asarray(hist["onground"]) != -1
+    vz = np.asarray(hist["velocity"], np.float64)[..., 2]
+    surf = np.zeros(og.shape, bool)
+    same = (rid_h[1:] == rid_h[:-1]) & (rid_h[1:] >= 0)
+    dev = (vz[1:] - vz[:-1]) + float(g_step)
+    surf[:-1] = same & (dev > float(tol)) & (vz[1:] > -(float(vmax) - 0.5))
+    return og | surf
+
+
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
-               r_org, dist, acts_h=None) -> None:
-    """Archive everything one chunk of rollout discovered."""
+               r_org, dist, acts_h=None, contact=None) -> None:
+    """Archive everything one chunk of rollout discovered. ``contact`` = (g_step, vmax) archives
+    only the states the map holds (--cell-contact, contact_rows)."""
     if not r_t0:
         return
+    if contact is not None:
+        rid_h = np.where(contact_rows(hist, rid_h, contact[0], contact[1]), rid_h, -1)
     keys = hasher.keys(hist)
     g_key, g_run, g_tick, g_env = group_entries(keys, rid_h)
     if g_key.size == 0:
@@ -1221,6 +1249,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["tick_ms"] = int(args.tick_ms)
     if getattr(args, "view_follow", None):
         out["view_follow"] = str(args.view_follow)
+    if getattr(args, "cell_contact", False):
+        out["cell_contact"] = 1
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1844,6 +1874,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--roots-keep-all", action="store_true",
                     help="every root gets its own cell even when two share a key (boosted copies "
                          "of one state usually do); off = the first root of a key only, as before")
+    ap.add_argument("--cell-contact", action="store_true",
+                    help="archive only the states the map HOLDS: walkable ground, or a tick whose "
+                         "vz change departs upward from free fall (a surfable face; the "
+                         "--ratchet-contact test). The goal field flies through open air, so on a "
+                         "fast map most new cells are ballistic flight (they fill --max-cells in "
+                         "minutes) and the deepest is an apex over the void; contact cells are the "
+                         "surfaces a line can actually reach. Off = every state, byte-identical")
     ap.add_argument("--select-energy", type=float, default=0.0,
                     help="selection: the most energetic cell (z + |v|^2 / 2g) of each --cell "
                          "place is drawn (1 + K) times as often as W = 1/sqrt(C_seen+1) says "
