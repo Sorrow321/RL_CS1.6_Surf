@@ -691,3 +691,19 @@ the part of the route it has walked past in the pool; nothing reads the map.
 * Plan B (08:12): record S70b's CURRENT greedy line (record_ckpt --dump-states) and rerun the stage-1
   Go-Explore (position-only 128 u cells) rooted at ITS states (t 60 s -> death), 10 min: a launch
   that starts from the circuit the policy actually flies, for a spine whose band matches it.
+* GE4 (stage-1 Go-Explore rooted at S70b's CURRENT greedy line, 730 roots from t 52 s to its death
+  at 103 s, 10 min): 55,601 cells, best = a root (57%) - NO launch from the circuit the policy now
+  flies (E ~2,000), against 4 min from the incumbent's (E 3,190). S70b final: 61.8 / 60.0 / 60.1 /
+  60.8 / 58.6 / 58.8 / 57.0 / 55.7 (4.23-4.76B) - a steady decline, 0/72 greedy launches; stopped
+  08:25. The curriculum keeps the policy launching from the INCUMBENT's states while its own circuit
+  loses the energy the launch needs; the greedy then tries the reversal at every north-end pass and
+  falls.
+* Box redeployed on ar/zlr2b3 b266e9ad (08:26; the base had no --energy-pot-loss).
+
+### S70c `zlr2b3_s70c` (08:27 UTC): S70b's exact config + `--energy-pot-loss 0`
+From the same snapshot (S70's ckpt_4232577024), one change: energy losses are no longer charged
+(gains still paid whole). The launch is a deliberate speed-for-height trade - the north-wall hit
+costs E 3,190 -> 1,565 = -19.5 reward on one call under the full potential, more than the block
+top's ratchet pays - so under the full potential every exploratory reversal from the policy's own
+states is punished before its payoff. Generic (the flag reads nothing on the map; 0 = gains
+only). Read against S70b at matched steps: greedy launches and the eval level.
