@@ -909,3 +909,36 @@ early-route fragility (2-6/9 episodes die in the first troughs) needs fresh star
   rc6 90.073, rc7 89.429, rc8 91.742, rc9 97.339, rc10 98.329, rc11 96.991). Hand-on
   **ckpt_11096031232.pt** (rc10, the eval's own step; md5 3c40f24d) with rc10's ckpt_final (md5
   d1a079ab), both pulled. Box 58621920 (RTX 5080, 0.34 $/h, 05:37-16:34 UTC, ~$3.7) released.
+
+## zlr3b1 (round 3, slot 1) - 2026-11-01 17:32 UTC start
+
+Box 58689116: RTX 5060 Ti (16 GB), 0.163 $/h, South Korea (machine 149944), 32 threads, rented 17:38
+(the fleet's pace allowed nothing faster: burn 0.55 of 0.586 $/h with two boxes). ~100k steps/s on
+the incumbent's resume (the 5080 did 250-270k): healthy, the card class is just slow.
+
+### c1 `zlr3b1_c1` (17:42 UTC): the baseline - the incumbent resumed on rc10's exact flags
+`--resume` (incumbent ckpt 11,096,031,232, md5 3c40f24d) + `--ratchet-contact 1 --demo-file
+autoresearch/spines/zlr2b1_ge1_spine.npy --demo-tau0 9400 --demo-milestones 5859 --spawn-states
+autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-contact 1 --front-temp
+0.5 --ckpt-every 2e8`, budget 2e9. Its evals are this card's matched-step reference.
+
+### The finish is ON TOP of a solid platform (geometry, core traces; 17:55 UTC)
+* The five finish triggers sit on a SOLID cross-shaped platform with exactly their footprint: point
+  contents are solid at z 2,808-3,000 under every trigger box (the middle band y -736..1,312 over x
+  -2,360..3,008, with a hole at x > -64, y 40..536; the strip x -320..-64 north to y 3,360 and south to
+  -2,784). Four pillars hold it (x ~-1,300..-1,100 and -300..-100 at y 800..1,000 and -400..-300).
+  Between z 2,000 and 2,700 there is NOTHING else east of x -400: the fifth loop is a ride along the
+  block's east ramp (x ~0-300, z 1,600-2,000, y -950..1,370, UNDER the platform), a ballistic flight off
+  each end with an air-strafed 180-degree turn, and back onto the ramp.
+* So a finish = the hull touching a trigger box: origin z >= 2,972 while beside a platform face
+  (within 16 u of the strip's x faces or the band's y faces), or above the platform (z >= 3,036 over
+  its footprint). Coming from below is blocked by 192 u of solid.
+* The incumbent's own frontier pool (zlr2b1_frontier_rc10.npy, 47,793 states of its greedy fifth loop):
+  the CLOSEST any state gets to a trigger is a 165 u hull gap (row 41649, (-395, 2,677, 2,818), E 4,240,
+  west of the strip and 154 u low). ep8 of the incumbent's best eval passes UNDER the strip at
+  (-316, 1,699, 2,474) heading north at 151.2 s (vz 638), then turns east. The record (ANALYSIS ONLY)
+  leaves the ramp's north end at the same energy (E ~4,070) but ~300 u further east and steeper, rises
+  along the strip's EAST face (x 4 -> -48) and grazes its trigger at z 3,007.
+* Not a small perturbation by state distance: ~150-300 u of height at the right place. The apexes rose
+  ~40 u per 1B steps late in round 2 (2,814 -> 2,857 over 9.6-11.1B): training time alone would need
+  billions of steps more.
