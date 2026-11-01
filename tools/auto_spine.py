@@ -143,6 +143,12 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
            "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
+    if getattr(a, "beam_extra", None) and branch_tick <= 0:
+        # --beam-extra (zlr2b2, 2026-11-01): extra beam_tas flags for the PLAIN beam (e.g. held
+        # view offsets on the policy's own proposals, --view-hold); the branched beams keep
+        # their own fork. Absent = the command above, unchanged
+        import shlex as _shlex
+        cmd += _shlex.split(str(a.beam_extra))
     if branch_tick > 0:
         cmd += ["--branch-at", f"t{int(branch_tick)}:{int(a.envs) // 2}",
                 "--branch-burst", int(round(a.branch_burst_secs * TICKS_PER_S)),
@@ -450,6 +456,9 @@ def main(argv=None) -> int:
     ap.add_argument("--beam-ticks", type=int, default=4000, help="beam_tas --max-ticks")
     ap.add_argument("--envs", type=int, default=4096)
     ap.add_argument("--greedy-envs", type=int, default=32)
+    ap.add_argument("--beam-extra", default=None,
+                    help="extra beam_tas flags for the plain beam, one string (shlex-split), "
+                         "e.g. '--view-hold 0.3 25 --view-hold-stagger'; None = unchanged")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ge-minutes", type=float, default=10.0, help="0 = no GE fallback")
     ap.add_argument("--ge-cell", type=float, default=64.0)

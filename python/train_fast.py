@@ -5179,6 +5179,11 @@ def main() -> None:
     ap.add_argument("--auto-spine-gain", type=float, default=200.0,
                     help="--auto-spine: u a new spine's end must beat the greedy frontier by "
                          "(the median greedy episode's deepest d)")
+    ap.add_argument("--auto-spine-beam-extra", default=None,
+                    help="--auto-spine: extra tools/beam_tas.py flags for the search's plain beam, "
+                         "one string (e.g. '--view-hold 0.3 25 --view-hold-stagger': held few-"
+                         "degree view offsets on the policy's own proposals, which a collapsed "
+                         "yaw sigma never tries). None = the search command is unchanged")
     ap.add_argument("--auto-spine-envs", type=int, default=4096,
                     help="--auto-spine: beam / Go-Explore population")
     ap.add_argument("--auto-spine-ge-minutes", type=float, default=10.0,
@@ -15223,6 +15228,9 @@ def main() -> None:
             meta["config"]["auto_spine_recheck"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if args.auto_spine_beam_extra:
+            # --auto-spine-beam-extra: dumped only when set (a property of the run's search)
+            meta["config"]["auto_spine_beam_extra"] = str(args.auto_spine_beam_extra)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16421,6 +16429,9 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if args.auto_spine_beam_extra:
+            # --auto-spine-beam-extra: passed through to the plain beam (auto_spine --beam-extra)
+            cmd += ["--beam-extra", str(args.auto_spine_beam_extra)]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and

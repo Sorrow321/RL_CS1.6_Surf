@@ -117,6 +117,8 @@ TRAIN_ONLY = frozenset({
     "demo_success_energy",
     "auto_spine_gain", "auto_spine_envs", "auto_spine_ge_minutes", "auto_spine_extra_secs",
     "auto_spine_timeout", "auto_spine_energy", "demo_stall_cut", "demo_success_alive",
+    # --auto-spine-beam-extra: the training search's beam flags - TRAIN_ONLY likewise
+    "auto_spine_beam_extra",
     "demo_match_band",
     # --demo-success-strict: the TRAINING curriculum's outcome rule under --demo-success-energy
     "demo_success_strict",
