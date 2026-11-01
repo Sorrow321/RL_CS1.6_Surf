@@ -653,3 +653,23 @@ restored (per-call energy K 12, fail-pen 3, energy-stall 32, respawn-greedy, fro
   bursts top out just under the needed energy. The policy carries E 3,100-3,600 up there.
 * Policy beams (07:12): beam_tas on S70's 4,432M weights from its own reservoir states >= 85%,
   ranked by d, 1,024 envs, 42 s each - can its own proposals land on the finish structure?
+* **S70 COLLAPSED after 4,485M** (stopped 07:31 at ~4.74B): evals 60.8 (4,485M: 2/9 already dead
+  at ~50 s in the second trough, 12.5%) -> **0.54 / 0.4 / 0.3** (4,561 / 4,637 / 4,712M: all 9
+  wander the start platform at <= 470 u/s until the 30 s patience cut). Training: crawl kills
+  0.1 -> 0.4, stall kills 0.25, episodes ~1,000 ticks, entropy up. **Cause: catastrophic
+  forgetting of the early route.** The anchored-and-widening curriculum draws its spine starts from
+  [tau, n-1]; on a 145 s spine with tau still at ~115 s (16,500 of 20,833) every spine start is in
+  the last 30 s, and the demo replaces the whole reservoir share - so the first ~115 s of the route
+  were practised only by the 10% true-start spawns. (Round 1's E2 used a 27.7 s spine, which the
+  range covered entirely as tau walked back.) A long spine needs the early route kept in the pool.
+* Policy beams (S70's 4,432M weights, beam_tas --score d, 1,024 envs, 42 s, from 8 of its own
+  reservoir states at 75-85%): frontiers d 945-1,011 (85.1%), 0 finishes.
+
+### S70b `zlr2b3_s70b` (07:33 UTC): S70 from its 77.96%-eval snapshot + the early route in the pool
+Resume of ckpt_4232577024 (S70's hand-on; md5 f7aba3ce, staged as runs_ckpt.pt on the box; the
+incumbent kept as runs_ckpt_incumbent.pt) with S70's curriculum flags at `--demo-tau0 19500` (where
+its band was at 4.23B), WITHOUT `--demo-front-temp`, plus `--spawn-states
+autoresearch/spines/zlr2b3_inc_early_route.npy --spawn-states-frac 0.3` (the incumbent's own greedy
+recording, true start -> t 140.9 s, every 5th tick: 30% of every pool is uniform over the early
+route the curriculum's range no longer covers). Generic: a long spine's backward curriculum keeps
+the part of the route it has walked past in the pool; nothing reads the map.
