@@ -1249,3 +1249,8 @@ restored (no --unstuck-max). Tail schedule: 1.0 -> 1.5 -> 2.0 -> whole lines, ga
   creep height, ~190 u under a clear finish. A near-miss of the lines' manoeuvre. Hand-on candidate:
   ckpt_11891900416.pt (48.8M after the eval: the run's first snapshot; pulled, md5 9611aeee).
 * Training (1.0 s tails, 20% pool share): win 9% @ 0.50 s, 193k steps/s.
+* f5 probe at ~11,90xM (1.0 s tails): finishes from 0.5 / 1.0 s out on all 6 probe lines (15-16 of 16),
+  none from 1.5 / 2.0 s - the boundary f4 had. **Tail -> 1.5 s at ~12,031M** (pool md5 60a9c6b4).
+* f5 evals: 97.024 (11,918.6M) / **98.404 (11,994.1M)** - a second near-miss of the same kind (116 u
+  from the finish at z 2,856, 169 s). The policy now flies to the platform's face more often; it is
+  still ~120 u short in height.
