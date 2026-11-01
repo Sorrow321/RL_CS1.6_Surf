@@ -1057,3 +1057,12 @@ band success.
   crossing 156.71 s (env 0, the greedy itself; 4 finishers); `--score dh 1`: 147.55 s (20,088
   finishers - the whole population finishes). Both slower than the greedy's own 143.65-145.55 s by
   then: the beam's resample-by-d is no speed search once the policy finishes.
+* c2 later: 115.068 (13,639M: 6/9, 143.89 s) / 116.181 (13,715M: 7/9, 143.72 s). **c2 ENDED at its
+  budget** (`done: 13,751,549,952 steps` at 19:46 UTC, ckpt_final md5 e1234304): --steps 2e9 at 376k
+  steps/s is 1.5 h, and the box then sat idle until 20:10 (my wakeup was 25 min) - CLAUDE.md's 5-minute
+  rule broken. Size the budget past the next wakeup (c3: 6e9). The best times plateaued at ~143.7 s
+  over the last 5 evals (13,413-13,715M); finishes per eval 6-9 of 9.
+
+### c3 `zlr3b2_c3` (20:13 UTC): c2 continued
+c2's ckpt_final + c2's exact flags (`--demo-tau0 8510` = c2's last GE tau; the finish-line curriculum
+restarts at its line's end - its position is not in a checkpoint), budget 6e9, snapcopy beside it.
