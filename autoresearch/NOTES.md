@@ -798,3 +798,13 @@ ckpt_latest 5,061,476,352.
   die at 116-130 s out of the loop. Hand-on ckpt_5212471296.pt (38M before; pulled). Then 90.7 /
   90.6 / 90.0 / 89.7 / 89.5 / 90.7 / 91.0 / 90.5 / 91.1 (5.29-5.59B); band 21,440 (row 607 of the
   1,700-row pumping segment) at 17% success; training reservoir deepest 94.65%.
+* **S70f 5.63-5.85B: 91.6 / 90.6 / 91.4 / 92.8 / 93.2 / 96.944 (5,817M, median 95.1%) / 96.376
+  (5,855M, median 96.2%) - NEW BEST 96.944.** The greedy now PUMPS the upper loop (E 3,190 ->
+  3,466 over 148-160 s, swing tops 91.6-92.4%) and launches off its north end: ep0 to (-367, 1,669,
+  2,764) = 96.94% with v (596, 877, -13) - its apex ~240 u under the finish platform (the slab
+  footprints' solid tops at z 3,006; this one x -320..-64, y 1,312..3,360) and 47 u west of it; then
+  a fall east. Energy-limited: E 3,466 at the launch (the record, ANALYSIS ONLY, launched there with
+  E ~4,090). Training reservoir deepest 98.06%; curriculum band at row 21,245 (68% success).
+  Hand-on ckpt_5816451072.pt (0.5M before the eval; pulled).
+* GE stage 5 (12:08): rooted at S70f's own reservoir states >= 95%, position-only 64 u cells,
+  --goals 3 (stops after 3 finishes), 12 min: a short chain onto a finish slab -> a spine to the finish.
