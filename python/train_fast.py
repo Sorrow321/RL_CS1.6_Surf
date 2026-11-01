@@ -7526,6 +7526,17 @@ def main() -> None:
                     help="--auto-finish: no search before this many steps after the launch")
     ap.add_argument("--auto-finish-timeout", type=float, default=3000.0,
                     help="--auto-finish: wall-clock cap (s) of one search")
+    ap.add_argument("--finish-line-pace", type=float, nargs=2, default=None,
+                    metavar=("FRAC", "SECS"),
+                    help="--finish-line / --auto-finish: a finish from a finish-line spawn row "
+                         "counts as the curriculum's SUCCESS - and is paid --finish-line-pace-bonus "
+                         "- only within the line's own remaining time from that row x (1 + FRAC) + "
+                         "SECS (the --demo-success-pace rule on the finish itself, which an airborne "
+                         "finish under --ratchet-contact never reaches through the demo bonus). For "
+                         "a line found for its TIME (a search line faster than the greedy). Off = "
+                         "byte-identical; config only when set; never restored")
+    ap.add_argument("--finish-line-pace-bonus", type=float, default=50.0,
+                    help="--finish-line-pace: the reward of a paced finish (on top of the finish's own)")
     ap.add_argument("--finish-line-tau0", type=float, default=None,
                     help="--finish-line: start the curriculum this many SECONDS before the line's "
                          "finish instead of at its end - the position is not in a checkpoint, so a "
@@ -12324,6 +12335,18 @@ def main() -> None:
             raise SystemExit("--finish-line-frac must be in (0, 1)")
         if SPAWN_STATES is not None and float(args.finish_line_frac) + float(SS_FRAC) >= 1.0:
             raise SystemExit("--finish-line-frac + --spawn-states-frac must stay below 1")
+    FINL_PACE = None                      # --finish-line-pace: (frac, slack ticks, bonus)
+    if args.finish_line_pace is not None:
+        if not (args.finish_line or args.auto_finish):
+            raise SystemExit("--finish-line-pace gates the --finish-line curriculum's finishes")
+        if args.reward_per_decision:
+            raise SystemExit("--finish-line-pace pays on the finishing tick: it needs the per-tick "
+                             "reward path (no --reward-per-decision)")
+        _flp_f, _flp_s = (float(x) for x in args.finish_line_pace)
+        FINL_PACE = (_flp_f, int(TICK.secs_to_ticks(_flp_s)), float(args.finish_line_pace_bonus))
+        print(f"--finish-line-pace {_flp_f:g} {_flp_s:g}: a finish from finish-line row r succeeds "
+              f"(curriculum) and is paid {FINL_PACE[2]:g} only within (rows left after r) x "
+              f"{1.0 + _flp_f:g} + {FINL_PACE[1]} ticks")
     if args.finish_line:
         FINL_FRAC = float(args.finish_line_frac)
         FINL = _make_finl(np.load(args.finish_line, allow_pickle=False), args.finish_line,
@@ -15507,6 +15530,9 @@ def main() -> None:
         meta["config"]["finish_line_grow"] = float(args.finish_line_grow)
         meta["config"]["finish_line_grow_max"] = float(args.finish_line_grow_max)
         meta["config"]["finish_line_rate"] = float(args.finish_line_rate)
+    if args.finish_line_pace is not None:
+        meta["config"]["finish_line_pace"] = [float(x) for x in args.finish_line_pace]
+        meta["config"]["finish_line_pace_bonus"] = float(args.finish_line_pace_bonus)
     # --eval-parallel: written ONLY when on, like the patience rule above
     if N_EVAL_PAR:
         meta["config"]["eval_parallel"] = 1
@@ -16335,6 +16361,7 @@ def main() -> None:
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
     fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
+    fin_paced = np.zeros(N, bool)         # --finish-line-pace: this tick's paced finishes
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
     if demo is not None and args.demo_success_d is not None:
         _df = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
@@ -19891,6 +19918,19 @@ def main() -> None:
                     if DEMO_BONUS and r is not None:
                         # --demo-success-bonus on the per-tick reward path
                         r = _demo_bonus_pay(r, ended)
+                    if FINL_PACE is not None and FINL is not None and r is not None \
+                            and ended.any():
+                        # --finish-line-pace: a finish from a finish-line spawn on the line's own
+                        # pace (rows left x (1 + FRAC) + slack, in ticks) pays the bonus; the
+                        # outcome tracking below reads fin_paced instead of the bare finish
+                        _pg = ended & fleet.goal_hits().astype(bool) & (fin_idx >= 0)
+                        if _pg.any():
+                            _lim = np.floor((FINL.n - 1 - np.clip(fin_idx, 0, FINL.n - 1))
+                                            * (1.0 + FINL_PACE[0]) + FINL_PACE[1])
+                            _ok = _pg & ((ep_len + 1) <= _lim)
+                            fin_paced[_ok] = True
+                            if _ok.any():
+                                r = r + np.where(_ok, np.float32(FINL_PACE[2]), np.float32(0.0))
                     if CRL and ended.any():
                         # --crl: where the episode ENDED - a finish, a death,
                         # a stall kill or a truncation - off the TERMINAL obs
@@ -20291,6 +20331,10 @@ def main() -> None:
                         # and whether they FINISHED, then the fresh spawns' line index
                         _fei = np.flatnonzero(ended)
                         _fgoal = fleet.goal_hits().astype(bool)[_fei]
+                        if FINL_PACE is not None:
+                            # --finish-line-pace: only a paced finish is a success
+                            _fgoal = fin_paced[_fei].copy()
+                            fin_paced[_fei] = False
                         _fkn = fin_idx[_fei] >= 0
                         if _fkn.any():
                             FINL.note_outcomes(fin_idx[_fei][_fkn], _fgoal[_fkn])

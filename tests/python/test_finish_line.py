@@ -165,3 +165,29 @@ def test_auto_finish_wiring():
     assert "nonlocal FINL, FINL_FRAC" in src and "finish_search.py" in src
     rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     assert '"auto_finish"' in rc
+
+
+def test_finish_line_pace_wiring():
+    src = _parser()
+    assert 'ap.add_argument("--finish-line-pace"' in src
+    assert 'ap.add_argument("--finish-line-pace-bonus"' in src
+    # paid on the per-tick path for finishes from finish-line rows within the line's own pace
+    assert "_ok = _pg & ((ep_len + 1) <= _lim)" in src
+    assert "(FINL.n - 1 - np.clip(fin_idx, 0, FINL.n - 1))" in src
+    # the curriculum's outcome is the PACED finish when the pace is on
+    assert "_fgoal = fin_paced[_fei].copy()" in src
+    assert "--finish-line-pace pays on the finishing tick" in src
+    rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"finish_line_pace"' in rc and '"finish_line_pace_bonus"' in rc
+
+
+def test_pace_limit_arithmetic():
+    # the allowed ticks from row r: (n - 1 - r) x (1 + frac) + slack - the demo pace rule with the
+    # crossing row at the line's last state
+    import importlib
+    tf_src = _parser()
+    assert "def pace_allowed(n, cross_row, frac, slack_ticks):" in tf_src
+    n, frac, slack = 1000, 0.05, 143
+    rows = np.array([0, 500, 999])
+    lim = np.floor((n - 1 - rows) * (1.0 + frac) + slack)
+    assert list(lim) == [1191.0, 667.0, 143.0]

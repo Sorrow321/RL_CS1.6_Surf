@@ -104,7 +104,7 @@ TRAIN_ONLY = frozenset({
     "finish_line", "finish_line_frac", "finish_line_window", "finish_line_grow",
     "finish_line_grow_max", "finish_line_rate",
     # --auto-finish: the trainer's own search for a finishing line (a training spawn curriculum)
-    "auto_finish",
+    "auto_finish", "finish_line_pace", "finish_line_pace_bonus",
     # --yaw-entropy: the yaw head's share of the TRAINING entropy bonus; a recording runs no update
     "yaw_entropy",
     # --demo-success-d: the TRAINING backward curriculum's success rule; a recording spawns at the start
