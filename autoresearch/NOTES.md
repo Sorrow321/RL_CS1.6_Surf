@@ -808,3 +808,11 @@ ckpt_latest 5,061,476,352.
   Hand-on ckpt_5816451072.pt (0.5M before the eval; pulled).
 * GE stage 5 (12:08): rooted at S70f's own reservoir states >= 95%, position-only 64 u cells,
   --goals 3 (stops after 3 finishes), 12 min: a short chain onto a finish slab -> a spine to the finish.
+* GE stage 5 (S70f's own reservoir states at 95-96.7%, 119 roots, position-only 64 u cells, 12 min):
+  733,020 cells, 0 finishes, best 192 u from a slab - uniform macros cannot add the ~600 u of energy
+  the launch lacks.
+* S70f 5.93-6.04B: 96.260 / 96.098 / 95.654 / 96.846 (medians 94.0-95.5%) - the ~96% level holds,
+  every episode launching off the upper loop's north end; band at row 21,110 (57%); training
+  reservoir deepest 96.9-98%.
+* Finish beams (12:22): S70f's 5,867M weights, its own proposals ranked by d, from 8 of its own
+  95-96.7% reservoir states, 1,024 envs, 30 s, --keep-finishers 4.
