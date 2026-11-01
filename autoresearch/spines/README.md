@@ -466,3 +466,17 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `uf2r1b1_cut_k02.npy` (+ `.keys.npy`, 5,800 states, md5 6f13570545426fbf87856ec6c2846177): search
   2 of uf2r1b1_cut (7.93B weights, same rule): to d 386 = 98.7% - ends at (2,923, -2,052, -753)
   falling, below the finish box's floor (z -640), i.e. it passes UNDER the box; no finish.
+
+## zlr2b1 (round 2, 2026-11-01)
+
+* `zlr2b1_ge1_line.npy` (448 states, 3.1 s): tools/explore_phase1.py (--exact-chains --cell 128
+  --cell-energy 64 --cell-heading 1 --view-follow=-90..90 --select-energy 3 --act-every 4
+  --maxvel 3500 --tick-ms 7, 40 threads, snapshot at 200 iterations ~7 min) rooted at the
+  incumbent's OWN greedy contact ticks after its contact record stopped improving
+  (tools/contact_roots.py on record_ckpt --dump-states of the round-1 incumbent, 1,060 roots on
+  the third structure's west ramp crest), replayed exactly by tools/ge_replay.py --cell
+  3194239 (the deepest CONTACT cell, tools/ge_contact_pick.py): crest -> ridge top, contact
+  progress 30.2% -> 69.7%.
+* `zlr2b1_ge1_spine.npy` (20,103 states, 140.7 s): tools/contact_spine.py = the incumbent's own
+  greedy episode 1 (dump key ep_0001) up to the root (index 19,656) + that line, cut at the
+  deepest contact tick (69.66%, (-1,214, 1,334, 1,021)). No demo anywhere.
