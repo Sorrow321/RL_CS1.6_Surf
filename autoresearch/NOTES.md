@@ -103,3 +103,39 @@ the numbers). Read it before you start; append to it before you wrap up.
   stochastic pb_r26 episode gained 29 u of energy height before it fell). So a warm start brings
   surfing skill, not the loop: it still has to learn the pump. uf2_x13 stays the warm arm (it at
   least goes where the half-pipe is).
+
+### zlr1b1 round 1 lesson (2026-11-01 03:50 UTC): no box all round, so no evidence; what is ready
+* **No run.** `box.py rent` was refused on the fleet's budget pace on every try from 17:32 to 03:46
+  UTC (~385 tries by one background waiter, once a minute): two boxes held 0.59 of a 0.614-0.619
+  $/h limit the whole round, and no single-GPU offer costs the 0.03 $/h of headroom. The waiter
+  was stopped at the 03:45 cutoff (a later box could only have recorded an untrained eval before
+  the wrap-up). See "Harness issue" above. This branch has no score; nothing here is measured on a
+  box.
+* **Measured on CPU / from the record (analysis only):**
+  * the field DOES pay the first loop at its turnarounds (each higher pass up a half-pipe end
+    wall is a d record: 1.1% at 16 s -> 8.7% at 32 s in the record), but the record's own line
+    has a 28 s stretch (34 -> 62 s) with no 32 u record of d OR of energy height, after losing
+    ~800 u of energy at 34-38 s: it would be cut by the 30 s eval patience and killed by the 15 s
+    training stall with or without an energy channel. The second half-pipe (17-25%) starts ~70 s.
+  * the recipe pays nothing for energy built between turnarounds (front-bonus mode), its speed
+    novelty bins (1,333 u/s) cannot see a 345 -> 1,300 u/s pump, and `stagnant_mask` keeps
+    states with no stall re-arm in 3 s out of the reservoir.
+  * zero-shot, none of the four refs pumps here (uf2_x13 dives into the kill plane in 7-19 s; the
+    pb refs and sid_ref stay on the start floor): a warm start brings surfing, not the loop.
+* **Ready to run (pushed, tested, default off, bit-identical):** `--stall-energy EPS`,
+  `--eval-patience-energy 1`, `--energy-pot-rel 1` (2f3d07d7, tests/python/test_stall_energy.py,
+  14 tests incl. the flag-off bit-identity run against the trainer before the change);
+  `tools/warm_from_ref.py` (refs' weights + this map's scratch config, step 0, no foreign
+  run-state; all four refs shape-compatible); `tools/eval_energy_report.py`; `tools/zl_watch.sh`.
+* **The first two arms, for whoever has a box** (both as `box.py launch` extras on top of the
+  recipe; the warm one `--resume` after `box.py deploy --ckpt runs/warm_uf2x13.pt`, built with
+  `tools/warm_from_ref.py --ref $AR_HOME/incumbent/refs/uf2_x13/ckpt.pt --template
+  $AR_HOME/runs/zlop/zlop_check/run.json --set energy_pot=1 --set energy_pot_rel=1 --set
+  stall_energy=32 --set eval_patience_energy=1 --drop energy_pot_front --drop
+  energy_pot_front_bonus`):
+  `--energy-pot 1 --energy-pot-rel 1 --energy-pot-front 0 --energy-pot-front-bonus 0
+  --stall-energy 32 --eval-patience-energy 1`, scratch and warm, side by side (the trainer takes
+  half the container's CPUs), then the plain recipe as the scratch control. Read the evals with
+  `tools/eval_energy_report.py` (h max climbing pass after pass = pumping; best progress at the
+  turnarounds = the wall height), and expect the score to sit near the record's 8.7% wall height
+  until something leaves the first half-pipe (the record does at ~70 s, to 17%+).
