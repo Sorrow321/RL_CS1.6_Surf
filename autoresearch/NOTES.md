@@ -1209,7 +1209,7 @@ f2's flags with `--bc-file runs/dag/bc_dag2.npz --bc-coef 0.3 --bc-coef-final 0.
   finishes are knife-edge optima (the CEM stops at the first finish) and a ~2-deg imitation error per
   decision misses them. (uf2 x7 needed the curriculum's RL on the line too, not BC alone.)
 
-### f4 `zlr3b1_f4` (21:28 UTC): c1's weights, NO BC, a backward curriculum over the finishing lines' tails
+### f4 `zlr3b1_f4` (21:20 UTC): c1's weights, NO BC, a backward curriculum over the finishing lines' tails
 `--resume` (c1 11,691.6M) + c1's flags with `--spawn-states runs/cur/pool_cur.npy --spawn-states-frac
 0.3 --unstuck-max 0`. pool_cur = frontier_rc10 + the last W s of the 55 DEFINITE finishing lines (of
 145: the hull clears the platform top; creeps are not reproducible), share 0.5 -> 15% of spawns.
