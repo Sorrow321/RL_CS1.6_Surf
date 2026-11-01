@@ -1240,3 +1240,5 @@ here by hand over 55 lines at once. Read it on: training win rate and its time-f
 `--resume` (c1 11,691.6M) + c1's flags + `--demo-tau0 9170 --spawn-states runs/cur/pool_cur.npy
 --spawn-states-frac 0.2` (tails 1.0 s at launch, md5 68e3f8ad; lines = 10% of resets), keys as
 restored (no --unstuck-max). Tail schedule: 1.0 -> 1.5 -> 2.0 -> whole lines, gated on the probe.
+* Box 58689116 extended to 2026-11-02 05:03 UTC (the round's wrap-up 04:51; the fleet burned 0.83 $/h
+  against a 0.58 pace, so the extension was taken while the reserve check allowed it).
