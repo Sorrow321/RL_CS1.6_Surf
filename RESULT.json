@@ -1,13 +1,13 @@
 {
  "agent": "zlr1b2",
  "round": 1,
- "final": false,
+ "final": true,
  "best": {
   "score": 26.87,
   "eval_file": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_aself/traj_3737649152.jsonl",
   "run": "zlr1b2_aself",
   "step": 3737649152,
-  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_aself/ckpt_3923247104.pt",
+  "ckpt": "/home/steam/ar_loop/runs/zlr1b2/zlr1b2_aself/ckpt_3369598976.pt",
   "recipe": [
    "recipe minus --race-ratchet",
    "--race-arc",
@@ -43,5 +43,5 @@
   "resume_from": "zlr1b2_self ckpt_3208642560 (on the box)",
   "commit": "37114d56"
  },
- "summary": "A1-A5 never get the greedy off the start platform (best 0.704). Go-Explore from the true spawn (energy cells) finds a 40.5 s line to 12.77%, used as a --race-arc route. A6 (arc shaping + energy ratchet + fail-pen 2 + yaw sigma cap 0.3, from scratch) leaves the platform; A6b reaches the route's end (14.093); A6c adds --race-arc-tail (field ratchet past the route) and leaves loop 1 (22.404); A7 rebuilds the route from the policy's OWN best greedy episode (xSELF, 23.367); A8 does that automatically after every eval (--race-arc-self 0.01): 3.74B 26.870 (median 26.8%; three automatic route swaps, end 20.5 -> 26.9%). Next: keep A8 running; from-scratch --ge-arc confirmation."
+ "summary": "Best 26.870 (A8 zlr1b2_aself, 3.74B, median 26.8%, 0/9 finishes): out of loop 1 into loop 2 with energy ~-1,100. Recipe (all generic, constants set once): fail-pen = the discounted time-penalty stream; yaw sigma cap 0.3; energy-height records re-arm the stall and eval patience; energy ratchet K 12; Go-Explore from the true spawn (energy cells) -> its exact line as a --race-arc route; --race-arc-tail (field ratchet past the route); --race-arc-self (route = the policy's own deepest greedy line, shortest-line tie-break). Did not work: per-call energy (suicide), GE spawns or a pinned GE spine alone, warm refs, random search for the exits. B1 = the whole recipe from scratch in one launch (--ge-arc): 15.3%, loop 1 not left by 3.36B. A9 (shorter self route) steadier at ~25% medians, best 26.858. Next: loop 1's exit from scratch; loop 2's exit."
 }

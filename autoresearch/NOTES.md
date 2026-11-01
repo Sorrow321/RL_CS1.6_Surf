@@ -493,3 +493,41 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   ckpt_5760352256.pt (medians 24-26%) is the stronger policy of this lineage if a later round
   can reach it; its route is runs/ge/a9_route.npz on the box (181,632 u, also in this branch's
   history only as a description: rebuild it from traj_3737649152 with arc_self_candidate tie 32).
+
+### Round 1 lesson (zlr1b2) - what worked, what did not, the numbers
+* **Worked, in the order it mattered** (each generic, constants set once, no map knowledge):
+  1. **Remove the suicide incentive**: `--fail-pen 2` = the discounted time-penalty stream
+     (time_pen_tick / (1 - gamma_tick)), so WHEN to die is neutral (A1/A2 diagnosis).
+  2. **`--yaw-sigma-max 0.3`**: the velocity-frame yaw sigma walked to its 2.718 clamp in every
+     stuck run (+-170 deg offsets = braking); capped at its init the view stays on the strafe
+     optimum and a held side key pumps.
+  3. **Search finds what the field cannot see**: Go-Explore from the true spawn with energy
+     cells (64 u x 32 u of h, heading, view offsets in the velocity frame, select-energy 3,
+     exact chains) reaches the half-pipe's east end (9.48%) in 9-12 min; its exact line becomes
+     a `--race-arc` route (arc-length shaping = a progress coordinate through the loop).
+  4. **`--race-arc-tail 1500`**: past the route's last corridor-width the FIELD's ratchet pays
+     again; it took the policy over loop 1's exit (14 -> 19.7% within 150M steps).
+  5. **xSELF routes** (`--race-arc-self 0.01` + the shortest-line tie-break): the route follows
+     the policy's own best greedy line; the GE line's 17 s of ramp pumping had made the policy's
+     own 7-s exit unpaid (the arc window refuses a skip) and the greedy's start a coin flip.
+  Energy rules kept on throughout: `--stall-energy 32 --eval-patience-energy 32` (the record's
+  own line would be cut at 30 s by the eval patience), `--energy-pot 12 --energy-ratchet 1`.
+* **Did not work**: per-call energy shaping (A1: charges a novice's landings -> suicide); GE
+  archive spawns alone (A3: the platform gives no reason to go west); a GE line pinned at the
+  true start as a demo spine (A4/A5: 28 s too far for a from-scratch policy); warm starts from
+  the refs (zero-shot none pumps); random-burst GE / beams from the policy's own states for the
+  loop-1 and loop-2 exits (14.3-14.8% max: the exits need a directed carve, not more energy).
+* **Numbers**: control 0.704; A6 (arc) 1.341; A6b 14.093; A6c (tail) 22.404; A7 (self route)
+  23.367; A8 (automatic self route) **26.870** (3.74B, median 26.8%); B1 = the whole recipe from
+  scratch in ONE launch (`--ge-minutes 9 --ge-arc 1500 --race-arc-self 0.01` + the rest): 15.273
+  (medians 13-14% from 2.0 to 3.3B, loop 1 not left by 3.36B); A9 (A8's weights on the shortest route): steadier (medians 23-26% from 4.8 to 8.15B), best 26.858 at 5.28B, no record.
+* **For the next round**: (a) B1 shows the one-launch recipe gets through the start and loop 1's
+  half-pipe by itself but its greedy did not find loop 1's exit in 1.3B steps where the hand-built
+  route's lineage did: the exit (a carve south over the east wall's top) is the open gate for a
+  from-scratch run; (b) the incumbent checkpoint (A8's lineage, ~23-27% with loop 2 pumped to
+  h ~-1,100) continues from loop 2; (c) the self route's long-route problem (126k -> 258k u, the
+  arc paying less per unit) is what the tie-break addresses - watch the route length.
+* **Final (04:29 UTC): best 26.870 = A8 `zlr1b2_aself` traj_3737649152 (3.74B; best 26.87%, median
+  26.78%, 0/9 finishes).** Handoff snapshot pulled: runs/zlr1b2/zlr1b2_aself/ckpt_3369598976.pt (at or
+  before the eval) + ckpt_3923247104.pt + ckpt_latest.pt (4.42B). Also pulled: A9 ckpt_4923588608,
+  ckpt_5760352256, ckpt_latest (8.15B); B1 ckpt_latest (3.36B). Box 58559243 released at the wrap-up.
