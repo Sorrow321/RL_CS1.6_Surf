@@ -645,3 +645,26 @@ line ABOVE the policy's own pass (from the line's own state the policy's 0-offse
 ~1.5% less). Plan: beam with --view-hold (positive draws are half of them) from the high-energy
 passes -> frontier line ~66% -> spine (success line d_end + 100 u ~ 64.4% > the policy's 63.8%
 from that state) -> curriculum (+ BC on the line's last seconds if the band stalls).
+
+### A spine from a generic perturbation search, and what it is made of (07:36 UTC, CPU only)
+* `autoresearch/analysis/zl_perturb_search.py` (generic: roots every 35 ticks = 0.245 s along the
+  policy's OWN greedy line from t 100 s, ONE held view offset c in {+-0.5..+-2} deg for 0.5/1/2 s on
+  the exact replay of its controls, kept by the grader field's progress; 8,424 envs, ~20 s of CPU):
+  the line's own best 64.49% -> 66.32% (root 153.4 s, -2.0 deg 0.49 s), 66.31% (169.1 s, +1.0 deg
+  0.98 s), 66.2-66.3% from several other roots; many distinct perturbations reach 65.8-66.3%.
+  `zl_perturb_spine.py` rebuilds a line exactly (horizon 700 ticks: a shorter one cut the peak).
+  Spines: autoresearch/spines/zlr2b2_p0_line.npy (66.32%, 158.0 s) and _p1_ (66.31%, 173.1 s).
+* What the +2 points are: the apex of the loop's free flight is ballistic from the ramp exit,
+  z_exit + vz^2/1600. The spine leaves the ramp with the same speed as the policy (|v| 2,606 vs
+  2,615) but ~1.9 deg steeper (vz 1,592 vs 1,513) -> apex z 815 vs 671 (66.3% vs 64.0%). The pass
+  itself is within 20-30 u of the policy's own; the exit elevation is chaotically sensitive to
+  the last ~0.3 s of the right-strafe turn. Closed-loop greedy policy from the spine's states:
+  from the exit (tick 22,300) 66.34% (ballistic); from the late turn (22,275) 61.38%, mid-turn
+  (22,225) 63.85%, after the perturbation (21,986) 64.29%: the policy's own turn control gives
+  back the gain. So the skill to teach is a steeper ramp exit (precision), which the progress
+  reward pays directly (+1 per point) and the policy's own noise sometimes produces.
+* Training plan: resume the incumbent + `--demo-file autoresearch/spines/zlr2b2_p0_line.npy`
+  (backward curriculum from its end; success line d_end + 100 u = 64.75%, just above the policy's
+  own 63.8-64.7% from those states: occasional successes, +50 each, concentrated on the late turn
+  where the band stalls) + `--demo-milestones 5859` + `--ckpt-every 1e8`. The loop to iterate:
+  record the newest greedy -> zl_perturb_search on it -> next spine.
