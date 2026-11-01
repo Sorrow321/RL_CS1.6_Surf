@@ -591,3 +591,13 @@ incumbent's own states):
   face and the pillar top are new places; the top, 61.6%, is BELOW the loop's 64% arc top, so
   depth alone never keeps it). A full spine needs climb + landing + pumping the pillar-top ramp
   past ~z 750 (>64.7%; the record's swing tops there reach z 797 after ~6 s, 881 after ~10 s).
+* **Monte Carlo of the search's perturbation on the incumbent's own replayed controls** (open
+  loop, physics only, its recorded keys + yaw offsets relative to the sim velocity, plus two
+  held draws z ~ N(0, SIGMA) of 25 decisions at a random phase): at E 1,600-3,800, 184 of 8,000
+  lineage-passes reach the pillar face, 2 land on top, the best climbs to z 1,087 (SIGMA 0.3); at
+  the high-energy passes (E 3,510-4,421) 4 of 8,000 climb the face above z 750 (> 64.7%), best
+  z 1,195 (~70.7% on the field), 4 land on top (SIGMA 0.3); SIGMA 0.5: 2 of 8,000 above 750.
+  So a 4,096-lineage beam over its ~8 high-energy passes (~30k lineage-passes) should hold ~15
+  climbs past the incumbent, and the d-ranked half keeps them by itself (they are the deepest
+  states at the next boundary). Box plan: beam_tas --greedy-envs 32 --view-hold 0.3 25 from the
+  TRUE start on the incumbent -> frontier line -> spine (backward curriculum from its end).
