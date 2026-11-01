@@ -1033,3 +1033,12 @@ band success.
   (x -55..-67, y 1,769-2,036; ep5 97.34% at (-368, 2,542, 2,789) heading east at 180.5 s) - the
   line's finishing swing - but with E 3,440-3,990, 190-420 u short: it swings for the slab before it
   has pumped (the line swings at E ~4,300+). The curriculum has not yet reached the pumping part.
+* **c2 FINISHES FROM THE TRUE START (18:50 UTC): 98.938 (12,356M) / 109.242 (12,431M: 1/9, 168.25 s) /
+  110.409 (12,507M: 2/9, best 163.15 s, mean 165.9 s).** The first greedy finishes on surf_za_loop,
+  champion-free, no demo in training. Both enter the north strip at its west edge like the search
+  lines ((-340, 2,351, 3,038) at 163.1 s, (-336, 2,203, 3,065) at 168.6 s; E 4,045-4,106); 450.46 s is
+  the record on our clock (491.65 s listed). The finish-line band had walked back to 63.7 s before
+  the line's finish (training win 30.5% "@ 52 s": finishes ~a minute after a finish-line spawn).
+  Hand-on candidates pulled: ckpt_12352225280.pt (154.7M before the 110.409 eval, md5 0c8a37fe) and
+  ckpt_12552503296.pt (45.6M after, md5 5d587b5b); snapcopy started beside c2 (18:54) so later evals
+  get a checkpoint at their own step.
