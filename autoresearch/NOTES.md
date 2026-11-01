@@ -408,3 +408,10 @@ own frontier; no map constant.
 The recipe's count-based novelty (cell x view-sector x speed key) at 4x (0.25 -> 1.0) on the best
 weights, E8's config otherwise: a stronger push toward unvisited cells in the upper third structure
 (the faces of the pillar, the space above it), where no search has found a way up.
+* **E12 (01:00-01:27 UTC): 62.679 (its own first eval) / 45.355 / 53.803 / 54.329 / 53.511 /
+  53.077 - NEGATIVE.** 4x novelty pulled the greedy back from 62% to ~53%: the count bonus paid 34
+  reward/episode (E8: ~4-8) and the training frontier fell to 57%. Keep `--int-coef 0.25`.
+
+### E13 `zlr1b4_e13` (01:28 UTC): E8's exact config from its 62.77% snapshot, to the round's end
+Nothing new: more greedy evals of the best configuration (each a chance above 62.774) and, if one
+comes, a stronger hand-on for the next round.
