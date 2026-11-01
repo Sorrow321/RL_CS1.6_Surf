@@ -185,3 +185,6 @@ idle for the first third of its round.
   ranks open-air apexes above loop 1 (13-15%) ABOVE loop 2's ramp (10-11%), so a
   --demo-success-d line drawn at a loop-2 state would be met by a high loop-1 swing instead.
 * 01:31 UTC: a 150-min local GE (seed 11) to see how far the search climbs past loop 2.
+* 03:46 UTC: still no box (10 h 36 min of refusals since 17:10). The launcher is stopped: a box
+  from now on would train ~20 min before the 04:29 wrap-up (deploy + compile + record gate take
+  ~25 min), too little for an eval worth its rent. Nothing was ever rented by this branch.
