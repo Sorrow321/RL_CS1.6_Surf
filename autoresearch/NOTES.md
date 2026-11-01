@@ -804,3 +804,5 @@ If it collapses again: drop --front-contact (rc7's stable mix).
   3,100-3,500); the best apex z 2,670 is ~340 u below the finish slabs (z 3,008); training's deepest
   state 97.2%; hot envs 38%. Hand-on for 93.892: ckpt_9171369984.pt (pulled, md5 8981a09b). No finish
   yet. 12:52: re-recording 9,171M to refresh the frontier pool; box extended.
+* 12:57 UTC: pool refreshed from rc9's 9,171M re-recording (9/9 at contact 85.5-85.6% by 110-115 s,
+  alive 20-30 s past it; 34,387 states, autoresearch/spines/zlr2b1_frontier_rc9.npy, md5 771c31ea).
