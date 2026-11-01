@@ -1095,3 +1095,29 @@ finish, or swings taking the slot); BC head/joint accuracy.
   not 40: the MPC's decisions are FOREIGN to the policy (strafe offsets tens of sigma from its yaw
   mean, noisy duck presses), so the first BC gradients are huge and wreck shared features. One more
   eval to see whether it recovers as BC decays; else restart from c1's weights with BC 0.05 -> 0.02.
+* **f1 stopped (19:22 UTC):** third eval 14.210 (11,843M) - all 9 stall in the first trough, E stuck
+  at ~-2,000 (pumping broken). Not recovering as BC decays (0.5 -> 0.43 by then). The MPC's rows are
+  foreign (27% duck presses, side A/D per 8-tick knot, view offsets tens of sigma from the policy's
+  mean); their gradients spilled into shared features and broke a part of the route (the first
+  trough) that had no BC rows at all. Pulled (3 evals: 4.600 / 13.818 / 14.210).
+
+### c2 `zlr3b1_c2` (19:24 UTC): c1's final weights + c1's flags + all 85 lines in the pool (no BC)
+`--resume` (c1 11,691.6M) + `--spawn-states runs/fmpc/pool_f4.npy --spawn-states-frac 0.2` (~10% of
+spawns on finishing lines), the rest c1's. The spawn-only treatment at a larger line share, and the
+box's evals while the DAgger data is built. First eval 96.783 (its own first, c1's weights).
+
+### DAgger labels (NEW tools/dagger_finish.py, 19:25 UTC)
+The uf2 x7 form: BC on the line the policy itself flies, so the rows anchor the whole route. The
+greedy's own line from the TRUE start with its per-decision actions (beam_tas `--envs 4
+--greedy-envs 4 --save-frontier --frontier-last --max-ticks 25000 --skip-gate`, seeds 0-5 on c1's
+final: 155-174 s each, best d 89-357), cut at the decision grid shortly before each of its K closest
+passes to the finish (the exit = the last contact before the pass, generic), continued by the engine
+MPC; written as a SPLICED plan (true start -> finish, plan_to_bc replays and asserts it) plus the
+suffix alone (to up-weight it by merging it again).
+* g0 (155 s): 0 of 16 roots finish (best apexes 2,653-2,959). **The greedy's pre-exit states carry E
+  3,110-3,770** at 136-150 s; the MPC's successful roots (rc10's frontier pool) had E ~4,000-4,250.
+  E ~3,700 at the exit is the physics' edge (|v| ~1,650 -> vz <= ~1,320 up a 49-deg ramp -> apex
+  <= ~3,110 with no loss; the reachable finish needs 3,026-3,044 + losses). The greedy reaches E
+  4,000+ only at ~150-175 s, just before it dies off a swing end: SURVIVAL while pumping in the fifth
+  loop is the other half of the finish.
+* p1-p5 (running): the late passes (--min-start-s 140), leads 0.25-1.2 s.
