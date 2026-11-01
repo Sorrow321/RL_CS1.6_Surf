@@ -677,3 +677,14 @@ from there. Budget 2e9.
   z ~1,670-1,780 (y -950..1,370); the record flies UNDER the block's underside (z ~1,630, x
   -2,900..250, y -470..1,000) from the fourth structure at t+381 and lands on that east-facing
   slope, then pumps it along y up to z ~2,180 (87.75%). The policy's apexes go up NORTH of the block.
+* GE ge3 final (15 min, 2.99M cells): still no contact past 70.05%. ge4 (NEW tools/ge_frontier_roots.py:
+  roots = ge3's 2,000 deepest cells, apexes at z 1,725-1,807 north of the block) started 08:13 and
+  was stopped at 08:16: the RL got there first.
+* **rc4 FINDS THE NEXT STRUCTURE BY ITSELF (08:15 UTC): 78.833 (6,035M) / 89.872 (6,111M, median
+  88.0%) / 89.442 (6,186M, median 88.6%).** 6/9 episodes at 87-89.9%; CONTACT records 85.3-85.6% at
+  (-14, 186, 2,029), (-92, 420, 2,043), (-9, 303, 2,023) - real surfaces, the record's 83-88%
+  region. ep1 (89.87%): launch at ~136 s, ridge at 137.9 s, over it east to (218, 397, 1,760) - the
+  block's east-face ramp - at 139.9 s, up to z 2,300 (88.6%) and (-391, -675, 2,255) (88.3%), then off
+  west and a fall at 148 s. Remaining to the finish slabs (z 3,008): ~700-800 u of climb; the
+  record does 87.75% (t+390, z 2,181) -> finish (t+450) in 60 s. Hand-on for 89.872:
+  ckpt_6110576640.pt (snapcopy, the eval's own step; pulled, md5 b77a0749).
