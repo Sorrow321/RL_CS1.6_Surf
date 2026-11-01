@@ -637,3 +637,6 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   (`autoresearch/spines/zlr2b4_cem978_spine.npy`) with `--demo-milestones 5859,1334,422`: the GE
   line, the launch apex (79.0%) and the first air line's apex (93.4%) - each stage of the search
   pays as a success line, auto-spine's rule for its earlier lines.
+* Finish search (08:55-09:20 UTC): wider / longer CEM stages (sigma0 4-6, 4.5-7 s horizons) from
+  the higher ramp all stop under the finish platform: 97.90 / 98.06 / 98.07%. The record (ANALYSIS
+  ONLY) climbs out at x ~-124, y ~1,929 (the narrow finish strip), not above our ramp contact.
