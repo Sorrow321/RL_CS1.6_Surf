@@ -830,3 +830,9 @@ then the wrap-up).
 * GE ge6 (14:31 UTC, 20 min): roots = rc9's 9,171M re-recording contact ticks after the contact
   record (3,576 roots on the block's east ramp, E up to ~4,000); explore_phase1 stops and writes
   win_<k>.spine.npy on any slab entry.
+* ge6 (20 min, 3.83M cells): 0 goal hits; its closest cell is an apex 242 u from a slab. Random-burst
+  search does not find the finish swing either.
+* **rc10 14:53 UTC: ... 97.687 (11,021M) / 98.329 (11,096M, median 95.4%) / 96.936 / 94.946.**
+  98.33% = ep8's apex at z 2,857 (E max 4,407) at 158.5 s, still outside the slab footprints; 3/9
+  died early in the first troughs (22-28%). Hand-on for 98.329: ckpt_11096031232.pt (pulled, md5
+  3c40f24d). 14:55: re-recording 11,096M to refresh the frontier pool.
