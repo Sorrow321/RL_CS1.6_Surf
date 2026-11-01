@@ -1035,3 +1035,27 @@ Gaussian), 4,096 sequences per iteration, the 64 closest (macro_finish.goal_scor
   pool + the 17 lines at 40.5%.
 * cem_d (19:34 UTC): 16 roots from all 8 episodes, the contact states nearest (position / 200 +
   velocity / 300) to the successful roots, 50 iterations, at most 2 finishes each.
+* cem_d: 16 finishes from 8 of its 16 roots (episodes 1, 2, 4, 5, 6 + 34534 in ep 5), most rising
+  up the platform's north face (y 1,328), two from 34534 up through the platform's HOLE over the
+  ramp's middle (finish at its edge y ~520): **33 exact lines from 12 roots in 7 of the 8 episodes**.
+  Pool C (`autoresearch/spines/zlr3b3_pool_c.npy`, md5 7d96bcd3, 83,925 states, the lines at 43%).
+* Open-loop robustness (scratch robust.py): a line's own action sequence from its root + noise
+  finishes 0-37% at sigma 2 u / 5 u/s, 0-17% at 5 / 15, 0-9% at 10 / 30: the lines are knife-edge
+  OPEN loop (chaotic surf over 2 s). `cem_finish --robust 8` (score = mean over noisy root copies,
+  warm-started by --init from a line) found NO sequence that finishes from any copy in 15
+  iterations: open-loop robustness is the wrong target; the closed-loop policy has to supply it.
+* BC data ready (CPU): NEW tools/cem_to_plan.py packs the CEM lines into beam_best.npz-layout plan
+  files (one per root; decision-0 scalars from the map spawn's reset, as beam_tas --start-state),
+  tools/plan_to_bc.py replays each exact (the recipe's compass / ratchet / surf / pot-rate blocks
+  recorded), NEW tools/bc_merge.py concatenates them: `autoresearch/spines/zlr3b3_bc_c.npz` (md5
+  623f6ceb): 2,271 decisions of 33 lines, v2 (value targets on every row), loads in BCDataset.
+* Lessons carried from uf2r2b4 (git show b93a7151:autoresearch/NOTES.md, x1-x6): BC on the policy's
+  own beam SAMPLES made the greedy worse (x1); BC on the planner's line in the divergence window gave
+  ONE greedy episode the new route after one update (x3) but did not carry over to the greedy's own
+  states 15-25 u away (memorised); --bc-value-coef hurts an int_coef policy; BC costs throughput.
+  Here the lines are CEM-converged (not noisy samples) from the incumbent GREEDY's own states, and
+  the score needs one finishing episode in one eval.
+* Plan for the first box: f1 = resume of the incumbent with its round-2 flags + `--spawn-states`
+  pool C (0.15) + `--bc-file zlr3b3_bc_c.npz --bc-coef 0.5 --bc-coef-final 0.05 --bc-steps 4e8
+  --bc-target argmax` (no value term); beside it the CEM on the box's CPU from the NEW greedy's own
+  fifth-loop states (record_ckpt --dump-states -> frontier_states.py), refreshing the pool in place.
