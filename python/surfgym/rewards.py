@@ -866,6 +866,7 @@ class RaceReward:
         # control path byte for byte.
         self.ratchet_contact = False
         self._rec_c: np.ndarray | None = None
+        self._rc_boot: np.ndarray | None = None
         self._rc_air: np.ndarray | None = None
         # diagnostics (pop_stats): per ended episode, the contact record's and the all-state
         # record's progress (fractions of ratchet_d0) and whether any contact progress was paid
@@ -1370,6 +1371,7 @@ class RaceReward:
                 # episode's own start d), so a start can never generate contact progress either;
                 # _rc_air counts the calls since the last supported one (the flight's clip budget)
                 self._rec_c = self._d.copy()
+                self._rc_boot = self._rec_c.copy()
                 self._rc_air = np.zeros(len(self._d), np.int64)
                 self._rc_start = self._d.copy()
                 self.rc_paid_mask = np.zeros(len(self._d), bool)
@@ -1614,6 +1616,9 @@ class RaceReward:
                     # (_contact_mask: ground, or a surfable face pushing back up); an ended
                     # row's state is already the next episode's spawn, so it never moves it
                     sup = self._contact_mask(core) & ~ended
+                    # the paid record as it stood before this call: an ended row's dying
+                    # episode's record, read after the call by the curriculum's outcome rule
+                    self._rc_boot = self._rec_c.copy()
                     new_rc = np.where(sup, np.minimum(self._rec_c, d), self._rec_c)
                     delta = self._rec_c - new_rc
                     # the teleport guard, scaled to the flight: a landing legitimately moves
@@ -2225,6 +2230,15 @@ class RaceReward:
         whether t+1 pays shaping. Without it the switch is invisible
         episode history and one input has two different returns."""
         return self._latched
+
+    def paid_record(self, boot: bool = False):
+        """The record the ratchet PAYS on: the contact record under --ratchet-contact, else the
+        all-state one (`_rec`). boot=True: as it stood before the last call (an ended row's
+        dying episode's). The --demo-success-d curriculum reads this, so its success line is
+        crossed by the record that is paid."""
+        if self.ratchet_contact:
+            return self._rc_boot if boot else self._rec_c
+        return self._rec_boot if boot else self._rec
 
     def ratchet_gap(self) -> np.ndarray | None:
         """``(d_t - b_t) / d0`` per env - the ``--race-ratchet`` observation

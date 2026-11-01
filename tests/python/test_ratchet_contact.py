@@ -229,3 +229,26 @@ def test_the_recorder_lists_the_flag_as_training_only():
     head = src[src.index("TRAIN_ONLY = frozenset({"):]
     head = head[:head.index("})")]
     assert '"ratchet_contact"' in head
+
+
+# ==========================================================================
+# (f) the curriculum reads the PAID record
+# ==========================================================================
+def test_paid_record_is_the_contact_record_under_the_flag():
+    fl = _flight(0.0, 800.0, 140)
+    k_land = max(i for i, (z, vz) in enumerate(fl) if z >= 300.0 and vz < 0)
+    seq = [(z, vz, False) for z, vz in fl[:k_land + 1]]
+    on, con = _rr(True)
+    off, coff = _rr(False)
+    _run(on, con, seq)
+    _run(off, coff, seq)
+    # off: the paid record is the all-state one, exactly
+    assert off.paid_record() is off._rec and off.paid_record(boot=True) is off._rec_boot
+    # on: the apex (~400 u up) moved the all-state record but not the paid one
+    assert on._rec[0] < 10000.0 - 390.0
+    assert on.paid_record()[0] == pytest.approx(10000.0 - fl[0][0])
+    # the landing call ends the episode: boot = the dying episode's paid record (before the
+    # call, the landing itself is never credited on an ended row), then the reset
+    _step(on, _put(con, 300.0, 0.0, True), done=1)
+    assert on.paid_record(boot=True)[0] == pytest.approx(10000.0 - fl[0][0])
+    assert on.paid_record()[0] == pytest.approx(10000.0 - 300.0)

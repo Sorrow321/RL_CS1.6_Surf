@@ -16285,7 +16285,9 @@ def main() -> None:
         """--demo-success-bonus: pay the rows whose ratchet record (after this reward call; an
         ended row's is already the NEW episode's spawn) has just crossed the spine's success
         line; an episode is paid once, and one that spawns past the line never."""
-        rec = np.asarray(reward_fn._rec)
+        # the PAID record (--ratchet-contact: the contact record, so a ballistic apex past the
+        # line never crosses it; else the all-state record, as before)
+        rec = np.asarray(reward_fn.paid_record())
         if DEMO_PAID[0] is None:
             DEMO_PAID[0] = rec <= DEMO_END_D
         paid = DEMO_PAID[0]
@@ -19995,7 +19997,9 @@ def main() -> None:
                             elif DEMO_END_D is not None:
                                 # --demo-success-d: the ended episodes' records as they stood
                                 # before this call re-anchored them on the new spawns
-                                _rb = getattr(slots[0].reward_fn, "_rec_boot", None)
+                                _rb = (slots[0].reward_fn.paid_record(boot=True)
+                                       if hasattr(slots[0].reward_fn, "paid_record")
+                                       else getattr(slots[0].reward_fn, "_rec_boot", None))
                                 if _rb is not None:
                                     goal_now = goal_now | (np.asarray(_rb)[ei] <= DEMO_END_D)
                             known = demo_idx[ei] >= 0
