@@ -1043,3 +1043,14 @@ offsets, the map's own finish trigger.
   the first loop's pumping (stuck at 21.5% for 182 s). Diversity has to come from the policy's own
   greedy (the box's GPU line, tools/finish_chain.sh) or from earlier, longer shots (sf6: starts
   156.4-158.9 s, 7 s horizon, 5 segments).
+* **sf6 (21:45-22:00 UTC; starts 156.4-158.9 s, 7 s horizon, 5 segments): a SECOND finishing family,
+  through the plate's HOLE.** From 156.9 s 355 finishes in 16 rounds (the evolution converged; 88
+  saved), from 156.4 s 3; they finish EARLIER, at 158.66-159.41 s, in the middle of the swing: at
+  ~157.2 s on the ramp's middle (y ~0-110) the player turns up-slope (vx -815 -> -937, vz 941 ->
+  1,249), leaves the ramp's top edge at (-65, -164, 2,103), glances off the wall at x ~-64 below
+  the plate, flies up THROUGH the hole (x > -64, y 40..536) to z ~3,050 and touches the hole's south
+  edge (box 3's north face, y 40 -> grown 56) at x 400-1,050: the field's own shortest way up.
+  Less energy than the north-strip slide (it leaves the ramp at the swing's fastest point).
+  Grader check: 30/30 of a subset pass.
+* Pool rebuilt (md5 eb503cb5): rc10's 47,793 own states + 47 finishing lines' last 3 s (17 north
+  slide + 30 hole, every 3rd of sf6's) x2 = 45.8% of 88,119 rows.
