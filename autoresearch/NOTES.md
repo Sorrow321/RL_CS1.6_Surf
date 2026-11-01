@@ -1139,3 +1139,15 @@ runs/fmpc/pool_f5.npy --spawn-states-frac 0.2 --bc-file runs/dag/bc_dag1.npz --b
 0`. BC at the start: head-acc 0.967, joint-acc 0.878, nll 0.15 (f1's foreign rows: memorised from a
 huge loss) - the rows mostly ARE the policy. Read it on: the first eval (one update: did BC break
 the route?), the greedy's fifth loop (does it turn up-slope early at E ~4,000 and finish?).
+* **f2 evals: 96.347 (11,692.1M, one update) / 95.136 (11,767.6M) / 95.649 (11,843.1M, 9/9 reach the
+  fifth loop).** BC on the policy's own route did NOT break it (f1 did) - and the early route got
+  RELIABLE (9/9 to the fifth loop; c1 had 2-8/9 early deaths per eval) - but no finish, and the
+  fifth-loop best is a little lower (93-95.6% vs c1's 95-97%). BC memorised by ~150M (head-acc 0.999,
+  joint 0.996).
+* Why no finish yet (f2 11,767M, every episode's 3 closest passes): the exits now carry **E 3,200-3,790**
+  (many at the ramp's SOUTH end, y ~-490), the passes 319-545 u off; the labels sit at E 4,000+
+  states (the last swing before death). The eval never reaches a labelled state. E reaches ~4,000 only
+  in the last seconds (deaths at E 3,935-4,165, 149-177 s).
+* DAgger round 2 (20:08 UTC): f2's own greedy lines (snapshot runs/f2_snap1.pt, seeds 0-7) for labels
+  at its states; e0 = finish_mpc's "pump then finish" (`--objective finish --energy-w 1.0 --duration
+  10`) from g0's E 3,100-3,770 roots - can the physics reach the finish from where the greedy is?
