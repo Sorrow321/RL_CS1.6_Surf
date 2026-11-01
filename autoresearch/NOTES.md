@@ -781,3 +781,6 @@ harmless for training.)
   than rc7's (best at 122-129 s, apexes to z 2,418); still no higher CONTACT - the gain is energy and
   survival in the fifth loop. Hot envs 4% -> 26% (more episodes at the contact frontier). Hand-on
   for 91.505: ckpt_8491368448.pt (snapcopy, the eval's own step; pulled, md5 70afe666).
+* 11:36 UTC: the frontier pool refreshed from rc8's 8,491M greedy re-recording (9/9 at contact
+  85.5-85.6%, ~15 s of survival past it; 21,157 states, autoresearch/spines/zlr2b1_frontier_rc8.npy,
+  md5 50ed1814), swapped in place. Box extended to 14:28 UTC.

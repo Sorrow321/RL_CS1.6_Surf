@@ -493,3 +493,6 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   re-recording, 9 episodes: 6 reach contact 85.5% at 114-119 s, die ~7 s later; 2 stuck 910 s in the
   first trough). Swapped in place into rc7's --spawn-states file (runs/sp2/frontier_6110.npy on the
   box) at ~10:17 UTC; the trainer re-reads it on the mtime change.
+* `zlr2b1_frontier_rc8.npy` (21,157 states): tools/frontier_states.py --before 2 --stride 1 on
+  zlr2b1_rc8's ckpt_8491368448 greedy re-recording (9/9 reach contact 85.5-85.6% at 112-117 s and
+  live ~15 s past it). Swapped into rc8's --spawn-states file in place at ~11:36 UTC.
