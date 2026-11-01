@@ -3,5 +3,5 @@
  "round": 2,
  "final": false,
  "best": null,
- "summary": "Round 2 start (05:20 UTC). Incumbent 64.671 (zlr1b4 e13): pumps the third structure to E ~4,500 and dies at its energy peak at ~175 s - the per-call energy term keeps its bank at death, so dying at saturation is optimal under the current objective. Built beam_tas --novelty (policy beam, part of the elite by cell-count rarity in position x energy) to find a line into the fourth structure that depth-ranked beams clone over. Waiting for a box (fleet at its budget pace)."
+ "summary": "Round 2 (zlr2b2). Incumbent 64.671 dies at its energy peak (~175 s, E ~4,500) by the objective's choice (energy bank kept at death). Its loop is mostly free flight off a ramp that rises toward the pillar; the record's climb is an up-slope turn on that same ramp, and the air above pays height (66% at z 900, 85% at z 2,100). Built beam_tas --novelty (part of the elite by cell rarity) + plan: beam with held view offsets on the incumbent from the true start -> a climbing line -> spine (backward curriculum). Waiting for fleet budget room (no box yet)."
 }
