@@ -582,3 +582,28 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   they lack is the turn that puts them into it.
 * Box: still refused at 07:07 (fleet burn 0.526 of 0.624 $/h; the cheapest acceptable offer is
   now 0.387 $/h, so it fits only when the other 5080 is released).
+
+### A PHYSICAL launch from the policy's own states (07:40-08:05 UTC, droplet CPU)
+* Physics-only CEM (`tools/cem_launch.py`, NEW; tests/python/test_cem_launch.py) from the
+  incumbent's exact greedy states: per 8-tick knot a view offset from the velocity heading, a side
+  key, a forward key, for 2-2.5 s, then no keys; score = max progress on the grader's field.
+  * First version drew the offset in DEGREES (sigma 60): null everywhere (<= 65%). Cause: an air
+    strafe adds speed only while the wish direction is within atan(30/|v|) (~0.6-0.75 deg at
+    2,300-2,900 u/s) of perpendicular; any larger offset just coasts (verified: offsets +5/+10/+30
+    with a side key give bit-identical flights; offset 0 + side key turns 61 deg in 1 s and climbs
+    the ramp). The policy's own unit is exactly that angle (`--yaw-adaptive`).
+  * In atan(30/|v|) units (sigma0 2, |u| <= 40): **every lap from 144 s on launches** from the same
+    place - the bottom of the 3rd ramp at y ~1,600-1,680 heading north: 69.1% (144.5 s, 2,735 u/s),
+    75.1% (149.5), 75.5% (154.5), 69.9% (159.5), **77.6% (164.4)**, **79.0% (169.3, apex
+    (-1,653, 1,204, 1,652) right over the pillar)**, 75.7% (174.3). Mid-ramp roots further south
+    (y ~800-1,250) and slower laps (88-110 s, 1,800-2,400 u/s): no launch (<= 62%).
+  * The launch: within 0.5 s the velocity turns from north to east-up (v (1,730, 28, 1,941) at
+    z -815), then a ballistic arc to z 1,540-1,650 (76-79%). The 164.4 s one lands alive on a floor
+    in the south-east; the 169.3 s one flies west into the wall and falls.
+* So the incumbent HAS the energy and a physical launch exists at its own ramp every lap; what it
+  lacks is the 0.5 s turn. That is the search -> spine -> curriculum loop again (round 1's
+  mechanism), with a search that can see a strafe: spines in `autoresearch/spines/zlr2b4_cem*`.
+* Plan for the box (still refused at 08:07): resume the incumbent with `--demo-file
+  autoresearch/spines/zlr2b4_cem164_spine.npy` (backward curriculum from the apex, the restored
+  demo constants), `--demo-milestones 5859` (the GE line's 9.48% keeps paying, round 1's
+  relaunch rule), `--fail-pen 3`.
