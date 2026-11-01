@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 89.872,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/traj_6110576640.jsonl",
+  "score": 90.081,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/traj_6563561472.jsonl",
   "run": "zlr2b1_rc4",
-  "step": 6110576640,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/ckpt_6110576640.pt",
+  "step": 6563561472,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/ckpt_6563561472.pt",
   "recipe": [
    "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3 -> rc4; flags restored)",
    "--ratchet-contact",
@@ -24,5 +24,5 @@
   "resume_from": "zlr2b1_rc3 ckpt_final 5430575104 <- rc2 4430233600 <- rc1 4354211840 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
   "commit": "338783b9"
  },
- "summary": "89.872 at 6,111M (rc4; median 88.0%; 89.442 next; contact records 85.3-85.6% on the big block's east side): the greedy leaves the third structure onto the ridge top and climbs. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%). NEW --ratchet-contact pays only progress reached at contact ticks; Go-Explore rooted at the policy's own crest contacts (NEW contact_roots / ge_contact_pick / contact_spine) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine (band at the GE root, then back inside the third structure). Next: keep training rc4, push past ~81% (the record's launch east past the big block, 82-87%)."
+ "summary": "90.081 at 6,564M (rc4; 3/9 at 89.8-90.1%; level 88.6-90.1 since 6,111M, contact 85.6% on the big block's east side): the greedy leaves the third structure onto the ridge top and climbs. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%). NEW --ratchet-contact pays only progress reached at contact ticks; Go-Explore rooted at the policy's own crest contacts (NEW contact_roots / ge_contact_pick / contact_spine) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine (band at the GE root, then back inside the third structure). Next: keep training rc4, push past ~81% (the record's launch east past the big block, 82-87%)."
 }

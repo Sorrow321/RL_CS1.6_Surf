@@ -688,3 +688,12 @@ from there. Budget 2e9.
   west and a fall at 148 s. Remaining to the finish slabs (z 3,008): ~700-800 u of climb; the
   record does 87.75% (t+390, z 2,181) -> finish (t+450) in 60 s. Hand-on for 89.872:
   ckpt_6110576640.pt (snapcopy, the eval's own step; pulled, md5 b77a0749).
+* **rc4 08:39 UTC: 88.631 / 89.110 / 89.101 / 90.081 (6,564M) / 89.040 (6,639M)** - a plateau at
+  88.6-90.1% (contact ~85.6%). 6,564M: 3/9 at 89.8-90.1% but 6/9 die early, several stalled in the
+  FIRST trough (~12%, the 30 s patience cut): with the band at ~11,500 (80 s) 90% of spawns sit at
+  80-140 s on the route and the first 80 s train on the 10% fresh starts only. Hand-on for 90.081:
+  ckpt_6563561472.pt (pulled, md5 71c5ba98). No training finish yet (win 0.00).
+* The record (ANALYSIS ONLY) after 88%: a FIFTH loop on the big block's east side - swings along y
+  (-1,700 <-> +2,250), the east ramp (x ~100-230, z 1,750-1,990) in the middle and higher surfaces
+  at the swing ends (z 2,180 -> 2,522), ~55 s pumping E 2,650 -> 4,070 (t+389..444), then the climb
+  to the finish at t+450. The policy enters it (z ~2,380, E ~3,100) and dies after 1-3 swings.
