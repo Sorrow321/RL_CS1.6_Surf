@@ -1066,3 +1066,15 @@ Gaussian), 4,096 sequences per iteration, the 64 closest (macro_finish.goal_scor
   greedy episodes of ckpt_latest with --dump-states, frontier_states, finish_roots, cem_finish on
   spare CPU threads, finish_pool -> the trainer's --spawn-states file, atomically): the DAgger-style
   loop uf2r2b4 named as its next step - plan from the CURRENT greedy's own states.
+
+### Harness issue: one branch starved of a box for the round's first 4.7 h (17:39-22:15 UTC and on)
+`box.py rent` refused every attempt (retried every 2 min from 18:30) on the budget pace: the
+fleet's burn was 0.55 $/h from 17:39 (two boxes) and 0.833 $/h from ~20:09 - ABOVE the pacer's own
+limit (0.645 -> 0.634 $/h) - while the cheapest whitelisted offer was 0.161 $/h. At that burn the
+pace cannot admit a fourth box until another is released, and the limit only falls as the credit
+burns faster than the pace. Two things for the operator: (1) a box was apparently admitted that
+took the fleet above the limit (box.py compares `burn + offer dph`; if the instance's dph_total
+- disk included - or a near-simultaneous rent differs from the offer's price, the check is not the
+burn it allows); (2) with one box per agent and a pace that fits ~2 cheap boxes, one branch can sit
+out a whole round while the others hold boxes for hours. Everything this branch did meanwhile ran
+on this machine's CPU (the CEM finish planner and its lines need no GPU).
