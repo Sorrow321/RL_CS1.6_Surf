@@ -591,3 +591,26 @@ zlr2b1_ge1_spine.npy --demo-milestones 5859 --ckpt-every 2e8`; no --demo-tau0, s
 starts at the spine's END and walks back (window 5, grow 5..40, cooldown 5, rate 0.2, front-frac
 0.5, success-d 100, bonus 50 - all restored). Success line d <= 2,030 (68.1%) read on the CONTACT
 record (paid_record: an apex past it never counts). The old GE line's 9.48% stays a milestone.
+* **rc2 (06:17-06:23 UTC, 4,354-4,430M): 60.391 (its first) / 63.211.** Training read-out: episodes
+  spawned at the spine's END (the ridge top) reach CONTACT progress up to 79.7% within 50M steps
+  (reservoir deepest 79.1%) - the policy pumps the fourth structure by itself once it is there.
+  But the greedy from the true start still never touches the ridge (best contact 38.5-39.1%), and
+  the curriculum walked back only 25 states in ~100 iterations (ridge-top episodes run ~5,000
+  ticks before they end, so the band's min_ep / cooldown pace is slow): the 447-state GE part
+  alone would take ~15 min and the 19,656-state base is the policy's own line anyway. Stopped.
+* The GE line's E drop (3,028 -> 1,193 in 0.5 s) is AIR-BRAKING, not a collision (no solid there):
+  keys held against the motion decelerate ~3,000 u/s^2; the line reverses east -> south-west.
+* Record (ANALYSIS ONLY), t+306..392 contacts: after the ridge landing it swings the ridge's length
+  (y ~400 <-> ~1,960) mostly on walkable ground (onground), with 5-frame touches at the swing ends
+  on surfaces that rise each lap (y > 2,000 and < 430: z 940 -> 1,580, 76% by t+370), then 82% at
+  (140, 1,223, 1,864). Those surfaces are not in the 32 u occupancy slices (thin brushes fall
+  between voxel centres): read the map with physics-based contact tests, not the occ grid.
+* GE ge2 (06:21 UTC, 20 min, 40 threads): `--cell-contact --cell 64 --cell-energy 32`, rooted at
+  the spine's last 161 states (the ridge top after the landing, stride 2 = 81 roots): 279k contact
+  cells at 5.6 min, then stalled; nothing deeper than the roots (uniform bursts do not pump the
+  ridge top).
+
+### rc3 `zlr2b1_rc3` (06:23 UTC): rc2's weights + the band at the crest ROOT (`--demo-tau0 19656`)
+The same spine and flags as rc2 plus `--demo-tau0 19656` (the root = the crest contact the GE line
+starts from): demo draws half on [19,656..19,660], half uniform over the GE part [19,656..20,102];
+the curriculum's own backoff moves the band later if the launch from the root fails.
