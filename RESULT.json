@@ -20,5 +20,5 @@
   "resume_from": "incumbent r1 ckpt.pt = zlr1b4_e13 ckpt_4032299008 (md5 036960d8)",
   "commit": "401f4007 (deployed base)"
  },
- "summary": "65.040 = the incumbent's own weights (one PPO iteration in) evaluated on this box's card (RTX 5060 Ti): ep0 survived 198 s and pumped to E 4,970, swing top z 734 - eval variance of the circuit, NOT a mechanism. Analysis: the policy flies the record's third-bowl circuit and turns up the curved floor ~600 u north of the record, passing the block's north end; held 1-8 deg yaw nudges and velocity rotations from its own states never land it on the block (0/47). EZ1 (ez-greedy 0.01): negative (54%). Running: a batched held-offset search from the policy's own states (beam_tas --dump-paths)."
+ "summary": "Best 65.040 = the incumbent's weights (eval variance on this card, not a mechanism). FOUND: Go-Explore rooted at the policy's OWN greedy states with POSITION-ONLY 128 u cells reaches the block top (the fourth structure's floor) in 4 min, best cell 70.69% (circuit max ~65%); exact chain 4.9 s from a north-end state of the circuit. Spine zlr2b3_ge1_s70 = greedy recording + chain. Running S70 (06:25): incumbent + backward curriculum on it (success line 69.1%) + GE stage 2 from the block top. Negative: ez-greedy 0.01 (54%), held-offset sweeps (0/~24k lineages on the block)."
 }

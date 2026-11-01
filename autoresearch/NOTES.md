@@ -581,3 +581,45 @@ progress.csv at matched steps (E13: 63.2-64.7% at 4.0-4.7B).
   lineages went. 1,024 envs x 30 s from a start state in 23 s on this box (193k env-steps/s).
   Sweep 1 (one start state 0.7 s before... ±6 deg held 0.5 s, redrawn for 5 s): 0/1,024 on the block,
   no new cell above z 500, the swing tops LOWER (z <= 408: the offsets cost energy).
+* Control `zlr2b3_ctl` later evals: 63.0 / 63.1 / 62.9 / 63.3 (4,108-4,335M) - on this card the
+  plain continuation sits ~63 (E13's level was ~64 on its 3090). Stopped 06:24 at ~4.35B.
+* Sweep 2 (beam_tas --branch-at --branch-view-only, ONE held offset U(-10,10) deg for 1/2/3 s,
+  forked from 21 of the policy's own greedy states over one 5 s circuit; 23 of 63 runs read,
+  ~23,500 lineages): 0 on the block. The circuit absorbs held view offsets.
+
+### GE from the policy's own greedy states with POSITION-ONLY cells FINDS THE BLOCK TOP (70.69%)
+* `explore_phase1 --roots-spine <the incumbent's greedy recording, ticks 8,500..27,150 every 10 =
+  1,865 roots, its last 130 s> --roots-keep-all --cell 128 --cell-energy 0 --cell-heading 0
+  --exact-chains --view-follow=-90,...,90 --act-every 4 --decisions 100 --maxvel 3500 --tick-ms 7
+  --envs 2048 --threads 24` (06:13 UTC, 15 min on the box CPU beside training): within 4 min the
+  archive held 187 cells on the block top and its best cell at (-1,152, 1,371, 1,097) = **70.69%**
+  on the grader's field (d 1,865; the circuit's best is ~65%). Round 1's explorer runs rooted in
+  the third bowl (zl3/zl4/zl5) keyed cells on ENERGY (64-128 u x energy 32-64 u): 2-6M cells, each
+  visited a few times, and their uniform bursts cannot pump at 2,000+ u/s, so the energy keys
+  were unreachable noise; a position-only key (~77k cells) concentrates the search on new PLACES.
+* The chain (ge_replay exact, 7/7 links, 703 ticks = 4.9 s): root = the greedy's state at t
+  140.9 s at the circuit's NORTH end (-1,714, 2,988, -668), v (1,381, 1,444, 1,477), E 3,190.
+  A burst runs it into the north-end wall: its northward speed is killed (E 3,190 -> 1,565 in
+  0.24 s) and it leaves rising, heading SOUTH (v (-251, -1,153, 1,281)); a ballistic arc over the
+  bowl's west part to z ~690 at y ~1,200, it lands on the block top from the north-west at
+  (-1,458, 1,086, 764) (+2.0 s) and the bursts walk it east up the block's top ramp to z 1,097
+  (+4.9 s). A different entry from the record's (which comes up the west bottom into the block's
+  west face): the search found its own.
+* Spine `autoresearch/spines/zlr2b3_ge1_s70.npy` (md5 5356e48b, tools/ge_spine.py): the greedy
+  recording's ticks 0..20,129 + the chain (view canonicalised) = 20,833 states from the true start
+  to d 1,864.8 (70.69%). Its success line (end + 100 u = 69.1%) is above anything the circuit
+  reaches (~65%), so the d-rule cannot be satisfied without the new route, and from the launch to
+  the line is ~5 s (inside the 20 s horizon: the +50 can outweigh the energy charge of the wall
+  hit, -1,625 u x 12/1000 = -19.5).
+
+### S70 `zlr2b3_s70` (06:25 UTC): incumbent weights + the backward curriculum on the s70 spine
+Resume of the incumbent ckpt + `--demo-file autoresearch/spines/zlr2b3_ge1_s70.npy` (fresh
+curriculum from the spine's end) with round 1's E2 constants (`--demo-window 5 --demo-grow 5
+--demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.5
+--demo-success-d 100 --demo-success-bonus 50`), the old GE line's 9.48% line kept as
+`--demo-milestones 5859`, and `--demo-front-temp 1 --demo-front-ticks 300` (keys at T 2 and yaw
+sigma x2 for the first 2.1 s of a band spawn: exploration where the band is). Everything else
+restored (per-call energy K 12, fail-pen 3, energy-stall 32, respawn-greedy, front-perturb).
+* GE stage 2 (06:27, box CPU, 18 min): rooted at the spine's last 450 rows (block landing + top)
+  with the pb config (64 u x energy-32 x heading cells, --select-energy 3): can uniform macros pump
+  the top structure and climb out (the record pumps it ~70 s from ~100 u/s, ANALYSIS ONLY)?
