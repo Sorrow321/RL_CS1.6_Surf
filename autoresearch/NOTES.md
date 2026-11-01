@@ -399,3 +399,12 @@ own frontier; no map constant.
   branched-beam tool, which only forks 0.5 s before the greedy's death). A manoeuvre the policy's
   own narrow proposals never try (yaw sigma 0.03-0.08): does any branch climb into the fourth
   structure?
+* Branched beams (E8-1844M, forks at 91/96/101/106/111 s, 2,048 envs into held random view offsets,
+  protected 5 generations): frontiers d 2,401 / 2,379 / 2,410 / 2,417 / 2,372 (62.0-62.7%) at
+  127-132 s - none past the greedy's 62.77%, none into the fourth structure.
+* E11 later: 61.786 / 61.122 / 61.906 / 61.006 (3.36-3.59B); stopped at 3,623M.
+
+### E12 `zlr1b4_e12` (01:00 UTC): E8's 62.77% weights + `--int-coef 1.0`
+The recipe's count-based novelty (cell x view-sector x speed key) at 4x (0.25 -> 1.0) on the best
+weights, E8's config otherwise: a stronger push toward unvisited cells in the upper third structure
+(the faces of the pillar, the space above it), where no search has found a way up.
