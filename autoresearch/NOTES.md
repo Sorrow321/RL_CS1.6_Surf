@@ -909,3 +909,47 @@ early-route fragility (2-6/9 episodes die in the first troughs) needs fresh star
   rc6 90.073, rc7 89.429, rc8 91.742, rc9 97.339, rc10 98.329, rc11 96.991). Hand-on
   **ckpt_11096031232.pt** (rc10, the eval's own step; md5 3c40f24d) with rc10's ckpt_final (md5
   d1a079ab), both pulled. Box 58621920 (RTX 5080, 0.34 $/h, 05:37-16:34 UTC, ~$3.7) released.
+
+## zlr3b4 (round 3, slot 4) - 2026-11-01 17:31 UTC start
+
+Rent refused 17:39-17:55 UTC (fleet burn 0.55 of the 0.645 $/h pace: two other branches' boxes):
+CPU analysis and tooling first.
+
+### The finish is a FLOOR on top of a solid plate (17:40 UTC, occ grid + zones.json)
+* Every finish trigger (*15-*19, z 3,008-3,210) sits ON a solid plate with the same footprint, z
+  ~2,814-3,006 (`occ_32`: e.g. (500, 900) solid 2,814-3,006, open above to the sky at 4,030): the
+  middle band y -736..1,312 (all x; the gap x > -64 at y 40..536) and the two strips x -320..-64
+  north (y 1,312..3,360) and south (y -2,784..-736). Under the plate is the fifth loop's open air
+  (down to the block's east ramp, z ~1,650-1,990). So in the middle band the plate is a CEILING:
+  an origin cannot rise above ~2,778 there. A finish needs the origin at z >= ~2,972 touching a
+  plate's SIDE face (the engine's 1 u touch expansion; the grown hull reaches z 2,972) or standing
+  on a plate's top (origin 3,044).
+* The incumbent's 98.33% (ep8, 158.5 s) is (-382, 2,627, 2,857): 46 u west of the north strip's
+  west face (grown x -336) and 115 u below 2,972. Eps 0-3 peak at (650-730, 1,360-1,415,
+  2,630-2,700), just north of the band's north face (grown y 1,328), 270-345 u low.
+* How every good episode dies (incumbent eval, eps 0, 2, 3, 4, 8): at E ~4,050-4,200 the swing's
+  north end launches NORTH-WEST off the ramp's north-end curve (e.g. (124, 853, 1,869)
+  v (-629, 1,636, 726) -> (-280, 1,452, 2,373) v (-815, 1,151, 904)), passes UNDER the north strip
+  at z 2,370-2,720 and out over its west side to (-900..-2,000, 2,000-2,700, 2,700-2,890), then
+  falls west into the bottom teleport. E keeps rising ~40 u/s until then (E max 4,300-4,540).
+* The record's finishing swing (ANALYSIS ONLY, t+452.4..454.0): the same north-end curve, but it
+  converts much more of its northward speed into climb: (300, 758, 1,677) v (-312, 1,892, 361) ->
+  (139, 1,023, 1,863) v (-1,129, 589, 1,309) -> (-66, 1,117, 2,126) vz 1,255 (apex ~3,110; its other
+  north-end launches in that loop had vz ~870-890, like the policy's ~900), then it flies north
+  along x ~0 (air-strafing x back to ~0), meets the north strip's EAST face at (-48, 2,021, 2,978),
+  rises to 3,105 and lands on the plate top (z 3,044). E at the launch 3,950-4,050: the policy
+  already has the energy; what it lacks is the LINE (a steeper exit off the curve, then north).
+* Training: in rc10's 2B steps exactly one iteration logged a finish (win 0.91% @ 0.78 s: a
+  --respawn-front-perturb spawn, energy injected by the x1.0-1.3 speed perturbation). The policy
+  has never experienced a finish from its own states, so the +50 never reaches the gradient.
+
+### Plan
+1. A search for the finishing variant of the policy's own north-end swing: NEW
+   `tools/finish_search.py` (records the greedy's own line with beam_tas --frontier-last, then
+   beam_tas --prefix-line from the greedy's own states at several seconds of the fifth loop: the
+   policy's own proposals + held view offsets, ranked by the field d, --objective finish,
+   --save-frontier). Generic: own states, own proposals, the field every run shapes on.
+2. A finishing line's last seconds go into the --spawn-states pool BESIDE the working spine
+   (round 2's lesson: never swap a working spine), NEW `tools/line_pool.py` (atomic in-place swap:
+   the trainer re-reads the file).
+3. The trainer meanwhile: the incumbent continued with rc10's restored flags (control + lottery).
