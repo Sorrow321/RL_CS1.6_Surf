@@ -3,11 +3,11 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 92.327,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc9/traj_8718385152.jsonl",
+  "score": 93.892,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc9/traj_9171369984.jsonl",
   "run": "zlr2b1_rc9",
-  "step": 8718385152,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc9/ckpt_8718385152.pt",
+  "step": 9171369984,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc9/ckpt_9171369984.pt",
   "recipe": [
    "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3 -> rc4 -> rc7 -> rc8; flags restored)",
    "--ratchet-contact",
@@ -28,5 +28,5 @@
   "resume_from": "zlr2b1_rc8 ckpt_8491368448 <- rc4 6865551360 <- rc3 5430575104 <- rc2 <- rc1 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
   "commit": "bb285780"
  },
- "summary": "92.327 at 8,718M (rc9 = rc8's 8,491M + gentler --front-contact T 1.5; median 91.0%; rc8 had collapsed at 8,642M with T 2). Why the incumbent was stuck: its 64.67% is ballistic apexes (contact 38.9%). NEW --ratchet-contact pays only progress reached at contact ticks; Go-Explore rooted at the policy's own crest contacts (NEW contact_roots / ge_contact_pick / contact_spine) found a 3.1 s line onto the ridge top; as a spine with the band in the third structure the policy learned the launch (72-81%), then found the big block's east side itself (89.9%); NEW --front-contact (frontier temperature on the contact record) + 15% own frontier spawns moved it past the 88-90 plateau. Spine swaps flip the launch (rc5/rc6 regressions). Next: the fifth loop's higher surfaces and the finish swing."
+ "summary": "93.892 at 9,171M (rc9; evals 92.2-93.9 since 9,020M = rc8's 8,491M + gentler --front-contact T 1.5; median 91.0%; rc8 had collapsed at 8,642M with T 2). Why the incumbent was stuck: its 64.67% is ballistic apexes (contact 38.9%). NEW --ratchet-contact pays only progress reached at contact ticks; Go-Explore rooted at the policy's own crest contacts (NEW contact_roots / ge_contact_pick / contact_spine) found a 3.1 s line onto the ridge top; as a spine with the band in the third structure the policy learned the launch (72-81%), then found the big block's east side itself (89.9%); NEW --front-contact (frontier temperature on the contact record) + 15% own frontier spawns moved it past the 88-90 plateau. Spine swaps flip the launch (rc5/rc6 regressions). Next: the fifth loop's higher surfaces and the finish swing."
 }

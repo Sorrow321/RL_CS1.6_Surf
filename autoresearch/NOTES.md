@@ -799,3 +799,8 @@ If it collapses again: drop --front-contact (rc7's stable mix).
   92.126 / 90.458** - T 1.5 holds where T 2 collapsed (rc8 fell at the same step); hot envs still
   ~23%; training apexes to 96-97% (reservoir deepest 96.1%). Hand-on for 92.327: ckpt_8718385152.pt
   (pulled, md5 f3d4a750).
+* **rc9 12:49 UTC: 93.276 (9,020M) / 92.206 / 93.892 (9,171M, median 92.3%) / 93.761 / 93.883
+  (9,322M).** Still climbing: at 9,171M 8/9 reach z 2,415-2,670 with E max 3,550-3,950 (was
+  3,100-3,500); the best apex z 2,670 is ~340 u below the finish slabs (z 3,008); training's deepest
+  state 97.2%; hot envs 38%. Hand-on for 93.892: ckpt_9171369984.pt (pulled, md5 8981a09b). No finish
+  yet. 12:52: re-recording 9,171M to refresh the frontier pool; box extended.
