@@ -481,3 +481,10 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `zlr2b4_cem169_spine.npy` (24,584 states): the same from its 169.3 s state, apex 79.02% at
   (-1,296, 1,296, 1,635) - right over the pillar (it then flies west into the wall and falls).
 * `zlr2b4_cem_late_result.json`: the CEM results for 22 ramp roots at 144-179 s (the controls).
+* `zlr2b4_cem169arc_spine.npy` (24,830 states, md5 1f93b9fe): `zlr2b4_cem169_spine.npy`'s states
+  0..24,298 (the greedy line to 169.3 s + 0.77 s of its launch) + 531 states of a second CEM
+  (`tools/cem_launch.py` from that launch-arc state: 3 s of air control, then no keys) that steers
+  onto the ramp at x ~0..300, y ~-200..250, z ~1,690-2,100, surfs UP it (vz 140 -> 840 u/s) and
+  leaves it at z 2,289: apex **93.36%** at (55, 494, 2,536), 173.8 s from the true start. Physical
+  throughout (every state follows from the previous by the core's physics under some control).
+  `zlr2b4_cem169arc_result.json`: that CEM's controls. No demo, no record data.

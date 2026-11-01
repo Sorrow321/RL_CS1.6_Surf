@@ -618,3 +618,15 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   branch's: a physical launch to 75-79% from the incumbent's own states, NOTES above). A
   per-branch share of the pace (or a cap on extensions while another branch waits) would keep
   the four forks comparable.
+* **93% (08:45 UTC)**: CEM from points ON the 169.3 s launch's arc (+0.8..1.8 s, 3 s of air
+  control, then no keys) reaches **93.34 / 93.00 / 92.47%**: the player steers onto the ramp at
+  x ~0..300, y ~-200..250, z ~1,690-2,100, surfs UP it (vz 140 -> 840) and leaves it at z 2,289,
+  apex z 2,540 (93.06-93.36%), d 422 u: 470 u below the finish slabs. From the 164.4 s arc: no gain
+  (77.7%). Combined line (`autoresearch/spines/zlr2b4_cem169arc_spine.npy`, 24,830 states): the
+  incumbent's own greedy line to 169.3 s + the launch + the air line, physical throughout, 93.36%.
+* The first box run (staged, fires on the rent): resume the incumbent with `--demo-file
+  autoresearch/spines/zlr2b4_cem169arc_spine.npy --demo-cooldown 5 --demo-grow-max 40
+  --demo-milestones 5859,1334 --fail-pen 3 --ckpt-every 2e8`: the backward curriculum from the
+  93% apex; milestones = the GE line's 9.48% (round 1's relaunch rule) and the launch's own apex
+  (d 1,334 = 79%: the first self-found success line on this spine, auto-spine's rule for old
+  success lines), so the launch pays before the whole air line is learned.
