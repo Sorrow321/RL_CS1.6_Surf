@@ -1655,7 +1655,8 @@ def print_cadence(c, label="winner"):
 
 
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
-                v_switch: float = 0.0, energy_k: float = 1.0, gravity: float = 800.0):
+                v_switch: float = 0.0, energy_k: float = 1.0, gravity: float = 800.0,
+                goal_boxes=None):
     """-> score(states, obs) = (higher is better, geodesic d).
 
     mode 'd' is the plain -geodesic used by the spawn-to-finish search.
@@ -1685,6 +1686,28 @@ def make_scorer(gf, route_file, corridor, mode, value_fn=None,
             v = np.asarray(states["velocity"], np.float64)
             h = o[:, 2] + (v * v).sum(axis=-1) / (2.0 * float(gravity))
             return -d + float(energy_k) * h, d
+        return score
+    if mode == "gap":
+        # zlr3b1 (2026-11-01): -max(d, gap), gap = the EXACT distance from the player's hull
+        # (standing or ducked, from the state) to the nearest finish trigger box. The field is
+        # trilinear over honest corners, so beside a finish face (solid below the trigger, seed
+        # voxels above) it reads ~0 while the hull is still 15-25 u off the box - d-ranking cannot
+        # select the last few units of a finish. Far from the goal gap <= d and this is plain d.
+        # Nothing map-specific: the boxes are the zones file's own finish (every map has one).
+        boxes = np.asarray(goal_boxes, np.float64)          # (B, 2, 3) mins, maxs
+        hull_lo = np.array([[-16.0, -16.0, -36.0], [-16.0, -16.0, -18.0]])
+        hull_hi = -hull_lo
+
+        def score(states, obs=None):
+            d = gf.sample(states["origin"]).astype(np.float64)
+            o = np.asarray(states["origin"], np.float64)
+            uh = (np.asarray(states["ducked"]) != 0).astype(np.int64)
+            lo, hi = o + hull_lo[uh], o + hull_hi[uh]
+            g = np.maximum(0.0, np.maximum(boxes[None, :, 0, :] - hi[:, None, :],
+                                           lo[:, None, :] - boxes[None, :, 1, :]))
+            gap = np.sqrt((g * g).sum(-1)).min(axis=1)
+            dg = np.maximum(d, gap)
+            return -dg, dg
         return score
     if mode in ("v", "dv"):
         if value_fn is None:
@@ -2119,14 +2142,17 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
-    ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh"],
+    ap.add_argument("--score", choices=["d", "route", "v", "dv", "dh", "gap"],
                     default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
                     "search), 'route' = route vertex index then d (wall "
                     "search - see make_scorer), 'v' = the checkpoint's own "
                     "critic, 'dv' = d until the frontier is within "
                     "--v-switch of the goal, then the critic, 'dh' = -d + "
-                    "--score-energy x the energy height z + |v|^2/2g (an energy gate)")
+                    "--score-energy x the energy height z + |v|^2/2g (an energy gate), "
+                    "'gap' = -max(d, the exact hull-to-nearest-finish-box gap): the field is "
+                    "trilinear and reads ~0 beside a finish face while the hull is still off "
+                    "the box")
     ap.add_argument("--score-energy", type=float, default=1.0,
                     help="--score dh: u of geodesic distance one u of energy height is worth")
     ap.add_argument("--v-switch", type=float, default=20000.0,
@@ -2839,10 +2865,13 @@ def main():
             XBundle.restore(xsaved)
             keys_restore(spol, ksaved)
             return v.detach().float().reshape(-1).cpu().numpy()
+    _gbx = zones["end"].get("boxes") or [{"mins": zones["end"]["mins"],
+                                           "maxs": zones["end"]["maxs"]}]
     scorer = make_scorer(ogf, args.route_file, args.corridor, args.score,
                          value_fn=value_fn, v_switch=args.v_switch,
                          energy_k=args.score_energy,
-                         gravity=float(cfg.get("sv_gravity") or 800.0))
+                         gravity=float(cfg.get("sv_gravity") or 800.0),
+                         goal_boxes=[[b["mins"], b["maxs"]] for b in _gbx])
 
     # ---- --branch-at / --branch-grid: the junction fork -----------------
     br_kind, br_val, br_n = None, 0.0, 0
