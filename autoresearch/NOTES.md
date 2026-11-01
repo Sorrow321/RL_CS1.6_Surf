@@ -1242,3 +1242,10 @@ here by hand over 55 lines at once. Read it on: training win rate and its time-f
 restored (no --unstuck-max). Tail schedule: 1.0 -> 1.5 -> 2.0 -> whole lines, gated on the probe.
 * Box 58689116 extended to 2026-11-02 05:03 UTC (the round's wrap-up 04:51; the fleet burned 0.83 $/h
   against a 0.58 pace, so the extension was taken while the reserve check allowed it).
+* **f5 evals: 96.783 (11,692M, c1's weights) / 97.149 (11,767.6M) / 98.407 (11,843.1M) - ABOVE THE
+  INCUMBENT (98.329).** No finish. The 98.41% pass (ep2, 168.2 s): out of the ramp's north end at
+  ~1,850 u/s, north-west to x ~-350..-500 and north along the strip's WEST face, touching it at
+  (-336, 2,847, 2,855) (vx 0: pressed on the solid; E 4,163 -> 3,872 on the contact) - ~117 u under
+  creep height, ~190 u under a clear finish. A near-miss of the lines' manoeuvre. Hand-on candidate:
+  ckpt_11891900416.pt (48.8M after the eval: the run's first snapshot; pulled, md5 9611aeee).
+* Training (1.0 s tails, 20% pool share): win 9% @ 0.50 s, 193k steps/s.
