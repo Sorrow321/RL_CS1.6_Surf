@@ -389,3 +389,13 @@ third structure, not only at the swing tops. The policy is near-deterministic th
 0.04-0.08) and the climb is a different swing ENDING (into the pillar's face, rising) that its own
 samples never try (beam d2: no lineage). Evals stay greedy. Generic: a band relative to the run's
 own frontier; no map constant.
+* **E11 (00:08-00:30 UTC, 2.91-3.21B): 29.012 (its first eval, an outlier) / 61.669 / 61.128 /
+  61.950 / 61.647** - the wider frontier temperature band holds ~62% and does not move it (training
+  frontier 62.8%, stall kills 36%).
+* Branched beams (00:31 UTC, beside E11): tools/beam_tas.py on E8-1844M from the TRUE start with
+  half the population (2,048 envs) forked at 91 / 96 / 101 / 106 / 111 s - inside the third structure,
+  before the swings that pass the pillar - into held random VIEW offsets (`--branch-at tT:2048
+  --branch-burst 140 --branch-hold 70 --branch-protect 5 --branch-view-only`: the auto-spine's
+  branched-beam tool, which only forks 0.5 s before the greedy's death). A manoeuvre the policy's
+  own narrow proposals never try (yaw sigma 0.03-0.08): does any branch climb into the fourth
+  structure?
