@@ -1009,3 +1009,16 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
   up it into box *17's trigger at z 2,978 (the hull creeps onto the inflated face; the grader's
   GoalSet test with its 1 u slack counts it; the record's own finish slides up the strip's face the
   same way). E 4,136 at the root, 2,993 at the finish.
+* MPC sweeps m1 (floor-cleared gap, roots 0.25-0.65 s before the exits): 1/19 finished (the first);
+  most stop 30-150 u short. m2/m3 (plain gap): roots reach gap ~0 - the hull touching a box's side
+  face below the platform top - without the core firing (it fires only when the collision creeps
+  onto the inflated face, as in the first line: x -47.969 -> -47.984 -> finish). NEW `--floors mix`
+  (plain + 0.5 x floor-cleared: among side touches the higher apex ranks first). m4 running: roots
+  0.6 / 0.9 / 1.2 s before the exits, plan 2.0 s, iters 6, exec 12, duration 3.5 s.
+* **c1 becomes the treatment at 11,357.65M:** its --spawn-states file (the rc10 frontier pool, path
+  restored by the launch) was replaced in place by NEW `tools/pool_add_lines.py --base
+  zlr2b1_frontier_rc10.npy --lines line_r41316.npy --share 0.25` (63,724 rows, md5 680575e1): the
+  finishing line's 252 states tiled to 25% of the pool, i.e. ~3.75% of all training spawns
+  (`--spawn-states-frac 0.15`). The line: autoresearch/spines/zlr3b1_fmpc_line_r41316.npy (md5
+  7836d8a6) + its controls (_acts.npz). Provenance: the root is the incumbent's own greedy state
+  (frontier pool row 41316); the rest is the engine MPC above. No demo. The trainer logged the re-read.
