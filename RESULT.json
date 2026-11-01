@@ -3,26 +3,30 @@
  "round": 2,
  "final": false,
  "best": {
-  "score": 90.081,
-  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/traj_6563561472.jsonl",
-  "run": "zlr2b1_rc4",
-  "step": 6563561472,
-  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc4/ckpt_6563561472.pt",
+  "score": 91.505,
+  "eval_file": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc8/traj_8491368448.jsonl",
+  "run": "zlr2b1_rc8",
+  "step": 8491368448,
+  "ckpt": "/home/steam/ar_loop/runs/zlr2b1/zlr2b1_rc8/ckpt_8491368448.pt",
   "recipe": [
-   "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3 -> rc4; flags restored)",
+   "(resume chain: incumbent r1 -> rc1 -> rc2 -> rc3 -> rc4 -> rc7 -> rc8; flags restored)",
    "--ratchet-contact",
    "1 (NEW, from rc1)",
    "--demo-file",
    "autoresearch/spines/zlr2b1_ge1_spine.npy (own greedy line + GE line from own crest contacts onto the ridge top)",
    "--demo-tau0",
-   "12000 (rc4; rc3: 19656)",
+   "10930 (rc8; rc4 12000, rc3 19656)",
    "--demo-milestones",
    "5859",
+   "--spawn-states",
+   "runs/sp2/frontier_6110.npy = own frontier states (tools/frontier_states.py on own greedy re-recordings), frac 0.15 (rc7+)",
+   "--front-contact",
+   "1 (NEW, rc8)",
    "--ckpt-every",
    "2e8"
   ],
-  "resume_from": "zlr2b1_rc3 ckpt_final 5430575104 <- rc2 4430233600 <- rc1 4354211840 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
-  "commit": "338783b9"
+  "resume_from": "zlr2b1_rc7 8113356800 <- rc4 6865551360 <- rc3 5430575104 <- rc2 <- rc1 <- incumbent r1 (zlr1b4_e13 ckpt_4032299008)",
+  "commit": "bb285780"
  },
- "summary": "90.081 at 6,564M (rc4; 3/9 at 89.8-90.1%; level 88.6-90.1 since 6,111M, contact 85.6% on the big block's east side): the greedy leaves the third structure onto the ridge top and climbs. Why the incumbent was stuck: its 64.67% is ballistic apexes over open air (contact progress 38.9%). NEW --ratchet-contact pays only progress reached at contact ticks; Go-Explore rooted at the policy's own crest contacts (NEW contact_roots / ge_contact_pick / contact_spine) found a 3.1 s line onto the ridge top (69.7%) in ~6 min; spliced onto the policy's own greedy line as a spine (band at the GE root, then back inside the third structure). Next: keep training rc4, push past ~81% (the record's launch east past the big block, 82-87%)."
+ "summary": "91.505 at 8,491M (rc8; median 90.2%, 9/9 reach the block's east side, contact 85.6%). Why the incumbent was stuck: its 64.67% is ballistic apexes (contact 38.9%). NEW --ratchet-contact pays only progress reached at contact ticks; Go-Explore rooted at the policy's own crest contacts (NEW contact_roots / ge_contact_pick / contact_spine) found a 3.1 s line onto the ridge top; as a spine with the band in the third structure the policy learned the launch (72-81%), then found the big block's east side itself (89.9%); NEW --front-contact (frontier temperature on the contact record) + 15% own frontier spawns moved it past the 88-90 plateau. Spine swaps flip the launch (rc5/rc6 regressions). Next: the fifth loop's higher surfaces and the finish swing."
 }

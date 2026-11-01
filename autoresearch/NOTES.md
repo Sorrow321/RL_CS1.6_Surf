@@ -775,3 +775,9 @@ milestone 5859, the 15% frontier pool) + `--front-contact 1`. At start 4-6% of e
 85.1% (the struggle after the 85.5% contact). (ops: `train_fast.py --help` crashes on three
 pre-existing help strings with stray '%' - --demo-success-strict/-alive, --auto-spine-recheck;
 harmless for training.)
+* **rc8 (11:01-11:26 UTC): 88.405 (its first) / 89.791 / 89.265 / 89.605 / 91.426 / 91.505 (8,491M,
+  median 90.2%).** Past the 88-90 plateau: at 8,491M all 9 episodes reach the 85.5% contact (a
+  walkable ledge at z ~2,040, x ~-20, y 120-200 on the block's east side) and survive 10-15 s longer
+  than rc7's (best at 122-129 s, apexes to z 2,418); still no higher CONTACT - the gain is energy and
+  survival in the fifth loop. Hot envs 4% -> 26% (more episodes at the contact frontier). Hand-on
+  for 91.505: ckpt_8491368448.pt (snapcopy, the eval's own step; pulled, md5 70afe666).
