@@ -668,3 +668,9 @@ from that state) -> curriculum (+ BC on the line's last seconds if the band stal
   own 63.8-64.7% from those states: occasional successes, +50 each, concentrated on the late turn
   where the band stalls) + `--demo-milestones 5859` + `--ckpt-every 1e8`. The loop to iterate:
   record the newest greedy -> zl_perturb_search on it -> next spine.
+* Ceiling of single held perturbations (offsets +-0.25..+-3 deg, holds 0.25-2 s, forced side keys,
+  18,954 envs): 66.44% - the same +2 points; key overrides never in the top. Two-stage (an offset
+  through the free-flight arc from 1-3 s before the landing + one through the turn): the landing
+  heading spans 90-135 deg (the record lands at 112) but the face is climbed only to z -360..-457
+  (E <= 2,355), never at E >= 2,481. The pillar route stays out of reach of perturbations of the
+  incumbent's own line; this round goes for the exit-precision gain.
