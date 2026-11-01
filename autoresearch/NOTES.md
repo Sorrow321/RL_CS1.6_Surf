@@ -962,3 +962,18 @@ every 25 decisions). ~270k env-steps/s on the 5080 beside training; a 42 s span 
   the line's last 30 s x11.2 = half; md5 9f7b952e). Re-read by the trainer at step 11,452M. Its
   training win rate jumped to 5-13% at "@ 0.1 s" - the pool's last-tick spawns finishing at once
   (the harvest, CLAUDE.md section 3), not the policy; the greedy eval decides.
+* **r3dh2 (seed 3, T 145.6 s, 105 s span, `--score dh --score-energy 2`): 11 finishers, the first at
+  tick 30,219 (211.53 s)**. NEW `tools/finisher_states.py` replays every kept finisher of a
+  beam_best.npz (acts_all / view_all) exactly as save_frontier_line replays the winner: 11/11 ok.
+  All 11 are near-clones entering the NORTH STRIP at its west edge: from (-769, 1,906, 2,847) at
+  211.0 s heading north-east (v (474, 1,328, 565), E 4,289) into a ledge face at x -320 (vx -> 0) with
+  the hull already above z 2,991 -> origin (-336, 2,285..2,408, 3,027..3,046) = the trigger's face
+  touched (the core's inclusive hull box; GoldSrc's absmin/absmax are even 1 u wider). Saved:
+  `autoresearch/spines/zlr3b2_finish2.npy` (30,219 states, md5 96d6fe85). A higher energy weight
+  (2 vs 1) found 11 finishers to 1: the selection keeps the lineages that pump.
+* 18:14 UTC: c1's pool rebuilt from BOTH routes (`--line r3dhL --line r3dh2 --secs 30 --share 0.5`,
+  95,586 states, md5 a95d0112).
+* Side effect to watch: the reservoir harvests a finishing episode's whole chain (no pre-end margin
+  on a success), so its deepest states are now beside the slab, and --respawn-front-perturb (25% of
+  the non-start rows, ~19% of all spawns) perturbs THOSE ("front-perturb: 922 rows from 2
+  frontier-band reservoir states (d <= 32u)"): trivial wins at "@ 0.1 s". Harvest, not evidence.
