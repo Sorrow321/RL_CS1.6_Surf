@@ -821,3 +821,12 @@ If it collapses again: drop --front-contact (rc7's stable mix).
 rc9's ckpt_final + rc9's exact flags (`--front-contact 1 --front-temp 0.5`, GE spine, `--demo-tau0
 9800` = rc9's last tau, milestone 5859, the rc9 frontier pool at 15%). Budget 2e9 (to ~16:00 UTC,
 then the wrap-up).
+* **rc10 (14:04-14:29 UTC): 96.125 (its first) / 95.996 / 97.293 / 96.477 / 96.585 / 96.420** - a
+  plateau at 96-97%, no finish. Why (checked against zones.json): every high apex (z 2,550-2,909,
+  E 3,850-4,260) is at a SWING END (x ~500-900, y +1,600..2,300 or -1,100..-1,500) - outside every
+  finish slab's footprint (the slabs cover the middle band y -736..1,312 and the strip x -320..-64
+  north/south of it). Height alone does not finish: it needs another swing shape (the record,
+  ANALYSIS ONLY: up from the east ramp's north end, curving west into the strip at x ~-48, y 2,017).
+* GE ge6 (14:31 UTC, 20 min): roots = rc9's 9,171M re-recording contact ticks after the contact
+  record (3,576 roots on the block's east ramp, E up to ~4,000); explore_phase1 stops and writes
+  win_<k>.spine.npy on any slab entry.
