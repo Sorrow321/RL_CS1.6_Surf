@@ -640,3 +640,8 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
 * Finish search (08:55-09:20 UTC): wider / longer CEM stages (sigma0 4-6, 4.5-7 s horizons) from
   the higher ramp all stop under the finish platform: 97.90 / 98.06 / 98.07%. The record (ANALYSIS
   ONLY) climbs out at x ~-124, y ~1,929 (the narrow finish strip), not above our ramp contact.
+* Launch robustness (10:15 UTC, open-loop replay of the CEM control from a jittered root, 12 draws
+  each): heading +-0.5 / +-2 deg and speed +-1 / +-3% keep **12/12 above 70%** at all three roots
+  (169.3 s: 78.7-79.4%; 164.4 s: 75.6-78.0%; 149.5 s: 71.1-75.1%). Origin jitter of +-4 u (x, y;
+  +-1 u z) drops it to 33-58% - mostly an artefact (a jittered origin leaves the ramp surface a
+  real flight is on). So the launch is a learnable control skill, not a knife-edge.
