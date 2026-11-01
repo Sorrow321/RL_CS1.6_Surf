@@ -466,3 +466,18 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
 * `uf2r1b1_cut_k02.npy` (+ `.keys.npy`, 5,800 states, md5 6f13570545426fbf87856ec6c2846177): search
   2 of uf2r1b1_cut (7.93B weights, same rule): to d 386 = 98.7% - ends at (2,923, -2,052, -753)
   falling, below the finish box's floor (z -640), i.e. it passes UNDER the box; no finish.
+
+# surf_za_loop, round 2 (zlr2b4, 2026-11-01)
+
+* `zlr2b4_incumbent_greedy_line.npz`: the incumbent's (zlr1b4 E13, ckpt_4032299008) OWN greedy line
+  from the true start, 25,900 per-tick states (181.3 s, alive at the cut), recorded on the
+  droplet's CPU (`beam_tas --envs 1 --greedy-envs 1 --save-frontier --frontier-last
+  --max-ticks 26000`). Best 64.41%.
+* `zlr2b4_cem164_spine.npy` (23,913 states): that line's states 0..23,486 (to its own state at
+  164.4 s at the bottom of the 3rd ramp, (-2,291, 1,655, -1,311), 2,883 u/s) + 426 states of a
+  PHYSICAL launch found by `tools/cem_launch.py` (CEM over 2.5 s of per-knot view offsets in units
+  of atan(30/|v|) + side / forward keys from that exact state, then no keys; 14 iterations x 200)
+  and replayed in the core to its apex: 77.68% at (858, 68, 1,537). No demo, no record data.
+* `zlr2b4_cem169_spine.npy` (24,584 states): the same from its 169.3 s state, apex 79.02% at
+  (-1,296, 1,296, 1,635) - right over the pillar (it then flies west into the wall and falls).
+* `zlr2b4_cem_late_result.json`: the CEM results for 22 ramp roots at 144-179 s (the controls).
