@@ -811,3 +811,13 @@ If it collapses again: drop --front-contact (rc7's stable mix).
   record's finish swing had ~4,100): the energy is there; the swing shape (horizontal speed at the
   apex) is what still keeps them under the slabs. Training's deepest state 98.4%. No finish yet.
   Hand-on for 96.101: ckpt_9775349760.pt (pulled, md5 aa33a79a).
+* **rc9 final (13:56 UTC, 10,491.5M): ... 94.891 / 94.891 / 97.107 (10,002M) / 96.770 / 97.339
+  (10,153M, median 95.2%) / 95.359 / 97.120 / 95.994 / 96.842.** Hand-on for 97.339:
+  ckpt_10152837120.pt (pulled, md5 6cd08865). ckpt_final md5 1858dee3.
+  (ops: `ls traj_*.jsonl | tail` sorts the 10-billion-step evals BEFORE the 9-billion ones - score
+  with `score.py --best <run dir>`.)
+
+### rc10 `zlr2b1_rc10` (14:04 UTC): rc9 continued
+rc9's ckpt_final + rc9's exact flags (`--front-contact 1 --front-temp 0.5`, GE spine, `--demo-tau0
+9800` = rc9's last tau, milestone 5859, the rc9 frontier pool at 15%). Budget 2e9 (to ~16:00 UTC,
+then the wrap-up).
