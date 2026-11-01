@@ -636,3 +636,20 @@ restored (per-call energy K 12, fail-pen 3, energy-stall 32, respawn-greedy, fro
 * The greedy from the true start has not taken the launch yet: 64.4 (4,032.8M) / 62.6 / 61.4
   (4,184M); the circuit is in flux (E max 5,100 at 4,108M, ~2,400 at 4,184M; one episode died at
   65 s). Box extended to 09:43 UTC.
+* **S70 eval at 4,259M = 77.956 - NEW BEST** (`score.py`; median 62.2%). 1/9 greedy episodes from
+  the TRUE START took the new route: in the circuit's north end at ~118 s it reverses WEST off the
+  wall (v (1,102, -1,175, 1,307) -> (-1,586, 264, 909)), rises south-west to (-2,371, 1,718, 427),
+  turns south-east onto the block's top ramp at (-1,306, 844, 912) and launches off its east end
+  (vz 1,003) to (0, 1,343, 1,542) = 77.96%, then falls east (dead at 125 s, (2,635, -119)). The
+  other 8 make the same north-end reversal and fall at (-2,400, 2,100-2,600) or off the block's
+  west edge at ~117-128 s (~62%). So the policy's own launch differs from the GE chain's (it
+  learned its own version of the wall reversal) and is still unreliable. Evals after: 59.6 / 59.9
+  (4,335 / 4,410M) - the level moves while the curriculum walks (band ~17,100 = ~25 s before the
+  spine's launch at 4.45B). Hand-on: ckpt_4232577024.pt (26.7M before the eval; pulled).
+* GE stage 3 (rooted at 452 of S70's own reservoir states at 80-91.6%, position-only 128 u cells,
+  15 min): 97,751 cells, 0 finishes, best 92.37% at (-386, -1,294, 2,479) hovering at z ~2,475
+  with E ~2,960. The finish triggers (z 3,008-3,210) sit ON TOP of the upper structure (solid
+  z 2,814-3,006 under their footprints): a finish is a landing on that structure, and uniform
+  bursts top out just under the needed energy. The policy carries E 3,100-3,600 up there.
+* Policy beams (07:12): beam_tas on S70's 4,432M weights from its own reservoir states >= 85%,
+  ranked by d, 1,024 envs, 42 s each - can its own proposals land on the finish structure?
