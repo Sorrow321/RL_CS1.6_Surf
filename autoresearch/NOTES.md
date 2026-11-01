@@ -650,3 +650,9 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   5859,1334,422, run `zlr2b4_s1`); later the launch-only 79% spine (`zlr2b4_cem169_spine.npy`,
   milestone 5859, run `zlr2b4_l1`), whose backward curriculum reaches the launch at once - a short
   window cannot wait for the far stages of the full line.
+* Earlier laps (12:10 UTC): air-line CEM from the 149.5 / 154.5 s launches' arcs stays at their
+  own apexes (75.15 / 75.58%: those arcs head south-east, away from the higher ramp), and a joint
+  6 s CEM (launch + air control) from their roots finds 73.2 / 76.8% - the launch's local optimum.
+  The 97.8% route exists from the 169.3 s launch only (its arc heads north-east first), found by
+  STAGED search (launch, then air control from the arc). The late fallback spine is the 164.4 s
+  launch (77.68%, 5 s more margin before the incumbent's eval deaths at 171-187 s).
