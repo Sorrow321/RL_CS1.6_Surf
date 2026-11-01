@@ -637,3 +637,13 @@ the curriculum's own backoff moves the band later if the launch from the root fa
   greedy and flips. Curriculum band at 19,346 (310 states before the root) at 93-96% success;
   training contact records up to 93.9%, reservoir deepest 94% (6.0% of d0). Hand-on for 77.176:
   ckpt_5110235136.pt (snapcopy, the eval's own step; pulled, md5 e3b26209).
+* rc3 last eval **61.017** (5,412M): 6/9 fly off the third structure to the south-east at 102-107 s
+  (E ~2,100 - the 5,110M launches came at ~120 s, E ~2,440), 2/9 die at ~63 s, 1 at the start. The
+  spawn mix is the suspect: with the band at 19,326 the demo (90% of spawns) is the spine's last 777
+  states, so the third structure's long pumping phase (~80-137 s) trains only on the 10% fresh
+  starts and the greedy rows. rc3 done at 5,430.6M (ckpt_final md5 99a1395b, pulled).
+
+### rc4 `zlr2b1_rc4` (07:26 UTC): rc3's final + the band moved back into the third structure
+Same spine and flags, `--demo-tau0 12000` (84 s on the spine): uniform demo draws over [12,000,
+20,102] cover the pumping, the launch and the ridge top; the curriculum's own rule moves the band
+from there. Budget 2e9.
