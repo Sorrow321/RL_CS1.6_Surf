@@ -182,7 +182,7 @@ def main(argv=None):
             if a.branch > 0:
                 tps = 1000.0 / tick_ms
                 cmd += ["--branch-at", f"t{t0 + a.resample_every * k}:{int(a.branch)}",
-                        "--branch-view-only", "--branch-jitter", a.branch_jitter,
+                        "--branch-view-only", "--branch-jitter", int(round(a.branch_jitter)),
                         "--branch-burst", int(round(a.branch_burst * tps)),
                         "--branch-hold", int(round(a.branch_hold * tps)),
                         "--branch-protect", int(a.branch_protect)]

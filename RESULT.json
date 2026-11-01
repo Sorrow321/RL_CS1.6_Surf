@@ -3,5 +3,5 @@
  "round": 3,
  "final": false,
  "best": null,
- "summary": "Round 3 started 17:31 UTC. Incumbent 98.329 (zlr2b1 rc10, 0 finishes: apexes at swing ends outside the finish slabs). Rent refused at 17:39 (fleet burn 0.55 of 0.645 $/h): analysing the finish approach on CPU first."
+ "summary": "Round 3 from 17:31 UTC. No box yet (rent refused by the fleet budget pace since 17:39; a background script retries every 2 min and auto-launches). Analysis: the finish triggers sit on a solid plate (z 2,814-3,006); a finish = rising past a plate edge to z >= ~2,972 or landing on top. The incumbent (98.329) has the record's energy but launches off the ramp's north-end curve with vz ~900 (the record's finishing launch ~1,300) and dies swinging north-west under the north strip. Plan: tools/finish_search.py (beam from the policy's own fifth-loop states, forks with held view offsets, ranked by d) -> finishing lines into the spawn pool beside the working spine (tools/line_pool.py)."
 }
