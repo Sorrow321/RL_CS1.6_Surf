@@ -990,3 +990,22 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
 * sG3 (running): roots 0.25 / 0.45 / 0.65 s before each of those exits (72), `--branch-at t20:4032
   --branch-view-only --branch-jitter 90 --branch-burst 84 --branch-hold 42 --branch-protect 8
   --resample-every 5 --score gap --max-ticks 600`.
+
+### NEW tools/finish_mpc.py: the physics finds the finish in 1.6 s where the policy's proposals never did (18:40 UTC)
+* sG2/sG3 (beam, `--branch-at --branch-view-only --branch-jitter 90`, 48-72 roots up to the exit):
+  0 finishes, best 123-300 u. The policy-driven search cannot leave the policy's own exit habit.
+* NEW `tools/finish_mpc.py` (commit after 14a3944a; tests/python/test_finish_mpc.py): mpc_bench's
+  receding-horizon CEM in the eyeless engine (plan 1.5 s, execute 8 ticks, replan warm-started;
+  controls per 4-tick knot: view yaw target offset in the velocity frame (deg, +-150, sigma0 30),
+  side key A/none/D, duck), scored by a goal hit (outranks all) else the exact gap to the
+  reachable finish region over the plan + 0.05 x energy; the core from the CHECKPOINT's config
+  (tick 7, maxvel 3500, view velocity, its view ceilings); a finish is replayed open-loop and its
+  per-tick states saved. Roots: the policy's OWN frontier-pool states. ~1.5-10 s of box CPU per root.
+* **First root (41316, 0.45 s before ep6's north exit): FINISH in 252 ticks (1.76 s), replay exact.**
+  The line is not the record's: on the ramp heading north at 1,944 u/s it turns up-slope at y
+  ~640-800, leaves the ramp's top edge at (59, 802, 1,956) with vz 1,217, air-turns SOUTH, rises
+  through the SLOT in the platform directly above the ramp (x > -64, y 40..536, the hole in the
+  middle band), presses on the slot's west face (the platform's solid, x -64) at z ~2,885 and slides
+  up it into box *17's trigger at z 2,978 (the hull creeps onto the inflated face; the grader's
+  GoalSet test with its 1 u slack counts it; the record's own finish slides up the strip's face the
+  same way). E 4,136 at the root, 2,993 at the finish.
