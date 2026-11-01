@@ -767,3 +767,20 @@ the upper loop, its E, swing tops above 92%, a finish.
   slab and it falls off the slab's south edge. Without a finish the loop's tops cap at ~92-93%.
 * Upper-loop beams (10:25): S70e's newest snapshot, --score dh --score-energy 2 (lineages that keep
   and pump energy survive selection), 1,024 envs, 63 s, from its own reservoir states >= 85%.
+* **Upper-loop beams (S70e 4,880M weights, --score dh --score-energy 2, from its own reservoir
+  states >= 85%):** 4/6 populations extinct within 4-8 s; 2/6 survived the whole 63 s; **bu_5
+  (root at 90%, (180, 580, 2,359)) swung the upper loop for 12 s pumping E 2,674 -> 3,150 and reached
+  d 351 = 94.49%** at (534, 491, 2,588) (replay exact). Ranked on depth + energy, the policy's own
+  proposals DO stay in and pump the loop. S70e final: 90.2 / 90.3 / 89.5 / 90.5 / 89.9 / 89.8 /
+  90.2 / 90.8 / 90.0 / 91.2 (4.68-5.02B); stopped 10:43 at 5,061M (ckpt_latest pulled).
+
+### S70f `zlr2b3_s70f` (10:44 UTC): the spine extended into the upper loop
+Spine `autoresearch/spines/zlr2b3_s70_bu5.npy` (md5 5c25bdff) = the s70 spine (true start -> block
+top, 20,833 rows) + bu_5's line (1,700 rows: the upper loop at 90% -> 94.49%), cut at its best d:
+22,506 rows, end d 350.7. The two pieces do not join (the gap - the ramp launch into the upper loop
+- is what the greedy already flies by itself); the curriculum restarts at the new end. Success line
+d <= 450.7 (92.9%), above the loop's first swing top (~91%): only pumping the loop reaches it. The
+old lines keep paying: `--demo-milestones 5859,1965` (the GE line's 9.48% and the block top's
+69.1%). Spawn file `zlr2b3_early_upper2.npy` (md5 4bccafdf): the early route + S70e's own reservoir
+states at 75-93.6% (2,586) + bu_5's line, 35% of the pool. Else S70e's flags. Resumed from S70e's
+ckpt_latest 5,061,476,352.
