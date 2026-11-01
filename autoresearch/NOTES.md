@@ -692,3 +692,39 @@ auto-rent poll (rent -> deploy -> launch) so it takes the first room that opens.
   different state (it lands on the same ramp ~100 u lower, heading 112, and its turn is held at
   -1..-2 deg). A future search for it needs other roots than this loop's states (e.g. the record's
   structure: swinging the trough between the outer west wall and the pillar), not perturbations.
+
+### zlr2b2 round-2 lesson (drafted 15:58 UTC; no GPU box all round)
+**Result: no eval.** Every `box.py rent` from 05:31 to the 15:55 cutoff was refused on the budget
+pace (fleet burn 0.526 $/h of a 0.63 limit, two other boxes live all day; see "Harness issue").
+Everything below was measured on the agent host's CPU (physics core, the incumbent's weights).
+
+**What the next round should know (all ANALYSIS of the policy's own states + the record for
+insight; nothing here entered training):**
+1. *Why 64.67% is a plateau:* the incumbent's loop in the bowl around the big pillar is ~3 s of
+   free flight per 5 s; its best progress is the ballistic apex of that flight, z_exit +
+   vz_exit^2/1600 off the west ramp (|v| ~2,600, vz ~1,500-1,600 at the exit). It dies at its
+   energy peak (~175 s, E ~4,500) because the per-call energy term keeps its bank at death.
+2. *The cheap gain (+1.8 points, ready to train):* a generic perturbation search over the
+   policy's OWN greedy line (`autoresearch/analysis/zl_perturb_search.py`: one held view offset
+   +-0.25..+-3 deg for 0.25-2 s at roots every 0.245 s, exact replay, ~20 s of CPU) lifts the
+   line's best 64.49% -> 66.32-66.44%: an exit ~1.9 deg steeper at the same speed (apex z 815 vs
+   671). Spines: `autoresearch/spines/zlr2b2_p0_line.npy` (66.32%) and `_p1_` (66.31%). From the
+   spine's states the policy's own closed loop gives the gain back in the last ~0.3 s of the
+   turn (61.4-63.9%) -> the skill is exit precision, paid directly by the progress reward.
+   Untested launch (it never got a box): resume the incumbent + `--demo-file
+   autoresearch/spines/zlr2b2_p0_line.npy --demo-milestones 5859 --ckpt-every 1e8
+   --record-every 50e6`; then iterate with `zl_perturb_iter.sh` (record the newest greedy ->
+   search -> next spine).
+3. *The big prize (the record's route up the pillar, 61.6% landing -> the fourth structure ->
+   72-84%):* our core reproduces the record's climb exactly from its own state and inputs; it is
+   a right-strafe ramp turn held 1-2 deg BEHIND the perpendicular (GoldSrc's addspeed grows with
+   v.wishdir < 0, ~2.6x the turn rate). It is NOT reachable by perturbing the incumbent's loop:
+   held offsets, two-stage (arc + turn) offsets and a 12-segment CEM from 3 s before its landings
+   all stop the face climb at z < ~130 (the top is 573-640). The record arrives in a different
+   state (lands ~100 u lower, heading 112 vs 116-137). A search for it needs other roots, e.g.
+   the record's own structure: swinging the trough between the outer west wall and the pillar.
+4. *Tools (all off by default, tested):* beam_tas `--novelty CELL EBIN FRAC` (+ `--novelty-after`)
+   and `--view-hold-stagger`; trainer `--auto-spine-beam-extra` -> auto_spine `--beam-extra`;
+   analysis scripts zl_perturb_search / zl_perturb_spine / zl_perturb_iter / zl_beam_box.
+   Replay rule for a recording: feed each row's NEXT yaw relative to the sim's velocity (the
+   pre-step yaw drifts 300-850 u in 0.7 s - it produced a false Monte Carlo result here, retracted).
