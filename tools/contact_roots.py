@@ -42,10 +42,26 @@ def contact_mask(st: np.ndarray, tick_ms: float, gravity: float = 800.0,
     return og | surf
 
 
-def pick(eps, field, d0: float, tick_ms: float, stride: int, min_after_s: float = 0.0):
-    """-> (roots, rows of summary) from the episodes' states."""
+def pick(eps, field, d0: float, tick_ms: float, stride: int, min_after_s: float = 0.0,
+         min_record_frac: float = 0.0):
+    """-> (roots, rows of summary) from the episodes' states. An episode whose contact record
+    is below min_record_frac x the best episode's contributes no roots (a greedy episode that
+    stalled at the start is not where the policy is stuck)."""
     out, rows = [], []
+    recs = []
+    for st in eps:
+        if len(st) < 2:
+            recs.append(-np.inf)
+            continue
+        c = contact_mask(st, tick_ms)
+        d = field.sample(np.asarray(st["origin"], np.float64)).astype(np.float64)
+        recs.append(float(np.max(np.where(c, (d0 - d) / d0, -np.inf))))
+    top = max(recs) if recs else -np.inf
     for k, st in enumerate(eps):
+        if recs[k] < min_record_frac * top:
+            rows.append((k, len(st), recs[k], -1, 0, 0, float("nan"), float("nan"),
+                         float("nan")))
+            continue
         if len(st) < 2:
             continue
         c = contact_mask(st, tick_ms)
@@ -75,6 +91,9 @@ def main(argv=None):
                     help="the start distance (default: the field at the first episode's tick 0)")
     ap.add_argument("--tick-ms", type=float, required=True)
     ap.add_argument("--stride", type=int, default=10, help="keep every k-th contact tick")
+    ap.add_argument("--min-record-frac", type=float, default=0.0,
+                    help="skip an episode whose contact record is below this fraction of the "
+                         "best episode's (0 = keep every episode)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     from surfgym.goalfield import load_goal_field
@@ -82,7 +101,8 @@ def main(argv=None):
     z = np.load(a.states)
     eps = [z[k] for k in sorted(z.files)]
     d0 = a.d0 if a.d0 else float(field.sample(np.asarray(eps[0]["origin"][:1], np.float64))[0])
-    roots, rows = pick(eps, field, d0, a.tick_ms, a.stride)
+    roots, rows = pick(eps, field, d0, a.tick_ms, a.stride,
+                       min_record_frac=a.min_record_frac)
     for k, n, best, tl, nc, ns, pmax, plo, phi in rows:
         print(f"ep{k}: {n} ticks ({n * a.tick_ms / 1000:.1f}s), contact record {100 * best:.2f}% "
               f"last improved at {tl * a.tick_ms / 1000:.1f}s; all-state best {100 * pmax:.2f}%; "
