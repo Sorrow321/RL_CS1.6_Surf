@@ -601,3 +601,20 @@ incumbent's own states):
   climbs past the incumbent, and the d-ranked half keeps them by itself (they are the deepest
   states at the next boundary). Box plan: beam_tas --greedy-envs 32 --view-hold 0.3 25 from the
   TRUE start on the incumbent -> frontier line -> spine (backward curriculum from its end).
+
+### Staged for the box (06:58 UTC; still refused on the fleet's budget pace since 05:31)
+New generic search tools (all default off, byte-identical off): beam_tas `--view-hold-stagger`
+(per-env redraw phase of the held offset; a hold then starts at every moment of a pass), and
+`--auto-spine-beam-extra "<beam flags>"` (trainer) -> auto_spine `--beam-extra` (the training
+loop's own search can use the held offsets; TRAIN_ONLY in record_ckpt;
+tests/python/test_auto_spine_beam_extra.py). Box pipeline (validated on CPU with tiny sizes):
+1. the greedy's own line: `beam_tas runs_ckpt.pt --envs 1 --greedy-envs 1 --max-ticks 20000
+   --skip-gate --allow-nonfinisher --save-frontier --frontier-last --out-dir runs/beam/pre`;
+2. the search from ~140 s (E ~3,300): `beam_tas runs_ckpt.pt --envs 4096 --greedy-envs 32
+   --view-hold 0.3 25 --view-hold-stagger --resample-every 25 --prefix-line
+   runs/beam/pre/beam_frontier.npz --max-ticks 28600 --skip-gate --allow-nonfinisher
+   --save-frontier --out-dir runs/beam/b1` (physics-only replay of the prefix, then ~10
+   high-energy passes x 4,096 lineages);
+3. frontier past 64.7% -> its per-tick states as the spine: resume the incumbent with
+   `--demo-file <spine> --demo-milestones 5859 --ckpt-every 1e8` (the curriculum flags, fail-pen 3
+   and the energy flags restore), backward curriculum from the climb.

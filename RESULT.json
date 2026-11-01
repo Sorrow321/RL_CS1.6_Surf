@@ -3,5 +3,5 @@
  "round": 2,
  "final": false,
  "best": null,
- "summary": "Round 2 (zlr2b2). Incumbent 64.671 dies at its energy peak (~175 s, E ~4,500) by the objective's choice (energy bank kept at death). Its loop is mostly free flight off a ramp that rises toward the pillar; the record's climb is an up-slope turn on that same ramp, and the air above pays height (66% at z 900, 85% at z 2,100). Built beam_tas --novelty (part of the elite by cell rarity) + plan: beam with held view offsets on the incumbent from the true start -> a climbing line -> spine (backward curriculum). Waiting for fleet budget room (no box yet)."
+ "summary": "zlr2b2 (no box yet: fleet budget pace). Found WHY the incumbent stops at 64.7%: its 5 s loop strafes a ramp that rises to the pillar with view offset 0.0; the record's pillar climb (reproduced exactly in our core) needs a 1-2 deg HELD backward offset in that same turn (~10 sigma of the policy's yaw noise). Monte Carlo on the incumbent's own replayed controls: held offsets z~N(0,0.3) climb the face past 64.7% at ~5e-4 per pass (best z 1,195 ~70.7%). Built: beam --novelty, --view-hold-stagger, --auto-spine-beam-extra. Next: beam with held offsets on the incumbent -> climbing line -> spine (backward curriculum)."
 }
