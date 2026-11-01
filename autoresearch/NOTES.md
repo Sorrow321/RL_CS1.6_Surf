@@ -1164,3 +1164,13 @@ the route?), the greedy's fifth loop (does it turn up-slope early at E ~4,000 an
 * More labels: c1's greedy lines g1-g5 with --passes 10 (q1-q5) -> 60 finishing roots in total over
   5 lines (c1..c5 = p + q). DAgger round 2 from f2's own greedy (runs/f2_snap1.pt, h0-h7: 152-163 s
   each, h6 died at 17 s) running (r0-r7).
+* f2 evals: 95.810 (11,994M) / **97.328** (12,069.6M). No finish.
+* **DAgger round 2 from f2's own greedy found almost nothing:** r0-r7 (7 lines, ~170 roots at the late
+  passes): 1 finish. f2's greedy dies one swing earlier than c1's (152-163 s vs 155-174 s) and its last
+  exits carry E 3,740-3,850 (c1's g1: 3,930-4,040). The MPC finishes only from E >~3,900-4,000 exits.
+* **How the greedy dies (h0, h2, g1, last 7 s):** at E ~3,800-4,200 the final swing end (beside the
+  platform, z 2,650-2,790) is followed by a 180-deg air turn that fails: the player keeps flying
+  away horizontally (to x +-2,200..3,100) and falls. Survival at high E is the binding skill: one more
+  swing would put the greedy where the labels are.
+* bc_dag2 (building): the conflict-free set - per greedy line (c1's g1-g5 = c1..c5 with p + q roots,
+  f2's h7 = r7) the earliest finishing splice + every suffix x2.
