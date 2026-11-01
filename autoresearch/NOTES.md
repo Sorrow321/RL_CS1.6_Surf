@@ -969,3 +969,24 @@ autoresearch/spines/zlr2b1_frontier_rc10.npy --spawn-states-frac 0.15 --front-co
   at 1,372 u/s, ~160 u too low. At those apexes ~1,400 u/s is still horizontal: the flight off the
   ramp's north end is too FLAT (vz ~600-1,000 at the exit; reaching z 3,044 from the ramp's end at
   z ~2,000 needs vz ~1,300: a ~43 deg exit at E ~4,250, or ~E 5,300 at the policy's ~34 deg).
+* c1 11,247M: **96.833** (3/9 die at ~15 s in the FIRST trough: the early route is fragile).
+* sL (gaph, energy weight 1, 60 s horizon from early-fifth-loop roots): the population went EXTINCT at
+  35 s (all 4,096 lineages dead) - the policy's proposals cannot hold the fifth loop when selected
+  for energy. Killed.
+* **Proposal calibration (the view is tanh-squashed: a pre-tanh z offset of 0.3 is ~1 deg, 1.0 ~40-60
+  deg, >= 2 saturates at +-180):** sB/sC's `--view-hold 2.0/3.0` were mostly random flailing.
+  Under --keys-hold, `--branch-grid` and `--macro-hold` are refused; the forced-manoeuvre option is
+  `--branch-at tT:N --branch-view-only --branch-jitter DEG` (held yaw-target offsets, the policy's
+  own keys).
+* **The policy's exit is ONE habit (frontier pool, 8 episodes x 3 closest passes):** every closest
+  pass to a trigger starts from the SAME exit, the ramp's north top corner (x ~0, y 1,010-1,070,
+  z ~2,000-2,030), at ~1,740 u/s with v ~(-950, 950, 1,100) (45 deg between up-slope and north);
+  apex z ~2,790. The record (ANALYSIS ONLY) leaves from the same corner at the same speed
+  (-1,070, 420, 1,311) - rotated ~20 deg more up-slope - so its apex would be ~3,100; it then air-
+  turns ~80 deg north within 0.12 s (a wishdir past 90 deg from v gives up to 175 u/s per frame),
+  flies north beside the strip's east face (x -48..+16) rising, presses on it at z 2,889 and slides
+  up to the finish at 3,048. The finish is a steering change in the last ~0.3 s on the ramp plus a
+  hard air turn, not more energy.
+* sG3 (running): roots 0.25 / 0.45 / 0.65 s before each of those exits (72), `--branch-at t20:4032
+  --branch-view-only --branch-jitter 90 --branch-burst 84 --branch-hold 42 --branch-protect 8
+  --resample-every 5 --score gap --max-ticks 600`.
