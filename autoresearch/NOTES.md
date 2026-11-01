@@ -682,3 +682,12 @@ the part of the route it has walked past in the pool; nothing reads the map.
   (t 115 s of the spine), 47% spine-episode success.
 * Beam from the TRUE start on S70b's newest weights (07:58, beam_tas --score d, 2,048 envs, 16
   greedy, 210 s: round 1's auto-spine beam by hand): a spine through the policy's OWN launch.
+* Beam from the true start on S70b (4.47B weights; 2,048 envs, --score d): population extinct at
+  139 s, frontier 60.0% at 106 s - no lineage of the policy's own proposals makes the launch from
+  the true start. S70b eval 4,535M: 58.4%. So the curriculum teaches the launch from the
+  INCUMBENT's circuit states (E 2,500-3,190 at t 110-141 s of the spine) while the policy's own
+  circuit no longer passes through them (E ~2,000): band success 21% from spine states, 0 from its
+  own line.
+* Plan B (08:12): record S70b's CURRENT greedy line (record_ckpt --dump-states) and rerun the stage-1
+  Go-Explore (position-only 128 u cells) rooted at ITS states (t 60 s -> death), 10 min: a launch
+  that starts from the circuit the policy actually flies, for a spine whose band matches it.
