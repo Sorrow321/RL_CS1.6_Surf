@@ -630,3 +630,10 @@ ckpt_4032299008 = `$AR_HOME/incumbent/ckpt.pt`). First rent (05:37) REFUSED: the
   93% apex; milestones = the GE line's 9.48% (round 1's relaunch rule) and the launch's own apex
   (d 1,334 = 79%: the first self-found success line on this spine, auto-spine's rule for old
   success lines), so the launch pays before the whole air line is learned.
+* **97.8% (08:50 UTC)**: a third CEM stage from the 93% line's 171.9 s state surfs the same ramp
+  higher and rises to the underside of the finish platform (348, 496, 2,819): 97.81%, d 139 u;
+  a fourth from its climb stays at 97.83% (the platform's top, z ~3,008, carries the triggers; the
+  way round its edge was not found). Planned spine switched to this line
+  (`autoresearch/spines/zlr2b4_cem978_spine.npy`) with `--demo-milestones 5859,1334,422`: the GE
+  line, the launch apex (79.0%) and the first air line's apex (93.4%) - each stage of the search
+  pays as a success line, auto-spine's rule for its earlier lines.

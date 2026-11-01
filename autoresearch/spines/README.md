@@ -488,3 +488,8 @@ no record, no human data entered either file. Both are STATE_DTYPE `.npy` (clock
   leaves it at z 2,289: apex **93.36%** at (55, 494, 2,536), 173.8 s from the true start. Physical
   throughout (every state follows from the previous by the core's physics under some control).
   `zlr2b4_cem169arc_result.json`: that CEM's controls. No demo, no record data.
+* `zlr2b4_cem978_spine.npy` (24,885 states): `zlr2b4_cem169arc_spine.npy`'s states 0..24,555 +
+  329 states of a third CEM from its 171.9 s state (3.5 s of air control): it surfs the same ramp
+  higher (z 2,598 at +1.5 s) and rises to the underside of the finish platform at (348, 496, 2,819):
+  **97.81%** (d 139). A further CEM stage from its climb stays at 97.83% (under the platform).
+  `zlr2b4_cem978_result.json`: that stage's controls. No demo, no record data.
