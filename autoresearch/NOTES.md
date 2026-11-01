@@ -465,3 +465,14 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   shortest line within 32 u of the deepest reaches 26.64% in 125.2 s (the deepest: 170.2 s) ->
   a 180,800 u route (vs 256,616 u) = runs/ge/a9_route.npz on the box. Plan: ~01:30 UTC, A9 =
   A8's 3.92B weights resumed on that route (+ the self-route rule, the tail) to push the score.
+* **B1 result (stopped at 3.36B, 01:05 UTC): the one-launch recipe from scratch reaches 15.3%
+  (2.11B: 15.273, median 14.3%) and holds 13-15% with medians 13-14% in every eval from 2.0B to
+  3.32B (15.171 at 3.32B), but its greedy does not leave loop 1 in 1.3B steps on its plateau.**
+  Off the start platform, through the start ramp into the half-pipe and up to the ends of loop 1
+  with no hand-made step (route, spawns, swaps all automatic); the exit the A6 lineage found
+  after its tail switched on (19.7% at 1.53B) did not come here. One seed against one seed: the
+  route B1's swaps chose ends on the half-pipe at 14.9% (the policy's own deepest line), A6c's
+  ran on the hand-joined GE line to the north rim. Snapshots on the box: ckpt_1000341504,
+  ckpt_2000683008, ckpt_3001024512.
+* A9 `zlr1b2_a9` (01:06 UTC): A8's 3.92B weights resumed on runs/ge/a9_route.npz (181,632 u),
+  self-route + tie-break + tail - the last ~3 h of the round.
