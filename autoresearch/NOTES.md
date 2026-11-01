@@ -457,3 +457,11 @@ Box 58559243: RTX 5080 + Ryzen 9 7945HX (32 threads), 0.387 $/h, South Carolina 
   deepest 20.6% (stochastic episodes already leave loop 1), tail 283 u/ep, arc 25k u/ep. The
   one-launch recipe reproduces the A6 lineage's path with no hand-made step, a few hundred
   million steps behind it (A6c: 19.7% at 1.53B, 21.4% at 1.91B).
+* B1 2.04-2.57B: 14.034, 15.273 (2.11B, median 14.3%), 12.936, 14.347, 14.653, 14.341, 14.364,
+  13.295: medians 13-14% every eval (the greedy reliably on the first half-pipe's ends, not out of
+  loop 1 yet); second self-route swap at 2.11B (end 14.9%, 58,496 u); reservoir deepest 20.6%.
+  Snapshots on the box: ckpt_1000341504.pt, ckpt_2000683008.pt.
+* Prepared for the last hours: the tie-break applied to A8's best eval (3.74B, 26.87%): the
+  shortest line within 32 u of the deepest reaches 26.64% in 125.2 s (the deepest: 170.2 s) ->
+  a 180,800 u route (vs 256,616 u) = runs/ge/a9_route.npz on the box. Plan: ~01:30 UTC, A9 =
+  A8's 3.92B weights resumed on that route (+ the self-route rule, the tail) to push the score.
