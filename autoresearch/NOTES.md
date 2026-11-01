@@ -793,3 +793,8 @@ ckpt_latest 5,061,476,352.
   band in the bu_5 segment at row 21,715 (882 of 1,700) with 32% success.
 * (ops) Box 58621513 extended at 11:09 to 16:38:54 UTC - the wrap-up (16:40) must pull and release
   before then (or extend by a few minutes first).
+* **S70f at 5,251M = 92.433 - NEW BEST** (median 89.8%): **9/9** greedy episodes from the true start
+  launched and reached the upper loop (79.9-92.4%); ep2's swing top 92.43% at z 2,509 (123 s); all
+  die at 116-130 s out of the loop. Hand-on ckpt_5212471296.pt (38M before; pulled). Then 90.7 /
+  90.6 / 90.0 / 89.7 / 89.5 / 90.7 / 91.0 / 90.5 / 91.1 (5.29-5.59B); band 21,440 (row 607 of the
+  1,700-row pumping segment) at 17% success; training reservoir deepest 94.65%.
