@@ -1226,3 +1226,17 @@ here by hand over 55 lines at once. Read it on: training win rate and its time-f
   and the GE curriculum (tau ~9,170) look healthy, so watching the next eval).
 * Probe (NEW runs/probe.sh, box): f4's weights spawned on 6 definite lines at 0.5/1.0/1.5/2.0 s before
   their finishes (4 greedy + 12 sampled lineages each) - how far back it already finishes.
+* **Probe (f4 at ~11,856M, before the 1.0 s tail):** from 6 definite lines' states 0.5 / 1.0 s before
+  their finishes 12-16 of 16 lineages finish (greedy included); from 1.5 / 2.0 s: 0. The late half of
+  the manoeuvre (rising past the platform top and over its edge) is learned; the launch + air turn
+  is not. Tail -> 1.5 s at ~12,000M (training win 14.5% @ 0.49 s on the 1.0 s tails).
+* **f4's greedy COLLAPSED and stayed down:** 25.931 (11,843M) / 31.662 (11,918M) / 30.664 (11,994M) -
+  every episode stalls in the SECOND trough (z ~-1,500, E ~-800, 30%). Its mix starved the early
+  route: 30% of resets from the pool (tails + frontier) and cold keys; the route before the GE
+  spine's band (64 s on) trains only on fresh starts (now 7% of resets). Stopped at 12,012M
+  (runs/f4_final.pt). c2's mix (pool 20%, keys as restored, T 0.2) was stable at 96.4-96.8.
+
+### f5 `zlr3b1_f5` (21:52 UTC): f4's curriculum on c1's weights with c2's stable mix
+`--resume` (c1 11,691.6M) + c1's flags + `--demo-tau0 9170 --spawn-states runs/cur/pool_cur.npy
+--spawn-states-frac 0.2` (tails 1.0 s at launch, md5 68e3f8ad; lines = 10% of resets), keys as
+restored (no --unstuck-max). Tail schedule: 1.0 -> 1.5 -> 2.0 -> whole lines, gated on the probe.
