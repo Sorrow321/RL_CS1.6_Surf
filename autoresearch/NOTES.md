@@ -982,3 +982,11 @@ CPU analysis and tooling first.
   the way (a negative --at range needs `--at=-36:-4:4`; beam_tas --branch-jitter is an int). The
   CPU search was stopped after 5 generations (machine load 4.6 on 4 vCPU with another job): search
   on a box only.
+* (19:10 UTC, the field d along north-end swings) the record's FINISHING swing (ANALYSIS ONLY) after
+  its launch: d 1,215 -> 925 -> 598 -> 407 -> 234 -> 86 -> 0 every 0.2 s (it flies north along x ~0,
+  the north strip's east side, rising); its ordinary north swing and the policy's (CPU greedy,
+  160.7 s: launch vz 1,154 at z 1,995, then north-WEST at vx ~-850) bottom out at d ~480-670 and
+  rise again. So a beam ranked by d every 0.7 s separates the finishing variant from the policy's
+  own within ~0.6-1.0 s of the launch. Flying north along x ~0 alone would bring the policy's apex
+  (2,845) within ~130-180 u of the strip's top; it needs ~150 u more apex too (vz ~1,300 at the edge).
+* 19:07 UTC: still no box (fleet burn 0.55 of 0.646 $/h, 2 boxes); the retry interval cut to 45 s.
