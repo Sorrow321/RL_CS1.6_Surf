@@ -555,3 +555,39 @@ weights after 0.5M steps - eval noise, but the round's best so far; hand-on ckpt
 pulled) / **60.672** (4,108M: the apex credit is gone, swing tops z ~450 instead of ~700, dying
 at 146-155 s). Training: reward ~53/ep (c1 ~115), contact record 38-46% mean per episode against
 48-54% all-state.
+* rc1 later: **61.211** (4,184M) / **62.316** (4,259M), recovering; every greedy episode's best
+  CONTACT stays 37.8-39.1% (the crest): the flag alone did not find the ridge in 320M steps.
+  Stopped at 4,354M (ckpt_latest md5 7e551f2e, pulled) - the warm start of rc2.
+
+### Go-Explore from the policy's OWN crest contacts FINDS THE RIDGE TOP (06:05-06:13 UTC, box CPU)
+* Roots: `tools/contact_roots.py` (NEW) on `record_ckpt --dump-states` of the incumbent (3 greedy
+  episodes; ep2 idled at the start and is skipped by `--min-record-frac 0.9`): every 8th contact
+  tick after the episode's contact record last improved = 1,060 roots, all on the west ramp crest
+  (progress 28-38.6%). Generic: the rule is the policy's own contact history, no place named.
+* `tools/explore_phase1.py --roots-spine contact_roots.npy --roots-keep-all --exact-chains --cell
+  128 --cell-energy 64 --cell-heading 1 --view-follow=-90,-60,-30,-15,0,15,30,60,90 --select-energy
+  3 --act-every 4 --decisions 100 --maxvel 3500 --tick-ms 7 --envs 4096 --threads 40 --max-minutes
+  15` beside the trainer (0.66-0.85M ticks/s): 3.29M cells at 7 min (iteration 200).
+* `tools/ge_contact_pick.py` (NEW: the deepest archive cell whose state the map holds - one null
+  tick from it shows ground or a surface pushing vz up): of the 600k deepest cells (mostly
+  apexes), **232 are contacts at 55-70%, ALL on the ridge top** (x -1,330..-1,150, z 890-1,050),
+  deepest **69.69%** at (-1,213, 1,333, 1,023). The incumbent's best contact: 38.9%.
+* `ge_replay.py --cell 3194239`: 9/9 links exact, 448 ticks (3.1 s): from a crest contact
+  (-1,965, 2,730, -933) already climbing (v (1,366, 1,395, 1,581): the incumbent's own north-end
+  exit), an impact near (-1,200, 2,900, -300) costs ~1,800 u of E, then a ballistic flight back
+  south-west over the ridge's north end, an air-strafed left turn, a landing on the ridge's sloped
+  top at z ~684 (2.0 s) and a surf UP it to z 1,023 with |v| 339 left. Not the record's
+  wall-slide: the policy's own exit, turned.
+* `tools/contact_spine.py` (NEW): the incumbent's own greedy episode 1 up to the root (index
+  19,656 = 137.6 s) + that line, cut at the deepest contact tick = `autoresearch/spines/
+  zlr2b1_ge1_spine.npy` (20,103 states = 140.7 s, end contact 69.66%, md5 0c95e87e).
+* NEW `explore_phase1 --cell-contact` (archive only states the map holds; off = byte-identical,
+  selftest 99/99, tests/python/test_cell_contact.py) for the next stage: the flight cells are what
+  filled the archive (3.3M at 7 min).
+
+### rc2 `zlr2b1_rc2` (06:17 UTC): rc1's weights + the ridge-top spine (backward curriculum)
+`--resume` of rc1's 4,354M (`--ratchet-contact 1` restored) + `--demo-file autoresearch/spines/
+zlr2b1_ge1_spine.npy --demo-milestones 5859 --ckpt-every 2e8`; no --demo-tau0, so the curriculum
+starts at the spine's END and walks back (window 5, grow 5..40, cooldown 5, rate 0.2, front-frac
+0.5, success-d 100, bonus 50 - all restored). Success line d <= 2,030 (68.1%) read on the CONTACT
+record (paid_record: an apex past it never counts). The old GE line's 9.48% stays a milestone.
