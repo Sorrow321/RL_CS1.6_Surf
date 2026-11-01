@@ -44,7 +44,10 @@ class DemoCurriculum:
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
                  grow: int = 0, front_frac: float = 0.0, tau0=None,
-                 cooldown: int = 20, grow_max: int = 0, match_band: bool = False) -> None:
+                 cooldown: int = 20, grow_max: int = 0, match_band: bool = False,
+                 name: str = "demo curriculum") -> None:
+        # the log prefix of a move (train_fast --finish-line runs a second instance)
+        self.name = str(name)
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -174,6 +177,24 @@ class DemoCurriculum:
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
         return np.concatenate([fresh, self.S[idx].copy()])
 
+    def draw(self, m: int) -> np.ndarray:
+        """``m`` spine rows for a share of a pool built elsewhere (train_fast --finish-line): the
+        curriculum moves first, exactly as in build_pool, then the rows come from the admitted
+        range, ``front_frac`` of them on the frontier band - build_pool's draw without its fresh
+        part. Not called by build_pool: the --demo-file path is unchanged."""
+        self._move()
+        m = int(m)
+        d_lo, d_hi = self._draw()
+        if self.front_frac > 0.0:
+            b_lo, b_hi = self._band()
+            n_front = int(round(m * self.front_frac))
+            idx = np.concatenate([
+                self.rng.integers(b_lo, b_hi + 1, n_front),
+                self.rng.integers(d_lo, d_hi + 1, m - n_front)])
+        else:
+            idx = self.rng.integers(d_lo, d_hi + 1, m)
+        return self.S[idx].copy()
+
     def match(self, origins: np.ndarray) -> np.ndarray:
         """Demo index of each position, -1 if not a demo spawn."""
         out = np.full(len(origins), -1, np.int64)
@@ -225,7 +246,7 @@ class DemoCurriculum:
                                f"the band [{b_lo},{b_hi}]")
         if moved:
             d_lo, d_hi = self._draw()
-            print(f"demo curriculum: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
+            print(f"{self.name}: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
                   f" starts [{d_lo},{d_hi}] (success {r:.1%} "
                   f"over {ep:.0f} eps)"
                   + (f" next step {self._step}" if self.grow_max else ""))

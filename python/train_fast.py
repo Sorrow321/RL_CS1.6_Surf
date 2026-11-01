@@ -7487,6 +7487,29 @@ def main() -> None:
     ap.add_argument("--spawn-states-frac", type=float, default=None,
                     help="with --spawn-states: the share of the spawn pool it replaces, in "
                          "(0, 1)")
+    ap.add_argument("--finish-line", default=None,
+                    help="a SECOND backward curriculum (Salimans-Chen, the --demo-file "
+                         "machinery) over a FINISHING line of the policy's OWN - a STATE_DTYPE "
+                         ".npy whose last row is just before a finish (tools/beam_tas.py "
+                         "--save-frontier on a search that crossed; tools/finisher_states.py). "
+                         "--finish-line-frac of every training spawn pool is drawn from it: "
+                         "starts at the line's end and walks back while the band's FINISH rate "
+                         "is >= --finish-line-rate, beside the --demo-file curriculum (which "
+                         "keeps its own spine and share). Section 0: needs SELF_STATES=1. "
+                         "Off = none (byte-identical); config only when set; never restored")
+    ap.add_argument("--finish-line-frac", type=float, default=0.15,
+                    help="--finish-line: the share of the spawn pool it replaces, in (0, 1)")
+    ap.add_argument("--finish-line-window", type=float, default=0.5,
+                    help="--finish-line: the frontier band whose finish rate moves the "
+                         "curriculum, in SECONDS of the line")
+    ap.add_argument("--finish-line-grow", type=float, default=0.25,
+                    help="--finish-line: seconds the start range widens per advance (doubling on "
+                         "consecutive advances up to --finish-line-grow-max)")
+    ap.add_argument("--finish-line-grow-max", type=float, default=4.0,
+                    help="--finish-line: the largest advance, seconds")
+    ap.add_argument("--finish-line-rate", type=float, default=0.2,
+                    help="--finish-line: the band finish rate that advances it (Salimans-Chen's "
+                         "rho = 0.2); below it the band backs off")
     ap.add_argument("--ge-minutes", type=float, default=None,      # 0 = off
                     help="Go-Explore phase 1 BEFORE training (tools/explore_phase1.py; Ecoffet "
                          "et al., Nature 2021): a REWARD-FREE archive search from the map's true "
@@ -10983,7 +11006,7 @@ def main() -> None:
     # 2026-09-13), so the trainer checks the resolved configuration itself.
     _src = [(k, getattr(args, k, None))
             for k in ("demo_file", "bc_file", "route", "goal_route", "codebook",
-                      "spawn_states")]
+                      "spawn_states", "finish_line")]
     _src = [(k, v) for k, v in _src if v]
     if _src and os.environ.get("SELF_STATES") != "1":
         raise SystemExit(
@@ -12234,6 +12257,41 @@ def main() -> None:
                   f"retreating {args.demo_grow} states per advance); the "
                   f"advance scores the frontier band [tau,tau+"
                   f"{args.demo_window - 1}] only")
+
+    # ---- --finish-line: a second backward curriculum on an own FINISHING line ----------------
+    # (zlr3b2, 2026-11-01) the --demo-file machinery (DemoCurriculum, grow + front band) run on
+    # its own share of the pool: the line's last states first, walking back while the band's
+    # FINISH rate holds. The --demo-file curriculum keeps its spine, band and share untouched.
+    FINL = None
+    FINL_FRAC = 0.0
+    if args.finish_line:
+        if args.maps:
+            raise SystemExit("--finish-line is single-map")
+        FINL_FRAC = float(args.finish_line_frac)
+        if not 0.0 < FINL_FRAC < 1.0:
+            raise SystemExit("--finish-line-frac must be in (0, 1)")
+        if SPAWN_STATES is not None and FINL_FRAC + float(SS_FRAC) >= 1.0:
+            raise SystemExit("--finish-line-frac + --spawn-states-frac must stay below 1")
+        _fl = np.load(args.finish_line, allow_pickle=False)
+        if _fl.dtype != STATE_DTYPE or _fl.ndim != 1 or len(_fl) < 2:
+            raise SystemExit(f"--finish-line {args.finish_line}: a 1-D STATE_DTYPE array is "
+                             f"needed, got {_fl.dtype} {_fl.shape}")
+        _fl = _fl.copy()
+        _fl["tick"] = 0
+        _fl["stuck_ticks"] = 0
+        _fw = max(1, TICK.secs_to_ticks(float(args.finish_line_window)))
+        _fg = max(1, TICK.secs_to_ticks(float(args.finish_line_grow)))
+        _fgm = max(_fg, TICK.secs_to_ticks(float(args.finish_line_grow_max)))
+        FINL = DemoCurriculum(_fl, window=_fw, rate=float(args.finish_line_rate),
+                              min_ep=50.0, seed=31, grow=_fg, front_frac=0.5,
+                              tau0=None, cooldown=5, grow_max=_fgm,
+                              name="finish-line curriculum")
+        print(f"--finish-line: {FINL.n:,} states ({FINL.n * TICK.ms / 1000.0:.1f} s) from "
+              f"{args.finish_line}; {FINL_FRAC:.0%} of every training spawn pool drawn from "
+              f"its last states, half on the frontier band ({_fw} ticks), half uniform behind "
+              f"it to the finish; the start widens {_fg} ticks per advance (doubling to {_fgm}) "
+              f"while the band FINISHES >= {float(args.finish_line_rate):.0%} (min 50 eps, "
+              f"cooldown 5 iterations), backs off below")
 
     # ---- --respawn-frontier: the forward potential curriculum -----------
     # Built AFTER the reservoir, because it needs it: the reservoir supplies
@@ -15401,6 +15459,14 @@ def main() -> None:
     # --ratchet-contact: written ONLY when on
     if args.ratchet_contact:
         meta["config"]["ratchet_contact"] = 1
+    # --finish-line: written ONLY when on (a record of the run; never restored)
+    if args.finish_line:
+        meta["config"]["finish_line"] = str(args.finish_line)
+        meta["config"]["finish_line_frac"] = float(args.finish_line_frac)
+        meta["config"]["finish_line_window"] = float(args.finish_line_window)
+        meta["config"]["finish_line_grow"] = float(args.finish_line_grow)
+        meta["config"]["finish_line_grow_max"] = float(args.finish_line_grow_max)
+        meta["config"]["finish_line_rate"] = float(args.finish_line_rate)
     # --eval-parallel: written ONLY when on, like the patience rule above
     if N_EVAL_PAR:
         meta["config"]["eval_parallel"] = 1
@@ -16228,6 +16294,7 @@ def main() -> None:
               f"mean 1 per group. Watch tail/n_med: if it falls under "
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
+    fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
     if demo is not None and args.demo_success_d is not None:
         _df = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
@@ -19107,6 +19174,18 @@ def main() -> None:
                 _pos = SS_RNG.choice(len(_pool), _m, replace=False)
                 _pool = _pool.copy()
                 _pool[_pos] = SPAWN_STATES[SS_RNG.integers(0, len(SPAWN_STATES), _m)]
+            if FINL is not None:
+                # --finish-line: its share of the pool from the finishing line's admitted range
+                # (positions the --spawn-states rows did not take)
+                if len(_pool) < 4096:
+                    _pool = np.resize(_pool, 4096)
+                _free = np.ones(len(_pool), bool)
+                if SPAWN_STATES is not None:
+                    _free[_pos] = False
+                _fm = min(int(round(len(_pool) * FINL_FRAC)), int(_free.sum()))
+                _fpos = FINL.rng.choice(np.flatnonzero(_free), _fm, replace=False)
+                _pool = _pool.copy()
+                _pool[_fpos] = FINL.draw(_fm)
             _slot.core.set_spawn_pool(_pool)
         if STALL_CUT and demo is not None:
             # --demo-stall-cut: before this iteration's draws (a cut spine is drawn at once)
@@ -19294,6 +19373,12 @@ def main() -> None:
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
                   + (f"  |  spine-line bonuses {DEMO_BONUS_N[0]:,}" if DEMO_BONUS else ""))
             print(f"  {demo.region_report()}")
+        if FINL is not None and it_no % 20 == 1 and FINL.last_info:
+            # --finish-line: its band, range and finish rate (the line's own coordinates)
+            _flo = FINL._draw()[0]
+            print(f"  finish-line: {FINL.last_info}  |  starts from "
+                  f"{(FINL.n - 1 - _flo) * TICK.ms / 1000.0:.2f} s before the line's finish  |  "
+                  f"tracked eps {FINL.ep.sum():,.0f}  finishes {FINL.win.sum():,.1f}")
         tm.add("pool", t_pool)
         # PPO hygiene counters: per-ITERATION deltas, zeroed here, not
         # cumulative totals. They are counted off the very masks the rollout
@@ -20045,6 +20130,15 @@ def main() -> None:
                             # --respawn-greedy-temp: which fresh spawns are greedy-line rows
                             _gei = np.flatnonzero(ended)
                             greedy_sp[_gei] = GREEDY.is_row(sv_view[_gei]["origin"])
+                    if FINL is not None and ended.any():
+                        # --finish-line: the ended episodes that started on the finishing line
+                        # and whether they FINISHED, then the fresh spawns' line index
+                        _fei = np.flatnonzero(ended)
+                        _fgoal = fleet.goal_hits().astype(bool)[_fei]
+                        _fkn = fin_idx[_fei] >= 0
+                        if _fkn.any():
+                            FINL.note_outcomes(fin_idx[_fei][_fkn], _fgoal[_fkn])
+                        fin_idx[_fei] = FINL.match(sv_view[_fei]["origin"])
                     if respawn is None and goalsys is not None and ended.any():
                         # --goal-planner ramps without the reservoir: the ended envs respawned
                         # at the map start; their windows are drawn all the same
