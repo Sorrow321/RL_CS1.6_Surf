@@ -839,3 +839,8 @@ then the wrap-up).
 * 15:00 UTC: pool refreshed from rc10's 11,096M re-recording (8/9 at contact 85.5-85.6%, alive 35-46 s
   past it - was ~15 s at 8,491M; 47,793 states, autoresearch/spines/zlr2b1_frontier_rc10.npy, md5
   2b29ec9e).
+* rc10 15:27 UTC: ... 96.799 / 94.966 / 95.736 / 96.318 / 97.156 (11,851M): the 95-98 level holds,
+  several evals with 4-6/9 early deaths in the first troughs (medians ~12%); best still 98.329.
+  One training iteration logged win 0.91% @ 0.8 s - a frontier-pool spawn beside a slab flying in
+  (harvest, CLAUDE.md's win-rate trap), not a policy finish; it does say a slab is within a small
+  perturbation of the policy's own fifth-loop states.
