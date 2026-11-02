@@ -136,6 +136,18 @@ def gate_files(rdir: Path, n: int, incumbent: bool = False):
     return [rdir / f"{stem}.jsonl"] + [rdir / f"{stem}_{k}.jsonl" for k in range(1, max(1, n))]
 
 
+def keep_wave(best_s, greedy_s, slack_s) -> bool:
+    """--distil-max-over-greedy S: a crossing wave is distilled only if its fastest line is at most S
+    seconds SLOWER than the wave's own greedy baseline (the policy's run from the same spawn) - a slower
+    line is no expert target, it teaches the policy a line slower than the one it already flies (zlx
+    round 4 wave 2, 2026-11-02: the population missed the finishing swing at ~133 s and its 16 kept
+    lines finish at 157.0 s against the greedy's 137.2 s, 30% of that round's BC rows). Kept: S None (off,
+    as before), a wave without a time, a wave whose greedy did not finish."""
+    if slack_s is None or best_s is None or greedy_s is None:
+        return True
+    return float(best_s) <= float(greedy_s) + float(slack_s)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True, help="the seed checkpoint (policy-derived only)")
@@ -242,6 +254,12 @@ def main() -> int:
                          "--keys-hold checkpoint), train with --demo-keys so a spawn on the "
                          "spine starts holding the keys the line held there instead of neutral "
                          "(pbx 2026-10-28); off: never (the command line before the option)")
+    ap.add_argument("--distil-max-over-greedy", type=float, default=None,
+                    help="distil a crossing wave only if its fastest line is at most this many "
+                         "seconds slower than the wave's own greedy baseline (keep_wave); 0 = the "
+                         "line must not lose to the policy it is meant to teach. A round whose every "
+                         "crossing wave fails is skipped and the next one plans again from the same "
+                         "checkpoint. Default: distil every crossing wave (as before)")
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
                     help="extra train_fast flags (everything after --extra)")
     args = ap.parse_args()
@@ -289,7 +307,7 @@ def main() -> int:
         row = {"round": r, "ckpt_in": str(cur), "t0": time.strftime("%H:%M:%S")}
         # 1. PLAN ------------------------------------------------------------------------------
         t0 = time.time()
-        npzs, waves = [], []
+        npzs, waves, n_dropped = [], [], 0
         for w in range(args.waves):
             wdir = rdir / f"wave_{w}"
             rc = run([PY, "-u", ROOT / "tools" / "beam_tas.py", cur, "--map", args.map,
@@ -308,10 +326,19 @@ def main() -> int:
                 s = json.loads((wdir / "summary.json").read_text(encoding="utf-8"))
             waves.append({"wave": w, "rc": rc, "crossed": bool(s.get("crossed")),
                           "best_s": s.get("best_s"), "greedy_s": s.get("greedy_s")})
+            dropped = False
             if rc == 0 and s.get("crossed") and (wdir / "beam_best.npz").exists():
-                npzs.append(wdir / "beam_best.npz")
+                if keep_wave(s.get("best_s"), s.get("greedy_s"), args.distil_max_over_greedy):
+                    npzs.append(wdir / "beam_best.npz")
+                else:
+                    dropped = True
+                    waves[-1]["distilled"] = False
+                    n_dropped += 1
             log(fh, f"round {r} wave {w}: rc {rc}, crossed {s.get('crossed')}, best "
                     f"{s.get('best_s')} s (greedy {s.get('greedy_s')} s)")
+            if dropped:
+                log(fh, f"round {r} wave {w}: NOT distilled - its fastest line is slower than its "
+                        f"greedy + {args.distil_max_over_greedy:g} s (--distil-max-over-greedy)")
         row["plan"] = {"waves": waves, "wall_s": round(time.time() - t0, 1),
                        "best_s": min([x["best_s"] for x in waves if x.get("best_s")],
                                      default=None)}
@@ -334,6 +361,15 @@ def main() -> int:
             with open(out / "summary.jsonl", "a", encoding="utf-8") as f:
                 f.write(json.dumps(row) + "\n")
             break
+        if not npzs and n_dropped:
+            # every crossing wave lost to its own greedy: nothing to teach this round - plan again from
+            # the same checkpoint (new torch and spawn seeds) instead of stopping
+            log(fh, f"round {r}: every crossing wave is slower than its greedy - no expert targets; "
+                    f"the next round plans again from {cur}")
+            row["skipped"] = "no wave beat its greedy"
+            with open(out / "summary.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(row) + "\n")
+            continue
         if not npzs:
             log(fh, f"round {r}: no wave crossed - stopping")
             row["stopped"] = "no crossing"

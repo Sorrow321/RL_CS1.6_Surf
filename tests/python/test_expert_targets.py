@@ -587,6 +587,30 @@ def test_exit_local_expected_gate_rule(tmp_path):
     assert "--gate-dnf-s is the DNF charge of --gate-rule expected" in src
 
 
+def test_exit_local_distil_filter_drops_waves_slower_than_their_greedy():
+    """--distil-max-over-greedy (zlx 2026-11-02): a crossing wave whose fastest line loses to the
+    wave's own greedy baseline is not distilled; off (None) distils every crossing wave as before."""
+    import exit_local
+    kw = exit_local.keep_wave
+    assert kw(157.02, 137.16, None)                 # off: as before
+    assert not kw(157.02, 137.16, 0.0)              # zlx round 4 wave 2: 19.9 s slower than its greedy
+    assert kw(130.52, 137.94, 0.0)                  # the usual wave: faster than its greedy
+    assert kw(137.16, 137.16, 0.0)                  # a tie is kept
+    assert kw(138.0, 137.16, 1.0) and not kw(138.5, 137.16, 1.0)
+    assert kw(150.0, None, 0.0)                     # the greedy did not finish: any finish teaches
+    assert kw(None, 137.16, 0.0)
+    src = (ROOT / "tools" / "exit_local.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--distil-max-over-greedy", type=float, default=None,' in src
+    assert 'if keep_wave(s.get("best_s"), s.get("greedy_s"), args.distil_max_over_greedy):' in src
+    # a dropped wave is marked in its summary row only when dropped (off: the rows are unchanged)
+    assert 'waves[-1]["distilled"] = False' in src
+    # every crossing wave dropped -> the round is skipped and the next plans from the same checkpoint;
+    # no crossing at all still stops, as before
+    i_skip = src.index("if not npzs and n_dropped:")
+    i_stop = src.index('log(fh, f"round {r}: no wave crossed - stopping")')
+    assert i_skip < i_stop and "continue" in src[i_skip:i_stop]
+
+
 def test_prefix_line_replay_keeps_the_wrappers_feeds_and_held_keys():
     """beam_tas --prefix-line replays a saved line open-loop, then searches from its state. The
     replay must advance what the wrapper's act() advances per decision - the compass block, the
