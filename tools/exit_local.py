@@ -141,7 +141,7 @@ def keep_wave(best_s, greedy_s, slack_s) -> bool:
     seconds SLOWER than the wave's own greedy baseline (the policy's run from the same spawn) - a slower
     line is no expert target, it teaches the policy a line slower than the one it already flies (zlx
     round 4 wave 2, 2026-11-02: the population missed the finishing swing at ~133 s and its 16 kept
-    lines finish at 157.0 s against the greedy's 137.2 s, 30% of that round's BC rows). Kept: S None (off,
+    lines finish at 157.0 s against the greedy's 137.2 s, 28% of that round's BC rows). Kept: S None (off,
     as before), a wave without a time, a wave whose greedy did not finish."""
     if slack_s is None or best_s is None or greedy_s is None:
         return True
