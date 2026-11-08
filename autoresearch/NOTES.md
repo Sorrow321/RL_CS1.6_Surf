@@ -332,7 +332,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   the eval line) STALE like v1's; **first ramp at 604M (10.1%), on time**; 680M 15.15, 755M
   15.75, 831M 17.27, 906M 17.96 - on v1's curve. Search 3 is due at the 982M eval, then the
   window, where the fixes (match-band, eval-line roots) should first make the difference.
-* **10:12 UTC - v3 search 3 (982M, patience) -> spine 2 THROUGH THE WINDOW.** Rooted on the eval
+* **10:09 UTC - v3 search 3 (982M, patience) -> spine 2 THROUGH THE WINDOW.** Rooted on the eval
   line itself (2,055 ticks = 20.6 s, best d 81,075 = 18.7%, stall 1,647; roots [1,247, 1,647];
   v1's search 3 at the same step had re-rolled a line that died at 2.0%), a fresh archive: 38,217
   cells, 902,755 runs, knob 0.53-0.6 (cells policy 14,546 / random 23,582 over 15.7M / 19.9M
