@@ -15451,11 +15451,11 @@ def main() -> None:
         # resume restores the four and reuses runs/<run>/ge_states.npy
         meta["config"].update(ge_minutes=float(args.ge_minutes), ge_frac=float(args.ge_frac),
                               ge_cell=float(args.ge_cell), ge_speed=int(args.ge_speed))
-    if args.demo_file and float(args.demo_front_frac) > 0.0:
+    if DEMO_ON and float(args.demo_front_frac) > 0.0:
         # --demo-front-frac: dumped only when on (a flag-off run.json is the
         # control's byte for byte); a resume restores it
         meta["config"]["demo_front_frac"] = float(args.demo_front_frac)
-    if args.demo_file and args.demo_success_d is not None:
+    if DEMO_ON and args.demo_success_d is not None:
         # --demo-success-d: dumped only when set; a resume restores it
         meta["config"]["demo_success_d"] = float(args.demo_success_d)
     if args.keys_hold_spawn_duck:
@@ -15464,14 +15464,15 @@ def main() -> None:
     if args.demo_keys:
         # --demo-keys: dumped only when on (not restored: it belongs to its --demo-file)
         meta["config"]["demo_keys"] = str(args.demo_keys)
-    if args.demo_file and args.demo_success_bonus is not None:
+    if DEMO_ON and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
     if args.demo_file and args.demo_success_energy is not None:
         # --demo-success-energy: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
-    if args.demo_file and args.demo_match_band:
-        # --demo-match-band: dumped only when on (not restored: a property of the run)
+    if DEMO_ON and args.demo_match_band:
+        # --demo-match-band: dumped only when on (not restored: a property of the run; DEMO_ON
+        # so an --auto-spine-scratch run records it too)
         meta["config"]["demo_match_band"] = 1
     if args.demo_file and args.demo_success_pace is not None:
         # --demo-success-pace: dumped only when set (not restored: it belongs to its spine)
@@ -15674,9 +15675,9 @@ def main() -> None:
             # --front-contact: written ONLY when on
             meta["config"]["front_contact"] = 1
     # --demo-cooldown / --demo-grow-max: written ONLY when set (a record of the run)
-    if args.demo_file and args.demo_cooldown is not None:
+    if DEMO_ON and args.demo_cooldown is not None:
         meta["config"]["demo_cooldown"] = int(args.demo_cooldown)
-    if args.demo_file and args.demo_grow_max is not None:
+    if DEMO_ON and args.demo_grow_max is not None:
         meta["config"]["demo_grow_max"] = int(args.demo_grow_max)
     # --respawn-greedy-temp: written ONLY when on (a record of the run, never restored)
     if args.respawn_greedy_temp is not None:
