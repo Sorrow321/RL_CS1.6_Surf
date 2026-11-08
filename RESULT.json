@@ -121,7 +121,7 @@
   "resume_from": null
  },
  "run": {
-  "run": "unr1b2_geb5",
+  "run": "unr1b2_geb6",
   "commit": "8955493b",
   "recipe": [
    "--envs",
@@ -241,7 +241,9 @@
    "20",
    "1500",
    "--ge-beam-spawn",
-   "0.15"
+   "0.15",
+   "--unstuck-max",
+   "2"
   ],
   "extra_flags": [
    "--ge-beam",
@@ -272,19 +274,22 @@
    "20",
    "1500",
    "--ge-beam-spawn",
-   "0.15"
+   "0.15",
+   "--unstuck-max",
+   "2"
   ],
+  "steps": 60000000000.0,
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null,
-  "launched_utc": "2026-11-08 11:25",
+  "launched_utc": "2026-11-08 15:21",
   "box": 59667641
  },
  "ladder": {
   "first ramp": 453509120,
   "window (CP1)": 529006592,
   "pit dive": null,
-  "verdict": "geb and geb2 on time to CP1, both stopped at the CP2 wall (27.0-27.1%) to upgrade the explorer; geb3 launched 08:39 with the explorer that reaches the CP2 detour's states alone"
+  "verdict": "geb..geb5 all on time through CP1 and stopped at the CP2 wall (geb5 FAILED the pit dive at 3.88B); geb6 (+ --unstuck-max 2) launched 15:21"
  },
  "summary": "Slot 2: Go-Explore with a policy-guided beam as the explore step (tools/ge_beam.py, train_fast --ge-beam). From scratch the explorer's lines lead the greedy over the first ramp and window (geb: first ramp 453.5M, CP1 529.0M; geb2: 302.5M / 529.0M) while the control without it fails the first ramp; both runs then sit at the CP2 wall (27.0-27.1%). Alone at that wall, chain roots + 1 s bursts + level/falling cells reach the human-style detour (east corridor, ramp turnaround, level west in the gap) but no line past 27.5% in 50 min. Run geb3 (from scratch) carries that explorer. Best 27.122 (geb, 1.057B).",
  "previous_runs": [
@@ -326,6 +331,17 @@
    "ladder": {
     "first ramp": 302514176,
     "window (CP1)": 529006592
+   }
+  },
+  {
+   "run": "unr1b2_geb5",
+   "commit": "8955493b",
+   "best": 27.109,
+   "stopped_at": 3947888640,
+   "ladder": {
+    "first ramp": 378011648,
+    "window (CP1)": 529006592,
+    "pit dive": "FAILED (3.88B)"
    }
   }
  ]
