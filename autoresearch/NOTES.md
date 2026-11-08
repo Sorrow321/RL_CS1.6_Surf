@@ -615,3 +615,9 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   the policy's dives die (x 140-435, z ~10,300) - then west to x -703, ending in a fall at
   (-628, 67, 10,342). Searches 2-5 (10 min each, same rule) had not reached it. The curriculum
   restarts at the spine's end; the post-CP2 block needs > 33% (d < 66,782), due 13.93B.
+* **19:22 UTC - v3 at 7.11B, best 30.920 at 7,052M** (hand-on unr1b4_knob3d/ckpt_7009730560.pt pulled;
+  6,524M scored 30.918). The greedy still dies at ~30.8% (evals 6,600-7,052M 30.73-30.92, one 27.6
+  dip); the curriculum on search 6's spine oscillates at starts [3,038-3,043, 3,413] (success
+  6.7-31.3% over ~500 episodes, the junction with the policy's own line at row ~3,020). Search 7
+  (6,781M) found a line to d 67,302, kept out by the 200 u gain rule (the spine being taught ends at
+  67,501).
