@@ -521,3 +521,7 @@ ends at its deepest state - alive_need caps at the spine's own ticks past the li
 charge (Grzes 2017's correction for potential shaping under termination: the trainer has
 `--death-charge`), which takes the dive's paid progress back at the death without touching the
 start. Either would be ONE generic term, set at step 0 and frozen.
+* CORRECTION to (b) above: `--death-charge` exists but the trainer REFUSES it with `--unstuck`
+  (train_fast.py ~11222: "--unstuck is not implemented with --death-charge"), which is in the
+  incumbent recipe - so (b) needs that combination built (the tempered draw's log-prob path) before
+  it can be one frozen term of this recipe.
