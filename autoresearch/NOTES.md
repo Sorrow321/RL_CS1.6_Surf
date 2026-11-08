@@ -453,3 +453,10 @@ like every earlier wall). The episode cap (300 s) is far away. At ~286k steps/s 
 ~21B by the wrap-up; CP6's deadline is 28.5B, so the round's clock, not the ladder, ends it.
 Training: stall 19% / crash 28% of rollout episodes (from 10% / 7% at 2.7B) as the frontier
 spawns move deeper. The explorer's deepest cell: 31.48% (still behind).
+
+### 19:54 UTC: geb6 at 82.45% (CP5) at 4,001.9M - at October's "83%" stop before CP6
+
+Evals: 61.2% at 3,700M (one dip), 72.2% 3,775M, 76.1% 3,851M, 82.2% 3,926M, **82.45% at 4,001.9M**,
+then 80.9-82.4% to 4,606M (0.6B flat). October's CP6 note: "stops at 72%, 83% and a creep 84-86%";
+its CP6 came at 14.26B (deadline 28.5B). Training ent rose 0.005 -> 0.015 and int to 4.65/ep:
+the plateau temperature is up again. Explorer still at 31.48%.
