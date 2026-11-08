@@ -339,3 +339,28 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   the complex. The energy value keeps the speed (1,483 vs 1,227 u/s at 6 s, 5.5 s faster to the
   same point) and doubles the coverage per wave. Run 3 (no energy term) kept running: the gain is
   real but modest, not worth a restart; it goes into the next recipe.
+
+### 09:56 UTC: run 3 stopped (first ramp failing), run 4 launched
+* Run 3 (no bonus, contact ratchet): search 2 (378-485M) adopted a BETTER spine than run 2's -
+  877 states, 5.0% banked: a south landing (y -574 at 4 s) then east to the ramp complex, ending
+  STOPPED on a ledge at (12,180, 0, 13,081) at 8.8 s. The curriculum never got off its end
+  (tau 791-796 of 876, band success 19-36% around the 20% advance rate) and the greedy stayed at
+  1.8-1.9% (dies at 3.64 s at (9,299, -231, 13,853)). The policy degenerated: yaw sigma 1.28 at
+  0.79B (runs 1/2: 0.17-0.26 at that point), 57% of training episodes crashing. Stopped at 0.827B
+  (2 evals before the 1.0B deadline, the verdict clear).
+* Reading across runs 1-3 at the first ramp (one seed each):
+  | run | ratchet | spine adopted | bonus | first ramp |
+  |---|---|---|---|---|
+  | control | raw | - (no search) | - | FAILED (1.7% at 1.06B) |
+  | 1 | raw | none (stale / short) | yes | **0.906B** |
+  | 2 | contact | 2.86% dead end (south) | yes | FAILED (2.85%) |
+  | 3 | contact | 5.0% ledge (south) | no | FAILED (1.8% at 0.79B) |
+  Both contact-ratchet runs failed; the contact ratchet pays the platform drop (~1.5 s airborne)
+  only on landing, and run 3's policy went entropic. Adopted spines ended in places the policy
+  could not learn to leave (a dead end, a ledge).
+* **Run 4 `unr1b3_mcts4`** (09:56 UTC, commit 5b59a646): run 1's recipe (RAW ratchet, spawn spine,
+  demo-share 0.25) + --auto-spine-banked (adopt by banked depth) WITHOUT the success bonus /
+  milestones, + the MCTS defaults of this commit (random 0.5, novelty 3, flight roots, steer 2-20
+  deg, --mcts-energy 1). Its first iterations reproduce run 1's numbers EXACTLY (step 1.57M: kl
+  0.0081, ev -0.099, best 1,164 u): the trainer is deterministic here, so until run 4 adopts a
+  spine it should track run 1 - a controlled pair for what adoption does.
