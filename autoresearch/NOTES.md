@@ -512,3 +512,15 @@ greedy line, (3) first CHECK that a zero-noise explorer copy reproduces the gree
 (not verified in this round: a setup mismatch in the explorer's observation would look the same
 as too much noise). With the explorer stuck behind, a curriculum-only PPO would have had no
 starts past 31%: in geb6 the late walls came from the base recipe's own frontier spawns.
+
+### 22:51 UTC: geb6 82.48 at 7.47B (plateau); the explorer moved 31.48% -> 54.2%
+
+Evals 6.72-7.63B: best-of-9 80.7-82.5% (dips 57.1% 6.80B, 60.1% 7.40B), **82.475 at 7,474.8M**
+(median 82.3% there, 27.8-34% in several others). The explorer left 31.48% at explorer step
+4,712 (21:57 UTC, weights from 6.73B) and reached 54.24% (viable 54.21%, policy-mode copies,
+line 95 = 66.9 s, 21 links) within 15 min - then stopped there again. 54% is where the greedy
+passes at 62 s, i.e. where a 60 s from-start trace ends, and where the greedy itself sat from
+2.64B to 2.94B. Reading: the policy's tolerance to noise improved (the trainer's key temperature
+has been up on the plateau since ~4B), so T 1.5 copies now hold the line for a full trace, and
+the trace length caps the rest. No adoption (54% is behind the greedy's 82%); its frontier cells
+(15% of starts) now sit near 44-54% instead of <= 31%.
