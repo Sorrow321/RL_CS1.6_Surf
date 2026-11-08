@@ -453,3 +453,6 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   x ~0, z 8,940-9,508, y +-336: the line must DROP ~1,100 u more before x ~0 - another narrow
   window. Searches 11 (3.66B) and 12 (4.11B) adopted lines banking only 30.2-30.3% (+200..350 u
   over the greedy's banked frontier): at this wall the 6-min MCTS finds no deeper landing yet.
+* 13:45 UTC: run 4 at 4.91B: median up to 32.4% (32.1-32.4% evals), best **32.431 at 4.681B**.
+  Searches 13 (4.56B) / 14 (4.71B) adopted lines banking 32.1% / 32.4% (+2,100 / +280 u over the
+  greedy's banked frontier); the greedy's banked frontier followed them, 30.0% -> 32.1%.
