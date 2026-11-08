@@ -576,3 +576,44 @@ harvest of this box would fail the same way: pull before every deadline.
   segment: nothing (deepest chain end d 67,321, greedy 67,348). Post-CP2 block deadline 13.93B
   ~ 2026-11-09 08:40 UTC at 177k steps/s. Box deadline extended to 2026-11-09 07:26 UTC (19:26,
   12 h); one more extension after 00:35 UTC covers the round end.
+
+### 2026-11-08 23:40 UTC - one 3 h explorer archive at the post-CP2 slot: saturated, 24 u
+
+* unr1b1_v2 at 8.14B (178.9k steps/s): evals 6.23-8.11B all best 32.45-32.48%, median 32.4% - the
+  same deterministic line ending at the slot. Best score 32.476 (traj_6302990336). Searches 1-14 of
+  the second segment: nothing 200 u past the greedy (search 14's deepest chain end d 67,311; 15
+  running). Still ON TIME (cavity 2.341B); the post-CP2
+  deadline 13,931,380,736 falls ~2026-11-09 08:35 UTC. v2 already carries `--respawn-greedy 0.25`
+  (window 0.25-2 s, stuck 200) from the base recipe - almost the mechanism October used to pass this
+  block at 6.97B (0.3) - so that alone does not explain October's pass.
+* Diagnostic (no action - the run is ON TIME): PPO approx_kl, median per 0.2B, 0.02 up to 2.5B,
+  0.04-0.06 at 3.5-5.5B, then 0.07 (6.0B), 0.11 (6.4B), 0.35 (7.0B), 1.0-1.4 (7.4-7.8B), 2.1 (8.0B),
+  p90 up to 8. It grows smoothly through the 6.0B resume (no step there; the trainer has no LR or
+  entropy schedule on `--steps`, and the optimizer state is restored), explained variance stays
+  0.996, value loss flat, evals unchanged. The view sigmas: yaw 0.05, pitch walked up to its 0.5 cap
+  by ~7.6B. The trainer's own notes record the same symptom from a view head (approx_kl 1-22 per
+  update, r5b4, `--pitch-sigma-min`); which head carries it here was not measured.
+* Test x4L (analysis only, nothing changed in the run): the trainer's own search command
+  (`tools/auto_spine.py --line`, same flags, the trainer's field copy) on the second segment's
+  search-2 line, the trainer's 4 s roots, but ONE archive for 180 min (seed 1017, 4 threads, nice 19,
+  20:35-23:35 UTC) instead of fresh 8-min archives. Result: 7,850 iterations, 79.9M runs (~17x a
+  search's 4.5-4.7M), 878,872 cells (867.7k at 115 min: ~170 new cells a minute, saturated); the
+  explorer's best (its goal_32 field) 65,624 u from minute 3 to minute 180; the replayed chain's
+  end on the grader's field d 67,287 vs the greedy's 67,311 = 24 u, under the 200 u adoption gain.
+  Peak RSS 2.40 GB; the trainer's fps unchanged (178.9-180.6k).
+* Where the archive stops (snapshot at it 5000, 351 MB, read on the box) against the slot's shape
+  (MEASUREMENT only, from the goalc field; never a recipe input, CLAUDE.md 0b): a ramp floor rising
+  from x +200 (z 10,336) to x -152 (z 10,592) kicks the player to an apex ~11,000; from x -184 a
+  shelf (solid z 10,528-10,592), open above it, a tunnel below it (z 9,952-10,528); a hole in the
+  shelf near y ~0 at x ~-440..-696; above 10,528 an end wall from x ~-776; in the tunnel a ledge
+  at x ~-920 with its top at 10,336-10,340 (192 u under the tunnel ceiling), floor 10,112 at x
+  -952, open past x -984. The archive: no cell past x -904; at the ledge face (x -884..-916) its
+  highest cell is z 10,257, 83 u under the ledge top; its max z per 32 u of x drops from 10,910
+  (x -756..-788) to 10,394 (x -788..-820) at the end wall; its states that drop through the hole
+  fall at 600-740 u/s with only ~400-600 u/s of horizontal speed, so they meet the ledge face.
+* Reading: clearing the ledge needs a flight that enters the tunnel nearly level (a low apex, or a
+  drop through the hole's far edge) with more -x speed than any random burst keeps - one coordinated
+  manoeuvre, scored only at its end. 80M uniform 95%-repeat bursts and the archive's cells
+  (64 u x 32 u energy x heading) give it no stepping stone, and the archive saturates, so more
+  compute for the same explore step is not the missing piece. With x16 (16 s roots, 24 min) this
+  closes the explorer-alone question at this wall for slot 1's step.
