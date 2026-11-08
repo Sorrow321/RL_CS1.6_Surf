@@ -511,6 +511,19 @@ class Explorer:
         sel = A.select(self.rng, int(P.cells), float(P.front_frac), int(P.front_k),
                        float(getattr(P, "front_band", 0.0)),
                        int(P.viable_ticks) if getattr(P, "front_skip_doomed", False) else 0)
+        nr = int(round(int(P.cells) * float(getattr(P, "recent_frac", 0.0))))
+        if nr > 0 and self.steps > 0:
+            # --recent-frac: that share from the cells discovered in the last --recent-steps
+            # explore steps (the NOVELTY frontier - detour states behind the distance frontier
+            # are found here first), by W
+            n = A.n
+            rc = np.flatnonzero(A.cur[:n] & (A.born[:n] >= self.steps - int(P.recent_steps)))
+            if len(rc):
+                w = 1.0 / np.sqrt(1.0 + A.seen[rc].astype(np.float64))
+                sel = np.array(sel, copy=True)
+                pos = self.rng.choice(len(sel), min(nr, len(sel)), replace=False)
+                sel[pos] = self.rng.choice(rc, len(pos), p=w / w.sum())
+                np.add.at(A.chosen, sel[pos], 1)
         nc = int(round(int(P.cells) * float(getattr(P, "chain_frac", 0.0))))
         if nc > 0:
             ch = self.chain_roots(float(P.chain_secs))
@@ -863,6 +876,10 @@ def parse(argv=None):
                          "cell within its last --chain-secs (branch where the best line "
                          "committed); 0 = off")
     ap.add_argument("--chain-secs", type=float, default=5.0)
+    ap.add_argument("--recent-frac", type=float, default=0.0,
+                    help="share of the selected cells drawn (by W) from the cells discovered in "
+                         "the last --recent-steps explore steps (the novelty frontier); 0 = off")
+    ap.add_argument("--recent-steps", type=int, default=50)
     ap.add_argument("--front-band", type=float, default=0.0,
                     help="> 0: the frontier share is drawn by W from the deepest FRACTION of the "
                          "cells (at least --front-k) instead of uniformly from the --front-k "
