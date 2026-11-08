@@ -549,3 +549,7 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   supported cell on the far side existed: the limit at the pit was reach on the far side, which
   the policy's progress provided - the output-rule analysis above stands for the lower level
   itself, whose cells were not deeper than the dive. The curriculum is teaching it now.
+* **15:13 UTC - 28.164 at 3,769M: all 9 greedy episodes at 28.2%** - the policy flies the detour
+  past the CP2 pit that search 3 of the continuation found (adopted 3,558M; the curriculum walked
+  its band back from row 2,978 to 2,283 by ~3.73B, near the chain's root at 2,248). 3,543-3,694M
+  evals 27.55-27.63 on the way. The quorum fired search 4 at 3,769M from the new line.
