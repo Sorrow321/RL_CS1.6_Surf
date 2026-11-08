@@ -585,3 +585,24 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   one dip 27.57 at 5,543M; best **30.723 at 5,467M**, hand-on pulled). Searches 2-3 of knob3d
   (4,712M / 5,185M) found no cell past the frontier (d ~69,250; search 3 only 8,559 new cells).
   Next wall: the post-CP2 block (>33%, due 13.93B; October stalled at 32.3-32.5%).
+* **18:45 UTC - v3 (knob3d) at 6.52B: 30.5-30.9%, new best 30.849 at 6,222M** (CP2; evals
+  5,693-6,524M 30.58-30.86, one dip 9.3% episode; hand-on snapshot unr1b4_knob3d/ckpt_6009389056.pt
+  pulled). Searches 4-5 of knob3d (5,618M / 6,071M) found nothing past the line (k05: 10,003 cells,
+  1.25M runs, yield ~0 per decision by 8 min, deepest cell d 69,055 vs the line's 69,052).
+  **The plateau is a fatal dive again**: in the 6,222M and 6,524M evals, 16 of 18 episodes end
+  `fail` at 32.1-32.5 s with their best d ON THE DEATH TICK (falling, vz -136..-335, horizontal
+  speed 430-820, z 10,260-10,370, spread over ~300 x 400 u) - the CP2-pit signature one wall later.
+  The ratchet pays the fall, nothing charges the death.
+  Box extended to 2026-11-09 06:42 UTC (`extend --hours N` sets now+N, it does not add).
+* CORRECTION to the 13:50 "CORRECTION to (b)": the refusal at train_fast.py ~11222 is
+  `--curiosity-cond is not implemented with --death-charge` (that block lists --unstuck AND
+  --death-charge as incompatible with --curiosity-cond). Nothing refuses `--death-charge` with
+  `--unstuck`; `--death-charge` + `--race-ratchet` (+ `--death-charge-window`) is wired
+  (rewards.py: the bank = what the ratchet paid in the last W s, read from `_rec_boot`), and both
+  flags are in record_ckpt.py. So (b) is ONE flag pair on this recipe, no code.
+* **Plan if v3 misses the post-CP2 block (13.93B, ~03:40 UTC at 229k steps/s):** stop it (ladder)
+  and launch v6 = the v3 flags + `--death-charge 1 --death-charge-window 2` from scratch,
+  `--steps 60e9`. The constants are not read off this map: kappa 1 and W 2 s are uf2r1b1's
+  windowed charge (W = the recipe's own `--respawn-margin 2`, the doomed-tail margin), the lineage
+  that finished unitfarmer2. It cannot overtake v3 in the ~8 h left; it measures whether the one
+  generic term moves the early walls, the CP2-pit dive above all (v3: 1,284M -> 3,165M stuck there).
