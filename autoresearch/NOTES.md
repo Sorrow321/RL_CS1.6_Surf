@@ -213,3 +213,9 @@ Harvest: runs/unr1b2/unr1b2_geb (15 evals, ckpt_latest, ckpt_1000341504, ge/ lin
 **Run unr1b2_geb2** (commit d26c84ee): the same recipe + `--ge-beam-front 0.5 0.01
 --ge-beam-front-doomed --ge-beam-duty 0.5` (half the selections from the deepest 1% band of
 non-doomed cells, count-weighted; the explorer runs half the time).
+
+**unr1b2_geb2 at 418M (07:02 UTC)** - first ramp at 302.5M (ON TIME; geb 453.5M; October
+302.5M), best 15.736 at 378M; 287k steps/s with the explorer at duty 0.5 (no measurable cost
+over duty 0.3). The same lead-and-follow: lines adopted at 1.3/1.7/2.8/3.2/3.5/4.9/6.0/11.7%
+(12M..369M), greedy 1.7 -> 2.7 -> 4.3 -> 10.7 -> 15.7% (76M..378M), no 225M-step stall at 1.7%
+this time. Control unop_ctl: still no first ramp at 1.36B.
