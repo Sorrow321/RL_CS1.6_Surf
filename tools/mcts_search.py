@@ -641,15 +641,21 @@ def run_mcts(ctx: dict, a) -> dict:
         obsN[:] = O
         sideN.scatter(idxN, SD)
         polN.greedy = rank == 0
+        # the knob: of the SAMPLED children, --mcts-perturb-frac explore (the held steer and the
+        # keys / view temperatures), the rest are the policy's own samples at temperature 1 (the
+        # Nature paper's policy-based explorer commits 50/50 to random or policy per step)
+        explore = (rank > 0) & (rng.random(N) < float(a.mcts_perturb_frac))
         if sigma > 0:
-            # coherent steering: a sampled child keeps its parent's held offset with
+            # coherent steering: an explore child keeps its parent's held offset with
             # probability --mcts-hold-p (Go-Explore's action repeat, one level up), else draws
-            # a fresh one; the greedy child steers with none
+            # a fresh one; the greedy child and the policy samples steer with none
             fresh = rng.normal(0.0, sigma, N)
             keep = rng.random(N) < float(a.mcts_hold_p)
-            delta = np.where(rank == 0, 0.0, np.where(keep, tree.delta[own], fresh))
+            delta = np.where(explore, np.where(keep, tree.delta[own], fresh), 0.0)
         else:
             delta = np.zeros(N)
+        polN.set_temps(np.where(explore, float(a.mcts_keys_temp), 1.0),
+                       np.where(explore, float(a.mcts_view_temp), 1.0))
         alive = np.ones(N, bool)
         fin = np.zeros(N, bool)
         fin_t = np.full(N, -1, np.int64)
@@ -804,7 +810,7 @@ def run_mcts(ctx: dict, a) -> dict:
                "alive_nodes": int(tree.alive[1:tree.n].sum()), "cells": int(arch.n),
                "roots": len(roots), "macro_decisions": M, "children": Kc,
                "yaw_sigma": sigma, "hold_p": float(a.mcts_hold_p),
-               "novelty": float(a.mcts_novelty),
+               "novelty": float(a.mcts_novelty), "perturb_frac": float(a.mcts_perturb_frac),
                "keys_temp": float(a.mcts_keys_temp),
                "view_temp": float(a.mcts_view_temp), "c_puct": cpuct,
                "cell_w": float(a.mcts_cell_w), "cell": float(a.mcts_cell),

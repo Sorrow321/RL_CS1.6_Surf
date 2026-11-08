@@ -31,6 +31,19 @@ class MctsPolicy(SampledTorchPolicy):
         self._vt = (None if float(view_temp) == 1.0 and self._kt is None
                     else [float(view_temp), 1.0])
 
+    def set_temps(self, keys_temp, view_temp):
+        """PER-ENV temperatures ((N,) arrays; None = the constructor's scalars): the trainer's own
+        broadcasting - an (N, 1, 1) block over the keys' (N, heads, NPAD) logits, an (N, n_z)
+        sigma multiplier on the view heads (the pitch head untouched)."""
+        if keys_temp is None:
+            return
+        kt = torch.as_tensor(np.asarray(keys_temp, np.float32).reshape(-1, 1, 1),
+                             device=self.device)
+        vt = np.ones((len(view_temp), int(getattr(self.policy, "n_z", 2))), np.float32)
+        vt[:, 0] = np.asarray(view_temp, np.float32)
+        self._kt = kt
+        self._vt = torch.as_tensor(vt, device=self.device)
+
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self._net(self._obs(obs))

@@ -2267,6 +2267,10 @@ def main():
                          "visit in a child's subtree (each macro earns the fraction of its "
                          "decisions that opened a new cell), beside the max-backed progress; "
                          "0 = off")
+    ap.add_argument("--mcts-perturb-frac", type=float, default=0.5,
+                    help="--mcts: the share of each expansion's SAMPLED children that explore (the "
+                         "held yaw offset, --mcts-keys-temp, --mcts-view-temp); the rest sample "
+                         "the policy at temperature 1. 1 = every sampled child explores")
     ap.add_argument("--mcts-hold-p", type=float, default=0.5,
                     help="--mcts: a sampled child keeps its parent's held yaw offset with this "
                          "probability (coherent steering over several macros), else draws one")
