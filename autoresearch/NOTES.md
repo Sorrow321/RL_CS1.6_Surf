@@ -279,3 +279,25 @@ harvest of this box would fail the same way: pull before every deadline.
   were matched (126/126 respawns; map-start spawns are the line's row 0) and the band ran hot
   (gelhot 1.6-20.3%). A smoke shorter than the first search + an episode never respawns on the
   line: give it ~40k steps with --ep-ticks 300.
+
+### 2026-11-08 08:17 UTC - 1.92B: the line-11 curriculum walks back onto the policy's own states
+
+* Evals 1.66B-1.89B: 26.8-27.0% (best score 27.027 at 1.737B). Search 13 ended at d 72,226,
+  not adopted (line 11 ends at 72,152).
+* Line 11's curriculum moved from rows 2450/2475 to 2400/2425 (the band from 2425 succeeded
+  20.9%, from 2400 1.3%): 0.7-1.0 s before the chain's branch point (row 2496), so the bands are
+  now the greedy's OWN states and the policy is learning to steer onto the slab from its own
+  approach. Box: fps 175k.
+
+### 2026-11-08 08:46 UTC - PIT DIVE cleared at 2.114B (ON TIME); a 28.2% line follows
+
+* traj_2114453504: best 27.6% (score 27.574), the pit-dive wall's first crossing (October
+  1.94B, deadline 3.88B). The next eval (2.19B) fell back to 26.9%: one episode of nine, so not
+  yet reliable.
+* How: line 11's curriculum walked from rows 2450/2475 (1.5 s before its end) to 2400/2425 by
+  1.92B - onto the greedy's own states before the chain's branch point - and the greedy learned
+  to steer onto the slab the explorer's lines land on. Searches 12-14 found nothing 200 u past
+  line 11.
+* Search 15 (from the 2.114B greedy, best d 72,836) found a 30.6 s line to d 71,583 (28.18%),
+  adopted at 2.20B; its band succeeds 89% / 73% and the curriculum is doubling back fast
+  (steps 200, 400).
