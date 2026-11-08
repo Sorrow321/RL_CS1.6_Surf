@@ -4,11 +4,11 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 27.126,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/traj_1283981312.jsonl",
-  "run": "unr1b3_mcts1",
-  "step": 1283981312,
-  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/ckpt_1000341504.pt",
+  "score": 27.872,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/traj_2340945920.jsonl",
+  "run": "unr1b3_mcts4",
+  "step": 2340945920,
+  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/ckpt_latest.pt",
   "recipe": [
    "--envs",
    "1024",
@@ -103,11 +103,11 @@
    "--auto-spine-scratch",
    "--auto-spine-async",
    "--auto-spine-recheck",
-   "--auto-spine-milestones",
+   "--auto-spine-banked",
    "--auto-spine-explorer",
    "mcts",
    "--auto-spine-mcts-minutes",
-   "5",
+   "6",
    "--auto-spine-envs",
    "2048",
    "--auto-spine-ge-minutes",
@@ -120,8 +120,6 @@
    "0.25",
    "--demo-success-d",
    "100",
-   "--demo-success-bonus",
-   "50",
    "--demo-window",
    "5",
    "--demo-grow",
@@ -137,7 +135,7 @@
    "--demo-front-frac",
    "0.5"
   ],
-  "commit": "1524fea3",
+  "commit": "5b59a646",
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null
@@ -323,9 +321,10 @@
   "run4": {
    "first ramp": 378011648,
    "window (CP1)": 604504064,
-   "pit dive": null
+   "pit dive": 2340945920,
+   "cavity (CP2)": null
   },
-  "verdict": "run 4 alive: first ramp 0.378B, window 0.605B (both ON TIME, ~2x sooner than run 1); its MCTS threads the pit gate (27.72% banked) and the curriculum is teaching it; best score still run 1's 27.126"
+  "verdict": "run 4 alive and ON TIME on 3 walls: first ramp 0.378B, window 0.605B, pit dive 2.341B (its MCTS line through the pit gate, taught by the backward curriculum)"
  },
  "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search->curriculum loop from step 0. Run 1 (unr1b3_mcts1): first ramp 0.91B and window 1.06B ON TIME (the control failed the first ramp), then 1.7B steps at the pit dive (27.1%); its loop never adopted a line (stale while the policy improved fast, then banked MCTS lines vs the greedy's raw fatal dive). Explorer: random held children break the spawn trap (5.1% vs the beam's 1.8%); at the pit (a 220 u precision gate, map triggers) every variant banks 26.0-26.6% but none threads it. Run 2 (unr1b3_mcts2, 08:21): banked semantics everywhere (--ratchet-contact 1, --auto-spine-banked) + random 0.5, novelty 3, flight roots, steer 2-20 deg."
 }

@@ -413,3 +413,23 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
 * The policy has not followed yet: evals 26.7-26.9% (the greedy still dives at 26.8% raw, banked
   23.6%), 0/9 past the 27.7% line. The curriculum walked back to ~26.8 s on spine 6 (61.8% band
   success), then 3.2% at the last ~2 s - the gate itself. Pit-dive deadline 3.88B (~13:05 UTC).
+
+### 11:48 UTC: **RUN 4 CLEARS THE PIT DIVE at 2.341B (27.872, ON TIME; deadline 3.88B)** - new best
+* Evals 2.04-2.27B: 27.0 / 27.1 / 27.1 / 27.1%, then **27.9% best / 27.8% median at 2.341B**. The
+  curriculum on the searched gate line had walked back to tau 0 (the true start, 80% band
+  success); the greedy's banked frontier moved 76,170 -> 73,944 (23.6% -> 25.8%).
+* The 2.341B eval: 7/9 episodes pass the gate window (x < 2,592 at z 11,332-11,552) into the
+  cavity and reach 27.6-27.9% raw; 2/9 bank a contact inside it (27.80-27.82%) and live to 31-50 s.
+  Most die on the cavity's floor teleport (x 2,208-2,528, z ~10,690) or the kill below it. The
+  policy's own variant goes through at y ~ +650..+700 (the searched line went at y -880): the
+  curriculum taught WHERE, not the exact line.
+* The chain that did it, all by the run's own rules: patience search 5 (1.06B) / 6 (1.59B) - MCTS
+  with flight roots, the 2-20 deg steer mixture, random children, novelty 3, energy value - found
+  a 27.72%-banked line through the gate; the banked adoption rule took it; the backward curriculum
+  (25% of spawns, no bonus) taught it from its end back to the start; the policy then flew it from
+  the true start ~0.7B steps later. Run 1 (the same recipe without banked adoption) sat at this wall
+  1.7B steps with its searches rejected.
+* Hand-on: ckpt_latest at 2.378B (md5 checked by box.py pull), 37M after the eval (the 2.0B
+  snapshot is 340M before it, so the newest is more than twice as near).
+* Ladder, run 4: first ramp 0.378B / window 0.605B / pit dive 2.341B - all ON TIME. Next: the cavity
+  (sgcp_2 at x ~792; deadline 8.27B - beyond this round's ~7.5B reach).
