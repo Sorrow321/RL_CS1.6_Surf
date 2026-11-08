@@ -148,3 +148,16 @@ def test_a_pending_subtree_is_blocked_and_the_batch_spreads():
     assert t.blocked[r[1]]
     t.end_wave()
     assert not t.blocked[:t.n].any()
+
+
+def test_novelty_value_is_new_cells_per_visit_and_steers():
+    t = Tree()
+    r = _roots(t, 2, scores=[0.5, 0.5])
+    t.add_children(int(r[0]), [0.5, 0.5], [True, True], nov=[0.0, 0.0])
+    t.add_children(int(r[1]), [0.5, 0.5], [True, True], nov=[1.0, 0.5])
+    assert np.isclose(t.nov[r[1]], 1.5) and np.isclose(t.nov[0], 1.5)
+    picks = t.select(1, c_puct=0.0, novelty=1.0)
+    assert int(t.parent[picks[0]]) == int(r[1])
+    t.end_wave()
+    picks0 = t.select(1, c_puct=0.0, novelty=0.0)
+    assert len(picks0) == 1

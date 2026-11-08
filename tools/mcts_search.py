@@ -206,8 +206,9 @@ class CellArchive:
         e = np.floor(h / self.ecell).astype(np.int64) + (1 << 15)
         return (q[:, 0] << 48) | (q[:, 1] << 32) | (q[:, 2] << 16) | (e & 0xFFFF)
 
-    def visit(self, keys, nodes=None) -> tuple[np.ndarray, int]:
-        """Count one visit per key; -> (dense ids, number of NEW cells)."""
+    def visit(self, keys, nodes=None, is_new=None) -> tuple[np.ndarray, int]:
+        """Count one visit per key; -> (dense ids, number of NEW cells). ``is_new``: an optional
+        (len(keys),) bool array set True where the key opened a new cell."""
         keys = np.asarray(keys, np.int64)
         ids = np.empty(len(keys), np.int64)
         new = 0
@@ -223,6 +224,8 @@ class CellArchive:
                                                       np.full_like(self.first_node, -1)])
                 if nodes is not None:
                     self.first_node[c] = int(nodes[j])
+                if is_new is not None:
+                    is_new[j] = True
                 new += 1
             ids[j] = c
         np.add.at(self.seen, ids, 1.0)
@@ -263,7 +266,8 @@ class Tree:
           ("finished", bool, False), ("slot", np.int64, -1), ("cell", np.int64, -1),
           ("tick", np.int64, 0), ("bank_d", np.float64, np.inf), ("end_d", np.float64, np.inf),
           ("h", np.float64, 0.0), ("bank_t", np.int64, -1), ("ndec", np.int64, 0),
-          ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0))
+          ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0),
+          ("nov", np.float64, 0.0))
 
     def _alloc(self, cap: int):
         for name, dt, fill in self._F:
@@ -313,11 +317,15 @@ class Tree:
         if len(fin_s):
             self.qlo = min(self.qlo, float(fin_s.min()))
             self.qhi = max(self.qhi, float(fin_s.max()))
-        # backup: one visit per child, max of the block's scores
+        # backup: one visit per child, max of the block's scores, the SUM of its novelty
+        # rewards (a subtree's novelty value is that sum over its visits: the rate at which
+        # expanding it still opens new archive cells)
         best = float(score.max()) if len(score) else -np.inf
+        nsum = float(self.nov[ids].sum())
         p = int(parent)
         while p >= 0:
             self.visits[p] += m
+            self.nov[p] += nsum
             if best > self.q[p]:
                 self.q[p] = best
             p = int(self.parent[p])
@@ -338,7 +346,8 @@ class Tree:
             self.exhausted[i] = True
             i = int(self.parent[i])
 
-    def select(self, n_leaves: int, c_puct: float = 1.0, cell_w=None, max_fail: int = None):
+    def select(self, n_leaves: int, c_puct: float = 1.0, cell_w=None, max_fail: int = None,
+               novelty: float = 0.0):
         """Up to ``n_leaves`` distinct expandable leaves by PUCT descents from the root, each
         descent adding one virtual visit along its path. ``cell_w``: f(cell ids) -> weights
         (CellArchive.weight) or None. Leaves come back marked pending."""
@@ -385,6 +394,9 @@ class Tree:
                 else:
                     w = 1.0
                 u = qn + c_puct * (1.0 / nc) * w * math.sqrt(max(npar, 1.0)) / (1.0 + nch)
+                if novelty > 0.0:
+                    # the novelty value: new cells per visit in the child's subtree
+                    u = u + novelty * self.nov[ch] / np.maximum(self.visits[ch], 1.0)
                 node = int(ch[int(np.argmax(u))])
                 path.append(node)
             pth = np.asarray(path, np.int64)
@@ -613,7 +625,8 @@ def run_mcts(ctx: dict, a) -> dict:
     best_hist = []
     idxN = np.arange(N)
     while time.time() - t_all < budget_s and wave < int(a.mcts_max_waves):
-        leaves = tree.select(max(1, N // Kc), cpuct, cell_w=cell_w)
+        leaves = tree.select(max(1, N // Kc), cpuct, cell_w=cell_w,
+                             novelty=float(a.mcts_novelty))
         if not leaves:
             print(f"mcts wave {wave}: nothing left to expand - the tree is exhausted", flush=True)
             break
@@ -645,6 +658,7 @@ def run_mcts(ctx: dict, a) -> dict:
         acts_w = np.zeros((M, N, 6), np.int8)
         view_w = np.zeros((M, N, 2), np.float32)
         cell_keys = []
+        n_new = np.zeros(N, np.float64)
         tt = 0
         for m in range(M):
             act = polN.act(obsN)
@@ -714,8 +728,10 @@ def run_mcts(ctx: dict, a) -> dict:
         cells = np.full(N, -1, np.int64)
         new_cells = 0
         for ai, ks in cell_keys:
-            ids, nn = arch.visit(ks)
+            isn = np.zeros(len(ks), bool)
+            ids, nn = arch.visit(ks, is_new=isn)
             new_cells += nn
+            n_new[ai] += isn
         if al.any():
             ai = np.flatnonzero(al)
             cells[ai], _ = arch.visit(arch.keys(stN["origin"][ai], stN["velocity"][ai]))
@@ -736,7 +752,7 @@ def run_mcts(ctx: dict, a) -> dict:
                                     bank_d=c_bank_d[ch], end_d=end_d[ch], h=hN[ch],
                                     bank_t=c_bank_t[ch],
                                     ndec=np.where(fin[ch], (fin_t[ch] + K - 1) // K, M),
-                                    wave=wave, delta=delta[ch])
+                                    wave=wave, delta=delta[ch], nov=n_new[ch] / float(M))
             if tree._cap > len(E_acts):
                 E_acts = np.concatenate([E_acts, np.zeros((tree._cap - len(E_acts), M, 6),
                                                           np.int8)])
@@ -788,6 +804,7 @@ def run_mcts(ctx: dict, a) -> dict:
                "alive_nodes": int(tree.alive[1:tree.n].sum()), "cells": int(arch.n),
                "roots": len(roots), "macro_decisions": M, "children": Kc,
                "yaw_sigma": sigma, "hold_p": float(a.mcts_hold_p),
+               "novelty": float(a.mcts_novelty),
                "keys_temp": float(a.mcts_keys_temp),
                "view_temp": float(a.mcts_view_temp), "c_puct": cpuct,
                "cell_w": float(a.mcts_cell_w), "cell": float(a.mcts_cell),

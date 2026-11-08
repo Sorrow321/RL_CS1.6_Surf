@@ -109,3 +109,42 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   `ps` on the box and `runs/<run>_launch.txt` before launching again.
 
 ## Round log
+
+### unr1b3 (round 1, slot 3: policy-prior MCTS over macro-actions) - 2026-11-08 05:16 UTC
+
+**Box** 59668027 (RTX 5080, 32 threads, $0.322/h, Minnesota), rented 05:09 UTC.
+
+**What was built (commits cf8bb9ce, 7b69c1f2 on ar/unr1b3)**
+* `tools/mcts_search.py` + `tools/mcts_policy.py`, driven by `tools/beam_tas.py --mcts` (beam_tas
+  builds the checkpoint-faithful core, lidar, wrappers and side feeds; the MCTS reuses them, and
+  its best line goes through beam_tas's own `--save-frontier` open-loop replay).
+  * Node = exact sim state + EVERY per-env inference state a wrapper reads off past decisions
+    (held keys + their tick, compass d0 + prev tick, surf tracker, ratchet record, obs-reward feed,
+    latch), stored row-wise (RowStore / SideState) and restored into any env slot. Restore check:
+    on CPU the greedy children repeat the greedy pass's engine rows 24/24 with 0.0000 deg; on the
+    5080 339/504 (max 3.8 deg) - a 1-env vs 4096-env batch gives the GPU forward different float
+    results, so a near-tie argmax flips (lines stay exact: they are replayed open-loop).
+  * Edge = macro of M = 12 decisions (0.48 s): child 0 the policy's mode, the others samples at
+    keys temperature 1.5 with a held yaw offset ~ N(0, 20 deg) (view targets are in the velocity
+    frame, so a held offset is a held steer), kept from the parent with p 0.5 (coherent steering).
+  * Selection: PUCT, P = 1/children (sampled children: Sampled MuZero's uniform prior over policy
+    samples), Q = max backup of CONTACT-BANKED progress (best d at a tick the map pushed back;
+    a capped-speed fall is not contact), min-max normalised; the exploration term weighted by
+    Go-Explore's 1/sqrt(1 + visits) of the child's end cell RELATIVE among siblings; batched
+    with virtual visits, a subtree whose leaves are all pending is blocked for the wave.
+  * Roots: the policy's own greedy line (1-env pass from the true spawn, stopped at death or 10 s
+    without a 32 u gain), a root every 12 decisions over its last 20 s.
+* Trainer: `--auto-spine-scratch` (the first spine is the map spawn, 2 rows, written to
+  runs/<run>/auto/spine0.npy: the loop runs from step 0 with no picked file), `--demo-share F`
+  (the spine curriculum's draws take F of every pool on top of the recipe's own sources, so it runs
+  beside --respawn-novel / --respawn-backward-mix, which --demo-file refused), `--auto-spine-explorer
+  mcts` + `--auto-spine-mcts-minutes`. All default off, TRAIN_ONLY in record_ckpt.
+  **Flag-off bit-identity**: the full SCRATCH preset + incumbent recipe on CPU, 3 iterations, the
+  base commit's trainer vs this one: run.json config identical, progress.csv identical (fps aside).
+
+**First explorer-alone test (old selection, 05:11-05:20 UTC)**: r0 (October incumbent r0, greedy
+from seed 0 dies at 23.75 s, banked 23.9%): 500 waves, 2.05M nodes, only 4,318 cells, best 24.99%,
+26-217 leaves per wave instead of 256. Two design faults: (1) a batch kept descending into the
+deepest subtree and failing once its leaves were pending (fixed: per-wave blocking); (2) the cell
+weight multiplied the exploration term by 1/sqrt(1 + visits), and with ~49k cell visits per wave it
+went to ~0: pure exploitation (fixed: relative among siblings). c_puct 1 -> 2.

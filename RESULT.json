@@ -1,0 +1,4 @@
+{"agent": "unr1b3", "round": 1, "final": false, "slot": 3,
+ "best": null,
+ "ladder": {"verdict": "no run yet"},
+ "summary": "Slot 3: policy-prior MCTS over macro-actions (tools/mcts_search.py via beam_tas --mcts): PUCT with max backup of contact-banked progress, children = the policy's mode + samples at keys temperature 1.5 with a held yaw offset (coherent across macros with p 0.5), Go-Explore cell weight relative among siblings, roots on the policy's own greedy line. Wired into the trainer as --auto-spine-explorer mcts with --auto-spine-scratch (first spine = map spawn) and --demo-share (the found line's curriculum on 25% of the pool beside the recipe's spawn sources). Flag-off bit-identical (CPU, full recipe). Explorer-alone test on October r0/r1 checkpoints running."}

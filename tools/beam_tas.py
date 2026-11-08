@@ -2262,6 +2262,11 @@ def main():
     ap.add_argument("--mcts-yaw-sigma", type=float, default=20.0,
                     help="--mcts: the sampled children's held yaw offset ~ N(0, SIGMA) deg "
                          "(child 0 takes the policy's mode with none)")
+    ap.add_argument("--mcts-novelty", type=float, default=0.0,
+                    help="--mcts: weight of the NOVELTY value in PUCT - new archive cells per "
+                         "visit in a child's subtree (each macro earns the fraction of its "
+                         "decisions that opened a new cell), beside the max-backed progress; "
+                         "0 = off")
     ap.add_argument("--mcts-hold-p", type=float, default=0.5,
                     help="--mcts: a sampled child keeps its parent's held yaw offset with this "
                          "probability (coherent steering over several macros), else draws one")
