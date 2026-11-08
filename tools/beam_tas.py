@@ -2243,6 +2243,46 @@ def main():
                     "starts a search from the greedy's own state at any tick (the --keys-hold-"
                     "safe twin of --greedy-prefix, which refuses a --keys-hold checkpoint). "
                     "Off = the deepest-d rule, byte-identical")
+    ap.add_argument("--ge-knob", action="store_true",
+                    help="tools/knob_ge.py INSTEAD of the beam: Go-Explore over exact states "
+                         "rooted at the checkpoint's own greedy line (its last "
+                         "--ge-knob-roots-secs before it stalls), contact-only cells, each "
+                         "explore run committed to held random actions (share = the knob) or to "
+                         "the policy's own samples; the knob set by probability matching on "
+                         "each mode's new-cell yield per decision. Writes knob_line.npy (the "
+                         "greedy line to the root + the deepest cell's chain, replayed exactly) "
+                         "and knob_summary.json into --out-dir. Needs --skip-gate, no "
+                         "--greedy-envs / --eps / --commit. Off = the tool as it was")
+    ap.add_argument("--ge-knob-minutes", type=float, default=10.0,
+                    help="--ge-knob: wall-clock budget of the search")
+    ap.add_argument("--ge-knob-decisions", type=int, default=100,
+                    help="--ge-knob: decisions per explore run (the paper's 100 steps)")
+    ap.add_argument("--ge-knob-repeat", type=float, default=0.95,
+                    help="--ge-knob: a random run keeps its held action with this probability "
+                         "per decision (the paper's 0.95)")
+    ap.add_argument("--ge-knob-floor", type=float, default=0.05,
+                    help="--ge-knob: the knob stays in [floor, 1 - floor]")
+    ap.add_argument("--ge-knob-warm", type=int, default=256,
+                    help="--ge-knob: run ends per mode before the yield rule speaks (0.5 until)")
+    ap.add_argument("--ge-knob-lambda", type=float, default=None,
+                    help="--ge-knob: a FIXED random share instead of the rule (0 = all policy, "
+                         "1 = all random; ablations)")
+    ap.add_argument("--ge-knob-cell", type=float, default=64.0,
+                    help="--ge-knob: position cell (u)")
+    ap.add_argument("--ge-knob-energy", type=float, default=64.0,
+                    help="--ge-knob: kinetic-energy-height bucket |v|^2/2g (u, 64 buckets)")
+    ap.add_argument("--ge-knob-heading", type=int, default=0,
+                    help="--ge-knob: velocity-heading sectors x rising/not in the key (0 = off)")
+    ap.add_argument("--ge-knob-roots-secs", type=float, default=4.0,
+                    help="--ge-knob: the greedy line's last seconds before its stall are roots")
+    ap.add_argument("--ge-knob-stall-margin", type=float, default=500.0,
+                    help="--ge-knob: the line stalls where it first comes within this many u "
+                         "of its best d")
+    ap.add_argument("--ge-knob-contact-tol", type=float, default=1.0,
+                    help="--ge-knob: a tick is a contact when its vz change departs from free "
+                         "fall by more than this (u/s)")
+    ap.add_argument("--ge-knob-report-secs", type=float, default=30.0,
+                    help="--ge-knob: a progress line every this many seconds")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -2816,6 +2856,27 @@ def main():
             # every decision publishes the POLICY-space row (before the keep bins resolve) and
             # the drawn view z next to the engine row: the BC targets plan_to_bc writes
             _w.record_policy_act = True
+    if args.ge_knob:
+        # --ge-knob (unr1b4): Go-Explore on one random-vs-policy knob, INSTEAD of the beam
+        if not args.skip_gate or args.greedy_envs > 0 or args.eps > 0.0 or args.commit > 0 \
+                or prefix > 0 or args.prefix_line or args.start_state:
+            raise SystemExit("--ge-knob needs --skip-gate and no --greedy-envs / --eps / "
+                             "--commit / --greedy-prefix / --prefix-line / --start-state")
+        from knob_ge import knob_ge_search
+        es1, ef1, _f1, lf1 = mk_feed()
+        xkw1, _xb1 = XF.make(core1)
+        gpol1 = GreedyTorchPolicy(policy, packer, device, lidar, core1, K, stack,
+                                  extra_slot=es1, extra_fn=ef1, latch_fn=lf1, cc_fn=cc_fn1,
+                                  keys_hold=KEYS, **xkw1)
+        gpol1.spawn_duck = SPAWN_DUCK
+        rc = knob_ge_search(args, cfg=cfg, map_path=map_path, ep_cap=ep_cap, tick=TICK, arm=arm,
+                            K=K, VIEWC=VIEWC, VIEW_ABS=VIEW_ABS, coreN=coreN, spol=spol, obs=obs,
+                            ogf=ogf, core1=core1, greedy_wrapper=gpol1, row0=row0,
+                            obs_start=obs_start, gate_seed=gate_seed, out_dir=out_dir,
+                            build_sim=build_sim, gravity_step=gravity_step,
+                            neutral_act=NEUTRAL_ACT, nvec=NVEC, off_warp=off_warp,
+                            state_dtype=row0.dtype)
+        raise SystemExit(rc)
     value_fn = None
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):

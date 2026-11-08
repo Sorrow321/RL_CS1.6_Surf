@@ -163,6 +163,38 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
                          f"{tag}_finished": int(z["finished"]) if "finished" in z.files else 0}
 
 
+def knob(a, out: Path):
+    """--knob (unr1b4): the ONE explorer instead of the beam and the GE ladder - tools/beam_tas.py
+    --ge-knob on these weights (tools/knob_ge.py: Go-Explore rooted at the greedy line's last
+    seconds before its stall, each explore run either held random actions or the policy's own
+    samples, the random share set by each mode's new-cell yield). -> (the line: the greedy
+    line from the true start to the root + the deepest cell's chain, info)."""
+    kd = out / "knob"
+    kd.mkdir(parents=True, exist_ok=True)
+    cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
+           "--envs", a.envs, "--skip-gate", "--allow-nonfinisher", "--route-file", "none",
+           "--max-ticks", a.beam_ticks, "--torch-seed", a.seed, "--seed", 0,
+           "--ge-knob", "--ge-knob-minutes", a.ge_minutes, "--out-dir", kd]
+    for k in ("decisions", "repeat", "floor", "cell", "energy", "heading", "roots_secs",
+              "stall_margin"):
+        v = getattr(a, f"knob_{k}", None)
+        if v is not None:
+            cmd += [f"--ge-knob-{k.replace('_', '-')}", v]
+    rc = run(cmd, out / "knob.log", a.ge_minutes * 60 + 900)
+    info = {"knob_rc": rc}
+    sp = kd / "knob_summary.json"
+    if sp.exists():
+        s = json.loads(sp.read_text(encoding="utf-8"))
+        info.update({f"knob_{k}": s.get(k) for k in (
+            "cells", "runs", "lam_final", "ends", "cells_by_mode", "decisions_by_mode",
+            "line_best_d", "best_d", "finishes", "replay_ok", "chain_cells", "chain_modes",
+            "root_index", "line_end_d")})
+    f = kd / "knob_line.npy"
+    if rc != 0 or not f.exists():
+        return None, info
+    return np.load(f), info
+
+
 def beats_greedy(de: float, greedy_d: float, gain: float, finished: bool = False) -> bool:
     """A line beats the greedy frontier when its end is --gain deeper, or when it FINISHES and
     the greedy's median episode does not (greedy_d > 0): within --gain of the goal not even a
@@ -524,6 +556,18 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--knob", action="store_true",
+                    help="the ONE knob explorer (beam_tas --ge-knob, tools/knob_ge.py) INSTEAD of "
+                         "the beam, the branched beams and the GE ladder; --ge-minutes is its "
+                         "budget, --envs its population. Off = the search as it was")
+    ap.add_argument("--knob-decisions", type=int, default=None)
+    ap.add_argument("--knob-repeat", type=float, default=None)
+    ap.add_argument("--knob-floor", type=float, default=None)
+    ap.add_argument("--knob-cell", type=float, default=None)
+    ap.add_argument("--knob-energy", type=float, default=None)
+    ap.add_argument("--knob-heading", type=int, default=None)
+    ap.add_argument("--knob-roots-secs", type=float, default=None)
+    ap.add_argument("--knob-stall-margin", type=float, default=None)
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -541,6 +585,23 @@ def main(argv=None) -> int:
               f"{int(round(a.tick))} ms; seconds convert at {TICKS_PER_S:.2f} ticks/s", flush=True)
     field = load_field(a.field)
     res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
+    if a.knob:
+        # --knob: one explorer, its own line; the same cut, the same gain test, the same output
+        kl, ki = knob(a, out)
+        res.update(ki)
+        best_src = None
+        if kl is not None and len(kl):
+            kd_ = field_d(field, kl)
+            fin = bool(len(kl)) and ki.get("knob_finishes") and ki.get("knob_best_d") == 0.0
+            e, de = (len(kl) - 1, float(kd_[-1])) if fin else cut_line(kl, kd_, a.contact_tol,
+                                                                         a.cut)
+            res.update(knob_len=int(len(kl)), knob_end=e, knob_end_d=de,
+                       knob_line_best_d=float(kd_.min()))
+            print(f"knob line: {len(kl)} states, best d {kd_.min():,.0f}, cut at {e} d "
+                  f"{de:,.0f}; greedy frontier {a.greedy_d:,.0f}", flush=True)
+            if beats_greedy(de, a.greedy_d, a.gain, fin):
+                best_src = ("knob", kl[:e + 1], de)
+        return finish_spine(out, res, best_src)
     line, info = beam(a, out)
     line_tag = "beam"
     res.update(info)
@@ -695,6 +756,13 @@ def main(argv=None) -> int:
             else:
                 print(f"energy stage: no cell keeps {a.energy_gain:g} u more than the line "
                       f"({got.get('energy_candidates', 0)} candidates)", flush=True)
+    return finish_spine(out, res, best_src)
+
+
+def finish_spine(out: Path, res: dict, best_src) -> int:
+    """Write the winning line (``best_src`` = (source tag, states, end d) or None) as spine.npy +
+    spine.json (+ its held keys when the source has them) and print the AUTO_SPINE line the
+    trainer reads. -> 0 (a spine) / 2 (none)."""
     if best_src is not None:
         src, sp, de = best_src
         sp = clean(sp)
@@ -710,7 +778,7 @@ def main(argv=None) -> int:
             np.save(kp, np.asarray(KEYS[kt][:len(sp)], np.int32))
             res.update(keys=str(kp))
         (out / "spine.json").write_text(json.dumps(res, indent=1), encoding="utf-8")
-    print("AUTO_SPINE " + json.dumps(res), flush=True)
+    print("AUTO_SPINE " + json.dumps(res, default=str), flush=True)
     return 0 if best_src is not None else 2
 
 

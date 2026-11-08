@@ -5154,6 +5154,30 @@ def main() -> None:
                          "beats the greedy frontier by --auto-spine-gain replaces the "
                          "curriculum's (restarting at its end) and its success line. Single "
                          "map, single GPU. Config only when on; never restored")
+    ap.add_argument("--auto-spine-scratch", action="store_true",
+                    help="--auto-spine FROM SCRATCH (unr1b4): no --demo-file - the loop starts "
+                         "with NO spine (no spine rows, no success line, no bonus: nothing "
+                         "changes until the first search) and its first search runs after "
+                         "--auto-spine-patience steps from the first greedy eval; the first "
+                         "spine it adopts starts the curriculum. Needs --auto-spine, "
+                         "--auto-spine-patience > 0 and --demo-success-d. Off = --auto-spine "
+                         "needs its --demo-file, as before; config only when on; never restored")
+    ap.add_argument("--auto-spine-knob", action="store_true",
+                    help="--auto-spine: the search is the ONE knob explorer (tools/auto_spine.py "
+                         "--knob -> tools/knob_ge.py: Go-Explore over exact contact states "
+                         "rooted at the greedy line's last seconds before its stall; each "
+                         "explore run held random actions or the policy's own samples, the "
+                         "random share set by each mode's new-cell yield per decision) instead "
+                         "of the beam + branched beams + GE ladder; --auto-spine-ge-minutes is "
+                         "its budget. Off = the search as it was; config only when on")
+    ap.add_argument("--demo-share", type=float, default=None,   # None = off
+                    help="--demo-file / --auto-spine: the spine's curriculum takes this SHARE of "
+                         "every training spawn pool (positions drawn uniformly, like "
+                         "--finish-line) and the rest of the pool is built exactly as without a "
+                         "spine (the reservoir, novel, greedy and perturbed rows of the "
+                         "recipe), instead of REPLACING the reservoir share of the pool (the "
+                         "default). In (0, 1). Off = the replace rule, bit-identical; config "
+                         "only when set; never restored")
     ap.add_argument("--auto-spine-milestones", action="store_true",
                     help="--auto-spine + --demo-success-bonus: when a new spine replaces the "
                          "curriculum's, the old success line becomes a MILESTONE that keeps "
@@ -12104,17 +12128,50 @@ def main() -> None:
     else:
         respawn = None
     demo = None
-    if not args.demo_file and (args.demo_cooldown is not None or args.demo_grow_max is not None):
+    # --auto-spine-scratch (unr1b4): the --auto-spine loop with NO starting spine - a placeholder
+    # curriculum that draws nothing, matches no spawn and pays nothing until the first search's
+    # spine replaces it (DEMO_LIVE). Off = DEMO_ON is args.demo_file, as before.
+    AUTO_SCRATCH = bool(args.auto_spine_scratch)
+    if AUTO_SCRATCH:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-scratch starts --auto-spine's loop with no spine: give "
+                             "--auto-spine")
+        if args.demo_file:
+            raise SystemExit("--auto-spine-scratch is the loop WITHOUT a starting spine: not with "
+                             "--demo-file")
+        if not float(args.auto_spine_patience) > 0.0:
+            raise SystemExit("--auto-spine-scratch: the first search runs on --auto-spine-patience "
+                             "(there is no success line for a quorum): give it > 0")
+        for _flag, _on in (("--demo-success-energy", args.demo_success_energy is not None),
+                           ("--demo-success-pace", args.demo_success_pace is not None),
+                           ("--demo-success-alive", float(args.demo_success_alive or 0.0) > 0.0),
+                           ("--demo-keys", bool(args.demo_keys)),
+                           ("--demo-tau0", args.demo_tau0 is not None),
+                           ("--demo-stall-cut", float(args.demo_stall_cut or 0.0) > 0.0),
+                           ("--auto-spine-energy", args.auto_spine_energy is not None)):
+            if _on:
+                raise SystemExit(f"--auto-spine-scratch is not implemented with {_flag} (a rule "
+                                 "of a starting spine)")
+    DEMO_ON = bool(args.demo_file) or AUTO_SCRATCH
+    DEMO_LIVE = [not AUTO_SCRATCH]        # False: the scratch placeholder, nothing drawn or paid
+    DEMO_SHARE = None if args.demo_share is None else float(args.demo_share)
+    if DEMO_SHARE is not None:
+        if not DEMO_ON:
+            raise SystemExit("--demo-share is the spine curriculum's share of the pool: give "
+                             "--demo-file or --auto-spine-scratch")
+        if not 0.0 < DEMO_SHARE < 1.0:
+            raise SystemExit("--demo-share must be in (0, 1)")
+    if not DEMO_ON and (args.demo_cooldown is not None or args.demo_grow_max is not None):
         raise SystemExit("--demo-cooldown / --demo-grow-max pace the --demo-file curriculum")
     if not 0.0 <= float(args.demo_front_frac) <= 1.0:
         raise SystemExit("--demo-front-frac must be in [0, 1]")
     if float(args.demo_front_frac) > 0.0:
-        if not args.demo_file:
+        if not DEMO_ON:
             raise SystemExit("--demo-front-frac needs --demo-file")
         if not args.demo_grow:
             raise SystemExit("--demo-front-frac needs --demo-grow: the sliding "
                              "window already draws only its band")
-    if args.demo_file:
+    if DEMO_ON:
         _dkw = {}
         if args.demo_cooldown is not None:
             _dkw["cooldown"] = int(args.demo_cooldown)
@@ -12124,7 +12181,14 @@ def main() -> None:
             _dkw["grow_max"] = int(args.demo_grow_max)
         if args.demo_match_band:
             _dkw["match_band"] = True
-        demo = DemoCurriculum(np.load(args.demo_file),
+        if args.demo_file:
+            _spine0 = np.load(args.demo_file)
+        else:
+            # --auto-spine-scratch: one row nowhere on the map (no spawn ever matches it); it is
+            # never drawn (DEMO_LIVE) and replaced by the first adopted spine
+            _spine0 = np.zeros(1, STATE_DTYPE)
+            _spine0["origin"] = (1.0e9, 1.0e9, 1.0e9)
+        demo = DemoCurriculum(_spine0,
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
                               front_frac=float(args.demo_front_frac),
@@ -15367,6 +15431,13 @@ def main() -> None:
     if args.demo_file and float(args.demo_success_alive or 0.0) > 0.0:
         # --demo-success-alive: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_success_alive"] = float(args.demo_success_alive)
+    if args.auto_spine_scratch:
+        # --auto-spine-scratch / --auto-spine-knob / --demo-share (unr1b4): dumped only when on
+        meta["config"]["auto_spine_scratch"] = 1
+    if args.auto_spine_knob:
+        meta["config"]["auto_spine_knob"] = 1
+    if args.demo_share is not None:
+        meta["config"]["demo_share"] = float(args.demo_share)
     if args.auto_spine:
         # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for
         # byte); never restored - the loop is a property of the run, not of the weights
@@ -16363,7 +16434,14 @@ def main() -> None:
     fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
     fin_paced = np.zeros(N, bool)         # --finish-line-pace: this tick's paced finishes
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
-    if demo is not None and args.demo_success_d is not None:
+    if demo is not None and args.demo_success_d is not None and AUTO_SCRATCH:
+        # --auto-spine-scratch: no spine, no success line (no record is <= -inf): no bonus, no
+        # quorum - the first search comes on --auto-spine-patience
+        DEMO_END_D = float("-inf")
+        print(f"--auto-spine-scratch: no spine yet - no success line, no bonus and no spine rows "
+              f"until the first search (after {float(args.auto_spine_patience):,.0f} steps from "
+              f"the first greedy eval) adopts one")
+    elif demo is not None and args.demo_success_d is not None:
         _df = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
         _de = float(_df.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
         DEMO_END_D = _de + float(args.demo_success_d)
@@ -16611,6 +16689,9 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if args.auto_spine_knob:
+            # --auto-spine-knob: the one knob explorer instead of the beam + GE ladder
+            cmd += ["--knob"]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and
@@ -16828,6 +16909,11 @@ def main() -> None:
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
         demo.reset_spine(sp)
+        if not DEMO_LIVE[0]:
+            # --auto-spine-scratch: the first spine - the curriculum starts drawing from now on
+            DEMO_LIVE[0] = True
+            print(f"[{global_step:>13,d}] --auto-spine-scratch: the FIRST spine is live",
+                  flush=True)
         if DEMO_KEYS[0] is not None:
             # the new spine's held keys (auto_spine writes them next to it), else none
             _kp = res.get("keys")
@@ -16840,8 +16926,9 @@ def main() -> None:
                 DEMO_KEYS[0] = None
                 print(f"[{global_step:>13,d}] --demo-keys dropped: the new spine has no held "
                       f"keys", flush=True)
-        if args.auto_spine_milestones:
+        if args.auto_spine_milestones and np.isfinite(float(DEMO_END_D)):
             # the line the greedy just crossed keeps paying (a milestone), the new one is next
+            # (--auto-spine-scratch: the placeholder's -inf line is not one)
             MILES[0] = np.append(MILES[0], float(DEMO_END_D))
             print(f"[{global_step:>13,d}] auto-spine milestones: "
                   + ", ".join(f"{v:,.0f}" for v in MILES[0]), flush=True)
@@ -19369,12 +19456,27 @@ def main() -> None:
                 _fpos = FINL.rng.choice(np.flatnonzero(_free), _fm, replace=False)
                 _pool = _pool.copy()
                 _pool[_fpos] = FINL.draw(_fm)
+            if DEMO_SHARE is not None and demo is not None and DEMO_LIVE[0]:
+                # --demo-share: the spine curriculum's SHARE of the pool, at positions the
+                # shares above did not take; the rest is the pool the recipe built without a
+                # spine (the replace rule below is skipped under the flag)
+                if len(_pool) < 4096:
+                    _pool = np.resize(_pool, 4096)
+                _dfree = np.ones(len(_pool), bool)
+                if SPAWN_STATES is not None:
+                    _dfree[_pos] = False
+                if FINL is not None:
+                    _dfree[_fpos] = False
+                _dm = min(int(round(len(_pool) * DEMO_SHARE)), int(_dfree.sum()))
+                _dpos = demo.rng.choice(np.flatnonzero(_dfree), _dm, replace=False)
+                _pool = _pool.copy()
+                _pool[_dpos] = demo.draw(_dm)
             _slot.core.set_spawn_pool(_pool)
         if STALL_CUT and demo is not None:
             # --demo-stall-cut: before this iteration's draws (a cut spine is drawn at once)
             _demo_stall_check()
         for _s in slots:
-            if demo is not None:
+            if demo is not None and DEMO_LIVE[0] and DEMO_SHARE is None:
                 # Salimans-Chen: the reservoir share of the pool is replaced
                 # by exact demo-window states (velocities unscaled — the
                 # paper resets to the demonstration state itself)
