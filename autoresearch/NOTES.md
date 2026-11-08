@@ -315,3 +315,33 @@ harvest of this box would fail the same way: pull before every deadline.
   to rows 2783/2808 of 3058 and now oscillates there (29.7% from 2808, ~2% from 2783): the return
   leg of the chain's +x loop ((5,408, -475) -> (4,719, -734)), ~2.5 s before the line's end.
 * Box deadline extended to 15:12 UTC; credit $49.89, fleet burn $1.27/h.
+
+### 2026-11-08 09:45 UTC - 2.81B: the greedy is now one deterministic line dying at 27.05%
+
+* Evals 2.64B-2.79B: best and median 27.1% (score 27.09). All nine episodes of the 2.79B eval
+  are the same line: the turn at (4,528, 45), -x along y ~890, death falling at (3,040, 885,
+  11,195), 25.4-25.9 s - ~500 u (+y) of the slab the explorer lines land on (y ~400).
+* Line 15's curriculum still oscillates 2783 (30%) <-> 2808 (0.5%), the loop's return leg.
+  Searches 18-19 ended at d 72,268 / 72,253: nothing 200 u past line 15 (71,583).
+* Training's crawl share ("cr" in tr/st/cr) jumped 5-10% -> 30-34% at ~2.6B and stays there;
+  the greedy does not crawl (it dies falling).
+
+### 2026-11-08 10:15 UTC - 3.13B: the spawn-duck defect (a recommendation for the next recipe)
+
+* Evals 2.87B-3.10B: 27.0-27.1% (one deterministic line). Searches 20-21: d 72,181 / 72,292.
+* Line 15's hard window (rows 2783 -> 2808: 0.2% vs 37% band success) is a short DUCKED flight
+  (rows 2776-2802: vz changing by the gravity step) onto a ramp that carries the line up from
+  (4,840, -695, 11,146) (vz rising 8-11 u/s a tick).
+* Under `--keys-hold` every spawn starts with the keys NEUTRAL, so a spawn on a ducked row
+  unducks on its first tick (the hull's feet drop ~36 u in the air) unless the policy re-presses
+  duck at once. The incumbent recipe does not set the existing generic fix
+  `--keys-hold-spawn-duck` ("an episode that spawns crouched starts with duck held"). Ducked
+  rows: 39-50% of the policy's own greedy lines (g004 49.3%, g011 49.8%, g015 39.4% of their
+  prefixes) and 22-72% of the explorer's chains (random bursts press duck half the time). So
+  every reservoir / greedy / novel / line spawn on such a row starts in another state than the
+  one it was harvested from - plausibly why the curriculum stalls in ducked flights.
+* RECOMMENDATION for any new run of this recipe: add `--keys-hold-spawn-duck` (an existing,
+  tested flag; one generic rule, no map constant). A fuller fix for the line curriculum is
+  spawning with the line's own held keys (the `--demo-keys` rule): the greedy prefix's keys are
+  in the eval rows (fwd, side, buttons), the chain's in the archive's link actions
+  (auto_spine.chain_keys) - not built.
