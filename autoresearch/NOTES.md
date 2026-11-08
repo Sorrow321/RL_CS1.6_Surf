@@ -581,3 +581,7 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   **30.681 at 4,788M** (hand-on unr1b4_knob3d/ckpt_4758962176.pt, pulled); evals 4,712-4,939M
   30.59-30.68. Search 2 of knob3d (4,712M) found nothing past d 69,328. Next: the post-CP2 block
   (>33%, due 13.93B), CP3 (14.64B).
+* **17:40 UTC - v3 (knob3d) at 5.68B, a plateau at 30.5-30.7%** (CP2; evals 4,712-5,618M 30.52-30.72,
+  one dip 27.57 at 5,543M; best **30.723 at 5,467M**, hand-on pulled). Searches 2-3 of knob3d
+  (4,712M / 5,185M) found no cell past the frontier (d ~69,250; search 3 only 8,559 new cells).
+  Next wall: the post-CP2 block (>33%, due 13.93B; October stalled at 32.3-32.5%).
