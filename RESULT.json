@@ -4,11 +4,13 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 32.499,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/traj_12457607168.jsonl",
-  "run": "unr1b3_mcts4",
-  "step": 12457607168,
-  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/ckpt_12004098048.pt",
+  "score": 36.914,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/traj_2718433280.jsonl",
+  "run": "unr1b3_mcts5",
+  "step": 2718433280,
+  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/ckpt_2718433280.pt",
+  "ckpt_step": 2718433280,
+  "ckpt_note": "ckpt_latest at exactly the best eval's step (snapshotted on the box, md5 60a53474f3ea398f24ae504f63651716)",
   "recipe": [
    "--envs",
    "1024",
@@ -133,13 +135,15 @@
    "--demo-min-ep",
    "50",
    "--demo-front-frac",
-   "0.5"
+   "0.5",
+   "--auto-spine-mcts-args",
+   "--mcts-random-frac 1.0 --mcts-perturb-frac 0"
   ],
-  "commit": "5b59a646",
+  "commit": "9eda7009",
+  "code_commit": "f5421ec9",
   "one_recipe": true,
   "from_scratch_step0": true,
-  "resume_from": null,
-  "ckpt_step": 12004098048
+  "resume_from": null
  },
  "running": {
   "run": "unr1b3_mcts5",
@@ -333,12 +337,16 @@
    "cavity (CP2)": 2718433280,
    "post-CP2 block": "FAILED (deadline 13,931,380,736; best 32.499 at 12.458B; stopped at 14.16B)"
   },
-  "verdict": "run 4 (0.5 knob mix) cleared 4 walls ON TIME (first ramp 0.378B, window 0.605B, pit dive 2.341B, cavity 2.718B) and FAILED the post-CP2 block (flat 32.4-32.5% from ~4.6B to 14.16B; stopped 20:52 UTC). Run 5 (knob at the random end, from scratch 20:52 UTC): first ramp 0.529B, window 0.680B ON TIME; at the pit wall (26.9%)",
+  "verdict": "run 5 (MCTS knob at the RANDOM end, from scratch 20:52 UTC) is ON TIME on 6 walls: first ramp 0.529B, window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B (October 0.30/1.04/1.94/4.14/6.97/7.32B); next CP4 (deadline 18.79B). Run 4 (0.5 mix) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% to 14.16B)",
   "run5": {
    "first ramp": 529006592,
    "window (CP1)": 680001536,
-   "pit dive": null
+   "pit dive": 1812463616,
+   "cavity (CP2)": 2114453504,
+   "post-CP2 block": 2340945920,
+   "CP3": 2642935808,
+   "CP4": null
   }
  },
- "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search->curriculum loop from step 0. Run 1 (unr1b3_mcts1): first ramp 0.91B and window 1.06B ON TIME (the control failed the first ramp), then 1.7B steps at the pit dive (27.1%); its loop never adopted a line (stale while the policy improved fast, then banked MCTS lines vs the greedy's raw fatal dive). Explorer: random held children break the spawn trap (5.1% vs the beam's 1.8%); at the pit (a 220 u precision gate, map triggers) every variant banks 26.0-26.6% but none threads it. Run 2 (unr1b3_mcts2, 08:21): banked semantics everywhere (--ratchet-contact 1, --auto-spine-banked) + random 0.5, novelty 3, flight roots, steer 2-20 deg."
+ "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search -> backward curriculum loop from step 0 (--auto-spine --auto-spine-explorer mcts --auto-spine-banked, scratch spine, 25% demo share of the policy's OWN search lines). Run 4 (knob 0.5: half random-held, quarter perturbed, quarter policy samples): first ramp 0.378B, window 0.605B, pit 2.341B, cavity 2.718B, then FAILED the post-CP2 block (32.5% for 9.5B steps). Run 5 (knob at the random end, --auto-spine-mcts-args '--mcts-random-frac 1.0 --mcts-perturb-frac 0', identical to run 4 until the first adopted line): 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643B through CP3, best 36.914 at 2.718B; its policy found the west detour around the post-CP2 kill sheets itself."
 }
