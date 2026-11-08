@@ -2243,6 +2243,48 @@ def main():
                     "starts a search from the greedy's own state at any tick (the --keys-hold-"
                     "safe twin of --greedy-prefix, which refuses a --keys-hold checkpoint). "
                     "Off = the deepest-d rule, byte-identical")
+    # --mcts (unr1b3, 2026-11-08): policy-prior MCTS over macro-actions as the search, instead of
+    # the population beam (tools/mcts_search.py's docstring). Off = the tool as it was.
+    ap.add_argument("--mcts", action="store_true",
+                    help="PUCT over macro-actions rooted on the policy's own greedy line "
+                         "(tools/mcts_search.py); --save-frontier writes its best line. "
+                         "Off = the beam, byte-identical")
+    ap.add_argument("--mcts-minutes", type=float, default=5.0,
+                    help="--mcts: wall-clock budget of the search (the greedy pass included)")
+    ap.add_argument("--mcts-max-waves", type=int, default=10**9,
+                    help="--mcts: stop after this many expansion waves")
+    ap.add_argument("--mcts-macro", type=int, default=12,
+                    help="--mcts: decisions per macro-action (an edge)")
+    ap.add_argument("--mcts-k", type=int, default=16,
+                    help="--mcts: children per expansion (envs // K leaves per wave)")
+    ap.add_argument("--mcts-cpuct", type=float, default=1.0,
+                    help="--mcts: PUCT exploration constant")
+    ap.add_argument("--mcts-yaw-sigma", type=float, default=20.0,
+                    help="--mcts: the sampled children's held yaw offset ~ N(0, SIGMA) deg "
+                         "(child 0 takes the policy's mode with none)")
+    ap.add_argument("--mcts-keys-temp", type=float, default=1.5,
+                    help="--mcts: the sampled children's keys temperature")
+    ap.add_argument("--mcts-view-temp", type=float, default=1.0,
+                    help="--mcts: the sampled children's view (yaw sigma) temperature")
+    ap.add_argument("--mcts-cell", type=float, default=128.0,
+                    help="--mcts: archive cell size (u) in position")
+    ap.add_argument("--mcts-cell-energy", type=float, default=256.0,
+                    help="--mcts: archive cell size (u) in energy height z + |v|^2/1600")
+    ap.add_argument("--mcts-cell-w", type=float, default=1.0,
+                    help="--mcts: > 0 weighs the PUCT exploration term by Go-Explore's "
+                         "1/sqrt(1 + visits) of the child's end cell; 0 = off")
+    ap.add_argument("--mcts-roots-secs", type=float, default=20.0,
+                    help="--mcts: roots on the greedy line's last SECS before where it died / "
+                         "stalled")
+    ap.add_argument("--mcts-root-every", type=int, default=12,
+                    help="--mcts: a root every N decisions of the greedy line")
+    ap.add_argument("--mcts-max-roots", type=int, default=64)
+    ap.add_argument("--mcts-stall-secs", type=float, default=10.0,
+                    help="--mcts: the greedy pass stops after SECS without a new best d (32 u)")
+    ap.add_argument("--mcts-contact-tol", type=float, default=1.0,
+                    help="--mcts: |dvz - one gravity step| above this = the map pushed back")
+    ap.add_argument("--mcts-log-every", type=int, default=10)
+    ap.add_argument("--mcts-stop-on-finish", type=int, default=1)
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -2720,6 +2762,36 @@ def main():
         print(f"greedy baseline: {greedy_ticks} ticks = "
               f"{secs(greedy_ticks):.2f}s -> {gpath}")
     if args.greedy_only:
+        return
+
+    if args.mcts:
+        # ---- --mcts: policy-prior MCTS over macro-actions (tools/mcts_search.py) ----------
+        from mcts_search import run_mcts
+        ctx = dict(policy=policy, packer=packer, device=device, lidar=lidar, K=K, stack=stack,
+                   KEYS=KEYS, SPAWN_DUCK=SPAWN_DUCK, VIEWC=VIEWC, VIEW_ABS=VIEW_ABS,
+                   mk_feed=mk_feed, XF=XF, cc_fn1=cc_fn1, cc_fnN=cc_fnN, build_sim=build_sim,
+                   cfg=cfg, map_path=map_path, ep_cap=ep_cap, TICK=TICK, arm=arm, row0=row0,
+                   obs_start=obs_start, gate_seed=gate_seed, gf=ogf, N=int(args.envs),
+                   max_ticks=int(args.max_ticks), secs=secs, g_step=gravity_step(core1))
+        res = run_mcts(ctx, args)
+        fr = res["frontier"]
+        summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": int(args.envs),
+                   **tick_json, **res["summary"], "crossed": bool(fr["finished"]),
+                   "frontier_d": fr["d"], "frontier_tick": fr["tick"],
+                   "frontier_s": secs(fr["tick"])}
+        (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        tr, ar = res["tree"], res["archive"]
+        _n = tr.n
+        np.savez_compressed(out_dir / "mcts_tree.npz", parent=tr.parent[:_n], depth=tr.depth[:_n],
+                            score=tr.score[:_n], q=tr.q[:_n], visits=tr.visits[:_n],
+                            alive=tr.alive[:_n], finished=tr.finished[:_n], tick=tr.tick[:_n],
+                            bank_d=tr.bank_d[:_n], end_d=tr.end_d[:_n], h=tr.h[:_n],
+                            cell=tr.cell[:_n], wave=tr.wave[:_n], cell_seen=ar.seen[:ar.n])
+        if args.save_frontier and len(fr["acts"]):
+            save_frontier_line(fr, cfg, map_path, ep_cap, TICK, arm, row0, obs_start,
+                               gate_seed, K, out_dir, ogf, finished=bool(fr["finished"]))
+        print(f"beam TAS (--mcts): best {summary['best_pct']:.2f}% vs greedy "
+              f"{summary['greedy_pct']:.2f}%, total wall {time.time() - t_all:.0f}s")
         return
 
     # ---- phase 2: the search -------------------------------------------

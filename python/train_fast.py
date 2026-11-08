@@ -5187,6 +5187,31 @@ def main() -> None:
                     help="--auto-spine: the beam runs this long past the eval's longest episode")
     ap.add_argument("--auto-spine-timeout", type=float, default=2400.0,
                     help="--auto-spine: wall-clock cap (s) of one search")
+    ap.add_argument("--auto-spine-scratch", action="store_true",
+                    help="--auto-spine FROM SCRATCH (unr1b3, 2026-11-08): no --demo-file - the "
+                         "first spine is the map's own spawn state (two copies, written to "
+                         "runs/<run>/auto/spine0.npy), so the search -> curriculum loop runs "
+                         "from step 0 with no file a human picked: its success line is the "
+                         "spawn's d + --demo-success-d, every greedy eval crosses it and the "
+                         "first search fires at the first eval past --auto-spine-delay. Every "
+                         "later spine is the run's own search on its own weights. Off = "
+                         "byte-identical; config only when on")
+    ap.add_argument("--demo-share", type=float, default=None,   # None = off
+                    help="--demo-file: the curriculum's window draws take this SHARE of every "
+                         "training spawn pool (uniformly chosen positions, like --finish-line) "
+                         "on top of the pool the recipe's own spawn sources build (reservoir, "
+                         "novel, greedy-death, front-perturbed, backward-mix rows), instead of "
+                         "replacing the whole reservoir share - so a spine curriculum runs "
+                         "beside --respawn-novel / --respawn-backward-mix, which the default "
+                         "refuses. Off = byte-identical; config only when set")
+    ap.add_argument("--auto-spine-explorer", choices=["beam", "mcts"], default="beam",
+                    help="--auto-spine: the search's explore step - beam (beam_tas's population "
+                         "beam + branched beams, the default, byte-identical) or mcts (beam_tas "
+                         "--mcts: policy-prior PUCT over macro-actions rooted on the policy's "
+                         "greedy line, tools/mcts_search.py; no branched beams). Config only "
+                         "when mcts")
+    ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
+                    help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
     ap.add_argument("--auto-spine-async", action="store_true",
                     help="--auto-spine: run the search BESIDE the training instead of pausing "
                          "it - on a copy of ckpt_latest, its log in auto/kNN/auto_spine.log; the "
@@ -12104,6 +12129,41 @@ def main() -> None:
     else:
         respawn = None
     demo = None
+    if args.auto_spine_scratch:
+        # --auto-spine-scratch: the first spine is the map's own spawn (two copies), written next
+        # to the run; a crash-resume finds it restored as demo_file and keeps it
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-scratch is the first spine of --auto-spine: give it")
+        if args.maps or D.enabled:
+            raise SystemExit("--auto-spine-scratch is single-map, single-GPU (--auto-spine)")
+        if not args.demo_file:
+            from surfgym.core import STATE_DTYPE as _SD0
+            _sp0 = np.asarray(slots[0].pool[:1], _SD0).copy()
+            _sp0["tick"] = 0
+            _sp0["stuck_ticks"] = 0
+            (out / "auto").mkdir(parents=True, exist_ok=True)
+            args.demo_file = str(out / "auto" / "spine0.npy")
+            np.save(args.demo_file, np.concatenate([_sp0, _sp0]))
+            print(f"--auto-spine-scratch: the first spine is the map's spawn state "
+                  f"{np.round(np.asarray(_sp0[0]['origin'], np.float64))} (2 rows) -> "
+                  f"{args.demo_file}; every later spine is this run's own search "
+                  f"(provenance: map spawn + own search, no demo)")
+    DEMO_SHARE = None if args.demo_share is None else float(args.demo_share)
+    if DEMO_SHARE is not None:
+        if not args.demo_file:
+            raise SystemExit("--demo-share is the --demo-file curriculum's share of the pool")
+        if not 0.0 < DEMO_SHARE < 1.0:
+            raise SystemExit("--demo-share must be in (0, 1)")
+        if args.maps or D.enabled:
+            raise SystemExit("--demo-share is single-map, single-GPU")
+        _oth = float(args.finish_line_frac if (args.finish_line or args.auto_finish) else 0.0) \
+            + float(args.spawn_states_frac or 0.0 if args.spawn_states else 0.0)
+        if DEMO_SHARE + _oth >= 1.0:
+            raise SystemExit("--demo-share + --finish-line-frac + --spawn-states-frac must stay "
+                             "below 1")
+        DSH_RNG = np.random.default_rng(4242)
+        print(f"--demo-share {DEMO_SHARE:g}: the curriculum's window draws take {DEMO_SHARE:.0%} "
+              f"of every training spawn pool on top of the recipe's own spawn sources")
     if not args.demo_file and (args.demo_cooldown is not None or args.demo_grow_max is not None):
         raise SystemExit("--demo-cooldown / --demo-grow-max pace the --demo-file curriculum")
     if not 0.0 <= float(args.demo_front_frac) <= 1.0:
@@ -12492,7 +12552,8 @@ def main() -> None:
         for _bad, _why in ((args.respawn_random, "--respawn-random"),
                            (args.respawn_frontier, "--respawn-frontier"),
                            (args.respawn_backward, "--respawn-backward"),
-                           (demo is not None, "--demo-file"),
+                           # --demo-share: the spine takes its own share on top of this pool
+                           (demo is not None and DEMO_SHARE is None, "--demo-file"),
                            (bool(args.goals), "--goals"),
                            (D.enabled, "DDP (the visit grid and the ceiling are per rank)")):
             if _bad:
@@ -12537,7 +12598,7 @@ def main() -> None:
         for _bad, _why in ((MULTI, "--maps"), (D.enabled, "DDP"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_frontier, "--respawn-frontier"),
-                           (demo is not None, "--demo-file"),
+                           (demo is not None and DEMO_SHARE is None, "--demo-file"),
                            (bool(args.goals), "--goals")):
             if _bad:
                 raise SystemExit(f"--respawn-backward-mix is not wired with {_why}")
@@ -15340,6 +15401,8 @@ def main() -> None:
         # --demo-front-frac: dumped only when on (a flag-off run.json is the
         # control's byte for byte); a resume restores it
         meta["config"]["demo_front_frac"] = float(args.demo_front_frac)
+    if args.demo_file and args.demo_share is not None:
+        meta["config"]["demo_share"] = float(args.demo_share)
     if args.demo_file and args.demo_success_d is not None:
         # --demo-success-d: dumped only when set; a resume restores it
         meta["config"]["demo_success_d"] = float(args.demo_success_d)
@@ -15388,6 +15451,11 @@ def main() -> None:
             meta["config"]["auto_spine_recheck"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
+        if args.auto_spine_scratch:
+            meta["config"]["auto_spine_scratch"] = 1
+        if args.auto_spine_explorer != "beam":
+            meta["config"]["auto_spine_explorer"] = str(args.auto_spine_explorer)
+            meta["config"]["auto_spine_mcts_minutes"] = float(args.auto_spine_mcts_minutes)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16611,6 +16679,10 @@ def main() -> None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
+        if args.auto_spine_explorer == "mcts":
+            # --auto-spine-explorer mcts: the search is beam_tas --mcts (no branched beams)
+            cmd += ["--explorer", "mcts",
+                    "--mcts-minutes", f"{float(args.auto_spine_mcts_minutes):g}"]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and
@@ -19369,12 +19441,26 @@ def main() -> None:
                 _fpos = FINL.rng.choice(np.flatnonzero(_free), _fm, replace=False)
                 _pool = _pool.copy()
                 _pool[_fpos] = FINL.draw(_fm)
+            if DEMO_SHARE is not None and demo is not None:
+                # --demo-share: the curriculum's window draws on their own share of the pool
+                # (positions the --spawn-states / --finish-line rows did not take)
+                if len(_pool) < 4096:
+                    _pool = np.resize(_pool, 4096)
+                _dfree = np.ones(len(_pool), bool)
+                if SPAWN_STATES is not None:
+                    _dfree[_pos] = False
+                if FINL is not None:
+                    _dfree[_fpos] = False
+                _dm = min(int(round(len(_pool) * DEMO_SHARE)), int(_dfree.sum()))
+                _dpos = DSH_RNG.choice(np.flatnonzero(_dfree), _dm, replace=False)
+                _pool = np.array(_pool, copy=True)
+                _pool[_dpos] = demo.draw(_dm)
             _slot.core.set_spawn_pool(_pool)
         if STALL_CUT and demo is not None:
             # --demo-stall-cut: before this iteration's draws (a cut spine is drawn at once)
             _demo_stall_check()
         for _s in slots:
-            if demo is not None:
+            if demo is not None and DEMO_SHARE is None:
                 # Salimans-Chen: the reservoir share of the pool is replaced
                 # by exact demo-window states (velocities unscaled — the
                 # paper resets to the demonstration state itself)
@@ -19520,6 +19606,9 @@ def main() -> None:
                     _set_pool(_s, _rp)
             elif SPAWN_STATES is not None:
                 # --spawn-states before the reservoir fills: map starts + own states
+                _set_pool(_s, _s.pool)
+            elif DEMO_SHARE is not None and demo is not None:
+                # --demo-share before the reservoir fills: map starts + the spine's share
                 _set_pool(_s, _s.pool)
         if goalsys is not None:
             goalsys.iterate(respawn, step=global_step)

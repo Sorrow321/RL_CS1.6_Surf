@@ -143,6 +143,10 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
            "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
            "--skip-gate", "--route-file", "none", "--max-ticks", a.beam_ticks,
            "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd]
+    if getattr(a, "explorer", "beam") == "mcts":
+        # --explorer mcts: the same beam_tas call (checkpoint-faithful core, --save-frontier's
+        # exact replay) with the population beam replaced by the MCTS
+        cmd += ["--mcts", "--mcts-minutes", f"{float(a.mcts_minutes):g}"]
     if branch_tick > 0:
         cmd += ["--branch-at", f"t{int(branch_tick)}:{int(a.envs) // 2}",
                 "--branch-burst", int(round(a.branch_burst_secs * TICKS_PER_S)),
@@ -524,6 +528,13 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--explorer", choices=["beam", "mcts"], default="beam",
+                    help="the search's explore step: beam (beam_tas's population beam, then "
+                         "the branched beams; the default, as before) or mcts (beam_tas --mcts: "
+                         "policy-prior PUCT over macro-actions rooted on the policy's greedy "
+                         "line, tools/mcts_search.py; no branched beams)")
+    ap.add_argument("--mcts-minutes", type=float, default=8.0,
+                    help="--explorer mcts: the search's wall-clock budget")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
@@ -561,11 +572,11 @@ def main(argv=None) -> int:
             best_src = ("beam", line[:e + 1], de)
         # branched beams: the fork at --branch-tick and --branch-extra-secs earlier (a fork AT
         # the commitment point only perturbs what is already decided; each beam costs ~20 s)
-        forks = [] if a.branch_tick <= 0 else [a.branch_tick] + [
+        forks = [] if (a.branch_tick <= 0 or a.explorer == "mcts") else [a.branch_tick] + [
             int(a.branch_tick - float(x) * TICKS_PER_S) for x in
             str(a.branch_extra_secs).split(",") if x.strip()]
         forks = [f for f in forks if f > 0]
-        if best_src is None and int(a.branch_energy) > 0:
+        if best_src is None and int(a.branch_energy) > 0 and a.explorer != "mcts":
             # energy-anchored forks (pbr5b2): the population also branches --branch-energy-lead
             # s before each of the plain line's --branch-energy largest energy losses before its
             # stall - the policy's own proposals through each crash; a variant that keeps its
