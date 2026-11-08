@@ -4,10 +4,10 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 32.446,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/traj_6115819520.jsonl",
+  "score": 32.459,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/traj_6870794240.jsonl",
   "run": "unr1b3_mcts4",
-  "step": 6115819520,
+  "step": 6870794240,
   "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/ckpt_6002049024.pt",
   "recipe": [
    "--envs",
