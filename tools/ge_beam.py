@@ -385,7 +385,7 @@ def make_knob_policy(*a, **kw):
 # ---------------------------------------------------------------------------------------------
 
 VIEW_FOLLOW = np.array([-90, -60, -30, -15, 0, 15, 30, 60, 90], np.float32)
-MODE_POLICY, MODE_RANDOM, MODE_ROOT = 0, 1, 2
+MODE_POLICY, MODE_RANDOM, MODE_ROOT, MODE_BURST = 0, 1, 2, 3
 
 
 class Explorer:
@@ -399,8 +399,9 @@ class Explorer:
         self.K = ctx.K
         self.steps = 0
         self.runs = 0
-        self.new_by_mode = np.zeros(2, np.int64)
-        self.runs_by_mode = np.zeros(2, np.int64)
+        self.full = False
+        self.new_by_mode = np.zeros(4, np.int64)
+        self.runs_by_mode = np.zeros(4, np.int64)
         self.exported_d = np.inf
         self.exported_finish = False
         self.k_line = 0
@@ -453,6 +454,15 @@ class Explorer:
         v[:, 1] = PITCH_ABS_MID
         return a, v
 
+    def _run_modes(self, n):
+        """Each new run's kind: a Nature burst run with probability --random-frac, else a
+        burst-then-policy run when --burst > 0 (--burst decisions of held random actions from
+        the restored cell, then the policy), else a policy run."""
+        P = self.P
+        m = np.where(self.rng.random(n) < float(P.random_frac), MODE_RANDOM,
+                     MODE_BURST if int(P.burst) > 0 else MODE_POLICY).astype(np.int8)
+        return m
+
     def step(self):
         import torch
         C, P, A, K = self.C, self.P, self.A, self.K
@@ -479,7 +489,8 @@ class Explorer:
         if (root < 0).any():
             raise RuntimeError(f"{int((root < 0).sum())} envs reset to a state that is not a "
                                "selected cell (yaw jitter on? pool changed?)")
-        mode = (self.rng.random(N) < float(P.random_frac)).astype(np.int8)
+        mode = self._run_modes(N)
+        burst_left = np.where(mode == MODE_BURST, int(P.burst), 0).astype(np.int64)
         run_id = np.arange(N, dtype=np.int64) + self.runs
         self.runs += N
         np.add.at(self.runs_by_mode, mode, 1)
@@ -525,7 +536,7 @@ class Explorer:
                     voff = self.rng.normal(0.0, float(P.view_hold[0]), N).astype(np.float32)
                     if pol is not None:
                         pol.voff = torch.as_tensor(voff, device=C.device)
-                rm = mode == MODE_RANDOM
+                rm = (mode == MODE_RANDOM) | (burst_left > 0)
                 if rm.any():
                     redraw = rm & (self.rng.random(N) >= float(P.repeat))
                     if redraw.any():
@@ -538,8 +549,9 @@ class Explorer:
                 a = np.repeat(self.neutral[None], N, axis=0)
                 v = np.zeros((N, 2), np.float32)
             if dec:
-                rm = mode == MODE_RANDOM
+                rm = (mode == MODE_RANDOM) | (burst_left > 0)
                 a[rm], v[rm] = rand_a[rm], rand_v[rm]
+                burst_left[burst_left > 0] -= 1
                 cur_a[:], cur_v[:] = a, v
                 ok = nrows < cap_rows
                 idx = np.flatnonzero(ok)
@@ -574,20 +586,21 @@ class Explorer:
                 root[di] = nr
                 run_id[di] = np.arange(len(di)) + self.runs
                 self.runs += len(di)
-                mode[di] = (self.rng.random(len(di)) < float(P.random_frac)).astype(np.int8)
+                mode[di] = self._run_modes(len(di))
+                burst_left[di] = np.where(mode[di] == MODE_BURST, int(P.burst), 0)
                 np.add.at(self.runs_by_mode, mode[di], 1)
                 run_ticks[di] = 0
                 rem = (K - ((g + 1) % K)) % K
                 h0[di] = rem
                 nrows[di] = 0
+                na, nv = self._rand_rows(len(di))           # a new run's own first draw
+                rand_a[di], rand_v[di] = na, nv
                 if rem > 0:
-                    rnd = di[mode[di] == MODE_RANDOM]
+                    rnd = di[(mode[di] == MODE_RANDOM) | (burst_left[di] > 0)]
                     if len(rnd):
-                        na, nv = self._rand_rows(len(rnd))
-                        rand_a[rnd], rand_v[rnd] = na, nv
-                        cur_a[rnd], cur_v[rnd] = na, nv
+                        cur_a[rnd], cur_v[rnd] = rand_a[rnd], rand_v[rnd]
                     if pol is not None:
-                        pp = di[mode[di] == MODE_POLICY]
+                        pp = di[(mode[di] != MODE_RANDOM) & (burst_left[di] == 0)]
                         if len(pp):
                             cur_a[pp] = np.asarray(pol._held, np.int32)[pp]
                             cur_v[pp] = np.asarray(pol.view, np.float32)[pp]
@@ -604,6 +617,9 @@ class Explorer:
                     seen_k.append(keys)
                     dd = None
                     for q, i in enumerate(li):
+                        if A.n >= int(P.max_nodes):
+                            self.full = True
+                            break
                         kk = int(keys[q])
                         j = A.index.get(kk)
                         dep = int(A.depth[root[i]] + run_ticks[i])
@@ -727,13 +743,18 @@ class Explorer:
         m = A.mode[:n]
         return {"step": self.steps, "nodes": int(n), "cells": len(A.index), "runs": int(self.runs),
                 "new_policy": int(self.new_by_mode[0]), "new_random": int(self.new_by_mode[1]),
+                "new_burst": int(self.new_by_mode[3]),
                 "runs_policy": int(self.runs_by_mode[0]),
                 "runs_random": int(self.runs_by_mode[1]),
+                "runs_burst": int(self.runs_by_mode[3]),
                 "deepest_progress": round(self.prog(dmin), 3),
                 "viable_progress": round(self.prog(A.d[b]), 3) if b >= 0 else None,
                 "viable_mode": (int(A.mode[b]) if b >= 0 else None),
                 "deep100_policy_share": (round(float(np.mean(
                     m[cur[np.argsort(A.d[cur])[:100]]] == MODE_POLICY)), 3) if len(cur) else None),
+                "deep100_burst_share": (round(float(np.mean(
+                    m[cur[np.argsort(A.d[cur])[:100]]] == MODE_BURST)), 3) if len(cur) else None),
+                "new_by_mode": [int(x) for x in self.new_by_mode], "full": bool(self.full),
                 "finishes": int(A.finish[:n].sum()), "exported_k": self.k_line,
                 "exported_progress": round(self.prog(self.exported_d), 3)
                 if np.isfinite(self.exported_d) else None}
@@ -753,6 +774,10 @@ def parse(argv=None):
     ap.add_argument("--decisions", type=int, default=150, help="decisions per explore step")
     ap.add_argument("--random-frac", type=float, default=0.0,
                     help="THE KNOB: share of runs that are Nature bursts (0 = policy beam)")
+    ap.add_argument("--burst", type=int, default=0,
+                    help="decisions of held random actions (--repeat) at the start of every "
+                         "non-random run before the policy takes over (0 = pure policy runs): "
+                         "the coherent random/policy mix in TIME")
     ap.add_argument("--repeat", type=float, default=0.95, help="random runs: action repeat p")
     ap.add_argument("--keys-temp", type=float, default=1.5,
                     help="policy runs: key heads at logits / T")
@@ -769,6 +794,8 @@ def parse(argv=None):
                     help="kinetic-energy-height bucket (u) of the cell key")
     ap.add_argument("--cell-heading", type=int, default=4,
                     help="velocity heading sectors (x rising / not) of the cell key")
+    ap.add_argument("--max-nodes", type=int, default=12_000_000,
+                    help="the archive stops growing at this many nodes (memory guard)")
     ap.add_argument("--replace-secs", type=float, default=0.25,
                     help="a cell's state is replaced by an arrival this many seconds sooner")
     ap.add_argument("--viable-secs", type=float, default=1.0,
@@ -817,7 +844,8 @@ def main(argv=None) -> int:
           f"{ctx.K}), knob random-frac {a.random_frac:g}, policy keys T {a.keys_temp:g} / yaw "
           f"sigma x{a.view_temp:g} / held yaw z N(0,{a.view_hold[0]:g}) per "
           f"{a.view_hold[1]:g} decisions; cells {a.cell:g} u x energy {a.cell_energy:g} u x "
-          f"heading {a.cell_heading}; root d {ex.d_root:,.0f} u; ckpt step {ctx.step:,}",
+          f"heading {a.cell_heading}; burst {a.burst} decisions; max nodes {a.max_nodes:,}; "
+          f"root d {ex.d_root:,.0f} u; ckpt step {ctx.step:,}",
           flush=True)
     t_start = time.time()
     mt = os.path.getmtime(a.ckpt)

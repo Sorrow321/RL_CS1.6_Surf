@@ -7544,6 +7544,14 @@ def main() -> None:
                     help="--ge-beam: THE KNOB - the share of explore runs that are Nature bursts "
                          "(uniform keys, uniform view offset from the velocity, 95%% repeat) "
                          "instead of policy samples (0 = the pure policy beam)")
+    ap.add_argument("--ge-beam-burst", type=int, default=0,
+                    help="--ge-beam: decisions of held random actions at the start of every "
+                         "non-random explore run before the policy takes over (the coherent "
+                         "random/policy mix in time; 0 = pure policy runs)")
+    ap.add_argument("--ge-beam-cell", type=float, nargs=3, default=[64.0, 128.0, 4.0],
+                    metavar=("POS", "ENERGY", "HEADING"),
+                    help="--ge-beam: the archive's cell key - position cell u, kinetic-energy "
+                         "height bucket u, velocity heading sectors (x rising / not)")
     ap.add_argument("--ge-beam-envs", type=int, default=512,
                     help="--ge-beam: the explorer's population")
     ap.add_argument("--ge-beam-cells", type=int, default=64,
@@ -12424,7 +12432,9 @@ def main() -> None:
         print(f"--ge-beam: Go-Explore beside the training (tools/ge_beam.py, "
               f"{int(args.ge_beam_envs)} envs, {int(args.ge_beam_cells)} cells x "
               f"{int(args.ge_beam_decisions)} decisions per step, knob random-frac "
-              f"{float(args.ge_beam_random):g}, keys T {float(args.ge_beam_keys_temp):g}, duty "
+              f"{float(args.ge_beam_random):g}, burst {int(args.ge_beam_burst)} decisions, cells "
+              f"{'/'.join(f'{x:g}' for x in args.ge_beam_cell)}, keys T "
+              f"{float(args.ge_beam_keys_temp):g}, duty "
               f"{float(args.ge_beam_duty):g}); its lines become a backward curriculum on "
               f"{float(args.ge_beam_frac):.0%} of every spawn pool once one beats the greedy by "
               f"{float(args.ge_beam_gain):g} u (success: record <= end d + "
@@ -15624,6 +15634,8 @@ def main() -> None:
             ge_beam_envs=int(args.ge_beam_envs), ge_beam_cells=int(args.ge_beam_cells),
             ge_beam_decisions=int(args.ge_beam_decisions),
             ge_beam_keys_temp=float(args.ge_beam_keys_temp),
+            ge_beam_burst=int(args.ge_beam_burst),
+            ge_beam_cell=[float(x) for x in args.ge_beam_cell],
             ge_beam_duty=float(args.ge_beam_duty), ge_beam_threads=int(args.ge_beam_threads),
             ge_beam_sync=float(args.ge_beam_sync), ge_beam_frac=float(args.ge_beam_frac),
             ge_beam_gain=float(args.ge_beam_gain), ge_beam_margin=float(args.ge_beam_margin),
@@ -16932,6 +16944,10 @@ def main() -> None:
                "--decisions", str(int(args.ge_beam_decisions)),
                "--random-frac", f"{float(args.ge_beam_random):g}",
                "--keys-temp", f"{float(args.ge_beam_keys_temp):g}",
+               "--burst", str(int(args.ge_beam_burst)),
+               "--cell", f"{float(args.ge_beam_cell[0]):g}",
+               "--cell-energy", f"{float(args.ge_beam_cell[1]):g}",
+               "--cell-heading", str(int(args.ge_beam_cell[2])),
                "--duty", f"{float(args.ge_beam_duty):g}",
                "--threads", str(int(args.ge_beam_threads)), "--seed", str(int(GEB["starts"]))]
         _env = dict(os.environ, OMP_NUM_THREADS=str(int(args.ge_beam_threads)))

@@ -73,7 +73,8 @@ def test_random_explorer_chains_replay_exactly(tmp_path):
     P = SimpleNamespace(cell=64.0, cell_energy=128.0, cell_heading=4, cells=6, decisions=40,
                         random_frac=1.0, repeat=0.95, keys_temp=1.0, view_temp=1.0,
                         view_hold=[0.0, 25.0], front_frac=0.25, front_k=8, replace_ticks=25,
-                        viable_ticks=10, gain=1.0, out=str(tmp_path), resume=False)
+                        viable_ticks=10, gain=1.0, out=str(tmp_path), resume=False, burst=0,
+                        max_nodes=10**7)
     ex = gb.Explorer(ctx, P, np.random.default_rng(1))
     for _ in range(6):
         ex.step()
@@ -105,3 +106,31 @@ def test_trainer_flag_off_and_train_only():
     ap_src = src[src.index('ap.add_argument("--ge-beam", action="store_true"'):][:200]
     assert "store_true" in ap_src
     assert not hasattr(train_fast, "GEB")                 # the state lives inside train()
+
+
+@pytest.mark.skipif(not MAP.exists(), reason="the map is not in this checkout")
+def test_burst_runs_replay_exactly(tmp_path):
+    """--burst: held random rows at a run's start (no network: the 'policy' rows are the neutral
+    row the no-policy explorer emits), the burst rows and the rest replay exactly, and the burst
+    kind is recorded on its cells."""
+    pytest.importorskip("torch")
+    import torch
+    cfg = {"reward": "race", "act_every": 4, "view_continuous": 1, "view_absolute": "velocity",
+           "keys_hold": True, "maxvel": 4000.0, "ep_ticks": 30000, "lidar_cell": 32.0,
+           "race_no_corner_cut": 1, "tick_ms": 10.0, "pitch_rate": 1.33, "yaw_adaptive": 1}
+    ck = tmp_path / "cfg.pt"
+    torch.save({"config": cfg, "global_step": 0}, ck)
+    ctx = gb.setup(str(ck), str(MAP), 16, torch.device("cpu"), with_policy=False)
+    P = SimpleNamespace(cell=64.0, cell_energy=128.0, cell_heading=4, cells=4, decisions=30,
+                        random_frac=0.0, repeat=0.9, keys_temp=1.0, view_temp=1.0,
+                        view_hold=[0.0, 25.0], front_frac=0.25, front_k=8, replace_ticks=25,
+                        viable_ticks=10, gain=1.0, out=str(tmp_path), resume=False, burst=10,
+                        max_nodes=10**7)
+    ex = gb.Explorer(ctx, P, np.random.default_rng(2))
+    for _ in range(5):
+        ex.step()
+    A = ex.A
+    assert (A.mode[1:A.n] == gb.MODE_BURST).all()
+    deep = int(np.argmax([len(A.chain(i)) for i in range(A.n)]))
+    line = ex.replay_line(deep)
+    assert len(line) == int(A.depth[deep]) + 1
