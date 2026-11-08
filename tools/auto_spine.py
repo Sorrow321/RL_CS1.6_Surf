@@ -176,7 +176,7 @@ def knob(a, out: Path):
            "--max-ticks", a.beam_ticks, "--torch-seed", a.seed, "--seed", 0,
            "--ge-knob", "--ge-knob-minutes", a.ge_minutes, "--out-dir", kd]
     for k in ("decisions", "repeat", "floor", "cell", "energy", "heading", "roots_secs",
-              "stall_margin", "archive"):
+              "stall_margin", "archive", "line"):
         v = getattr(a, f"knob_{k}", None)
         if v is not None:
             cmd += [f"--ge-knob-{k.replace('_', '-')}", v]
@@ -568,6 +568,9 @@ def main(argv=None) -> int:
     ap.add_argument("--knob-heading", type=int, default=None)
     ap.add_argument("--knob-roots-secs", type=float, default=None)
     ap.add_argument("--knob-stall-margin", type=float, default=None)
+    ap.add_argument("--knob-line", default=None,
+                    help="--knob: root the explorer on this STATE_DTYPE line (beam_tas "
+                         "--ge-knob-line); None = its own greedy re-rollout")
     ap.add_argument("--knob-archive", default=None,
                     help="--knob: the explorer's archive persists in this npz across searches "
                          "(beam_tas --ge-knob-archive); None = a fresh archive per search")

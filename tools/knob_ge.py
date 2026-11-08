@@ -221,6 +221,8 @@ class KnobArchive:
         self.state[i] = state
         if obs_row is not None:
             self.obs[i] = np.asarray(obs_row, np.float32).reshape(-1)[:self.obs_dim]
+        else:
+            self.obs[i] = np.nan              # no row: a restore leaves the env's obs as is
         self.parent[i] = int(parent)
         self.run[i] = int(run)
         self.off[i] = int(off)
@@ -344,29 +346,40 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
         return np.where(d < float(ogf.reach_max) - 0.5 * float(ogf.cell), d, np.inf)
 
     # ---- 1. the greedy line from the TRUE start (the roots, and the spine's prefix) -------
-    core1.reset(int(gate_seed))
-    core1.set_state(0, row0)
-    o1 = np.array(obs_start, np.float32).reshape(1, -1)
-    L_states, L_obs = [], []
-    for _t in range(int(args.max_ticks)):
-        L_states.append(core1.get_states()[0].copy())
-        L_obs.append(o1[0].copy())
-        a = greedy_wrapper.act(o1)
-        v = getattr(greedy_wrapper, "view", None)
-        if v is None:
-            o1, _r, done, trunc, _ = core1.step(a)
-        else:
-            o1, _r, done, trunc, _ = core1.step(a, view=v)
-        o1 = np.array(o1, np.float32)
-        if bool(np.asarray(done)[0]) or bool(np.asarray(trunc)[0]):
-            break
-    line = np.array(L_states, dtype=state_dtype)
-    line_obs = np.array(L_obs, np.float32)
+    lpath = getattr(args, "ge_knob_line", None)
+    if lpath:
+        # --ge-knob-line: the DEPLOYED line, exact states of the trainer's own greedy eval
+        # (a re-rollout here runs other GPU numerics - one env, not the eval's batch - and on a
+        # chaotic map that flies another line: unr1b4 search 3 died at 2.0% while the eval
+        # flew 15.8-18.6%). Its states carry no obs rows: a run restored at a root reads the
+        # env's previous scalar row for one decision (the image is rendered from the state).
+        line = np.array(np.load(lpath), dtype=state_dtype)
+        line_obs = None
+    else:
+        core1.reset(int(gate_seed))
+        core1.set_state(0, row0)
+        o1 = np.array(obs_start, np.float32).reshape(1, -1)
+        L_states, L_obs = [], []
+        for _t in range(int(args.max_ticks)):
+            L_states.append(core1.get_states()[0].copy())
+            L_obs.append(o1[0].copy())
+            a = greedy_wrapper.act(o1)
+            v = getattr(greedy_wrapper, "view", None)
+            if v is None:
+                o1, _r, done, trunc, _ = core1.step(a)
+            else:
+                o1, _r, done, trunc, _ = core1.step(a, view=v)
+            o1 = np.array(o1, np.float32)
+            if bool(np.asarray(done)[0]) or bool(np.asarray(trunc)[0]):
+                break
+        line = np.array(L_states, dtype=state_dtype)
+        line_obs = np.array(L_obs, np.float32)
     ld = field_d(line["origin"])
     stall = stall_index(ld, float(args.ge_knob_stall_margin))
     line_best = float(np.min(ld)) if np.isfinite(ld).any() else float("inf")
     roots = root_indices(len(line), stall, tps, float(args.ge_knob_roots_secs), int(K))
-    print(f"knob-GE: greedy line {len(line)} ticks ({len(line) / tps:.1f} s), best d "
+    print(f"knob-GE: {'the EVAL line ' + str(lpath) if lpath else 'greedy line'} "
+          f"{len(line)} ticks ({len(line) / tps:.1f} s), best d "
           f"{line_best:,.0f} at {int(np.argmin(ld))}, stall {stall} (within "
           f"{float(args.ge_knob_stall_margin):g} u); {len(roots)} roots over "
           f"[{int(roots[0])}, {int(roots[-1])}]", flush=True)
@@ -398,8 +411,8 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
     for r, kk in zip(roots, rkeys):
         if int(kk) in arch.index:
             continue
-        arch.add(int(kk), line[int(r)], line_obs[int(r)], -1, -1, 0, int(r), float(ld[int(r)]),
-                 int(r), -1, line=line_id)
+        arch.add(int(kk), line[int(r)], None if line_obs is None else line_obs[int(r)], -1, -1,
+                 0, int(r), float(ld[int(r)]), int(r), -1, line=line_id)
     n_roots = arch.n - n_old
     print(f"knob-GE: {n_roots} root cells (cell {float(args.ge_knob_cell):g} u, kinetic-energy "
           f"buckets {float(args.ge_knob_energy):g} u, heading sectors "
@@ -477,7 +490,8 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
                     st["tick"] = 0
                     st["stuck_ticks"] = 0
                     coreN.set_state(int(i), st)
-                    obs[int(i)] = arch.obs[int(c)]
+                    if not np.isnan(arch.obs[int(c), 0]):
+                        obs[int(i)] = arch.obs[int(c)]
                 run_cell[free] = pick
                 run_id[free] = next_run + np.arange(len(free))
                 next_run += len(free)

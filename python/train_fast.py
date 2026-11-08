@@ -5177,6 +5177,14 @@ def main() -> None:
                          "archive is the run's memory, and each search adds the newest greedy "
                          "line's roots to it instead of starting over. Off = a fresh archive per "
                          "search; config only when on")
+    ap.add_argument("--auto-spine-knob-evalroots", action="store_true",
+                    help="--auto-spine-knob: the explorer roots on the DEPLOYED greedy line - the "
+                         "exact per-tick states of the eval's median episode (by deepest d), as "
+                         "--respawn-greedy's pool captured them - instead of re-rolling the greedy "
+                         "on the search's own 1-env core, whose GPU numerics differ from the eval's "
+                         "batch and on a chaotic map fly another line (unr1b4 search 3: 2.0% vs the "
+                         "eval's 15.8-18.6%). Needs --respawn-greedy. Off = the re-rollout; config "
+                         "only when on")
     ap.add_argument("--demo-share", type=float, default=None,   # None = off
                     help="--demo-file / --auto-spine: the spine's curriculum takes this SHARE of "
                          "every training spawn pool (positions drawn uniformly, like "
@@ -12314,6 +12322,11 @@ def main() -> None:
         raise SystemExit("--auto-spine-knob is --auto-spine's search: give --auto-spine")
     if args.auto_spine_knob_archive and not args.auto_spine_knob:
         raise SystemExit("--auto-spine-knob-archive keeps --auto-spine-knob's archive: give it")
+    if args.auto_spine_knob_evalroots and not args.auto_spine_knob:
+        raise SystemExit("--auto-spine-knob-evalroots roots --auto-spine-knob's search: give it")
+    if args.auto_spine_knob_evalroots and not float(args.respawn_greedy or 0.0) > 0.0:
+        raise SystemExit("--auto-spine-knob-evalroots reads the eval states --respawn-greedy's "
+                         "pool captures: give --respawn-greedy")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15454,6 +15467,8 @@ def main() -> None:
         meta["config"]["auto_spine_knob"] = 1
     if args.auto_spine_knob_archive:
         meta["config"]["auto_spine_knob_archive"] = 1
+    if args.auto_spine_knob_evalroots:
+        meta["config"]["auto_spine_knob_evalroots"] = 1
     if args.demo_share is not None:
         meta["config"]["demo_share"] = float(args.demo_share)
     if args.auto_spine:
@@ -16714,6 +16729,19 @@ def main() -> None:
                 # --auto-spine-knob-archive: one archive for the whole run (searches are one at
                 # a time, so the file is never written twice at once)
                 cmd += ["--knob-archive", str(adir / "knob_archive.npz")]
+            _le = getattr(GREEDY, "last_eps", None) if GREEDY is not None else None
+            if args.auto_spine_knob_evalroots and _le:
+                # --auto-spine-knob-evalroots: the search roots on the DEPLOYED line - the exact
+                # states of this eval's median episode (by deepest d), as the greedy-line pool
+                # captured them - not on a re-rollout in the search's own GPU numerics
+                _im = int(np.argsort(np.asarray(bests))[len(bests) // 2])
+                if _im < len(_le) and len(_le[_im]) > 1:
+                    kdir.mkdir(parents=True, exist_ok=True)
+                    np.save(kdir / "eval_line.npy", np.asarray(_le[_im], STATE_DTYPE))
+                    cmd += ["--knob-line", str(kdir / "eval_line.npy")]
+                    print(f"[{global_step:>13,d}] --auto-spine-knob-evalroots: the search roots on "
+                          f"eval episode {_im} ({len(_le[_im])} ticks, deepest d "
+                          f"{float(bests[_im]):,.0f})", flush=True)
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and

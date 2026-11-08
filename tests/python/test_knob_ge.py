@@ -182,3 +182,33 @@ def test_archive_flag_wiring():
     assert 'ap.add_argument("--knob-archive", default=None' in a
     rec = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     assert '"auto_spine_knob_archive"' in rec
+
+
+def test_greedy_pool_keeps_the_eval_episodes_for_the_search():
+    """--auto-spine-knob-evalroots reads GreedyLinePool.last_eps: every episode of the eval the
+    pool was built from, whole and in order (the side-by-side capture's rule)."""
+    from surfgym.greedy_spawn import GreedyLinePool
+    p = GreedyLinePool(0.2, window=(0.0, 1.0))
+    hook = p.hook(2)
+    for t in range(10):
+        st = np.zeros(2, STATE_DTYPE)
+        st["origin"][:, 0] = [t, 100 + t]
+        hook(t, st, np.zeros(2), np.array([t == 3, False]), np.zeros(2, bool))
+    p.build([{"end": "fail"}, {"end": "trunc"}], 10.0)
+    assert [len(e) for e in p.last_eps] == [4, 10]
+    assert [int(x) for x in p.last_eps[1]["origin"][:, 0]] == list(range(100, 110))
+
+
+def test_evalroots_flag_wiring():
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert re.search(r'ap\.add_argument\("--auto-spine-knob-evalroots", action="store_true"', src)
+    assert 'meta["config"]["auto_spine_knob_evalroots"] = 1' in src
+    assert 'cmd += ["--knob-line", str(kdir / "eval_line.npy")]' in src
+    assert '"auto_spine_knob_evalroots"' in (ROOT / "tools" / "record_ckpt.py").read_text(
+        encoding="utf-8")
+    assert 'ap.add_argument("--ge-knob-line", default=None' in (
+        ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--knob-line", default=None' in (
+        ROOT / "tools" / "auto_spine.py").read_text(encoding="utf-8")
+    kg = (ROOT / "tools" / "knob_ge.py").read_text(encoding="utf-8")
+    assert "if not np.isnan(arch.obs[int(c), 0]):" in kg      # a root without obs leaves it

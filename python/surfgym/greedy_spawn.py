@@ -220,6 +220,9 @@ class GreedyLinePool:
             if self._cur:                      # an episode cut by the recording budget
                 eps.append(np.array(self._cur, dtype=STATE_DTYPE))
         self._eps, self._cur = [], []
+        # the recording's whole episodes, kept until the next build (train_fast
+        # --auto-spine-knob-evalroots roots its search on the deployed line itself)
+        self.last_eps = eps
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
         keep, deaths, stops, launches, losses, n_used = [], [], [], [], [], 0

@@ -2262,6 +2262,10 @@ def main():
                          "per decision (the paper's 0.95)")
     ap.add_argument("--ge-knob-floor", type=float, default=0.05,
                     help="--ge-knob: the knob stays in [floor, 1 - floor]")
+    ap.add_argument("--ge-knob-line", default=None, metavar="NPY",
+                    help="--ge-knob: root on THIS STATE_DTYPE line (the trainer's own eval states, "
+                         "train_fast --auto-spine-knob-evalroots) instead of a greedy re-rollout "
+                         "here; None = the re-rollout, as before")
     ap.add_argument("--ge-knob-archive", default=None, metavar="NPZ",
                     help="--ge-knob: the archive PERSISTS in this file across searches - loaded "
                          "at the start when it exists (its cells, the greedy lines their roots "
