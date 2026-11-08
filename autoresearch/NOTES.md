@@ -432,3 +432,15 @@ harvest of this box would fail the same way: pull before every deadline.
   without an adopted line doubles the next search's root window (auto_spine --roots-secs 4 -> 8
   -> 16 s, the cap); an adopted line resets it to 4 s. Tests: refusal, config dump, flag off
   bit-identical (4 passed).
+
+### 2026-11-08 14:01 UTC - unr1b1_v2 at 2.03B: 28.2% best, median 27.6%; line 5 learned and retired
+
+* Evals 1.737B-1.963B: 27.7 / 27.6 / 26.9 / 28.2% best; the 1.963B eval's MEDIAN is 27.6% (past
+  the pit) - `--ge-line-retire` fired (median d 72,148 <= line 5's success line 72,296). Best
+  score 28.235 (traj_1963458560), above v1's 27.574.
+* Search 14 runs from the 1.963B eval's 28.2% episode. Searches 11-13: nothing 200 u past the
+  greedy.
+* The 1.963B greedy now flies the LOOP v1's explorer found (line 15): a swing to (5,821, 114) at
+  26.5 s, -x along y ~ -900 at ~1,700 u/s, all nine episodes dying between x 2,180 and 2,670 (z
+  10,740-11,430); the best two reach (2,183, -870, 10,980) = 28.24% and 28.08%. The cavity curtain
+  sgcp_2 is ~1,400 u further -x (x 768-816, z 10,060-11,300), under the slab.
