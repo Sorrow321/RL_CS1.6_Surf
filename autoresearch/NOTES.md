@@ -275,3 +275,21 @@ what is missing is chaining them into a line: those cells are BEHIND the distanc
 (higher d), so only the small global count share ever restores them. Next test Z1 (30 min):
 + `--recent-frac 0.25` (a quarter of the restores from the cells found in the last 50 explore
 steps - the novelty frontier, not the distance frontier).
+
+**The explorer at the wall, 50 min (X1) - the return leg exists** (08:37 UTC): X1's archive has
+2,190 cells heading west and climbing under the plate after the ramp turnaround (81 viable) and
+2,104 cells heading west level-ish in the gap (105 viable); the furthest reach x ~3,276 at
+vz ~ -240 u/s, ~700 u short of the pit floor's west edge (x 2,592) - they sink into the pit box
+after ~0.7 s. The human crosses at z ~11,469, vz -141. So the explorer with chain roots + 1 s
+bursts + vz cells finds the whole detour (drop under the plate, east corridor, ramp turnaround,
+west climb, level in the gap) and lacks only a flatter / higher crossing. Z1 (+ recent share, 20
+min): the same states, fewer (893 level-west cells, 19 viable); deepest 27.52% (not viable).
+
+**unr1b2_geb2 stopped at 1.86B (08:38 UTC)**, on time (pit-dive deadline 3.88B), best 26.914; its
+explorer had no chain roots (0 cells on the east ramp after ~2 h). Harvest:
+runs/unr1b2/unr1b2_geb2 (evals, ge/ lines + logs).
+
+**Run unr1b2_geb3** (commit 39b2820b, launched 08:39 UTC): the incumbent recipe + `--ge-beam
+--ge-beam-burst 25 --ge-beam-burst-frac 0.5 --ge-beam-cell 128 256 4 --ge-beam-cell-vz 250
+--ge-beam-envs 512 --ge-beam-threads 8 --ge-beam-duty 0.5 --ge-beam-front 0.5 0.01
+--ge-beam-front-doomed --ge-beam-chain 0.5 5` (X1's explorer at twice its envs and threads).
