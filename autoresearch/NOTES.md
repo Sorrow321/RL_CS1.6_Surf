@@ -254,3 +254,24 @@ variant finds a viable state past 27.5% - the approach into the gap is not produ
 (60 min, 08:48 UTC): W1 + `--cell-vz 250` (rising / level / falling cells, so a level arrival
 is kept instead of losing its cell to the dive that got there first), and the same with 12 s
 runs and 10 s of chain roots. geb2 keeps training meanwhile (on time; pit-dive deadline 3.88B).
+
+**What the CP2 wall needs, and whether the explorer reaches it** (08:15 UTC; insight from the
+October notes, /home/steam/ar/archive/r7/r7b2/NOTES.md "WON'T vs CAN'T" and the 1,633M
+milestone - analysis only): the crossing line drops under a thin fail plate (z ~11,905) just
+west of its edge after the U-turn, flies EAST through the corridor under it, turns round on a
+ramp at its east end, climbs west and crosses the gap LEVEL (z ~11,470) - ~2.8 s away from the
+goal (the field's 2.0-unit dip). October: "perturbing the policy's actions at the wall is the
+wrong lever; putting it into the unvisited states next to its frontier is the right one".
+Measured in the explorers' archives (corridor = x 4,194..5,600, z 11,332..11,850):
+
+| archive | corridor cells | heading east | east & viable | east-ramp cells (x 5,000..6,300, z 10,700..11,400) | viable |
+|---|---|---|---|---|---|
+| geb2 live (band, doomed skip; ~2 h) | 131 | 50 | 0 | 0 | 0 |
+| X1 (+ chain roots 5 s, 25-decision bursts on 50%, vz cells; 40 min) | 10,613 | 2,386 | 37 | 14,882 | 149 |
+| X2 (+ 12 s runs, 10 s chain; 26 min) | 1,656 | 287 | 3 | 5,260 | 21 |
+
+So chain roots + long bursts DO reach the detour's states (the east corridor and the ramp) -
+what is missing is chaining them into a line: those cells are BEHIND the distance frontier
+(higher d), so only the small global count share ever restores them. Next test Z1 (30 min):
++ `--recent-frac 0.25` (a quarter of the restores from the cells found in the last 50 explore
+steps - the novelty frontier, not the distance frontier).
