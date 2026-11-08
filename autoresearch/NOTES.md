@@ -523,3 +523,12 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   the region (31-41k cells) and every landing past ~32.4% is out of reach of the policy's samples,
   random held actions and 2-20 deg steers within the macro horizon. If run 4 misses 13.93B, the
   next recipe cannot be "the same search, longer".
+* **The post-CP2 block is a kill-sheet maze** (map triggers, insight only): a 4 u teleport->start
+  floor at z 10,576-10,580 over x -784..-144, y +-736 (run 4's episodes die ON it at (-400, ~150,
+  10,600)); a func_wall block x -720..-464 wrapped in teleport skins (z 10,584-10,769) with a
+  'no_jump' sheet above it (10,800); a teleport slab x -144..864, z 10,080-10,452 under the cavity
+  exit; more thin sheets at z 10,320 (x ~-930), 10,096-10,100 (x -1,388..-944) and 9,680-9,696
+  (x -1,780..-176); sgcp_3 at x 0..16, y +-320, z 8,976-9,472. The goal field: 32.0-32.4% around
+  (-400..-800, z 10,000-10,400), 35.5% at (-800, z 9,600), 36.5% at (0, z 9,200) - the way on goes
+  DOWN between sheets to the west and back east under them. Every searched branch that leaves the
+  32% shelf dies on a sheet within a macro or two, so the trees stay 3-4 macros deep.
