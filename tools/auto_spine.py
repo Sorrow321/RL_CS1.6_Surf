@@ -115,6 +115,16 @@ def clean(states):
     return out
 
 
+def load_line(path):
+    """--line: a 1-D STATE_DTYPE array of at least two states, clocks zeroed."""
+    from surfgym.core import STATE_DTYPE
+    ln = np.load(path, allow_pickle=False)
+    if ln.dtype != STATE_DTYPE or ln.ndim != 1 or len(ln) < 2:
+        raise SystemExit(f"--line {path}: a 1-D STATE_DTYPE array of >= 2 states is needed, "
+                         f"got {ln.dtype} {ln.shape}")
+    return clean(ln)
+
+
 def run(cmd, log, timeout):
     print("+ " + " ".join(str(c) for c in cmd), flush=True)
     t0 = time.time()
@@ -524,25 +534,38 @@ def main(argv=None) -> int:
     ap.add_argument("--branch-jitter", type=int, default=45,
                     help="deg: the held view offset is U(-J, J) around the policy's own aim")
     ap.add_argument("--branch-protect", type=int, default=3)
+    ap.add_argument("--line", default=None,
+                    help="a STATE_DTYPE .npy line from the true start (the policy's own greedy "
+                         "episode, train_fast --ge-line): no beam and no branched beams - the "
+                         "Go-Explore stages root on this line's last --roots-secs before its "
+                         "stall, and their chain is spliced onto it. None = the beam, as before")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:
         return selftest()
-    for k in ("ckpt", "map", "field", "out"):
+    for k in (("map", "field", "out") if a.line else ("ckpt", "map", "field", "out")):
         if getattr(a, k) is None:
             ap.error(f"--{k} is required")
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     global TICKS_PER_S
-    a.tick = ckpt_tick(a.ckpt)
+    # --line without --ckpt: no weights are read at all; the line is the 10 ms trainer's
+    a.tick = ckpt_tick(a.ckpt) if a.ckpt else 10.0
     TICKS_PER_S = 1000.0 / a.tick
     if int(round(a.tick)) != 10:
         print(f"checkpoint tick {a.tick:.4f} ms: the beam runs it (physics parity), the explorer "
               f"{int(round(a.tick))} ms; seconds convert at {TICKS_PER_S:.2f} ticks/s", flush=True)
     field = load_field(a.field)
     res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
-    line, info = beam(a, out)
-    line_tag = "beam"
+    if a.line:
+        # --line (unr1b1, 2026-11-08): the policy's OWN greedy line (the trainer's --ge-line loop
+        # passes its best greedy-eval episode) replaces the beam - no policy search at all, the
+        # explore step is the uniform Go-Explore stage alone (the Nature knob at "fully random")
+        line, info = load_line(a.line), {"line": str(a.line)}
+        line_tag = "line"
+    else:
+        line, info = beam(a, out)
+        line_tag = "beam"
     res.update(info)
     best_src = None
     if line is not None and len(line):
@@ -557,15 +580,15 @@ def main(argv=None) -> int:
               + ("FINISHES - kept whole, " if fin else
                  f"cut at {e} (last contact {contact_cut_states(line, a.contact_tol)}) ")
               + f"d {de:,.0f}; greedy frontier {a.greedy_d:,.0f}", flush=True)
-        if beats_greedy(de, a.greedy_d, a.gain, fin):
+        if beats_greedy(de, a.greedy_d, a.gain, fin) and not a.line:
             best_src = ("beam", line[:e + 1], de)
         # branched beams: the fork at --branch-tick and --branch-extra-secs earlier (a fork AT
         # the commitment point only perturbs what is already decided; each beam costs ~20 s)
-        forks = [] if a.branch_tick <= 0 else [a.branch_tick] + [
+        forks = [] if (a.branch_tick <= 0 or a.line) else [a.branch_tick] + [
             int(a.branch_tick - float(x) * TICKS_PER_S) for x in
             str(a.branch_extra_secs).split(",") if x.strip()]
         forks = [f for f in forks if f > 0]
-        if best_src is None and int(a.branch_energy) > 0:
+        if best_src is None and int(a.branch_energy) > 0 and not a.line:
             # energy-anchored forks (pbr5b2): the population also branches --branch-energy-lead
             # s before each of the plain line's --branch-energy largest energy losses before its
             # stall - the policy's own proposals through each crash; a variant that keeps its
@@ -648,7 +671,7 @@ def main(argv=None) -> int:
                       f"speed x {boosts}): {len(gl)} states, best d "
                       f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
                 if ge_de < a.greedy_d - a.gain:
-                    best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
+                    best_src = (f"{line_tag}+{tag}", gl[:ge_e + 1], ge_de)
                     break
         if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
             # --energy-gain G: no line is deeper, so the gate may be ENERGY lost upstream (pbr5b2:

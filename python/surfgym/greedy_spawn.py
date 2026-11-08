@@ -157,6 +157,9 @@ class GreedyLinePool:
         self._eps: list = []
         self._cur: list = []
         self._keys, self._keys_of = set(), None
+        # the last build's captured episodes (STATE_DTYPE arrays, in eval order): train_fast
+        # --ge-line reads its best one (no effect on the pool)
+        self.last_eps: list = []
 
     @property
     def size(self) -> int:
@@ -220,6 +223,7 @@ class GreedyLinePool:
             if self._cur:                      # an episode cut by the recording budget
                 eps.append(np.array(self._cur, dtype=STATE_DTYPE))
         self._eps, self._cur = [], []
+        self.last_eps = eps
         per_s = 1000.0 / float(tick_ms)
         lo_t, hi_t = int(round(self.lo * per_s)), int(round(self.hi * per_s))
         keep, deaths, stops, launches, losses, n_used = [], [], [], [], [], 0

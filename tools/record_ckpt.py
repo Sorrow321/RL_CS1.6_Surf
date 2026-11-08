@@ -133,6 +133,9 @@ TRAIN_ONLY = frozenset({
     "demo_success_pace",
     # --auto-spine-async: WHEN the training curriculum's search runs (beside it, not paused)
     "auto_spine_async",
+    # --ge-line (unr1b1): the training-time Go-Explore search -> curriculum loop (spawn pool
+    # share + an async search); a recording spawns at the map start and runs no search
+    "ge_line", "ge_line_minutes", "ge_line_gain", "ge_line_success", "ge_line_threads",
     # --auto-spine-recheck: WHETHER the training curriculum adopts a search's spine
     "auto_spine_recheck",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns

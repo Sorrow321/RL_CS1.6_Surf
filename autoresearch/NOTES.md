@@ -109,3 +109,32 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   `ps` on the box and `runs/<run>_launch.txt` before launching again.
 
 ## Round log
+
+## Round 1, unr1b1 (slot 1: the Nature paper's random explore step)
+
+### 2026-11-08 05:00 UTC - the explorer ALONE, rooted where October policies stalled
+
+Box 59665725 (RTX 5060 Ti, Threadripper PRO 3975WX, 64 threads, quota 30.7 CPUs, $0.177/h).
+`tools/explore_phase1.py` with the slot's settings: uniform random actions, 100 decisions of
+4 ticks, 95% repeat, views held at offsets from the velocity (`--view-follow
+-90..90`), cells 64 u x energy height 32 u x rising/not (`--cell-heading 1`),
+`--select-energy 1`, `--maxvel 4000`, 2048 envs on 14 threads (~0.75M ticks/s). Roots: the
+last 4 s before the stall of the best episode of an October greedy eval (the POLICY'S OWN
+line; analysis only, never training), 48 states, approximate STATE_DTYPE rows from the traj
+rows (origin, velocity, yaw, pitch, onground).
+
+| test | roots | 6 min of explorer (grader field goalc_32) | wall passed? |
+|---|---|---|---|
+| first ramp | r2b2_sband@151.5M, stalls 4.48% | max 5.71% (757k cells, 4.5M bursts) | NO (8%) |
+| window | r2b2_sbandx@526.4M, stalls 20.44% | max 20.75% (353k cells, 3.4M bursts) | NO (sgcp_1 never entered) |
+| pit dive | r2b2_sdef@1263M, stalls 26.97% | (see below) | |
+| true spawn | the map spawn | ~5.7% after 14 min (812k cells, 9.9M bursts) | NO |
+
+* First ramp: the October line that clears 8% (r2b2_sband@302.5M) climbs a +y ramp at ~1,200
+  u/s and U-turns at its top (~(13,285, 1,008, 13,707)); the explorer reaches the climb
+  ((12,203, 900, 13,473)) at 660-740 u/s and never makes the turn. A speed-gated manoeuvre:
+  random bursts spend the energy it needs.
+* Window: the passing line (r2b2_sdef@1036.5M) arrives at the x = 1,200 wall at z ~13,150-13,330
+  climbing at ~760 u/s and goes through near y ~40; the stalled line arrives at z ~12,890 and
+  the explorer's deepest cells slide along the wall at z ~13,192 (20.75%): close, not through.
+* 96-97% of bursts die; the archive grows 100-500k cells a minute, nearly all ballistic air.

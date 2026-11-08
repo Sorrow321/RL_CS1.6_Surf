@@ -5154,6 +5154,37 @@ def main() -> None:
                          "beats the greedy frontier by --auto-spine-gain replaces the "
                          "curriculum's (restarting at its end) and its success line. Single "
                          "map, single GPU. Config only when on; never restored")
+    ap.add_argument("--ge-line", type=float, default=None,      # None = off
+                    help="FRAC in (0, 1): the Go-Explore -> backward-curriculum loop with the "
+                         "Nature paper's explore step (unr1b1, 2026-11-08). After every greedy "
+                         "eval, while no search runs, the eval's BEST episode (its exact states, "
+                         "the --respawn-greedy capture) goes to tools/auto_spine.py --line: no "
+                         "beam, no policy - uniform random bursts (100 decisions, 95%% repeat, "
+                         "views held at offsets from the velocity) restored from cells of 64 u x "
+                         "energy height x rising/not, chosen 1/sqrt(1 + seen), the most "
+                         "energetic cell of a place twice as often, rooted on the line's last "
+                         "4 s before its stall, for --ge-line-minutes, BESIDE the training. The "
+                         "deepest chain, replayed exactly and spliced onto the line, becomes a "
+                         "backward curriculum when its end beats the best greedy episode by "
+                         "--ge-line-gain u (and the current line's end by as much, unless the "
+                         "greedy has crossed the current one's success line): FRAC of every "
+                         "training spawn pool is drawn from its last states (half on the "
+                         "frontier band of 0.5 s), the start widening 0.25 s per advance "
+                         "(doubling to 4 s) while the band's episodes reach the line's end "
+                         "(record within --ge-line-success u of it, or a finish) at >= 20%%. "
+                         "The rest of the pool is the recipe's own. Single map, 10 ms tick, "
+                         "needs --race-ratchet and --respawn-greedy. None = off, bit-identical; "
+                         "config only when on; never restored")
+    ap.add_argument("--ge-line-minutes", type=float, default=8.0,
+                    help="--ge-line: the explorer's wall-clock budget per search (minutes)")
+    ap.add_argument("--ge-line-gain", type=float, default=200.0,
+                    help="--ge-line: u of field distance a line's end must beat the best greedy "
+                         "episode (and the current line) by")
+    ap.add_argument("--ge-line-success", type=float, default=100.0,
+                    help="--ge-line: a curriculum episode succeeds when its ratchet record comes "
+                         "within this many u of the line's end (or it finishes)")
+    ap.add_argument("--ge-line-threads", type=int, default=0,
+                    help="--ge-line: the explorer's OMP threads (0 = the trainer's own count)")
     ap.add_argument("--auto-spine-milestones", action="store_true",
                     help="--auto-spine + --demo-success-bonus: when a new spine replaces the "
                          "curriculum's, the old success line becomes a MILESTONE that keeps "
@@ -12657,6 +12688,41 @@ def main() -> None:
         raise SystemExit("--respawn-greedy-contact anchors the --respawn-greedy rows")
     elif args.respawn_greedy_energy:
         raise SystemExit("--respawn-greedy-energy anchors the --respawn-greedy rows")
+
+    # ---- --ge-line: the Go-Explore -> backward-curriculum loop, uniform explore step ----------
+    # (unr1b1, 2026-11-08) the search is tools/auto_spine.py --line on the best greedy episode,
+    # run beside the training; its line is a DemoCurriculum on its own share of the pool (the
+    # --finish-line composition: the recipe's reservoir / novel / greedy rows are kept)
+    GEL = None                            # the curriculum on the adopted line (None until one)
+    GEL_FRAC = 0.0
+    GEL_END_D = None                      # the adopted line's success line (record <= this)
+    GELS = {"on": False, "proc": None, "k": 0, "field": None, "eval": None, "best_d": None,
+            "line_end": None, "adopted": 0}
+    if args.ge_line is not None:
+        if not 0.0 < float(args.ge_line) < 1.0:
+            raise SystemExit("--ge-line must be in (0, 1)")
+        for _bad, _why in ((MULTI, "--maps (single map)"),
+                           (GREEDY is None, "no --respawn-greedy (the line is its capture)"),
+                           (not args.race_ratchet, "no --race-ratchet (success is the record)"),
+                           (bool(args.demo_file), "--demo-file"),
+                           (bool(args.auto_spine), "--auto-spine"),
+                           (bool(args.finish_line or args.auto_finish),
+                            "--finish-line / --auto-finish"),
+                           (abs(float(args.tick_ms) - 10.0) > 1e-9 or bool(args.tick_ms_schedule),
+                            "a tick other than 10 ms (the explorer's chains)")):
+            if _bad:
+                raise SystemExit(f"--ge-line is not wired with {_why}")
+        if float(args.ge_line_minutes) <= 0.0:
+            raise SystemExit("--ge-line-minutes must be > 0")
+        GEL_FRAC = float(args.ge_line)
+        GELS["on"] = True
+        print(f"--ge-line {GEL_FRAC:g}: after every greedy eval (one search at a time, beside "
+              f"the training) the best episode goes to auto_spine --line: uniform Go-Explore "
+              f"for {float(args.ge_line_minutes):g} min from its last 4 s before its stall; a "
+              f"chain ending {float(args.ge_line_gain):g} u past the best greedy episode (and "
+              f"the current line) becomes the backward curriculum on {GEL_FRAC:.0%} of every "
+              f"training spawn pool (success: record within "
+              f"{float(args.ge_line_success):g} u of the line's end, or a finish)", flush=True)
     if args.respawn_backward:
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
@@ -15367,6 +15433,14 @@ def main() -> None:
     if args.demo_file and float(args.demo_success_alive or 0.0) > 0.0:
         # --demo-success-alive: dumped only when on (not restored: a property of the run)
         meta["config"]["demo_success_alive"] = float(args.demo_success_alive)
+    if args.ge_line is not None:
+        # --ge-line: dumped only when on (a flag-off run.json is the control's byte for byte);
+        # never restored - the loop is a property of the run, not of the weights
+        meta["config"].update(
+            ge_line=float(args.ge_line), ge_line_minutes=float(args.ge_line_minutes),
+            ge_line_gain=float(args.ge_line_gain),
+            ge_line_success=float(args.ge_line_success),
+            ge_line_threads=int(args.ge_line_threads))
     if args.auto_spine:
         # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for
         # byte); never restored - the loop is a property of the run, not of the weights
@@ -16361,6 +16435,7 @@ def main() -> None:
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
     fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
+    gel_idx = np.full(N, -1, np.int64)    # --ge-line index of each env's start
     fin_paced = np.zeros(N, bool)         # --finish-line-pace: this tick's paced finishes
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
     if demo is not None and args.demo_success_d is not None:
@@ -16685,6 +16760,154 @@ def main() -> None:
     if AUTO_SPINE and args.auto_spine_async:
         import atexit
         atexit.register(_auto_spine_kill)
+
+    # --ge-line (unr1b1, 2026-11-08): the uniform Go-Explore search on the best greedy episode,
+    # beside the training, and the backward curriculum on the line it finds
+    def _ge_line_after_eval():
+        """Read the greedy eval just captured (GREEDY.last_eps); while no search runs, launch
+        tools/auto_spine.py --line on its best episode beside the training."""
+        import subprocess as _sp
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        eps = [e for e in (GREEDY.last_eps or []) if len(e) >= 2][:max(1, int(args.eval_eps
+                                                                              or 9))]
+        if not eps:
+            return
+        bests = []
+        for e in eps:
+            d = np.asarray(_f.sample(np.asarray(e["origin"], np.float64)), np.float64)
+            d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
+            bests.append(float(d.min()))
+        b = int(np.argmin(bests))
+        GELS["best_d"] = float(bests[b])
+        crossed = GEL_END_D is not None and GELS["best_d"] <= GEL_END_D
+        print(f"[{global_step:>13,d}] --ge-line: the best greedy episode ({b}) reaches d "
+              f"{bests[b]:,.0f}" + ("; no line yet" if GEL is None else
+                                     f"; the line's success line d <= {GEL_END_D:,.0f} "
+                                     + ("CROSSED" if crossed else "not crossed")
+                                     + f" ({GEL.last_info}; {GELS.get('wins', 0):,} of "
+                                       f"{GELS.get('eps', 0):,} line episodes reached it)"),
+              flush=True)
+        if GELS["proc"] is not None:
+            return
+        gdir = out / "gel"
+        gdir.mkdir(parents=True, exist_ok=True)
+        if GELS["field"] is None:
+            GELS["field"] = gdir / "field.npz"
+            np.savez(GELS["field"], grid=np.asarray(_f.grid, np.float32),
+                     quant=np.float64(1.0), mins=np.asarray(_f.mins, np.float64),
+                     cell=np.float64(_f.cell), reach_max=np.float64(_f.reach_max))
+        GELS["k"] += 1
+        kdir = gdir / f"g{GELS['k']:03d}"
+        kdir.mkdir(parents=True, exist_ok=True)
+        np.save(kdir / "line.npy", np.array(eps[b], dtype=STATE_DTYPE, copy=True))
+        thr = int(args.ge_line_threads) or int(os.environ.get("OMP_NUM_THREADS", "8"))
+        cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
+                                         / "auto_spine.py"),
+               "--line", str(kdir / "line.npy"), "--map", str(slots[0].core.bsp_path),
+               "--field", str(GELS["field"]), "--out", str(kdir),
+               "--greedy-d", f"{GELS['best_d']:.1f}",
+               "--gain", f"{float(args.ge_line_gain):g}", "--envs", "2048",
+               "--ge-minutes", f"{float(args.ge_line_minutes):g}", "--ge-boost", "1.0",
+               "--ge-select-energy", "1", "--act-every", str(int(K)),
+               "--seed", str(GELS["k"]), "--threads", str(thr)]
+        if args.maxvel is not None:
+            cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+        try:
+            fh = open(kdir / "auto_spine.log", "w", encoding="utf-8", errors="replace")
+            proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT,
+                             env=dict(os.environ, OMP_NUM_THREADS=str(thr)))
+        except OSError as ex:
+            print(f"!! --ge-line search {GELS['k']} did not start: {ex}", flush=True)
+            return
+        GELS["proc"] = (proc, fh, time.time(), kdir)
+        print(f"[{global_step:>13,d}] --ge-line search {GELS['k']}: Go-Explore from episode "
+              f"{b}'s last 4 s before its stall, {float(args.ge_line_minutes):g} min on {thr} "
+              f"threads beside the training (pid {proc.pid}, log {kdir / 'auto_spine.log'})",
+              flush=True)
+
+    def _ge_line_poll():
+        """When the search beside the training has ended (or outlived its cap: killed), read its
+        AUTO_SPINE line and adopt its line when it beats the best greedy episode (and the
+        current line, unless the greedy has crossed that one's success line) by the gain."""
+        nonlocal GEL, GEL_END_D
+        pr = GELS["proc"]
+        if pr is None:
+            return
+        proc, fh, t0, kdir = pr
+        if proc.poll() is None:
+            if time.time() - t0 <= 60.0 * float(args.ge_line_minutes) + 1800.0:
+                return
+            proc.kill()
+            proc.wait()
+            print(f"!! --ge-line search {GELS['k']} killed after {time.time() - t0:.0f}s",
+                  flush=True)
+        fh.close()
+        GELS["proc"] = None
+        dt = time.time() - t0
+        res = None
+        try:
+            for ln in (kdir / "auto_spine.log").read_text(
+                    encoding="utf-8", errors="replace").splitlines()[::-1]:
+                if ln.startswith("AUTO_SPINE "):
+                    res = json.loads(ln[len("AUTO_SPINE "):])
+                    break
+        except (OSError, ValueError) as ex:
+            print(f"!! --ge-line search {GELS['k']}: {ex}", flush=True)
+        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        if not res or not res.get("spine"):
+            print(f"[{global_step:>13,d}] --ge-line search {GELS['k']}: no line past the best "
+                  f"greedy episode in {dt:.0f}s (exit {proc.returncode}; deepest chain end d "
+                  f"{(res or {}).get('ge_end_d', float('nan')):,.0f})", flush=True)
+            return
+        sp = np.load(res["spine"])
+        de = float(_f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0])
+        best, gain, cur = GELS["best_d"], float(args.ge_line_gain), GELS["line_end"]
+        crossed = GEL_END_D is not None and best is not None and best <= GEL_END_D
+        why = ("" if best is not None and de < best - gain else
+               f"its end d {de:,.0f} does not beat the latest best greedy episode "
+               f"{best if best is not None else float('nan'):,.0f} by {gain:g} u")
+        if not why and cur is not None and not crossed and not de < cur - gain:
+            why = (f"its end d {de:,.0f} does not beat the current line's end {cur:,.0f} by "
+                   f"{gain:g} u, and the greedy has not crossed that one's success line")
+        if why:
+            print(f"[{global_step:>13,d}] --ge-line search {GELS['k']}: line NOT adopted - "
+                  f"{why} ({dt:.0f}s)", flush=True)
+            return
+        sp = np.array(sp, dtype=STATE_DTYPE, copy=True)
+        sp["tick"] = 0
+        sp["stuck_ticks"] = 0
+        if GEL is None:
+            _gw = max(1, TICK.secs_to_ticks(0.5))
+            _gg = max(1, TICK.secs_to_ticks(0.25))
+            _ggm = max(_gg, TICK.secs_to_ticks(4.0))
+            GEL = DemoCurriculum(sp, window=_gw, rate=0.2, min_ep=50.0, seed=37, grow=_gg,
+                                 front_frac=0.5, cooldown=5, grow_max=_ggm,
+                                 name="ge-line curriculum")
+        else:
+            GEL.reset_spine(sp)
+        GEL_END_D = de + float(args.ge_line_success)
+        GELS["line_end"] = de
+        GELS["adopted"] += 1
+        GELS["eps"] = GELS["wins"] = 0
+        gel_idx[:] = -1
+        (out / "gel" / "current.json").write_text(json.dumps(
+            {"step": int(global_step), "k": GELS["k"], "spine": res["spine"], "n": int(GEL.n),
+             "end_d": de, "success_d": GEL_END_D, "greedy_best_d": best, **res}, indent=1),
+            encoding="utf-8")
+        print(f"[{global_step:>13,d}] --ge-line search {GELS['k']}: NEW LINE ({GEL.n} states, "
+              f"{GEL.n * TICK.ms / 1000.0:.1f} s; end d {de:,.0f}, the best greedy episode "
+              f"{best:,.0f}) in {dt:.0f}s -> {res['spine']}; success line d <= "
+              f"{GEL_END_D:,.0f}; the curriculum restarts at its end on {GEL_FRAC:.0%} of the "
+              f"pool", flush=True)
+
+    def _ge_line_kill():
+        pr = GELS["proc"]
+        if pr is not None and pr[0].poll() is None:
+            pr[0].kill()
+
+    if GELS["on"]:
+        import atexit
+        atexit.register(_ge_line_kill)
 
     # --auto-finish: a finishing line from the policy's own search (tools/finish_search.py), run
     # beside the training after a greedy eval that finishes fewer than the quorum; the first line
@@ -19369,6 +19592,18 @@ def main() -> None:
                 _fpos = FINL.rng.choice(np.flatnonzero(_free), _fm, replace=False)
                 _pool = _pool.copy()
                 _pool[_fpos] = FINL.draw(_fm)
+            if GEL is not None:
+                # --ge-line: its share of the pool from the adopted line's admitted range
+                # (positions the --spawn-states rows did not take)
+                if len(_pool) < 4096:
+                    _pool = np.resize(_pool, 4096)
+                _gfree = np.ones(len(_pool), bool)
+                if SPAWN_STATES is not None:
+                    _gfree[_pos] = False
+                _gm = min(int(round(len(_pool) * GEL_FRAC)), int(_gfree.sum()))
+                _gpos = GEL.rng.choice(np.flatnonzero(_gfree), _gm, replace=False)
+                _pool = _pool.copy()
+                _pool[_gpos] = GEL.draw(_gm)
             _slot.core.set_spawn_pool(_pool)
         if STALL_CUT and demo is not None:
             # --demo-stall-cut: before this iteration's draws (a cut spine is drawn at once)
@@ -19518,8 +19753,8 @@ def main() -> None:
                         _rp = GREEDY.mix(_rp, max(1, int(round(
                             len(_rp) * (1.0 - args.respawn_frac)))))
                     _set_pool(_s, _rp)
-            elif SPAWN_STATES is not None:
-                # --spawn-states before the reservoir fills: map starts + own states
+            elif SPAWN_STATES is not None or GEL is not None:
+                # --spawn-states / --ge-line before the reservoir fills: map starts + own states
                 _set_pool(_s, _s.pool)
         if goalsys is not None:
             goalsys.iterate(respawn, step=global_step)
@@ -19551,6 +19786,10 @@ def main() -> None:
                     wins = res.bin_win.sum()
                     print(f"  {res.last_info}  |  outcome-tracked eps "
                           f"{ep.sum():,.0f}  wins {wins:,.1f}")
+        if GEL is not None and it_no % 100 == 1 and GEL.last_info:
+            print(f"  ge-line: {GEL.last_info}  |  line episodes {GELS.get('eps', 0):,}  "
+                  f"reached its end {GELS.get('wins', 0):,}  (line {GELS['k']}, "
+                  f"{GELS['adopted']} adopted)", flush=True)
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
@@ -20339,6 +20578,24 @@ def main() -> None:
                         if _fkn.any():
                             FINL.note_outcomes(fin_idx[_fei][_fkn], _fgoal[_fkn])
                         fin_idx[_fei] = FINL.match(sv_view[_fei]["origin"])
+                    if GEL is not None and ended.any():
+                        # --ge-line: the ended episodes that started on the adopted line and
+                        # whether their record reached its end (the --demo-success-d read: the
+                        # dying episode's record before this tick re-anchored it) or finished,
+                        # then the fresh spawns' line index
+                        _gli = np.flatnonzero(ended)
+                        _glw = fleet.goal_hits().astype(bool)[_gli]
+                        _glb = (slots[0].reward_fn.paid_record(boot=True)
+                                if hasattr(slots[0].reward_fn, "paid_record")
+                                else getattr(slots[0].reward_fn, "_rec_boot", None))
+                        if _glb is not None:
+                            _glw = _glw | (np.asarray(_glb)[_gli] <= GEL_END_D)
+                        _glk = gel_idx[_gli] >= 0
+                        if _glk.any():
+                            GEL.note_outcomes(gel_idx[_gli][_glk], _glw[_glk])
+                            GELS["eps"] = GELS.get("eps", 0) + int(_glk.sum())
+                            GELS["wins"] = GELS.get("wins", 0) + int(_glw[_glk].sum())
+                        gel_idx[_gli] = GEL.match(sv_view[_gli]["origin"])
                     if respawn is None and goalsys is not None and ended.any():
                         # --goal-planner ramps without the reservoir: the ended envs respawned
                         # at the map start; their windows are drawn all the same
@@ -21899,6 +22156,8 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 if AUTO_SPINE and _i == 0 and not _s.heldout:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
+                if GELS["on"] and _i == 0 and not _s.heldout:
+                    GELS["eval"] = path     # --ge-line: read after the eval block
                 if args.auto_finish and _i == 0 and not _s.heldout:
                     AFIN["eval"] = path     # --auto-finish: read after the eval block
                 st = episode_stats(path)
@@ -22184,6 +22443,20 @@ def main() -> None:
             except Exception as _ex:         # a failed search never ends the run
                 AFIN["retry_at"] = int(global_step + float(args.auto_finish_retry))
                 print(f"!! auto-finish: {type(_ex).__name__}: {_ex}", flush=True)
+        if GELS["on"] and GELS["proc"] is not None:
+            # --ge-line: a search running beside the training may have ended
+            try:
+                _ge_line_poll()
+            except Exception as _ex:         # a failed search never ends the run
+                GELS["proc"] = None
+                print(f"!! --ge-line: {type(_ex).__name__}: {_ex}", flush=True)
+        if GELS["on"] and GELS["eval"] is not None:
+            # --ge-line: the greedy eval just written starts a search unless one runs
+            GELS["eval"] = None
+            try:
+                _ge_line_after_eval()
+            except Exception as _ex:         # a failed search never ends the run
+                print(f"!! --ge-line: {type(_ex).__name__}: {_ex}", flush=True)
         if AUTO_SPINE and AUTO["eval"] is not None:
             # --auto-spine: the greedy eval just written decides whether to search
             _ap, AUTO["eval"] = AUTO["eval"], None
