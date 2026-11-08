@@ -361,7 +361,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   cracked it with RL mechanisms that are all in the recipe (greedy-death spawns, no time charge),
   so v3 runs on: the pit dive is due by 3.88B, the next search at >= 1.68B (retry). 1,359M eval:
   frontier 26.5%, median 24.6%.
-* **10:45 UTC - the knob over all 12 searches** (`autoresearch/analysis/knob_table.py` on the
+* **10:43 UTC - the knob over all 12 searches** (`autoresearch/analysis/knob_table.py` on the
   pulled search logs; "line best" = the line the search rooted on; v1 search 3 re-rolled a line
   that died at 2.0%):
 
