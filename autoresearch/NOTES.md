@@ -233,3 +233,20 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   15.8 / 15.7, 755M 17.3 / 14.9, **831M 18.76 / 15.3**. The control `unop_ctl` (the same recipe
   without the search) **FAILED the first ramp**: 1.6-1.7% at every eval to 1,057M (deadline 1.0B).
   At matched steps the difference is the whole of it: 8.3% vs 1.7% at 529M, 18.8% vs 1.7% at 831M.
+* **06:46 UTC - search 3 (982M, patience) -> spine 2.** The greedy stalled at ~18.7% for three
+  evals (831M 18.8, 906M 18.7, 982M ~18.7; frontier 18,605-18,681 u). The explorer's OWN greedy
+  rollout of the 982M weights died at 6.6 s (2.0%) while the trainer's 9 eval episodes flew
+  15.8-18.6%: the recorder/beam_tas run the policy in fp32 ("the recorder never enters autocast"),
+  the trainer's rollout in bf16, and a chaotic map turns that into another line within seconds
+  (searches 1-2 happened to agree: 1.7% / 8.1%). So its roots sat on the start platform. The
+  archive got to 20.3% within 32 s anyway, by cascading policy runs along the policy's own route
+  (98,709 cells, 787k runs; knob 0.53-0.57, random ~1.2x the yield; cells policy 41,829 / random
+  56,836). The deepest chain: 10 links, ALL POLICY, 2,408 ticks from root 236, d 79,296 (20.4%),
+  exact replay. Adopted at 1,071M: spine 2 (2,083 states, end d 79,137 = 20.6%, success line
+  79,237; greedy frontier 83,966). Where the policy can already fly a stretch, policy chains
+  carry the depth and random adds breadth; at the 1.7% wall the depth needed both (above).
+  Defect to fix in a later recipe (not this run): roots should come from the trainer's own eval
+  states (the greedy-line pool keeps them exactly), not from a fp32 re-rollout.
+* 1,057M eval: frontier 20,167 u (~20.2%, moving again). 06:46: the explorer-only arms on search
+  3's checkpoint, ONE AT A TIME beside the trainer (lambda 0 then 1, 10 min each, same roots and
+  seeds; the rule arm is search 3 itself, which ran alone beside the trainer too).
