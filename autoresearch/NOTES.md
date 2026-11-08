@@ -346,3 +346,21 @@ far (duty 0.5 beside the trainer, a third of it spent on trace steps). Pit-dive 
 90 more minutes with the same flags, at low priority beside geb4 - does more search complete
 the detour into a line past 27.5%? (A line from it cannot enter any training run: the
 one-recipe rule.)
+
+**X1b at 11:11 (80 min of search in all at the wall, analysis)**: the detour keeps filling in -
+east corridor 3,681 cells (131 viable), east ramp 19,509 (404), level-west in the gap 2,733
+(222) - but the furthest west in the gap is STILL x 3,276 (as at 08:37): ~700 u short of the pit
+floor's west edge, arriving at vz ~ -240 u/s and sinking into the pit box. The explore step
+covers the detour and stalls at its last stretch.
+
+**geb4 stopped at 1.87B (11:24 UTC)**, on time, best 26.988, at the CP2 wall since 604M (T pinned
+at the --unstuck-max 0.2 cap since 900M; --front-temp samples ~15% of envs at T 2 near the
+front). Its explorer did follow the policy to the wall (trace steps) and was building the detour
+(318 ramp cells by 11:11) - but the trainer only ever saw DEPTH-improving lines, and the detour
+sits at about the greedy's depth (a 2.0-unit field dip), so none of it reached the training.
+
+**Run unr1b2_geb5** (commit 8955493b, launched 11:25 UTC): geb4's flags + `--ge-beam-spawn
+0.15` - 15% of every training spawn pool from the explorer's viable cells in the deepest 10% of
+its viable cells (rewritten every 20 explore steps): the exact detour states, next to the
+frontier, where October's notes say the CP2 wall is cracked ("put it into the unvisited states
+next to its frontier").
