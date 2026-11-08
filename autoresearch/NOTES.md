@@ -528,3 +528,26 @@ harvest of this box would fail the same way: pull before every deadline.
   absent. A crash or a stop is left alone.
 * Box deadline extended to 2026-11-09 05:23 UTC (17:22 UTC, 12 h). The box's container is capped
   at 30.7 CPUs (cpu.max); trainer ~14 + search 12, so nothing else runs on it.
+
+### 2026-11-08 18:30 UTC - explorer alone at the post-CP2 slot with 16 s roots: nothing either
+
+* unr1b1_v2 at 4.83B: the last 11 evals (4.08-4.83B) are 32.43-32.46% best, 32.42-32.44% median -
+  one deterministic line that ends at the slot every time. Best score 32.456 (traj_4681367552).
+  Searches 29-32: nothing 200 u past the greedy (deepest chain ends d 67,287-67,356).
+* Test (analysis only, nothing changed in the run): the trainer's own search command
+  (`tools/auto_spine.py --line`, same flags) on search 28's line, but rooted in the last 16 s
+  before the stall (48 roots, line states 1690-3290) instead of 4 s; 24 min on 4 threads at
+  nice 19 on the box beside the training (the trainer's cumulative fps kept rising through it,
+  176,766 -> 176,848). Result: 623 iterations, 5.96M runs (a trainer search does 4.45-4.65M in its
+  8 min), 3.88M cells (5x a search's 0.74-0.80M: the wider roots spread it out), 0 lines; best
+  chain end d 67,365, no deeper than the greedy (67,347). So `--ge-line-roots-grow` would not
+  have rescued v2 here, at least not at 16 s and one search's budget.
+* Why the uniform step cannot do this wall (reading the trajectories): the slot is ~700 u of -x
+  from the apex, and the apex velocity points ~45 deg off -x (-727, 547). Threading it needs a
+  coordinated in-air turn (strafe + yaw sweep) that keeps the speed, then a straight glide that
+  arrives within a 200 u height band. A 95%-repeat uniform burst with view-follow offsets rarely
+  produces a coordinated turn, and the archive's cells (64 u x 32 u energy x heading) do not
+  reward partial turns, so there is no stepping stone. The cavity loop (line 15) was a
+  different kind of wall: an open +x detour that random bursts DO find.
+* A local run of the same test was killed by its own RSS guard at 4 min (the archive passed
+  2.6 GB on the 7 GB droplet): explorer tests belong on a box.
