@@ -27,6 +27,9 @@ class MctsPolicy(SampledTorchPolicy):
         if float(keys_temp) <= 0 or float(view_temp) <= 0:
             raise ValueError("temperatures must be > 0")
         self.greedy = None                      # (N,) bool: envs that take the mode
+        self.hold = None                        # (N,) bool: envs that repeat their first draw
+        self.hold_store = False                 # True on the macro's first decision
+        self._h_act = self._h_z = None
         self._kt = None if float(keys_temp) == 1.0 else float(keys_temp)
         self._vt = (None if float(view_temp) == 1.0 and self._kt is None
                     else [float(view_temp), 1.0])
@@ -59,4 +62,17 @@ class MctsPolicy(SampledTorchPolicy):
             gi = torch.as_tensor(np.flatnonzero(g), device=act.device)
             act[gi, N_VIEW:] = padded[gi, N_VIEW:].argmax(-1)
             z[gi] = mu[gi]
+        h = self.hold
+        if h is not None and np.any(h):
+            # HELD envs (the MCTS's random children): the policy-space action and the view z drawn
+            # at the macro's first decision are repeated for the whole macro - coherent random
+            # actions (the Nature paper's action repeat), in the policy's own action frame, so the
+            # held keys the policy reads stay the keys the engine holds
+            hi = torch.as_tensor(np.flatnonzero(h), device=act.device)
+            if self.hold_store:
+                self._h_act = act[hi, N_VIEW:].clone()
+                self._h_z = z[hi].clone()
+            elif self._h_act is not None:
+                act[hi, N_VIEW:] = self._h_act
+                z[hi] = self._h_z
         return self._finish_view(act[:, N_VIEW:], z)

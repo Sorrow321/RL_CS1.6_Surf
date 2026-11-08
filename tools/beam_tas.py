@@ -2272,6 +2272,13 @@ def main():
                     help="--mcts: the share of each expansion's SAMPLED children that explore (the "
                          "held yaw offset, --mcts-keys-temp, --mcts-view-temp); the rest sample "
                          "the policy at temperature 1. 1 = every sampled child explores")
+    ap.add_argument("--mcts-random-frac", type=float, default=0.0,
+                    help="--mcts: the share of each expansion's SAMPLED children that are RANDOM: "
+                         "their first decision drawn at --mcts-random-temp on every head (keys "
+                         "near-uniform, the view target spread over its range) and HELD for the "
+                         "whole macro (coherent random actions in the policy's frame). 0 = off")
+    ap.add_argument("--mcts-random-temp", type=float, default=5.0,
+                    help="--mcts-random-frac: the temperature of the random children's draw")
     ap.add_argument("--mcts-hold-p", type=float, default=0.5,
                     help="--mcts: a sampled child keeps its parent's held yaw offset with this "
                          "probability (coherent steering over several macros), else draws one")

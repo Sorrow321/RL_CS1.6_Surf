@@ -645,6 +645,11 @@ def run_mcts(ctx: dict, a) -> dict:
         # keys / view temperatures), the rest are the policy's own samples at temperature 1 (the
         # Nature paper's policy-based explorer commits 50/50 to random or policy per step)
         explore = (rank > 0) & (rng.random(N) < float(a.mcts_perturb_frac))
+        # random children (--mcts-random-frac of the sampled ones, before the explore draw): the
+        # first decision drawn at --mcts-random-temp on every head and HELD for the macro
+        rnd = (rank > 0) & (rng.random(N) < float(a.mcts_random_frac))
+        explore &= ~rnd
+        polN.hold = rnd if rnd.any() else None
         if sigma > 0:
             # coherent steering: an explore child keeps its parent's held offset with
             # probability --mcts-hold-p (Go-Explore's action repeat, one level up), else draws
@@ -654,8 +659,9 @@ def run_mcts(ctx: dict, a) -> dict:
             delta = np.where(explore, np.where(keep, tree.delta[own], fresh), 0.0)
         else:
             delta = np.zeros(N)
-        polN.set_temps(np.where(explore, float(a.mcts_keys_temp), 1.0),
-                       np.where(explore, float(a.mcts_view_temp), 1.0))
+        _rt = float(a.mcts_random_temp)
+        polN.set_temps(np.where(rnd, _rt, np.where(explore, float(a.mcts_keys_temp), 1.0)),
+                       np.where(rnd, _rt, np.where(explore, float(a.mcts_view_temp), 1.0)))
         alive = np.ones(N, bool)
         fin = np.zeros(N, bool)
         fin_t = np.full(N, -1, np.int64)
@@ -667,6 +673,7 @@ def run_mcts(ctx: dict, a) -> dict:
         n_new = np.zeros(N, np.float64)
         tt = 0
         for m in range(M):
+            polN.hold_store = m == 0
             act = polN.act(obsN)
             view = np.array(polN.view, np.float32)
             if sigma > 0:
@@ -811,6 +818,7 @@ def run_mcts(ctx: dict, a) -> dict:
                "roots": len(roots), "macro_decisions": M, "children": Kc,
                "yaw_sigma": sigma, "hold_p": float(a.mcts_hold_p),
                "novelty": float(a.mcts_novelty), "perturb_frac": float(a.mcts_perturb_frac),
+               "random_frac": float(a.mcts_random_frac), "random_temp": float(a.mcts_random_temp),
                "keys_temp": float(a.mcts_keys_temp),
                "view_temp": float(a.mcts_view_temp), "c_puct": cpuct,
                "cell_w": float(a.mcts_cell_w), "cell": float(a.mcts_cell),
