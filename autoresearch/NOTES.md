@@ -148,3 +148,35 @@ from seed 0 dies at 23.75 s, banked 23.9%): 500 waves, 2.05M nodes, only 4,318 c
 deepest subtree and failing once its leaves were pending (fixed: per-wave blocking); (2) the cell
 weight multiplied the exploration term by 1/sqrt(1 + visits), and with ~49k cell visits per wave it
 went to ~0: pure exploitation (fixed: relative among siblings). c_puct 1 -> 2.
+
+**Explorer-alone, round 2 (05:20-05:34 UTC, box 59668027, all lines graded with score.py's field
+via autoresearch/analysis/mcts_line_report.py; the walls: pit dive > 27.5%, cavity = sgcp_2)**
+
+| explorer | ckpt | search | best line (score.py) | CP | note |
+|---|---|---|---|---|---|
+| greedy (seed-0 spawn) | r0 | - | 23.9% (banked, beam_tas field) | 1 | dies at 23.75 s; r0's eval best 26.9% |
+| MCTS v1 (old selection) | r0 | 8 min, 3.8M nodes, 4,478 cells | 24.63% | 1 | 52.6 s crawl |
+| MCTS v2 (blocking, relative W, c 2) | r0 | 6 min, 5.7M nodes, 11,358 cells | 25.98% | 1 | plateau after ~200 waves |
+| plain beam (auto_spine's: 4096, R 25, greedy 32) | r0 | 11 s | **27.52%** | 1 | just past the pit dive |
+| plain beam | r1 | 140 s | 28.12% | 1 | r1's eval best 28.2%; no sgcp_2 |
+
+* The MCTS as configured LOSES to the plain beam at the pit dive: 6 min for 25.98% vs 11 s for
+  27.52%. The tell: only 15-80% of children survive one 0.48 s macro - keys temperature 1.5 plus a
+  held 20 deg steer on EVERY sampled child is too disruptive at speed (the documented "per-decision
+  epsilon kills beams at speed" lesson, here as a held perturbation on all children). Fix under test:
+  --mcts-perturb-frac 0.5 (half the sampled children are the policy's own samples at temperature 1,
+  the paper's 50/50 random-vs-policy commitment) + --mcts-novelty 1.
+* r1's greedy pass first stopped at 13 s (the policy idles at the spawn > 10 s): the stall window is
+  now 30 s (the recipe's eval patience).
+
+**Explorer-alone, round 3 (05:34-05:50 UTC)**
+* The beam's "27.52%" on r0 is MID-AIR: its line reaches min d on its last tick, 1.16 s after its
+  last map contact; BANKED (best d at a contact tick) it is 25.83%. r1's beam: 28.12% raw, 26.10%
+  banked. On banked progress the MCTS v2 line (25.98%) matches the beam; nothing banked a landing
+  past the pit dive. (score.py grades raw min d, so a fall counts there.)
+* r0, 6 min each: --mcts-novelty 1 -> 26.21% banked, 13,459 cells (the most); --mcts-perturb-frac
+  0.5 + novelty 1 -> 26.18%, 9,980 cells. All variants plateau by wave ~200; inside noise.
+* r1 from the seed-0 spawn IDLES at the start (greedy best 1.68% after 33 s), so its test became a
+  first-ramp test: MCTS (pf 0.5, nov 1) 6.71% (the first ramp is 8%), the beam from the same start
+  26.10% banked. Allocation is the tell: ~93% of children die per wave, and 256 leaves spread over
+  the tree leave few survivors at the deepest frontier, where the beam puts all 4,096 copies.

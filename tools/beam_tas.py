@@ -2180,7 +2180,7 @@ def main():
                     help="re-rank the kept lineages by robustness: each replayed this many "
                          "times open-loop with the spawn jittered (+-robust-jitter u) or one "
                          "1-tick delay; order = finish rate, then median finish tick. 0 = off, "
-                         "byte-identical. The 68.54 s line dies on a 1 u offset 59% of the time")
+                         "byte-identical. The 68.54 s line dies on a 1 u offset 59%% of the time")
     ap.add_argument("--robust-jitter", type=float, default=0.5)
     ap.add_argument("--keep-finishers", "--keep-lines", type=int, default=1,
                     dest="keep_finishers",
@@ -2257,16 +2257,17 @@ def main():
                     help="--mcts: decisions per macro-action (an edge)")
     ap.add_argument("--mcts-k", type=int, default=16,
                     help="--mcts: children per expansion (envs // K leaves per wave)")
-    ap.add_argument("--mcts-cpuct", type=float, default=2.0,
-                    help="--mcts: PUCT exploration constant")
+    ap.add_argument("--mcts-cpuct", type=float, default=0.25,
+                    help="--mcts: PUCT exploration constant. 0.25 (unr1b3, r1 from an idle start, "
+                         "4 min: best 15.57%% at depth 25 vs 6.71%% at depth 12 with 2.0)")
     ap.add_argument("--mcts-yaw-sigma", type=float, default=20.0,
                     help="--mcts: the sampled children's held yaw offset ~ N(0, SIGMA) deg "
                          "(child 0 takes the policy's mode with none)")
-    ap.add_argument("--mcts-novelty", type=float, default=0.0,
+    ap.add_argument("--mcts-novelty", type=float, default=1.0,
                     help="--mcts: weight of the NOVELTY value in PUCT - new archive cells per "
                          "visit in a child's subtree (each macro earns the fraction of its "
                          "decisions that opened a new cell), beside the max-backed progress; "
-                         "0 = off")
+                         "0 = off. Default 1 (unr1b3's run; r0 6 min: 13,459 cells vs 11,358)")
     ap.add_argument("--mcts-perturb-frac", type=float, default=0.5,
                     help="--mcts: the share of each expansion's SAMPLED children that explore (the "
                          "held yaw offset, --mcts-keys-temp, --mcts-view-temp); the rest sample "
