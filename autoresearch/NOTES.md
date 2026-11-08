@@ -349,3 +349,15 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   fired search 4 at 1,284M. Pulled the hand-on: `unr1b4_knob3/ckpt_1250426880.pt`. Ladder: first
   ramp 604M, window 1,284M - both ON TIME. (October's lineage: 0.30B / 1.04B with recipe changes
   between walls; v1 of this branch: 529M / never - frozen at 20.7%.)
+* **10:34 UTC - v3 search 4 (1,284M, quorum) found NOTHING at the CP2 pit wall.** The eval line:
+  25.7 s, best d 73,071 (26.7%) at its LAST tick (2,568: the line dies at its best point, a fatal
+  fall over the pit), stall 2,530, 95 root cells. The archive's deepest CONTACT cell: d 73,562
+  (26.2%) by 30 s and never better; 19,852 cells, yield 3.4e-3 -> 1e-4 per decision within ~3 min
+  (saturated); knob 0.59-0.74 (random ~1.5-2x the yield). Two generic limits show here: (1)
+  contact-only cells cannot beat a line whose best d is a fall point; (2) the October notes say
+  this wall is deceptive in the field (the field's route is closed; the human line dips ~2,000 u
+  under the pit slab into a cavity) - a "deepest d" output cannot hand on a detour whose d is
+  worse until a chain reaches the far side, and from these roots none did in 10 min. October
+  cracked it with RL mechanisms that are all in the recipe (greedy-death spawns, no time charge),
+  so v3 runs on: the pit dive is due by 3.88B, the next search at >= 1.68B (retry). 1,359M eval:
+  frontier 26.5%, median 24.6%.
