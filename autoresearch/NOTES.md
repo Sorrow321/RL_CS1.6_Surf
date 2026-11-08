@@ -186,3 +186,14 @@ checkpoint and protocol; cells 128 u x 256 u energy x 4 headings; goalc progress
 d342b843): `box.py launch --run unr1b2_geb --steps 2e10 -- --ge-beam --ge-beam-burst 10
 --ge-beam-burst-frac 0.25 --ge-beam-cell 128 256 4 --ge-beam-envs 512 --ge-beam-threads 8
 --ge-beam-duty 0.3` on top of config.incumbent_recipe, from step 0, one recipe.
+
+**unr1b2_geb at 529M (06:07 UTC)** - first ramp at 453.5M (ON TIME, deadline 1.0B), window
+CP1 at 529.0M (ON TIME; October 1,036.5M, r3b2 0.45B, r1b1 0.58B); best eval 24.404 (24.4%,
+CP1). Throughput ~280k steps/s on the 4080 with the explorer at duty 0.3. The greedy sat at
+1.7% from 76M to 302M; the explorer's lines (from the true start, through its archive) were
+adopted as they passed it - line 10 (3.3%) at 291M, line 14 (5.1%) at 342M -> greedy 5.7% at
+378M; line 19 (10.4%) at 438M, line 21 (15.2%) at 453M -> greedy 15.8% at 453.5M (first ramp);
+then 23.5% (CP1) at 529M by itself, past the explorer's frontier (15.8%, duty 0.3 lags the
+policy). The control unop_ctl (the same recipe without the explorer, a 5060 Ti) FAILED the
+first ramp: no greedy eval past 8% by 1.06B. One seed each (the first ramp varied 0.18-1.51B
+in October), but the lead-and-follow sequence is the mechanism working as designed.
