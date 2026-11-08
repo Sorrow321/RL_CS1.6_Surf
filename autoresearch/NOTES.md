@@ -563,3 +563,11 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   the same commit with the same flags and --steps raised. Box extended to 2026-11-09 03:35 UTC.
   3,844-3,996M evals: 28.20 / 28.17 / 28.21 (9/9 past the pit); search 4 (3,769M) found nothing
   deeper (27,724 cells).
+* **15:53 UTC - v3 reached its cap and continues as `unr1b4_knob3d`.** unr1b4_knob3c stopped at its
+  cap, 4,258,791,424 steps (ckpt_final.pt md5 4b693f1f...; evals to 4,222M at 27.9-28.2, best
+  **28.212 at 3,996M**); resumed from that ckpt_final on the same commit 9c8be647 with the same
+  flags and --steps 56e9 (stop at 60.26B), per the operator note. The trainer's exit killed
+  auto_spine.py but NOT its beam_tas child (pid 36675, search 5): killed by hand - a known gap in
+  `_auto_spine_kill` (it kills the auto_spine process, not its process group). Each resume drops
+  the curriculum and the spine (not in a checkpoint): the first search comes 3e8 steps after the
+  first eval.
