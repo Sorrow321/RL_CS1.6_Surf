@@ -551,3 +551,28 @@ harvest of this box would fail the same way: pull before every deadline.
   different kind of wall: an open +x detour that random bursts DO find.
 * A local run of the same test was killed by its own RSS guard at 4 min (the archive passed
   2.6 GB on the 7 GB droplet): explorer tests belong on a box.
+
+### 2026-11-08 20:40 UTC - unr1b1_v2 reached its 6e9 cap and resumed itself to 60e9
+
+* The first segment ended at its cap: `done: 6,000,476,160 steps, avg 177,074 steps/s` (20:13:25
+  UTC). The on-box watcher saw the trainer exit at 20:13:28, found the `done:` line and
+  ckpt_final.pt at 6,000,476,160 >= 6e9, and ran `runs/resume_v2.sh` at 20:14:15. Pre-launch record
+  gate on ckpt_final.pt PASSED (greedy + POV, 12 s); trainer pid 24267 alive; post-launch gate on
+  the first ckpt_latest.pt PASSED (greedy, stoch, mixed + POV, 28 s). run.json vs the first
+  segment's (kept as `run_seg2014.json`): 284 config keys, one differs - `steps` 6e9 -> 60e9.
+* Restored from the checkpoint: novelty counts (19.5M visits), the respawn reservoir (20,000
+  states, min d 67,358), the --unstuck state, the --respawn-novel state (ceiling d 67,271) and the
+  greedy-line pool. NOT restored: the --ge-line curriculum ("no line yet") and its search counter
+  (searches count from 1 again; the first segment's 40 searches are in `gel_seg2014/`). That is
+  equivalent here: line 15 was RETIRED at 2,340,945,920 (the median greedy crossed its success
+  line, the same eval that cleared the cavity), and a retired line adds no spawns and no band
+  temperature (train_fast 173fb6af: the pool share and the front-temp band are both gated on
+  `not GELS["retired"]`), so the training distribution has had no line rows for 3.66B steps
+  either way; the adoption rule (beat the best greedy by 200 u) is the same with no line.
+* The first segment's logs are kept on the box and locally with matching md5
+  (`unr1b1_v2_launch_seg2014.txt`, `run_seg2014.json`, the resume and watcher logs);
+  progress.csv continues in place.
+* Evals 5.51-6.15B: best 32.42-32.47%, best score 32.472 (traj_5511839744); search 1 of the new
+  segment: nothing (deepest chain end d 67,321, greedy 67,348). Post-CP2 block deadline 13.93B
+  ~ 2026-11-09 08:40 UTC at 177k steps/s. Box deadline extended to 2026-11-09 07:26 UTC (19:26,
+  12 h); one more extension after 00:35 UTC covers the round end.
