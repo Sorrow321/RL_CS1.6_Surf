@@ -496,3 +496,19 @@ Evals 5.74-6.64B: best-of-9 80.8-82.5% except three dips (56.0% 5.81B, 57.1% 6.1
 medians are erratic (10.6% at 6.42B, 17.4% at 6.49B): the greedy loses its early crossings in
 some episodes while the deep ones still reach 82%. Training crash share 39% (34% at 5.66B), int
 5.8/ep, ent 0.015. Explorer 31.48%. ON TIME (CP6 deadline 28.5B); keeps training.
+
+### Lesson for the next explorer (user's design note, 2026-11-08 ~22:10 UTC)
+
+The user's intended design was ONE stream: the explorer searches, PPO trains on the explorer's
+backward curriculum, and the explorer's explore step INTERPOLATES between the greedy policy
+(T -> 0) and Nature's random rollouts (T -> inf), temperature (or beam / MCTS) being the knob.
+geb6 did not do that: every copy ran at keys T 1.5 + yaw at the policy's own sigma + a held yaw
+offset - about the noise of PPO's own training rollouts - and no copy was near-greedy. The 82% is
+the DETERMINISTIC policy's; the sampled policy cannot hold the line for 90 s, so the archive
+stalled at 31.48% (from-start traces also stop at 60 s, the greedy needs 92 s to reach 82%).
+Next explorer: (1) draw each copy's temperature from a ladder that includes near-greedy (Ape-X,
+Horgan et al. 2018: per-actor eps_i = 0.4^(1 + 7 i/(N-1))), (2) from-start traces as long as the
+greedy line, (3) first CHECK that a zero-noise explorer copy reproduces the greedy eval line
+(not verified in this round: a setup mismatch in the explorer's observation would look the same
+as too much noise). With the explorer stuck behind, a curriculum-only PPO would have had no
+starts past 31%: in geb6 the late walls came from the base recipe's own frontier spawns.
