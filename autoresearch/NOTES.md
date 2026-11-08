@@ -531,3 +531,9 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   found nothing (25,418 cells, deepest contact cell d 73,450 = 26.3%, the line's dive 72,952).
   Hand-on pulled: unr1b4_knob3c/ckpt_2758803456.pt. ladder.py on the knob3c directory alone reads
   LATE / STOP because its first eval is at 2.26B; its walls are in unr1b4_knob3 (604M, 1,284M).
+* **14:30 UTC - PIT DIVE CLEARED at 3,165M (score 27.536: best 27.54%, median 26.8%), on time
+  (deadline 3.88B).** v3's third wall, by the recipe's own RL after ~1.9B steps at the CP2 pit
+  (the continuation's searches 1-2 at 2,561M / 3,014M found nothing: 25,418 / 32,077 cells,
+  deepest contact cell d ~73,450); evals 2,939M 27.47 and 3,165M 27.54 are the first past the
+  pit's 26.9 plateau. Hand-on: unr1b4_knob3c/ckpt_3008888832.pt (pulled). Ladder for v3: first
+  ramp 604M, window 1,284M, pit dive 3,165M - all ON TIME; next the cavity (CP2), due 8.27B.
