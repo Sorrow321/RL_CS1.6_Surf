@@ -675,3 +675,14 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   being taught (67,501), so no new spine since 6,630M. The curriculum is back at the spine's first
   rows (starts [13-23, 3,413], success 0-1.2% over ~240 episodes: the true-start region is what
   it is re-learning). Post-CP2 (>33%, d < 66,782) due 13.93B (~03:40 UTC).
+* **23:45 UTC - v3 at 10.54B: a second relapse, to the CP2-pit dive.** Evals 9,771-9,997M 32.36-32.45
+  (median 32.3-32.4%), then 10,073-10,526M **26.5-27.0% (CP1), 9/9 episodes alike**: each ends `fail`
+  at 26.2-26.4 s with its best d on the death tick (vz ~-1,400, hspd ~1,300, x ~3,170, z ~11,160)
+  - the pit dive v3 first got past at 3,165M. The training side turned at 10.0B: reward per
+  125M bucket 37-42 (9.5-9.875B) -> 11.8 (10.0B) -> 9.2-9.7; value loss 4.1-4.9 -> 1.6 -> 0.14-0.17;
+  the KL fell back (median 9.6 at 9.75B -> 0.46-1.46 from 10.125B), so the relapse is not a KL
+  spike either. The box log shows the energy front bonus paying +0 u/ep (it paid ~+150 at 9.0B)
+  and the curriculum at spine rows 315-325 (success 5-40%). Search 14 (10,073M, rooted on the
+  relapsed eval line) reached d 69,193 - kept out by the gain rule; search 15 (10,526M) running.
+  The walls stay cleared, so the run is ON TIME: post-CP2 due 13.93B (~03:45 UTC). Best stays
+  32.447 (9,695M; 32.446 at 9,997M).
