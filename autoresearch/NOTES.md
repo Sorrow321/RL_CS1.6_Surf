@@ -619,5 +619,5 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   6,524M scored 30.918). The greedy still dies at ~30.8% (evals 6,600-7,052M 30.73-30.92, one 27.6
   dip); the curriculum on search 6's spine oscillates at starts [3,038-3,043, 3,413] (success
   6.7-31.3% over ~500 episodes, the junction with the policy's own line at row ~3,020). Search 7
-  (6,781M) found a line to d 67,302, kept out by the 200 u gain rule (the spine being taught ends at
+  (6,977M) found a line to d 67,302, kept out by the 200 u gain rule (the spine being taught ends at
   67,501).
