@@ -7,8 +7,8 @@
   "score_episodes": 9,
   "_score_episodes_doc": "score.py counts only the first N episodes of an eval (header episode index < N): its score is a max over episodes, so an eval with more episodes would buy lottery tickets (r6b1 scored 98.418 with 54-episode evals of the incumbent's weights). 0 = all.",
   "branches_per_round": 4,
-  "round_hours": 12,
-  "rounds": 2,
+  "round_hours": 32,
+  "rounds": 1,
   "_rounds_doc": "The user, 2026-11-08: 'take one of the maps, for example ... sidistic ... and try to run a consolidated approach ... replace the random search in Go Explore with our policy-driven search. And then we do the same with the backward curriculum ... We can run 4 agents ... The main goal should be ... not to tune the model for every single wall ... find one unified recipe that will converge if we give it some time ... if the algorithm doesn't beat the wall in twice time it was beaten before, then the algorithm doesn't work.' Two rounds fit the credit at four boxes plus the operator's control; a top-up and a larger `rounds` extend it.",
   "wrapup_minutes": 40,
   "max_agents": 5,
@@ -17,7 +17,7 @@
   "ablation_minutes_first": 30,
   "ablation_minutes_max": 360,
   "budget_reserve_usd": 10.0,
-  "budget_end_hours": 25,
+  "budget_end_hours": 32,
   "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring = 25. Move it with rounds.",
   "gpu_tiers": [
     [
