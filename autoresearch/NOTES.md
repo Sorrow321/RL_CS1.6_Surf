@@ -336,3 +336,13 @@ scratchpad detour.py (analysis only).
   plate and back level through a 220 u gap. Alone at the wall, the explorer with chain roots +
   1 s bursts + level/falling cells reaches every piece of that detour in 40-50 min (X1), but has
   not chained it into a line past the gap's west edge.
+
+**geb4 at 1.36B (10:50 UTC)**: best 26.988, at the CP2 wall (26.8-26.9% every eval since 604M).
+Its explorer's archive (10:41): 310k cells; east corridor 83 (1 viable), ramp 23, level-west in
+the gap 8 (min x 4,182), none past the west edge - ~1/3 of X1's explorer work at the wall so
+far (duty 0.5 beside the trainer, a third of it spent on trace steps). Pit-dive deadline 3.88B
+(~13:15 UTC).
+**X1b** (10:51, analysis only): X1's own archive (geb's 1B checkpoint, 410k cells) resumed for
+90 more minutes with the same flags, at low priority beside geb4 - does more search complete
+the detour into a line past 27.5%? (A line from it cannot enter any training run: the
+one-recipe rule.)
