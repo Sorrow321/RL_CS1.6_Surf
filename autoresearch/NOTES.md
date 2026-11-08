@@ -472,7 +472,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   and the spine are not in a checkpoint, so it starts with no spine and searches after 3e8
   steps. The pit dive is due at 3.88B (~15:30 UTC at ~215k steps/s).
 
-### unr1b4 round 1 - THE LESSON (written 13:53 UTC; final numbers appended at wrap-up)
+### unr1b4 round 1 - THE LESSON (written 13:50 UTC; final numbers appended at wrap-up)
 
 **What slot 4 built** (all default-off, bit-identical when off, TRAIN_ONLY for the recorder, tests in
 tests/python/test_knob_ge.py): `tools/knob_ge.py` + `beam_tas.py --ge-knob` (Go-Explore over exact
