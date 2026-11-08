@@ -4,11 +4,11 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 31.743,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/traj_2793930752.jsonl",
+  "score": 32.338,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/traj_3171418112.jsonl",
   "run": "unr1b3_mcts4",
-  "step": 2793930752,
-  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/ckpt_latest.pt",
+  "step": 3171418112,
+  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts4/ckpt_3001024512.pt",
   "recipe": [
    "--envs",
    "1024",
@@ -139,7 +139,7 @@
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null,
-  "ckpt_step": 3001548800
+  "ckpt_step": 3001024512
  },
  "running": {
   "run": "unr1b3_mcts4",

@@ -443,3 +443,7 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
 * Run 4's ladder so far: first ramp 0.378B, window 0.605B, pit dive 2.341B, cavity 2.718B - every
   wall ON TIME, and walls 3-4 sooner than the October lineage (1.94B / 4.14B). Run 1 (raw adoption)
   never got past the pit; the control never past the first ramp.
+* 12:45 UTC: run 4 at 3.61B, 31.6-32.3% (CP2) - at the post-CP2 block (33%, deadline 13.9B).
+  Best eval **32.338 at 3.171B** (hand-on: ckpt_3001024512, 170M before it, md5 1208da42...).
+  Search 10 (3.2B) adopted a line banking 30.2% (+232 u over the greedy's banked frontier);
+  search 11 fired on patience at 3.55B.
