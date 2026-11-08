@@ -324,3 +324,18 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   --demo-success-bonus and --auto-spine-milestones. The search's lines stay a spawn curriculum
   (25% of the pool, the backward walk on the success line) but reaching one is not paid, so a
   search line that is a local optimum cannot outbid the field. Everything else as run 2.
+* Next explorer change (code 1f08b064, NOT in run 3, which runs 29202df0): --mcts-energy W - the
+  search's value = banked progress + W x lambda x (energy height at the banked point - the
+  spawn's) / d0, lambda = the checkpoint's own --energy-pot K x d0 / 1e5 (the trainer pays 100 per
+  d0 of progress and K per 1000 u of h: 1 u of h ~ 3 u of progress at K 3); the line handed on is
+  still the DEEPEST banked node (what the trainer's adoption compares). Why: run 2's dead end
+  (2.86% banked, no speed) outscored the speed-keeping north route in a progress-only value.
+  Testing on run 1's 0.7B trap checkpoint (W 1 vs W 0, 4 min each, beside run 3).
+* Trap test (run 1's 0.7B checkpoint, the east-dive policy; new defaults: random 0.5, nov 3, flight
+  roots, steer 2-20 deg; 4 min each beside run 3): **--mcts-energy 1: 5.55% banked at 7.98 s,
+  8,952 cells (364 waves); energy 0: 5.55% at 13.53 s, 4,108 cells (870 waves)**. BOTH lines take
+  run 1's NORTH route (land at y +93, (9,894, 1,027) at 4 s, east to the ramp complex at x ~12,200)
+  - the route the policy found by itself at 0.9B - and stop at 5.55% where that route winds around
+  the complex. The energy value keeps the speed (1,483 vs 1,227 u/s at 6 s, 5.5 s faster to the
+  same point) and doubles the coverage per wave. Run 3 (no energy term) kept running: the gain is
+  real but modest, not worth a restart; it goes into the next recipe.
