@@ -1,15 +1,15 @@
 {
-  "_doc": "Fork-and-flush autoresearch on surf_za_loop (arXiv 2610.07447), the harness's fourth program (the first: surf_src_sidistic, ~/ar, 2026-10-20..23; the second: surf_princessburglar_b26, ~/ar_pb, 2026-10-23..30; the third: surf_unitfarmer2, ~/ar_uf2, 2026-10-30..31, stopped by the user in round 2 after its agents beat the record in the simulator). Read autoresearch/README.md. Every number here is a HARD limit that box.py, the orchestrator and the fleet watchdog enforce; change it here, nowhere else.",
-  "goal": "Pass surf_za_loop from the true start (the start teleport's destination, where every spawn of the map lands), champion-free and generic: up the loops - ride a ramp side to side until the speed carries you to the next one, 6,100 u of climb - then a finish, then 9/9, then faster than the human record (krs, 491.65 s on speedrun.eu, 2024-02-05; its demo times 450.46 s on our clock: start-curtain exit to the first finish-trigger entry, 7 ms frames).",
-  "map": "maps/surf_za_loop.bsp",
-  "field": "maps/surf_za_loop.goalc_32.npz",
-  "_field_doc": "The grader's field is the goal graph WITHOUT corner cutting (build_goal_field no_corner_cut=True), the field the recipe shapes on (--race-no-corner-cut 1), at the recipe's lidar cell 32, seeded on the five finish slabs (not their union's open air): 8,141,468 reachable voxels, start d 6,361.8 u at the declared spawn (the start teleport's destination; 6,347.6 u on the corner-cutting field). Baked 2026-10-31 by the operator's smoke launch zlop_bake on box 58557350 (RTX 5080), from the BSP the user sent that day (md5 e3ad293d). NOTE: the voxel graph lets a player fly straight up through open air, so d is close to 'height still to climb' (6,100 u of climb from the start curtain to the finish slabs): it does not show the loops, where the speed is pumped on one ramp before the jump to the next.",
+  "_doc": "Fork-and-flush autoresearch on surf_src_sidistic, the harness's fifth program (2026-11-08): ONE training recipe, frozen at launch, that clears the map's walls from scratch with no per-wall tuning. The question is the explore step of a Go-Explore -> backward-curriculum loop: the Nature paper's random bursts, a policy-guided beam, or policy-prior MCTS, and where on the continuous knob between random and policy-guided it should sit. Earlier programs: surf_src_sidistic (~/ar, 2026-10-20..23, the lineage this one is measured against), surf_princessburglar_b26 (~/ar_pb), surf_unitfarmer2 (~/ar_uf2), surf_za_loop (~/ar_loop). Read autoresearch/README.md. Every number here is a HARD limit that box.py, the orchestrator and the fleet watchdog enforce; change it here, nowhere else.",
+  "goal": "ONE recipe for surf_src_sidistic from the TRUE start, champion-free and generic, frozen at launch (PROTOCOL.md: the one-recipe rule): it must clear every wall of the map no later than 2x the steps the October lineage needed for that wall (autoresearch/ladder.json), then finish, then finish reliably. The record (krs, 115.99 s) is a bar to read results against, never a constant.",
+  "map": "maps/surf_src_sidistic.bsp",
+  "field": "maps/surf_src_sidistic.goalc_32.npz",
+  "_field_doc": "The sidistic program's grader field: the goal graph WITHOUT corner cutting at lidar cell 32, the field the recipe shapes on (--race-no-corner-cut 1), copied from ~/RL_Surf/maps (baked 2026-10-23 in that program's round 5). start_d 99,675 u is the kill-aware start geodesic the trainer prints at the true spawn (97,768 u on the plain field).",
   "score_episodes": 9,
   "_score_episodes_doc": "score.py counts only the first N episodes of an eval (header episode index < N): its score is a max over episodes, so an eval with more episodes would buy lottery tickets (r6b1 scored 98.418 with 54-episode evals of the incumbent's weights). 0 = all.",
   "branches_per_round": 4,
   "round_hours": 12,
-  "rounds": 6,
-  "_rounds_doc": "The user (2026-10-31), handing over the map and its record demo: 'This is a bit annoying map because it mostly consists of so-called loops. It's basically when you have a ramp and you're riding this ramp left and right all the time until you gain the speed, and then you can jump on another one. So it's quite different from normal surf maps. I want you to again to start the sub agents to work on this map the same way we did before, and I wonder if they can solve this map automatically.' The same way = the unitfarmer2 program: 4 agents, 6 rounds x 12 h.",
+  "rounds": 2,
+  "_rounds_doc": "The user, 2026-11-08: 'take one of the maps, for example ... sidistic ... and try to run a consolidated approach ... replace the random search in Go Explore with our policy-driven search. And then we do the same with the backward curriculum ... We can run 4 agents ... The main goal should be ... not to tune the model for every single wall ... find one unified recipe that will converge if we give it some time ... if the algorithm doesn't beat the wall in twice time it was beaten before, then the algorithm doesn't work.' Two rounds fit the credit at four boxes plus the operator's control; a top-up and a larger `rounds` extend it.",
   "wrapup_minutes": 40,
   "max_agents": 5,
   "max_boxes": 5,
@@ -17,8 +17,8 @@
   "ablation_minutes_first": 30,
   "ablation_minutes_max": 360,
   "budget_reserve_usd": 10.0,
-  "budget_end_hours": 73,
-  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 6 rounds x 12 h + scoring = 73. Move it with rounds.",
+  "budget_end_hours": 25,
+  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 2 rounds x 12 h + scoring = 25. Move it with rounds.",
   "gpu_tiers": [
     [
       "RTX_3090",
@@ -94,7 +94,8 @@
     "tests/python/test_goal_hull.py",
     "python/surfgym/goalfield.py",
     "tests/python/test_goal_models.py",
-    "maps/surf_za_loop.zones.json"
+    "maps/surf_src_sidistic.zones.json",
+    "autoresearch/ladder.json"
   ],
   "_harness_files_doc": "The operator's files: at the start of every round orchestrator.py restores them from the main checkout's HEAD over the winner's head, so a branch cannot carry its own caps, grader or rules forward, and the operator's fixes reach every round. autoresearch/NOTES.md is NOT one of them: it is the lineage's memory and travels with the winner. tools/bad_hosts.json is merged instead (the union of every branch's list).",
   "lineage_keys": [
@@ -114,7 +115,7 @@
     "--simba",
     "1",
     "--ep-ticks",
-    "130000",
+    "30000",
     "--unstuck",
     "--unstuck-reach",
     "eval",
@@ -195,20 +196,18 @@
     "--energy-pot-front-bonus",
     "1",
     "--maxvel",
-    "3500",
-    "--tick-ms",
-    "7"
+    "4000"
   ],
-  "start_d": 6361.8,
+  "start_d": 99675.0,
   "model": "claude-opus-5-5",
   "effort": "max",
   "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU. Measured the same night on a 3090 + Ryzen 9 5950X box (32 threads, quota 30.7 CPUs, omp 15): ~194k steps/s, GPU 30% busy. gpu_ram>=12 (GB; 2026-10-25): the cheaper cards' 8 GB variants are out, every good card has 16-24 GB.",
-  "_incumbent_recipe_doc": "The sidistic lineage's final training flags (r7b2_bel, its first greedy finish), FROM SCRATCH, as carried by the princessburglar and unitfarmer2 lineages: run_arm.sh SCRATCH's baseline is overridden by these (later flags win). Changed for this map: --tick-ms 7 (the record's own usercmd frames: 65,061 of 65,110 are 7 ms, 143 fps; an integer tick is exact) and --ep-ticks 130000 (910 s at 7 ms: the record takes 450 s). --maxvel 3500 is this map's server too (the demo's movevars; airaccelerate 100, gravity 800, the core's defaults).",
-  "agent_prefix": "zl",
-  "_agent_prefix_doc": "Agents zlr<round>b<k>, branches ar/zlr<round>b<k>: new names, so no other program's run is ever scored as a branch's (sidistic r<n>b<k>, princessburglar pbr* / pbfr*, unitfarmer2 uf2r*).",
-  "maps_tarball": "zl_maps.tar.gz",
-  "_budget_doc": "No budget_rate_usd_h: box.py's pacer, (credit - reserve) / hours left until budget_end_hours, +10% slack. $51.12 at the start (2026-10-31 16:50 UTC) = ~0.56 $/h over 73 h, one or two cheap boxes at once; a top-up raises the pace by itself.",
-  "_harness_files_doc_goal": "2026-10-31: the finish-trigger fixes ride with the harness, so every round's base builds them whichever branch wins: the clip-hull goal (surf_unitfarmer2's curtains) and the SEVERAL-trigger finish (surf_za_loop's five slabs: surf_set_goal_models, the field seeded on each box, the grader's GoalSet); the map's zones file is the operator's too.",
-  "time_cap_s": 900.0,
-  "_time_cap_s_doc": "score.py's time term is 10 * (1 - best_finish_s / time_cap_s): 300 s on the earlier maps (35-80 s runs); this map's record runs 450 s, so 900 s (the recipe's episode cap is ~910 s)."
+  "_incumbent_recipe_doc": "The sidistic lineage's final training flags (r7b2_bel, its first greedy finish: ~/ar/runs/r7b2/r7b2_bel/run.json), FROM SCRATCH, at that lineage's own physics: the 10 ms tick (the trainer's default), --maxvel 4000 and --ep-ticks 30000 (300 s), so step counts compare with autoresearch/ladder.json. A lineage key: a winner that changed it hands its value on, but every run uses ONE recipe from step 0 (PROTOCOL.md).",
+  "agent_prefix": "un",
+  "_agent_prefix_doc": "Agents unr<round>b<k>, branches ar/unr<round>b<k> ('un' = unified recipe): new names, so no other program's run is ever scored as a branch's (sidistic r<n>b<k>, princessburglar pbr* / pbfr*, unitfarmer2 uf2r*, za_loop zlr*).",
+  "maps_tarball": "sidistic_maps.tar.gz",
+  "_budget_doc": "No budget_rate_usd_h: box.py's pacer, (credit - reserve) / hours left until budget_end_hours, +10% slack. $55.39 at the start (2026-11-08) = ~1.82 $/h over 25 h: four branch boxes plus the operator's control box at once; a top-up and a larger `rounds` extend the program.",
+  "_harness_files_doc_goal": "The finish-trigger fixes ride with the harness (the clip-hull goal, the several-trigger finish); sidistic's finish is one plain trigger box, so they change nothing here. autoresearch/ladder.json (the walls and their 2x deadlines) is the operator's too.",
+  "time_cap_s": 300.0,
+  "_time_cap_s_doc": "score.py's time term is 10 * (1 - best_finish_s / time_cap_s): 300 s, the sidistic program's (the episode cap is 300 s; the record runs 115.99 s)."
 }
