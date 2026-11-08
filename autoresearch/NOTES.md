@@ -396,7 +396,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   the line's last 12 s instead of 4 s - if the decision that matters here comes seconds before
   the stall (October: the record drops to a lower level ~2-3 s before the pit), a 4 s window
   never branches from it.
-* **11:19 UTC - the roots-window probe at the CP2 pit: NULL.** Search 5's checkpoint and eval line
+* **11:18 UTC - the roots-window probe at the CP2 pit: NULL.** Search 5's checkpoint and eval line
   (26.1 s, best d 73,455 = 26.3% at 2,571, stall 2,531), roots over the line's last 12 s (301
   roots -> 245 root cells, vs 95 in a 4 s window): 35,471 cells (search 5: 26,232), knob
   0.63-0.72, the deepest contact cell d 73,917 (25.8%), never past the line. A wider root window
