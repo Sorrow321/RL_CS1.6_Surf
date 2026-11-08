@@ -482,3 +482,49 @@ harvest of this box would fail the same way: pull before every deadline.
   its first search adopts one.
 * 15:25 UTC: 2.93B, evals 32.3 / 32.1 / 32.4 / 32.3% (median 31.8-32.1%), best score 32.374
   (traj_2793930752). Box deadline extended to 2026-11-09 03:26 UTC.
+
+### 2026-11-08 16:20 UTC - unr1b1_v2 at 3.49B: 32.4% since 2.8B, no line since line 15's retirement
+
+* Evals 2.87B-3.47B: best 32.3-32.4% every time (median 31.4-32.4%; one eval's median 21.9%).
+  Best score 32.418 (traj_3246915584). The post-CP2 block is at 33% (d 66,782); the greedy's best
+  reaches d ~67,384.
+* Line 15 was retired at 2.34B (median crossed its success line); searches 16-24 found nothing
+  200 u past the greedy (deepest 67,300). The run trains on the recipe's own spawn rules alone -
+  the case `--ge-line-roots-grow` (commit 0bb08d22, after v2's launch) was built for; v2 stays
+  as launched (an ON-TIME run keeps training).
+* Cosmetic: after a retirement the periodic line still counts "line episodes": map-start spawns
+  match the line's row 0 (the true spawn).
+* Pace 176.5k steps/s = 0.635B/h: the 6e9 cap ~20:15 UTC; the post-CP2 deadline (13.93B)
+  ~08:45 UTC tomorrow.
+
+### 2026-11-08 17:40 UTC - unr1b1_v2 at 4.21B; what the post-CP2 block is; the cap resume is armed
+
+* Evals 3.55B-4.08B: best 32.2-32.4%, best score 32.445 (traj_3850895360). Searches 25-28: nothing
+  200 u past the greedy (deepest chain ends d 67,296-67,341; the greedy's best d ~67,340). Still ON
+  TIME (cavity 2.341B); the post-CP2 deadline is 13.93B.
+* What the block is (MEASUREMENT only - map geometry from the goal field and the greedy
+  trajectories, never a recipe input; CLAUDE.md 0b): ~33.5 s in, a ramp kick (t ~30.5 s,
+  vz +1,150) throws the player to an apex z ~11,000 near x ~-200, and the route then goes -x
+  through a SLOT about 200 u tall over a ledge: at x ~-912..-944 the field is free only for
+  z ~10,340-10,532 (solid below and above), and it drops away past x ~-976. v2's greedy episodes
+  mostly turn back short of it (min x -700..-830) and fall to the kill floor at z ~9,715; in the
+  last 14 evals only 6 of 126 episodes got to x <= -880, all of them 180-570 u BELOW the slot
+  (z 9,774-10,124, falling at 1,100-1,400 u/s, horizontal speed only 480-610 u/s). From the apex
+  at ~850 u/s the slot is reachable only by flying nearly straight at -x: a height-precision wall,
+  like the window (CP1), not a speed wall.
+* The search roots (the last 4 s before the stall: line states 2890-3290 = 28.9-32.9 s) already
+  include the ramp approach, and 12 searches of uniform random bursts from them never threaded the
+  slot. Whether longer roots (--ge-line-roots-grow, 8/16 s) would is open; v2 cannot use it
+  (frozen, ON TIME).
+* Cap resume, verified ahead of time: a throwaway 1-iteration resume of a COPY of v2's checkpoint
+  under a scratch run name, with exactly the resume flags, built a config identical to v2's
+  run.json in 283 of 284 keys (`steps` alone differs); the scratch run was deleted. Two scripts on
+  the box: `runs/resume_v2.sh` (copies the launch log, progress.csv and run.json aside, moves
+  `gel/` to `gel_seg<HHMM>` - the resumed trainer counts searches from 1 again and would overwrite
+  g001.. - then `ARM_RESUME=1 bash tools/run_arm.sh unr1b1_v2 ...` with the same flags, cap 60e9,
+  pre-launch and post-launch record gates) and a one-shot watcher `runs/autoresume_v2.sh` (started
+  17:22 UTC, log `runs/unr1b1_v2_autoresume.txt`) that runs it only if the trainer ended AT its
+  cap (a `done:` line, ckpt_final.pt, its step >= 6e9) and `runs/unr1b1_v2.no_autoresume` is
+  absent. A crash or a stop is left alone.
+* Box deadline extended to 2026-11-09 05:23 UTC (17:22 UTC, 12 h). The box's container is capped
+  at 30.7 CPUs (cpu.max); trainer ~14 + search 12, so nothing else runs on it.
