@@ -500,3 +500,13 @@ sgcp_3 needs a ~1,100 u lower line near x ~0. Searches 13-15 found +0.3% at best
 **Open**: the 100 u --demo-success-d margin stalls a backward walk at a hard stretch (run 4's spine
 4: 0% band success at the pit landing for ~200M steps); --mcts-energy's value is shown only on one
 trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
+
+### 15:37 UTC: OPERATOR NOTE - round 1 extended to 2026-11-09 12:35 UTC (wrap-up 11:55), the LAST round
+* The user's decision (AR_BRANCH.json operator_note): a run ON TIME keeps training (no stopping it
+  for a variant); a run that misses a wall deadline is stopped and a NEW recipe may start from
+  scratch; --steps is only a stopping point (new runs --steps 60e9; a capped run is RESUMED from its
+  own checkpoint with the same flags and a higher cap); boxes extended <= 12 h at a time; wake every
+  45-60 min while a run just trains. The verdict is the ladder: which recipe got furthest, and when.
+* So: **run 4 keeps training** (ON TIME on all 4 walls so far). Box extended to 2026-11-09 03:36 UTC.
+  Its next deadline: the post-CP2 block at 13.93B (~20:40 UTC at 362k steps/s); its --steps 2e10
+  cap arrives ~01:15 UTC -> resume with the same extra flags and --steps 60e9.
