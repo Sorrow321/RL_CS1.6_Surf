@@ -572,3 +572,21 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
 * First ramp so far: run 4 0.378B, run 5 0.529B, run 1 0.906B (raw adoption), the control never
   (0-1.7% to 1.06B). Run 4 and run 5 are both inside the first ramp's seed spread (0.18-1.51B);
   the matched-step comparison continues at the window (run 4 0.605B).
+
+### 22:08 UTC: run 5 - window ON TIME at 0.680B; at the pit wall its searches do not thread the gate
+* Ladder run 5: first ramp 0.529B, **window (CP1) 0.680B** (ON TIME; run 4 0.605B). Since 0.83B
+  the evals sit at 26.78-26.91% (pit dive = 27.5%) - the same wall run 4 sat at 0.68-2.34B.
+* The child mix (mcts_search.py): of the 15 sampled children per expansion, independent draws
+  `explore = U < perturb_frac`, `rnd = U < random_frac`, `explore &= ~rnd`. Run 4 (0.5 / 0.5):
+  50% random-held (temperature 5, first draw held for the macro), 25% perturbed (keys temp 1.5 +
+  held steer log-uniform 2-20 deg), 25% the policy's own samples at temperature 1. Run 5
+  (random 1.0): 100% random-held - NO perturbed and no plain policy children (perturb-frac is moot
+  at random 1.0; the RNG stream is the same).
+* Run 5's pit searches: k03 (0.94B) banked **25.861%** (raw 27.496%, 36,738 cells), k04 (1.43B)
+  banked **25.866%** (raw 27.550%, 34,304 cells). Run 4's at the same wall: k04 26.683% (raw
+  27.403%), then **k05 27.729% / k06 27.733%** (raw 28.4%) - the lines that threaded the ~220 u
+  gate came from the PERTURBED children's fine steers. The random end has none: so far it reaches
+  the gate (raw 27.5%) but banks nothing past it. Deadline for run 5's pit dive: 3.88B (~23:50 UTC).
+* If run 5 fails the pit: run 6 = run 4's recipe + `--auto-spine-mcts-args "--mcts-random-frac 0"`
+  (the POLICY end of the same knob: 50% perturbed, 50% plain samples, no random-held children),
+  which completes a 3-point sweep of random-frac (0 / 0.5 / 1.0) with everything else fixed.
