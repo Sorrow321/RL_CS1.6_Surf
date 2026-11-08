@@ -645,3 +645,21 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   (925 ticks) and found a line to 67,388 - kept out by the gain rule. **Lesson for the next
   generation: the late-run instability is a recipe property (lr 3e-4, no step-size guard, a
   near-deterministic view head); a frozen recipe needs its stabiliser at step 0.**
+* **21:40 UTC - v3 at 9.03B: no recovery.** Evals 8,185-8,940M score 1.0-3.4 (one 15.7 episode at
+  8,412M); median approx_kl per 250M bucket 0.81 (8.0B), 0.95 (8.25B), 1.10 (8.5B), **2.78
+  (8.75B)**, single updates to 91.6; the box log at 9.02B prints kl 1.5-7.0, ent 0.006. Training
+  episodes still fly from the curriculum's starts (rows 748-3,413 of search 6's spine, success
+  56.6% over 336 episodes; training reward 33-38), so what broke is the true-start greedy, not
+  the spine's skill. Ladder (chain dir): all four walls on time, post-CP2 due 13.93B (~03:40 UTC).
+  CORRECTION to the 20:40 entry: the view sigma did NOT collapse. Checkpoint view_std (yaw /
+  pitch): 0.064/0.089 (1.25B), 0.075/0.104 (3.5B), 0.068/0.211 (5.26B), 0.068/0.358 (6.0B),
+  0.066/0.479 (7.0B), 0.070/0.496 (7.26B) - yaw flat for 6B steps. What grew is the weights:
+  L2 over the policy state_dict 195 (1.25B) -> 310 (3.5B) -> 379 (5.26B) -> 402 (6.0B) -> 431
+  (7.0B) -> 439 (7.26B); view_head.weight 0.30 -> 0.43 -> 0.72 -> 0.88 -> 1.32 -> 1.29. A fixed
+  sigma under a 4.4x more sensitive mean makes the same lr a larger step in KL (KL ~ (dmu/sigma)^2:
+  1.5x the view_head norm from 6.0B to 7.0B predicts 2.2x the KL; measured 0.045 -> 0.103). So the
+  October "collapsed sigma" picture does not fit here; norm growth at a fixed lr does. Generic
+  levers, in order of evidence on this repo: --lr 1e-4 (stopped October's), AdamW --wd (bites on
+  the norm - 0.67x at 700M, efWD_blue050 - never tested as a stabiliser), a KL-adaptive lr
+  (rl_games' schedule; not in the trainer). Not for v6: its ~6.7B steps end before v3's runaway
+  began, and a slower lr would cost the early walls it is meant to measure.
