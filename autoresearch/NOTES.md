@@ -197,3 +197,19 @@ then 23.5% (CP1) at 529M by itself, past the explorer's frontier (15.8%, duty 0.
 policy). The control unop_ctl (the same recipe without the explorer, a 5060 Ti) FAILED the
 first ramp: no greedy eval past 8% by 1.06B. One seed each (the first ramp varied 0.18-1.51B
 in October), but the lead-and-follow sequence is the mechanism working as designed.
+
+**unr1b2_geb stopped at 1.06B (06:37 UTC), ON TIME, best 27.107 (982M; 27.080 at 680M)** - the
+greedy reached the CP2 wall at 604M (27.0%) and sat there 27.0-27.1% for 450M steps: 8 of 9
+greedy episodes die ~25.5 s in at 2,000 u/s at (3,050, +-900, 11,200), their best progress at
+the death point. The explorer sat at the same wall (deepest 27.42%, viable 25.92%) and its
+frontier rule was broken there: the 64 deepest cells (27.20-27.27%) had been restored 12-19 times
+each and no run from any of them lived 0.2 s - the fatal flight itself - so a quarter of every
+explore step went into it; the deepest cell a run lived 1 s from was at 25.9% (4,098, -886,
+11,918), ~1.3 s before the death point. Fix (generic): `--ge-beam-front-doomed` - the frontier
+share skips cells restored >= 2 times from which no run lived 1 s. Stopped instead of riding
+to the pit-dive deadline (3.88B) because the run was not testing the explore step at a wall.
+Harvest: runs/unr1b2/unr1b2_geb (15 evals, ckpt_latest, ckpt_1000341504, ge/ lines + logs).
+
+**Run unr1b2_geb2** (commit d26c84ee): the same recipe + `--ge-beam-front 0.5 0.01
+--ge-beam-front-doomed --ge-beam-duty 0.5` (half the selections from the deepest 1% band of
+non-doomed cells, count-weighted; the explorer runs half the time).
