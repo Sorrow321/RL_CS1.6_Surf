@@ -174,3 +174,17 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-front-frac 0.67 --demo-success-d 100
   --demo-success-bonus 50 --ckpt-every 2.5e8`, `--steps 1e10`, evals every 75M. Nothing changes
   after launch; the first search comes ~300M steps after the first eval.
+* **05:46 UTC, unr1b4_knob search 1 (the first real one, at the 302.5M eval, 611 s).** Evals 76M ..
+  378M all read 1.7% (the control `unop_ctl` too, through 680M: the start-platform wall, before
+  the first ramp). The explorer's greedy line: 332 ticks (3.3 s), best d 97,972 (1.7%), stall at
+  296; 75 roots -> 36 root cells. In 10 min: **15,674 cells from 1.35M runs, deepest d 94,144 =
+  5.55%** (the line 1.7%), reached by 61 s at 94,780 and flat from ~7 min (yield per decision
+  0.0021-0.0026 at 1 min, ~1e-4 from 6 min on: the archive saturates in reach of these roots).
+  **The knob stayed at 0.52-0.64** the whole search (random found cells ~1.2-1.5x faster per
+  decision; cells born policy 4,054 / random 11,584). The chain: 13 links, modes R P P R P P P P
+  R R P P R (8 policy, 5 random), replayed exactly (0 u). Adopted at 393M: the first spine (894
+  states, end d 94,115, success line 94,215). Training ran 251-254k steps/s beside the search
+  on this 3090 (GPU 97%, explorer 1.8 GB): the search is nearly free here.
+* 05:44 UTC: the explorer-only knob ablation on search 1's checkpoint (`runs/unr1b4_abl/` on the
+  box: the rule, lambda fixed 0 = all policy, lambda fixed 1 = all random; 10 min each, in
+  parallel so they share the contention; same roots and seeds).
