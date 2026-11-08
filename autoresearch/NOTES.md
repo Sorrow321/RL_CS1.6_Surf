@@ -250,3 +250,8 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
 * 1,057M eval: frontier 20,167 u (~20.2%, moving again). 06:46: the explorer-only arms on search
   3's checkpoint, ONE AT A TIME beside the trainer (lambda 0 then 1, 10 min each, same roots and
   seeds; the rule arm is search 3 itself, which ran alone beside the trainer too).
+* CORRECTION to the search-3 note: the trainer's greedy eval ALSO runs `GreedyTorchPolicy` in fp32
+  (EVAL_GREEDY, train_fast.py ~13894; 9 envs on its eval core), so "bf16 vs fp32" is not the
+  cause. What differs is the batch (9 eval envs vs the explorer's 1-env rollout core) and so
+  the GPU kernels' numerics; on a chaotic map that is enough for another line. The fix stands:
+  root the search on the eval's own states.
