@@ -229,3 +229,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   `--auto-spine-recheck` discarded it (next search >= 916.6M, the 3e8 retry). Past the start wall
   the recipe's own RL outruns a 10-min search; the search pays where the policy sits still
   (the 1.7% wall: 450M steps).
+* **06:26 UTC - evals since the first ramp** (score.py best / median): 604M 12.8 / 11.9, 680M
+  15.8 / 15.7, 755M 17.3 / 14.9, **831M 18.76 / 15.3**. The control `unop_ctl` (the same recipe
+  without the search) **FAILED the first ramp**: 1.6-1.7% at every eval to 1,057M (deadline 1.0B).
+  At matched steps the difference is the whole of it: 8.3% vs 1.7% at 529M, 18.8% vs 1.7% at 831M.
