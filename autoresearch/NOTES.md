@@ -471,3 +471,53 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   differs (steps). The interruption is treated as a crash-resume: the reservoir, the curriculum
   and the spine are not in a checkpoint, so it starts with no spine and searches after 3e8
   steps. The pit dive is due at 3.88B (~15:30 UTC at ~215k steps/s).
+
+### unr1b4 round 1 - THE LESSON (written 13:53 UTC; final numbers appended at wrap-up)
+
+**What slot 4 built** (all default-off, bit-identical when off, TRAIN_ONLY for the recorder, tests in
+tests/python/test_knob_ge.py): `tools/knob_ge.py` + `beam_tas.py --ge-knob` (Go-Explore over exact
+CONTACT states - 64 u cells x 64 u kinetic-energy buckets - W = 1/sqrt(1 + chosen); each explore
+run of 100 decisions commits to held random actions in the policy's own velocity frame (repeat
+0.95) or to the policy's samples; THE KNOB = the random share, set by probability matching on each
+mode's new-cell yield per decision over 16 populations of run ends; the deepest chain replayed
+exactly and spliced onto its root line), `auto_spine.py --knob`, and in the trainer
+`--auto-spine-scratch` (the loop from step 0 with no spine), `--auto-spine-knob`, `--demo-share`
+(the spine curriculum as a 25% pool share, the recipe's own pool kept),
+`--auto-spine-knob-evalroots` (root on the eval's own exact states), `--auto-spine-deeper`,
+`--auto-spine-knob-archive` (null), `--auto-spine-contact` (frontier/gate/cut on supported states).
+
+**The ladder (one seed each; the control = the same recipe, no search, `unop_ctl`):**
+
+| run | recipe | first ramp | window (CP1) | best | why it stopped |
+|---|---|---|---|---|---|
+| control | incumbent, no search | FAILED (1.7% to 5.96B) | FAILED | 1.72 | never left the start platform |
+| v1 `unr1b4_knob` | + the knob loop | **529M** | - | 20.69 | curriculum frozen by a spine standstill (origin matching) |
+| v2 `unr1b4_knob2` | v1 + match-band, eval roots, deeper, ONE archive | 529M | - | 15.66 | the run-long archive drowned the frontier (null) |
+| **v3 `unr1b4_knob3`** | **v1 + match-band, eval roots, deeper** | **604M** | **1,284M** | **26.919** | flat at the CP2 pit 1.28B+ (continued as knob3c) |
+| v5 `unr1b4_knob5` | v3 + `--ratchet-contact 1 --auto-spine-contact` | FAILED (5.6% at 982M) | - | 5.60 | paying only supported progress slows the start |
+
+**The knob (12 searches + 2 explorer-only ablations): the policy-guided side is what goes deep,
+random runs supply the branches it continues from, and neither alone is enough.** The yield rule
+held the random share at 0.31-0.76 in every search without being told; random runs found 1.2-1.8x
+the policy's new cells per decision; the deepest chain mixed both modes in 9 of 10. At the 1.7%
+wall (where the policy itself was stuck) the mix reached 4.93% vs all-policy 1.77% / all-random
+2.76% at matched decisions; where the policy already flew a stretch, mix = all-policy (20.4%),
+all-random 2.8%.
+
+**The three recipe bugs the loop exposed (all generic, all fixed in v3):** (1) spines with a
+standstill froze the curriculum - `--demo-match-band`; (2) the search re-rolled the greedy in its
+own 1-env numerics and flew another line - root on the eval's exact states; (3) a persistent
+archive with count-based selection gave ~99% of the picks to old cells - per-search archives.
+
+**What stops v3 at the CP2 pit, and what to try next (round 2):** the policy is PAID for its
+fatal dive (the ratchet pays the falling d; nothing charges a death), and every gate compares the
+explorer's supported states with that dive - so a line onto the record's lower level (which the
+explorer reaches: 230 contact cells under the plate, above the pit kill) is never handed on. The
+contact ratchet removes the payment but slows the start (v5 failed wall 1). Generic candidates,
+untested: (a) the contact FRONTIER alone (`--auto-spine-contact`, built) without the contact
+ratchet, plus a success rule that counts only a SUPPORTED crossing of the spine's line (needed:
+the all-state record lets a dive cross it; `--demo-success-alive` degenerates for a spine that
+ends at its deepest state - alive_need caps at the spine's own ticks past the line); (b) a death
+charge (Grzes 2017's correction for potential shaping under termination: the trainer has
+`--death-charge`), which takes the dive's paid progress back at the death without touching the
+start. Either would be ONE generic term, set at step 0 and frozen.
