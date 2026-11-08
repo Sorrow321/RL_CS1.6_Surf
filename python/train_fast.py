@@ -7555,6 +7555,10 @@ def main() -> None:
                     help="--ge-beam: the share of selected cells drawn from the frontier, and "
                          "BAND > 0 = drawn by W from the deepest BAND fraction of the cells "
                          "(0 = uniformly from the 64 deepest)")
+    ap.add_argument("--ge-beam-front-doomed", action="store_true",
+                    help="--ge-beam: the frontier share skips DOOMED cells (restored >= 2 times, "
+                         "no run from them lived 1 s): the fatal flight past a wall is not the "
+                         "frontier (unr1b2_geb's 64 deepest cells at the CP2 wall)")
     ap.add_argument("--ge-beam-cell", type=float, nargs=3, default=[64.0, 128.0, 4.0],
                     metavar=("POS", "ENERGY", "HEADING"),
                     help="--ge-beam: the archive's cell key - position cell u, kinetic-energy "
@@ -12441,8 +12445,9 @@ def main() -> None:
               f"{int(args.ge_beam_decisions)} decisions per step, knob random-frac "
               f"{float(args.ge_beam_random):g}, burst {int(args.ge_beam_burst)} decisions on "
               f"{float(args.ge_beam_burst_frac):.0%} of runs, frontier share "
-              f"{float(args.ge_beam_front[0]):g} band {float(args.ge_beam_front[1]):g}, cells "
-              f"{'/'.join(f'{x:g}' for x in args.ge_beam_cell)}, keys T "
+              f"{float(args.ge_beam_front[0]):g} band {float(args.ge_beam_front[1]):g}"
+              + (" (doomed cells skipped)" if args.ge_beam_front_doomed else "") + ", cells "
+              + f"{'/'.join(f'{x:g}' for x in args.ge_beam_cell)}, keys T "
               f"{float(args.ge_beam_keys_temp):g}, duty "
               f"{float(args.ge_beam_duty):g}); its lines become a backward curriculum on "
               f"{float(args.ge_beam_frac):.0%} of every spawn pool once one beats the greedy by "
@@ -15646,6 +15651,7 @@ def main() -> None:
             ge_beam_burst=int(args.ge_beam_burst),
             ge_beam_burst_frac=float(args.ge_beam_burst_frac),
             ge_beam_front=[float(x) for x in args.ge_beam_front],
+            **({"ge_beam_front_doomed": 1} if args.ge_beam_front_doomed else {}),
             ge_beam_cell=[float(x) for x in args.ge_beam_cell],
             ge_beam_duty=float(args.ge_beam_duty), ge_beam_threads=int(args.ge_beam_threads),
             ge_beam_sync=float(args.ge_beam_sync), ge_beam_frac=float(args.ge_beam_frac),
@@ -16959,6 +16965,7 @@ def main() -> None:
                "--burst-frac", f"{float(args.ge_beam_burst_frac):g}",
                "--front-frac", f"{float(args.ge_beam_front[0]):g}",
                "--front-band", f"{float(args.ge_beam_front[1]):g}",
+               *(["--front-skip-doomed"] if args.ge_beam_front_doomed else []),
                "--cell", f"{float(args.ge_beam_cell[0]):g}",
                "--cell-energy", f"{float(args.ge_beam_cell[1]):g}",
                "--cell-heading", str(int(args.ge_beam_cell[2])),

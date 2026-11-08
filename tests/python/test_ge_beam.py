@@ -134,3 +134,28 @@ def test_burst_runs_replay_exactly(tmp_path):
     deep = int(np.argmax([len(A.chain(i)) for i in range(A.n)]))
     line = ex.replay_line(deep)
     assert len(line) == int(A.depth[deep]) + 1
+
+
+def test_frontier_skips_doomed_cells():
+    """--front-skip-doomed: the frontier share never draws a cell restored >= 2 times from which
+    no run lived the viable time (the fatal flight past a wall), and falls back to them only
+    when nothing else is left."""
+    A = gb.Archive()
+    s = np.zeros(1, STATE_DTYPE)[0]
+    for i in range(300):
+        A.add(i, s, -1, 0, float(i), 0, 0, 0, gb.MODE_POLICY, 0)
+    A.chosen[:50] = 3
+    A.surv[:50] = 5                 # the 50 deepest: explored, every run died at once
+    A.surv[50:] = 1000
+    A.chosen[50:60] = 1             # explored once: not yet judged
+    rng = np.random.default_rng(0)
+    x = A.select(rng, 400, 1.0, 16, 0.0, 100)
+    assert x.min() >= 50 and x.max() < 66
+    x = A.select(rng, 400, 1.0, 16, 0.0, 0)
+    assert x.max() < 16             # the old rule draws the doomed cells
+    A2 = gb.Archive()
+    for i in range(3):
+        A2.add(i, s, -1, 0, float(i), 0, 0, 0, gb.MODE_POLICY, 0)
+    A2.chosen[:3] = 5
+    A2.surv[:3] = 1
+    assert len(A2.select(rng, 10, 1.0, 2, 0.0, 100)) == 10      # all doomed: still a selection

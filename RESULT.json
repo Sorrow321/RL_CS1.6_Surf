@@ -4,10 +4,10 @@
  "final": false,
  "slot": 2,
  "best": {
-  "score": 24.404,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb/traj_0529006592.jsonl",
+  "score": 27.08,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb/traj_0680001536.jsonl",
   "run": "unr1b2_geb",
-  "step": 529006592,
+  "step": 680001536,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -256,7 +256,7 @@
   "first ramp": 453509120,
   "window (CP1)": 529006592,
   "pit dive": null,
-  "verdict": "alive (on time)"
+  "verdict": "alive (on time); greedy at the CP2 wall 27.0-27.1% since 604M"
  },
  "summary": "Slot 2: Go-Explore with a policy-guided beam as the explore step (tools/ge_beam.py, train_fast --ge-beam; beam + 10-decision bursts on 25% of runs, duty 0.3). Run unr1b2_geb from scratch: first ramp at 453.5M, window (CP1) at 529.0M (October 1,036.5M) - the explorer's lines led the greedy at 3.3/5.1/10.4/15.2% and the greedy followed each within 40M steps; the control unop_ctl (same recipe, no search) failed the first ramp (none by 1.06B). Explorer alone on October r0: no knob setting passed the pit dive in 10 min."
 }

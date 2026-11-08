@@ -166,24 +166,32 @@ class Archive:
         return np.flatnonzero(self.cur[:self.n])
 
     def select(self, rng, b: int, front_frac: float, front_k: int,
-               front_band: float = 0.0) -> np.ndarray:
+               front_band: float = 0.0, doomed_ticks: int = 0) -> np.ndarray:
         """b cells: (1 - front_frac) by W = 1/sqrt(1 + seen) over every cell, front_frac from the
         frontier - uniform over the front_k deepest on the goal field, or (front_band > 0) by W
-        over the deepest front_band FRACTION of the cells (a scale-free band around the wall)."""
+        over the deepest front_band FRACTION of the cells (a scale-free band around the wall).
+        doomed_ticks > 0: the frontier skips DOOMED cells - restored at least twice and no run
+        from them lived doomed_ticks (the fatal flight past a wall: unr1b2_geb's 64 deepest cells
+        at the CP2 wall were chosen 12-19 times each, the longest run from any lived 0.19 s)."""
         cur = self.current()
         nf = int(round(b * front_frac)) if len(cur) > 1 else 0
         w = 1.0 / np.sqrt(1.0 + self.seen[cur].astype(np.float64))
         out = [rng.choice(cur, b - nf, p=w / w.sum())]
         if nf:
-            k = (max(int(front_k), int(np.ceil(float(front_band) * len(cur))))
+            fc, fw = cur, w
+            if doomed_ticks > 0:
+                ok = ~((self.chosen[cur] >= 2) & (self.surv[cur] < int(doomed_ticks)))
+                if ok.sum() >= 2:
+                    fc, fw = cur[ok], w[ok]
+            k = (max(int(front_k), int(np.ceil(float(front_band) * len(fc))))
                  if front_band > 0 else int(front_k))
-            k = min(k, len(cur))
-            pick = np.argpartition(self.d[cur], k - 1)[:k] if k < len(cur) else np.arange(len(cur))
+            k = min(k, len(fc))
+            pick = np.argpartition(self.d[fc], k - 1)[:k] if k < len(fc) else np.arange(len(fc))
             if front_band > 0:
-                wb = w[pick]
-                out.append(rng.choice(cur[pick], nf, p=wb / wb.sum()))
+                wb = fw[pick]
+                out.append(rng.choice(fc[pick], nf, p=wb / wb.sum()))
             else:
-                out.append(rng.choice(cur[pick], nf))
+                out.append(rng.choice(fc[pick], nf))
         sel = np.concatenate(out).astype(np.int64)
         np.add.at(self.chosen, sel, 1)
         return sel
@@ -482,7 +490,8 @@ class Explorer:
         N, core = C.N, C.coreN
         D = int(P.decisions)
         sel = A.select(self.rng, int(P.cells), float(P.front_frac), int(P.front_k),
-                       float(getattr(P, "front_band", 0.0)))
+                       float(getattr(P, "front_band", 0.0)),
+                       int(P.viable_ticks) if getattr(P, "front_skip_doomed", False) else 0)
         pool = np.array(A.state[sel], copy=True)
         pool["tick"] = 0
         pool["stuck_ticks"] = 0
@@ -806,6 +815,9 @@ def parse(argv=None):
     ap.add_argument("--front-frac", type=float, default=0.25,
                     help="share of the selected cells drawn from the --front-k deepest")
     ap.add_argument("--front-k", type=int, default=64)
+    ap.add_argument("--front-skip-doomed", action="store_true",
+                    help="the frontier share skips cells restored >= 2 times from which no run "
+                         "lived --viable-secs (a fatal flight's cells)")
     ap.add_argument("--front-band", type=float, default=0.0,
                     help="> 0: the frontier share is drawn by W from the deepest FRACTION of the "
                          "cells (at least --front-k) instead of uniformly from the --front-k "
