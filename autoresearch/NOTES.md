@@ -524,3 +524,12 @@ passes at 62 s, i.e. where a 60 s from-start trace ends, and where the greedy it
 has been up on the plateau since ~4B), so T 1.5 copies now hold the line for a full trace, and
 the trace length caps the rest. No adoption (54% is behind the greedy's 82%); its frontier cells
 (15% of starts) now span 34-54% (3,872 cells, d 45,643..65,526 at 7.57B) instead of ~31%.
+
+### 23:51 UTC: geb6 still 80-82.5% at 8.66B; box extended to 11:55 UTC
+
+Evals 7.70-8.61B (13): best-of-9 80.0-82.5% in 12 of them (82.455 at 8.53B, just under the
+82.475 best at 7.47B), one CP4 dip (60.8% at 8.46B); medians 27.8-81.0%. Training crash share
+40%, ent 0.015, 283k steps/s. The explorer is still at 54.24% (explorer step 6,071, 510 min; no
+new depth since ~22:12 UTC, line 53 still the curriculum). ON TIME (CP6 deadline 28.5B; at this
+rate the round clock ends the run at ~21B). Box extended 12 h to 11:55 UTC; one more extension
+after 00:40 UTC covers the wrap-up (11:55) and the round end (12:35).
