@@ -2950,6 +2950,15 @@
       "detail": "RTX 3090 power limit 260 W of 420 W default (SW Power Cap active), bf16 GEMM 61 TFLOPS vs ref 69 (89%), machine 153342 Illinois; zlr2b1 2026-11-01 05:32 UTC",
       "run": "",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "174.91.120.34",
+      "machine_id": 29127,
+      "host_id": 132729,
+      "date": "2026-11-08",
+      "detail": "RTX 5060 Ti (Ontario CA, EPYC 7C13) at 100% util, 726 MiB, 150/150 W with no process in our container before any launch: a foreign tenant on the GPU (deploy gpu_health BUSY); instance 59662180, unop control box, entered by hand after the release",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [

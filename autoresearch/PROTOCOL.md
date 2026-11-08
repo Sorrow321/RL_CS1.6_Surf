@@ -1,9 +1,9 @@
-# Autoresearch protocol - branch agents (fork-and-flush on surf_za_loop)
+# Autoresearch protocol - branch agents (fork-and-flush on surf_src_sidistic: ONE recipe)
 
 You are ONE branch agent of a fork-and-flush round (Cai et al. 2026, arXiv 2610.07447,
 "Escaping Idea Basins in Autoresearch Agents"). Read this file, then `CLAUDE.md` (binding,
 every rule in it applies to you), then `autoresearch/NOTES.md` (what this lineage knows),
-then `AR_BRANCH.json` (who you are, your deadlines, the incumbent). Then start working.
+then `AR_BRANCH.json` (who you are, your SLOT, your deadlines, the incumbent). Then start working.
 
 ## The method, and your place in it
 
@@ -13,13 +13,14 @@ then `AR_BRANCH.json` (who you are, your deadlines, the incumbent). Then start w
   point: independent runs stall in different "idea basins", and a fresh context escapes the
   one the previous lineage was in.
 * You do not talk to the other branches, and you do not read what they do (see
-  **Independence** below). You are not asked to "be different" either (the paper measured
-  that directive: it does not help). Do the best research you can.
+  **Independence** below). In round 1 each slot has an assigned explore step to build and test
+  (**Your slot**, below), because the user wants the candidates compared; past that, do the best
+  research you can.
 * At the round's end the orchestrator scores every branch with `autoresearch/score.py`. That
-  score is the best greedy eval from the TRUE map start that your runs produced this round.
-  The winner's branch head seeds the next round's four forks. The other branches are archived
-  and pruned. So what you leave in this branch (code, NOTES.md, RESULT.json) is what the next
-  round inherits if you win.
+  score is the best greedy eval from the TRUE map start that your runs produced this round,
+  counted only for runs that obey **the one-recipe rule**. The winner's branch head seeds the
+  next round's four forks. The other branches are archived and pruned. So what you leave in this
+  branch (code, NOTES.md, RESULT.json) is what the next round inherits if you win.
 
 ## Independence: read only your own branch
 
@@ -30,8 +31,9 @@ read only:
   history;
 * your runs (`$AR_HOME/runs/$AR_AGENT/`) and your box (`box.py status --agent $AR_AGENT`,
   `box.py budget`);
-* the incumbent (`$AR_HOME/incumbent/`, its `refs/` included);
-* the WR demo's analysis files (`$AR_HOME/wr/`: ANALYSIS ONLY, CLAUDE.md section 0).
+* the incumbent (`$AR_HOME/incumbent/`);
+* the operator's control (`$AR_HOME/control/`: the incumbent recipe from scratch with NO search,
+  `unop_ctl`, refreshed every ~30 min with its ladder). It is a reference, like the ladder.
 
 Never read, list or grep any of these:
 
@@ -43,166 +45,207 @@ Never read, list or grep any of these:
 * the orchestrator's files: `$AR_HOME/status.md`, `state.json`, `orchestrator.log`. They are
   the user's and the operator's view of every branch.
 
-This holds even when the goal is to avoid repeating another branch's idea. Two branches trying
-one idea is a cost the method accepts. Copying the leader mid-round only pulls a branch into
-the leader's idea basin. In round 1, r1b4 read the other branches' status and notes and spent
-its last six hours on the leader's recipe, and it finished below the leader. A losing branch's
-findings are archived, not inherited: that is the flush.
+This holds even when the goal is to avoid repeating another branch's idea. Copying the leader
+mid-round only pulls a branch into the leader's idea basin. A losing branch's findings are
+archived, not inherited: that is the flush.
 
-## The goal and the one number
+## The goal: ONE recipe (user, 2026-11-08)
 
-Pass surf_za_loop from the true start, champion-free and generic (**This lineage** below):
-first UP THE FIRST LOOP, then a finish, then finishing reliably, then faster than the human
-record: krs, 491.65 s on speedrun.eu (2024-02-05), the map's only record. Its demo reads
-**450.46 s on our clock** (start-curtain exit -> first finish-trigger entry; READ FIRST explains
-the 41 s gap). The demo is an analysis instrument only (CLAUDE.md section 0). The record's time
-is the bar a result is read against, never a constant in the reward, the spawn rule or a
-schedule (CLAUDE.md 0b). Your score is
-`python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/`. It is the best eval's
-max-episode progress on the goal field (a finish counts 100), plus 10 x the finish fraction,
-plus a time term once something finishes (10 x (1 - best finish s / 900), config.time_cap_s:
-this map's runs are long). One more finishing episode of the 9 is worth 1.11 and one second off
-the best finish 0.011, so the score ranks reliability before speed. Only greedy evals from the
-true start count; the grader rejects anything else.
+This program does not ask you to beat sidistic. Its October lineage did that one wall at a
+time: seven rounds, and at nearly every wall a new flag or a hand-moved constant chosen while
+watching that wall (NOTES.md lists them). The user now wants the opposite: ONE recipe that
+clears the walls by itself if given time, with nothing changed after launch, so that it can
+later run on maps nobody has looked at (CLAUDE.md 0b). In the user's words:
 
-The true start. Every `info_player_start` (32, in a sealed spawn room) stands on a
-trigger_teleport (*4-*11) to `info_teleport_destination` "map" (-1504, -1536, -3110.87, yaw
-180). The core puts the player at (-1504, -1536, -3073.87) yaw 180, at rest, one tick after the
-map's own spawn (the engine's rule: destination - hull mins + 1; verified). The zones file
-declares that point as the spawn (`maps/surf_za_loop.zones.json` "spawns", source manual), so
-every trainer, recorder and the grader start there. From it the player drops ~100 u to the floor
-and crosses the start curtain (trigger_multiple *14 -> counter_start_button, x -1696..-1680, a
-plain box) heading west. Every fall ends in *21, a trigger_teleport across the whole map at
-z -4050..-4000, back to the same destination: in the game that restarts the run (the timer
-restarts at the curtain), in our core it ends the episode (`--teleport-fail`). The finish is ANY
-of five trigger_multiples on the stop button (*15-*19), plain boxes at z 3008-3210 at the top
-of the map (READ FIRST). The server runs sv_maxvelocity 3500 (the demo's movevars;
-airaccelerate 100 and gravity 800 are the core's defaults), and the record plays 7 ms frames,
-so the recipe carries `--maxvel 3500 --tick-ms 7`.
+> "The main goal should be like not to tune the model for every single wall ... We're kind of
+> trying to find one unified recipe that will converge if we give it some time. ... if the
+> algorithm doesn't beat the wall in twice time it was beaten before, then the algorithm
+> doesn't work. We need to call it at some point."
 
-* the field is `config.field` = the no-corner-cut goal graph, the field the recipe shapes on
-  (`--race-no-corner-cut 1`), seeded on the five slabs; `config.start_d` is its distance at the
-  spawn, 6,361.8 u.
-* only the first `config.score_episodes` (9) episodes of an eval count, by header episode
-  index: a bigger eval is not a better score.
-* **Round 1 has no incumbent** (AR_BRANCH.json `incumbent` is null, and
-  `$AR_HOME/incumbent/ckpt.pt` does not exist yet). From round 2 on it is the previous
-  winner's checkpoint. `config.incumbent_recipe` is the scratch recipe (the sidistic finisher's
-  flags, carried through the princessburglar and unitfarmer2 lineages; this map's tick and
-  episode cap). Four policies that have never seen this map are kept as optional warm starts in
-  `$AR_HOME/incumbent/refs/`, all champion-free, with the recipe's observation and action layout:
-  * `uf2_x13`: the unitfarmer2 lineage's best (uf2r2b4's x13, 9/9 real finishes at 35.31 s on
-    that map; from scratch on that map in round 1 - uf2r1b1's chain - then trained on spines,
-    BC and spawns built from its OWN search lines); its `run.json` and best eval come with it;
-  * `pb_r26`: the princessburglar expert loop's final policy, 9/9;
-  * `pb_r15`: that loop's best eval, 9/9 at 62.11 s best / 65.62 s mean;
-  * `sid_ref`: the sidistic lineage's finisher. It has no `run.json`; its config is inside the
-    checkpoint.
+The candidate the user proposed: Go-Explore's archive of states, whose explore step is a
+search that can run anywhere from fully random (the Nature paper's) to fully policy-guided (our
+beam search, or AlphaZero-style MCTS), with ONE continuous knob between them, feeding a
+backward curriculum on the lines it finds - "ideally we don't even need the expert loop stage.
+So it's kind of all consolidated into one thing ... at minimum find the recipe that doesn't
+require tuning for every wall in the map." And on the knob: "we can just ... try to reduce the
+parameter and see at which point is the policy guided search more useful, and maybe we
+conclude that it's not useful at all."
 
-  They run at a ~7.65 ms tick (7.63 requested, the [8, 8, 7] pattern), and a resume keeps it
-  unless you pass `--tick-ms` (a TICK TRANSFER, allowed and logged; CLAUDE.md: a frozen line does
-  not survive a tick change, a skill may). Like every checkpoint, a warm start restores its own
-  shape flags; never pass them to a resume. A recipe that only works warm is not yet a recipe.
+The score is unchanged: `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/` = the
+best eval's max-episode progress on the goal field (a finish counts 100) + 10 x the finish
+fraction + a time term once something finishes (10 x (1 - best finish s / 300)). Only greedy
+evals from the true start count; the grader rejects anything else. But only one-recipe runs
+count, and **the ladder decides whether a recipe is alive**.
 
-## READ FIRST - this map's finish, start and clock (operator, 2026-10-31)
+## The one-recipe rule (read it twice)
 
-* **The finish is five triggers, and the harness now knows it.** `zones.detect_zones` kept only
-  the FIRST trigger on a timer button, and the five slabs' union box is two thirds open air that
-  no trigger covers (a grid over it: 128k points inside a slab, 256k open and in none). Fixed in
-  the harness: zones.json "end" is the union box plus its "boxes" and "models";
-  `SurfCore.set_goal_box` arms the models for every caller (trainer, recorder, beam search; the
-  trainer logs `finish: any of 5 trigger models`); the goal field is seeded on each slab; the
-  grader counts a finish in any of them (`surfgym.goalhull.GoalSet`). A single-trigger map is
-  unchanged (cannonball: 256 envs x 200 ticks bit-identical). `tests/python/test_goal_models.py`.
-  The unitfarmer2 fix (a non-box trigger completes on its clip hull) rides along; every timer
-  trigger here is a plain box. The record enters slab *16 at (-48, 2014, 3048).
-* **The clock, and the 41 s gap.** The record's demo has 65,110 frames of 7 ms (143 fps). It
-  crosses the start curtain once (leaves it at t 3.54 s), never falls, and enters *16 at
-  453.99 s: 450.46 s on our clock. speedrun.eu lists 491.65 s. 491.65 / 450.46 = 1.0915, which is
-  what a client that reports 7 ms per frame while its frames take ~7.64 ms (131 fps) would
-  produce on a server timer; it could also be time before the demo starts. It is unresolved:
-  read a result against 450.46 s (the demo on our clock, the stricter bar) and quote both.
-* **A fixed latent bug.** `--respawn-front-perturb` crashed the trainer 2.6M steps into this
-  map's bake: its frontier band is empty while every reservoir state is BEHIND the start (the
-  drop off the destination's ledge raises d by ~90 u). Fixed on this branch (an empty band gives
-  no rows; bit-identical otherwise; test in `tests/python/test_respawn_front_perturb.py`).
+* **A run is one recipe**: one commit of this branch plus one flag set, started FROM SCRATCH
+  (step 0) at the true start. `box.py launch` without `--resume`, the incumbent recipe
+  prepended (`config.incumbent_recipe`) plus your extra flags.
+* **Nothing changes after launch**: no flag, constant, schedule, learning-rate cut, code
+  change, hand-picked line, spawn file or search setting. Anything that should adapt during a
+  run is a RULE you write into the recipe BEFORE launch, reading only the run's own state (the
+  plateau temperature `--unstuck` and `--auto-spine` are examples of such rules).
+* **A crash-resume of the SAME run** (same commit, same flags, its own newest checkpoint)
+  continues it and keeps its step count. Any other change is a new run from step 0.
+* **No warm starts in round 1.** From round 2 you may CONTINUE the incumbent run with its exact
+  recipe: deploy the incumbent checkpoint, `box.py launch --resume` with exactly the extra flags
+  of the incumbent run's launch (AR_BRANCH.json and its RESULT.json give the run; the trainer
+  restores the rest from the checkpoint - diff the new run.json "config" against the old one
+  and say in NOTES.md that they match). Or start a recipe of your own from scratch. Never
+  warm-start a changed recipe from any checkpoint.
+* **Constants are set once** and would ship unchanged to a map nobody has opened (CLAUDE.md
+  0b). Nothing in the recipe may name a place, a wall, a progress value, a speed or a time read
+  off this map, the ladder or the record.
+* **RESULT.json names the recipe** (commit + the full flag list) and says
+  `"one_recipe": true` and `"from_scratch_step0": true` (or the incumbent run it continues).
+  The operator checks the winner's run.json, launch log and git history; a run that broke the
+  rule is not scored and its branch cannot win.
 
-## READ FIRST - what the field cannot see on this map
+## The ladder: walls and the 2x stop rule
 
-* **The field points straight up.** The goal field is a voxel BFS that lets a player fly
-  through open air in any direction, so start d (6,361.8 u) is about the height still to climb:
-  6,100 u from the curtain (z -3,140) to the slabs (z 3,008). It points up everywhere and says
-  nothing about HOW you get up, which is the loops: ride a ramp side to side until the speed
-  carries you to the next one.
-* **What the record does (ANALYSIS ONLY, CLAUDE.md section 0).** Times from the curtain;
-  progress on `config.field`; energy height E = z + |v|^2 / 1600:
-  * t+0..60 s: it rides the first loop. z stays within -3,100..-3,300, its progress is
-    NEGATIVE (-3.6..-0.8%), and its speed goes 345 -> 1,300 u/s: E rises ~1,000 u while the
-    field pays nothing.
-  * t+90: 11% (z -2,464). t+150: 43%. t+150..300: deep loops between z -1,100 and +400 at
-    1,900-2,100 u/s, progress swinging 33-48%, E up to ~2,200.
-  * t+330: 63%. t+390: 86%. t+450.4: the finish (z 3,029).
-  * Over the run: a new height record on 6.4% of its frames, the longest stretch without one
-    44.7 s; on the ground 3.2%; its heading turns through 153 full circles; mean speed 1,405,
-    max 2,399 u/s.
+`autoresearch/ladder.json` lists the map's walls in order, the step at which the October
+lineage's greedy eval first got past each, and a deadline of twice that step. Check a run with
 
-  These numbers are for READING results (did a run get up the first loop, where did it stop
-  gaining energy). They never enter a reward, a spawn rule, an archive key or a schedule.
-* **What that does to the recipe.** run_arm.sh SCRATCH's `--stall-secs 15` ends a training
-  episode that makes no field progress for 15 s, and the ratchet pays only new progress
-  records: the record's first minute is invisible to both. The recipe's `--energy-pot 3` pays
-  energy gains, but only until an episode reaches the reservoir's frontier band
-  (`--energy-pot-front 0.01`). The operator's smoke run (`zlop_check`, 30M steps on an RTX 5080,
-  347k steps/s): its greedy episodes fell into the bottom teleport at 18-25 s with no progress,
-  and 62-68% of training episodes ended by the stall kill. The training win rate (~6.5%, at
-  ~0.4 s) is the recipe's backward-mix rows, which start 256-318 u from the goal (5% of d0):
-  not a finish from the start (CLAUDE.md section 3: a win rate is not evidence).
-* **0b binds hardest here.** This is the user's own example of what the recipe must solve
-  (CLAUDE.md 0b: "you have to do some speedup on ramps that are not shown by reward vector
-  field. You can't be building custom reward every time"). The way through is a GENERIC change:
-  a progress or energy measure, a stall rule, an exploration mechanism or a search that would be
-  right on every map, with constants set once. No reward, spawn rule, archive key, filter or
-  schedule may name a loop or a ramp, use a box around one, or carry a speed, height, energy or
-  time read off the record or this map. A constant re-tuned for this map (a longer stall window
-  "because loops take a minute") is a map-specific method in disguise unless it is the value
-  you would ship for every map; say which in NOTES.md.
+    python autoresearch/ladder.py $AR_HOME/runs/$AR_AGENT/<run>/
 
-## This lineage: surf_za_loop (operator, 2026-10-31)
+after every pull (it scores each eval with score.py and prints, per wall, the step it was first
+cleared and ON TIME / LATE / PENDING / FAILED).
 
-* **Why it exists.** The user, 2026-10-31, with the map and its record demo: "This is a bit
-  annoying map because it mostly consists of so-called loops. It's basically when you have a
-  ramp and you're riding this ramp left and right all the time until you gain the speed, and
-  then you can jump on another one. So it's quite different from normal surf maps. ... I wonder
-  if they can solve this map automatically." The question is whether this lineage's generic
-  machinery finds the loops by itself. A trick that only works here is worth nothing to the
-  user's next step, one recipe trained on hundreds of maps at once.
-* **What this branch carries.** The code is the unitfarmer2 lineage's best branch
-  (ar/uf2r2b4, b93a7151) with the operator's harness. Its notes are in git history:
-  `git show b93a7151:autoresearch/NOTES.md` (both unitfarmer2 rounds), and
-  `git show 8a825803:autoresearch/NOTES.md` (the princessburglar lineage and its expert loop).
-  What transferred, in short:
-  * **unitfarmer2 (2026-10-30..31):** a policy that already finished got faster by iterating on
-    its OWN search lines: beam search on the newest weights (`tools/beam_tas.py`, also
-    `--pitch-hold`) -> its best real line -> a pace-gated spine pinned at the true start
-    (`--demo-file` of that line with `--self-states`, `--demo-tau0 0 --demo-rate 0
-    --demo-success-pace`) + BC on the line (`--bc-file`) + the lines as spawn states -> ~45 min
-    of training -> repeat: 36.88 -> 35.31 s in a few hours, past the record in the simulator.
-    That map had a loop of its own (60-65% of the course), and a search found it before the
-    policy did.
-  * **princessburglar (2026-10-29):** the way out of its start room also runs against the
-    potential (pump a half-pipe for energy first), the closest thing to a loop this project has
-    solved. What found it in ~3 min of box CPU from the true spawn was Go-Explore with energy
-    cells and the policy's own action frame (`tools/explore_phase1.py --exact-chains --cell 64
-    --cell-energy 32 --cell-heading 1 --view-follow=-90,-60,-30,-15,0,15,30,60,90
-    --select-energy 3 --act-every 4 --decisions 100 --maxvel 3500 --envs 4096`, at the tick of
-    whatever will train on the line); `tools/ge_replay.py` makes an exact line, and a backward
-    curriculum on it taught it. Counter-evidence from unitfarmer2's October: an energy archive
-    alone (`tools/go_cem.py`) filled a pit and never left it.
-  * Nothing in those tools names a place. Whether they climb a loop is the question for you,
-    not a conclusion.
-* **The bar.** First up the first loop from the true start in a greedy eval (progress past
-  ~10% with the episode still flying), then a finish, then 9/9, then the record's 450.46 s on
-  our clock.
+| # | wall | cleared when | October step | deadline |
+|---|---|---|---|---|
+| 1 | first ramp | progress > 8% | 0.30B | 1.00B (2x is 0.61B; raised: seed noise 0.18-1.51B) |
+| 2 | window | curtain sgcp_1 | 1.04B | 2.07B |
+| 3 | pit dive | progress > 27.5% | 1.94B | 3.88B |
+| 4 | cavity | curtain sgcp_2 | 4.14B | 8.27B |
+| 5 | post-CP2 block | progress > 33% | 6.97B | 13.93B |
+| 6 | CP3 | sgcp_3 | 7.32B | 14.64B |
+| 7 | CP4 | sgcp_4 | 9.39B | 18.79B |
+| 8 | CP5 | sgcp_5 | 11.78B | 23.57B |
+| 9 | CP6 | sgcp_6 | 14.26B | 28.52B |
+| 10 | CP7 | sgcp_7 | 15.23B | 30.47B |
+| 11 | chamber entry | progress > 98.5% (approximate) | 19.35B | 38.69B |
+| 12 | finish | a finish | 25.45B | 50.90B |
+
+* **A run that has not cleared wall k in a greedy eval by wall k's deadline has FAILED at wall
+  k.** Stop it, write down where and why, and start your next idea. A run that is on time may
+  run for the rest of the round (it is not held to the 30 min first-test cap below).
+* **The early deadlines are loose.** The October lineage changed its recipe between walls, and
+  from-scratch runs then cleared walls 3-6 two to four times sooner (r3b2: CP3 at 1.9B, 54% at
+  2.49B). So beating a deadline is the minimum. The real comparison is at MATCHED STEPS against
+  the operator's control (`$AR_HOME/control/`), the same recipe with no search.
+* Throughput sets how far a round gets: the October boxes ran 135-277k steps/s (0.5-1.0B per
+  hour), so a 12 h round reaches ~6-12B steps, about wall 4-5. Round 2 continues the winner.
+
+## The research question: the explore step
+
+**The loop all four slots share.** Go-Explore's archive of exact simulator states (cells keyed
+by generic quantities: position, energy height E = z + |v|^2/1600, heading); an explore step
+from a selected cell; every new cell joins the archive with the exact trajectory that reached
+it; lines from the archive feed the backward curriculum INSIDE the trainer, automatically (the
+machinery of `--auto-spine`: the trainer runs the search on its own weights, and a line that
+beats the greedy frontier becomes the curriculum, its start moving back as the policy
+succeeds). No hand-picked line, no separate expert loop: speed is not this program's question.
+
+**Your slot** (AR_BRANCH.json `slot`) sets the explore step you build and test first in round 1:
+
+1. **The Nature paper's explore step** (the knob at "fully random"): restore a cell chosen with
+   weight 1/sqrt(1 + times chosen), then uniform random actions for ~100 decisions, each action
+   repeated with p = 0.95; replace a cell's stored state when a new arrival has a better score,
+   or the same score with a shorter trajectory. With this project's generic fixes: the bursts
+   act in the policy's own action frame (view relative to the velocity, `explore_phase1.py
+   --view-follow`) and the cells carry energy (`--cell-energy`, `--select-energy`).
+2. **A policy-guided beam** (our beam_tas) as the explore step from the selected cell: copies of
+   the policy sample their own actions, with the knob (temperature, or a coherent mix of random
+   bursts and policy samples). Keep EVERY new cell any copy reaches, not only the leader's line
+   (distance culling killed unitfarmer2's climb). Sweep the knob from policy toward random.
+3. **Policy-prior MCTS** (AlphaZero's PUCT: the policy as the prior, the critic and/or a
+   rollout as the value) as the explore step. Per-decision branching at 25 Hz is hopeless at
+   this horizon: make an edge a held segment of decisions (a macro-action). New cells from any
+   node join the archive. Build it, then test the explorer alone on a known gate first.
+4. **The knob as one rule**: one explorer whose random-vs-policy balance is a single continuous
+   parameter set automatically from the run's own state. The paper's policy-based Go-Explore
+   already does a version of it (below): per explore step a coherent 50/50 choice between random
+   actions and policy sampling, and a temperature that rises with the steps since the last new
+   cell. A bandit over the knob rewarded by new cells, or the plateau-temperature rule, are other
+   forms. Or the paper's goal-conditioned policy-based Go-Explore if you judge it better. Aim for
+   the simplest single mechanism.
+
+Test the explorer ALONE first, with no training, where the answer is known (30 min of box
+time): does it get past the first ramp, the window and the pit dive from a policy that stops
+there? Then the whole loop from scratch, measured on the ladder. In rounds 2+ slots are free:
+build on the winner.
+
+**What is known (evidence; NOTES.md has the sources)**
+
+* Random Go-Explore with restore found princessburglar's real start and za_loop's first pump in
+  minutes of CPU at low speed, once the bursts acted in the policy's frame and the cells carried
+  energy. It failed at speed: cannonball froze at 6.67% of its arc over 32.5M runs, and it
+  filled unitfarmer2's pit without leaving it. On sidistic itself, Go-Explore was tried only in
+  round 1 (r1b3, with SIL), BEFORE those two fixes, and lost (27.5% vs the winner's 28.6%):
+  sidistic has never had a fair random baseline.
+* Policy-guided beams found unitfarmer2's pit exit (Monte Carlo, no culling, keys temperature
+  1.5) and za_loop's first finishing lines (beams from the policy's own greedy line, ranked by
+  distance minus 30 x energy). Per-decision epsilon killed beams at speed (cannonball: eps 0.15
+  and 0.30, 0 finishes in 8 runs); held perturbations did not. Distance-ranked culling killed a
+  climb that first moves away from the goal.
+* `tools/edge_archive.py` (a policy explorer with count selection) found a test map's detour in
+  2-8 s, but its chains were not reliable flown open-loop. `tools/go_cem.py` (an optimiser as the
+  explorer, energy dominance in the cells) never left unitfarmer2's pit: keep steep falls OUT of
+  the "best" state of a cell.
+* sidistic's October walls were all cracked by RL mechanisms (no search was needed until the
+  expert loop for speed): plateau temperature, harvesting own states 2 s before death, the
+  ratchet + novel spawns, removing the time charge, greedy-death spawns, key-only temperature,
+  front-perturbed own states, the energy term, climbing backward rows. All of them are in
+  `config.incumbent_recipe` from step 0, so the control may already be fast early.
+
+**The Nature paper** (Ecoffet et al. 2021, "First return, then explore"; the full version with
+its Supplementary Information, whose ablations the arXiv copy leaves out; details in NOTES.md):
+
+* Restore-based exploration: weight W = 1/sqrt(C_seen + 1); 100 random actions per explore
+  step (30 in robotics) with the previous action repeated p = 0.95 (0.90); the environment
+  deterministic during exploration. Every headline result came from this.
+* Policy-based Go-Explore: a goal-conditioned policy (PPO + self-imitation) returns to the cell,
+  then per explore step commits 50/50 to random actions (not trained on) or to sampling the
+  policy toward goals (10% an adjacent unseen cell, 22.5% any adjacent cell, 67.5% an archive
+  cell by W); in the policy mode the temperature grows as 1 + (0.01 x max(0, t - 50))^2, t = steps
+  since the last new cell; an episode stops after 1,000 steps with no new cell. It found 3.4x
+  (Montezuma) and 3.9x (Pitfall) more cells than random exploration, but only 1.5x early; the
+  policy that did it chased NOVEL adjacent cells, not the task reward.
+* Ablations: no action repeat is worse almost everywhere and fails robotics; fixed cell
+  downscaling fails "often catastrophically" on other games; generic selection weights are
+  slower but still finish; self-imitation was essential to the policy-based variant (Montezuma
+  ~1K vs ~20K without/with). Not in the paper: exploring without returning, uniform selection,
+  restore vs policy return at a matched budget, and MCTS (future work).
+* So: a beam that samples the REWARD policy has no evidence from the paper either way; to inherit
+  the 3.4-3.9x it may need novelty goals. Coherent (held) randomness is the one thing every
+  result agrees on.
+
+**Tools on this branch**: `tools/explore_phase1.py` (restore-based Go-Explore, energy cells,
+`--view-follow`, `--exact-chains`), `tools/ge_replay.py` (an exact line from an archive),
+`tools/beam_tas.py` (the policy-guided population search; `--start-state`, `--prefix-line`,
+`--elite-frac 1.0` = Monte Carlo, `--keys-temp`, `--view-temp`, `--view-hold`, `--eps`,
+`--score d|dh|dv`), `tools/auto_spine.py` + `train_fast.py --auto-spine` (search -> curriculum
+inside the trainer; single map, single GPU; `--auto-spine-async`), `--finish-line` (a backward
+curriculum on a finishing line), `tools/edge_archive.py`, `tools/refine_arch.py`. Read their
+docstrings before writing new code.
+
+## This lineage: surf_src_sidistic (operator, 2026-11-08)
+
+* **The map.** You spawn high on a platform at about (7,837, 0, 15,042) and surf down to a
+  176 x 176 u shaft whose floor is the finish trigger (a plain box), ~14,860 u of descent over 7
+  stages separated by checkpoint curtains sgcp_1..7 (teleports with no target, ignored by the
+  core; score.py reports the furthest one an eval entered as `max_cp`). The goal field reads
+  99,675 u at the spawn (config.start_d, kill-aware). Many of the human's moves are detours away
+  from the goal: a left turn onto the first ramp, a cut back into an A-frame ramp up through a
+  110 x 130 u hole in a wall (the window), a turn EAST onto a ramp, a ~2,000 u dip into a cavity
+  under the pit slab, kill-wrapped blocks, a slit, a chimney, a basement, a sealed chamber, a rim.
+* **The record**: krs, 115.99 s on speedrun.eu (2024-07-28), 115.92 s on our game clock; our
+  runs need ~1.2 s more from spawn. It is a bar to read results against, never a constant.
+* **Physics, as in October**: 10 ms tick (the trainer's default), `--maxvel 4000`, 300 s
+  episodes. Keep them: the ladder's steps were measured at this physics.
+* **What October needed at each wall** is in NOTES.md, for INSIGHT ONLY (CLAUDE.md 0b): never
+  rebuild a per-wall fix. The record's demo is analysis only (CLAUDE.md section 0).
 
 ## Each wakeup
 
@@ -211,9 +254,9 @@ You run inside `/loop` (self-paced). Every wakeup:
 1. Read `AR_BRANCH.json`. If `now >= wrapup_at`, go to **Wrap-up** and do nothing else.
 2. Check your box and run: `python autoresearch/box.py status --agent $AR_AGENT`, then the
    run's progress through `box.py ssh` (tail of `runs/<run>/progress.csv`, the last greedy
-   eval). Score new evals after pulling them.
-3. Act: analyse, code, launch, extend, or stop a losing run (a run that cannot beat the
-   incumbent at matched steps is stopped, not left to burn money).
+   eval). Pull new evals and run `autoresearch/ladder.py` on the run.
+3. Act: analyse, code, launch, extend, or stop a run (a FAILED wall, or a run that cannot beat
+   the control at matched steps, is stopped, not left to burn money).
 4. Write down what you learned: append to `autoresearch/NOTES.md` under a dated heading
    (take the time from `date`, never type it). Keep `RESULT.json` current (format below).
 5. Schedule the next wakeup with ScheduleWakeup. While a run trains, wake every 20-30 min.
@@ -221,57 +264,44 @@ You run inside `/loop` (self-paced). Every wakeup:
    no polling loops, no Monitor spam: the user pays for every wakeup.
 
 Stopping a run does not end your round. Until `wrapup_at`, a failed idea is written down and
-followed by the next one (your ranking in NOTES.md, or a new idea). Release the box while you
-analyse or build, but keep the loop going: an early Wrap-up leaves this branch's slot empty for
-the rest of the round. The orchestrator re-arms the loop of a branch whose RESULT.json says
-final before `wrapup_at`.
+followed by the next one. Release the box while you analyse or build, but keep the loop going:
+an early Wrap-up leaves this branch's slot empty for the rest of the round. The orchestrator
+re-arms the loop of a branch whose RESULT.json says final before `wrapup_at`.
 
 ## Experiments: short first, long only when earned
 
-* **First test of any idea: at most 30 min of box time.** The incumbent recipe ran 347k env
-  steps/s on an RTX 5080 on this map (the operator's zlop_check), and roughly 150-250k on a
-  3090 elsewhere, so 30 min is about 3e8-6e8 steps. Size `--steps` to the time, and read the box's own fps after the first
-  minute.
-* **Compare at MATCHED STEPS** against the incumbent run's progress.csv
-  (`$AR_HOME/incumbent/`; in round 1, which has no incumbent, against your own scratch
-  control on the same card type). Use the gate cleared and the step it was cleared at, never
-  eval_progress alone (CLAUDE.md section 3). One seed, so a lead must be large to mean
-  anything (CLAUDE.md: the gate ladder and the seed-noise floor).
-* **Extend up to 6 h only if the idea is promising**: it clears a gate sooner than the
-  incumbent at matched steps, or clears a gate the incumbent never cleared. Say why in
-  NOTES.md when you extend.
-* **Warm starts are allowed.** Push a checkpoint with `box.py deploy --ckpt ...`
-  (`$AR_HOME/incumbent/ckpt.pt` from round 2 on, or a `refs/` policy) and launch with
-  `box.py launch --resume ...`. This measures AT the wall (CLAUDE.md: the stuck checkpoint is
-  one tool) or pushes the frontier past it. State which in NOTES.md. A recipe that only works
-  warm is not yet a recipe.
+* **First test of any idea: at most 30 min of box time** (an explorer alone, or the start of a
+  run). Read the box's own fps after the first minute: the October boxes ran 135-277k steps/s.
+* **Compare at MATCHED STEPS**: the ladder (time-to-wall) and the operator's control, the same
+  recipe without search. One seed, so a lead must be large to mean anything (CLAUDE.md: the
+  gate ladder and the seed-noise floor; the first ramp alone varied 0.18-1.51B from scratch).
+* **Extend a run only while it is ON TIME on the ladder**, up to the rest of the round. Say in
+  NOTES.md why you extend.
 * **Hard rules from CLAUDE.md that bite here:**
   * No human demo touches training (section 0).
-  * No map-specific method, threshold or box in the reward, the spawns or the schedule
-    (section 0b). Ask "would I run exactly this on a map I have never opened?"
+  * No map-specific method, threshold or box in the reward, the spawns, the archive or the
+    schedule (section 0b). Ask "would I run exactly this on a map I have never opened?"
   * New trainer flags default OFF and are bit-identical when off (prove it).
   * Every new flag is mirrored in `tools/record_ckpt.py` or listed TRAIN_ONLY, or the launch's
     record gate kills the run.
   * Shape-changing flags are never passed to a resume.
 
-## What the user set for this program (2026-10-20), over CLAUDE.md's defaults
+## What the user set for this program, over CLAUDE.md's defaults
 
-* **Ablation length.** At most 30 min first, up to 6 h when promising, as above. This replaces
-  CLAUDE.md's "one hour per ablation".
-* **Boxes.** One box per agent, single GPU only, and consumer RTX cards under the
-  config.max_dph caps (3090 first, then 4090, then 5090; cheaper cards that do the job, like
-  the 5080, are fine, and since 2026-10-25 the 3080 / 4070 / 5070 / 60 Ti class under lower
-  caps: box.py takes the cheapest acceptable offer, so a box may be a slower card). No
-  datacenter cards, ever. box.py and the watchdog enforce this.
+* **Ablation length.** At most 30 min first; a run ON TIME on the ladder may run for the rest
+  of the round. This replaces CLAUDE.md's "one hour per ablation".
+* **Boxes.** One box per agent, single GPU only, consumer RTX cards under the config.max_dph
+  caps: box.py takes the cheapest acceptable offer (often a 5060 Ti / 4070-class card on a
+  32+ thread host), so a box may be a slower card. No datacenter cards, ever. box.py and the
+  watchdog enforce this. If deploy's gpu_health says BUSY on a fresh box, another tenant is on
+  that GPU: blocklist it (`tools/vast_pick.py --block <id> --reason unreliable --detail ...`)
+  BEFORE you release it.
 * **Watching.** The user watches through Claude Remote Control and `$AR_HOME/status.md` (the
-  user's view, which you do not read: see Independence). That replaces CLAUDE.md's per-box
-  dashboard tunnel. A dashboard on the box is optional, and no tunnel is needed.
-* **Budget.** The total is the vast credit ($51.12 at this program's start). box.py paces the
+  user's view, which you do not read). That replaces CLAUDE.md's per-box dashboard tunnel.
+* **Budget.** The total is the vast credit ($55.39 at this program's start). box.py paces the
   fleet's burn at (credit - reserve) / hours left until config.budget_end_hours (+10% slack),
-  ~0.56 $/h at the start: one or two cheap boxes at once (a 5080 runs ~0.35-0.39 $/h), so a box
-  will often be refused while another agent's runs. Plan CPU work (analysis, code, tests) for
-  those hours. It keeps the $10 reserve: no rent at the reserve, and no `extend` that the
-  fleet's burn would pay out of it.
+  ~1.8 $/h at the start: four branch boxes plus the operator's control. It keeps the $10
+  reserve: no rent at the reserve, and no `extend` that the fleet's burn would pay out of it.
 
 ## Code changes
 
@@ -287,14 +317,13 @@ Work on YOUR branch (`ar/$AR_AGENT`, already checked out in this worktree):
 4. Deploy THAT commit: `box.py deploy --agent $AR_AGENT --branch ar/$AR_AGENT`.
 
 **The harness is the operator's.** The files in `config.harness_files` (CLAUDE.md, this
-protocol, box.py, score.py, orchestrator.py, config.json, the watchdog, deploy_box.sh,
-vast_pick.py, gpu_health.py and their tests) are restored from the operator's branch at the
-start of every round. An edit you make to one does not reach the next round. One exception:
-`config.json`'s `lineage_keys` (`incumbent_recipe`) are the lineage's. Change the recipe there,
-and if your branch wins, your value is the next round's scratch default. If a harness file
-blocks you, work around it on your branch and write it in NOTES.md under a "Harness issue"
-heading; the operator reads those. `autoresearch/NOTES.md`, the trainer, the tools and the tests are
-yours, and they travel with your branch if it wins.
+protocol, ladder.json, box.py, score.py, orchestrator.py, config.json, the watchdog,
+deploy_box.sh, vast_pick.py, gpu_health.py and their tests) are restored from the operator's
+branch at the start of every round. An edit you make to one does not reach the next round. One
+exception: `config.json`'s `lineage_keys` (`incumbent_recipe`) are the lineage's. If a harness
+file blocks you, work around it on your branch and write it in NOTES.md under a "Harness issue"
+heading; the operator reads those. `autoresearch/NOTES.md`, `autoresearch/ladder.py`, the
+trainer, the tools and the tests are yours, and they travel with your branch if it wins.
 
 ## Boxes: one per agent, and box.py is the only door
 
@@ -310,12 +339,13 @@ python autoresearch/box.py release --agent $AR_AGENT
 ```
 
 * `launch` prepends the incumbent recipe (`config.incumbent_recipe`) to your extra flags, and
-  later flags win. `--no-recipe` gives a bare scratch preset.
-* A spawn-state file built from the policy's OWN states (its reservoir, its greedy line, an
-  archive rooted at them) is passed with `launch --self-states "<how it was built>" --
-  --spawn-states <file>`. That sets run_arm.sh's SELF_STATES=1 and records your sentence with
-  the run. Never launch around `launch` (box.py ssh + run_arm.sh): the run then never reaches
-  your box record.
+  later flags win. `--no-recipe` gives a bare scratch preset (then it is not the program's
+  recipe: say what you replaced it with).
+* If `launch` returns an ssh error (exit 255, "Broken pipe"), the run usually started anyway:
+  check `ps` on the box and `runs/<run>_launch.txt` before launching again.
+* A spawn-state file built from the policy's OWN states is passed with `launch --self-states
+  "<how it was built>" -- --spawn-states <file>`; inside a one-recipe run, lines and spawn files
+  are made by the run itself (the auto-spine machinery), never by hand.
 * Never call `vastai create`/`destroy` yourself. The fleet watchdog destroys any instance that:
   * is not a single allowed RTX card under its price cap;
   * is above the box cap;
@@ -323,52 +353,47 @@ python autoresearch/box.py release --agent $AR_AGENT
   * is unregistered.
 * A box with no experiment running is released within 5 minutes (CLAUDE.md section 1). Do
   your analysis with the box released, unless you are about to launch again.
-* If `rent` refuses on budget, the fleet is at its spending limit (`box.py budget`: burn_per_h
-  against limit_per_h). Do analysis
+* If `rent` refuses on budget, the fleet is at its spending limit (`box.py budget`). Do analysis
   or coding and try later. Never work around it.
 * Your box id is in `$AR_HOME/boxes/$AR_AGENT.json` and `box.py status --agent $AR_AGENT`. Keep
   it in NOTES.md too.
-* A bad box (gpu_health fails, or the trainer runs far under ~150k steps/s on the incumbent
-  recipe) is blocklisted with `python tools/vast_pick.py --block <id> --reason ... --detail ...`
-  BEFORE you release it. That writes your branch's `tools/bad_hosts.json`. The orchestrator
-  folds every branch's list into `$AR_HOME/bad_hosts.json` within 5 minutes, and `box.py`
-  skips both lists, so no other agent rents that machine. `config.cpu_exclude` already drops
-  the old Xeon E5/E7 hosts, which vast lists at their turbo clock.
+* A bad box (gpu_health fails, a foreign tenant on the GPU, or the trainer far under ~130k
+  steps/s on the incumbent recipe) is blocklisted with `python tools/vast_pick.py --block <id>
+  --reason ... --detail ...` BEFORE you release it (reasons: gpu_capped, cpu_bound, no_cuda,
+  unreliable, network). The orchestrator folds every branch's list into
+  `$AR_HOME/bad_hosts.json`, and `box.py` skips both lists.
 
 ## Harvest, score, record
 
 * Before releasing a box, pull every run you may want to cite:
   `box.py pull --agent $AR_AGENT --run <run>`. Add `--ckpt` for the one you might hand on.
-* Score: `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/<run>/`.
+* Score: `python autoresearch/score.py --best $AR_HOME/runs/$AR_AGENT/<run>/`, and the ladder:
+  `python autoresearch/ladder.py $AR_HOME/runs/$AR_AGENT/<run>/`.
 * The next round's incumbent checkpoint comes from the winning eval's run, as pulled to
-  `$AR_HOME/runs/` (a truncated or damaged file is skipped). It is the newest
-  `ckpt_<step>.pt` AT OR BEFORE the winning eval, unless the run's newest checkpoint
-  (`ckpt_final.pt`, else `ckpt_latest.pt`, else its newest `ckpt_<step>.pt`) is more than
-  twice as near the eval; with no snapshot at or before the eval, it is that newest one,
-  usually later than the eval. A snapshot is handed on only if you pulled it: if your best
-  eval falls between snapshots, pull the one before it as well
-  (`box.py pull --agent $AR_AGENT --run <run> --snapshot <step>`; operator, 2026-10-23: r7b2's
-  finish came inside a transient peak, and its ckpt_latest was ~700M steps past it).
-  `AR_BRANCH.json`'s incumbent gives `eval_step` and `ckpt_step`. Before you compare against
-  the incumbent's score, read the checkpoint's own first eval.
+  `$AR_HOME/runs/`. It is the newest `ckpt_<step>.pt` AT OR BEFORE the winning eval, unless the
+  run's newest checkpoint is more than twice as near the eval. A snapshot is handed on only if
+  you pulled it (`box.py pull --agent $AR_AGENT --run <run> --snapshot <step>`). For a recipe
+  that the next round should CONTINUE, hand on the run's newest checkpoint (`--ckpt`) and say so.
 * `box.py pull --ckpt` downloads to `<ckpt>.part` and replaces the copy already pulled only
   when the md5 matches the box's, so a pull that times out on a slow link loses nothing.
 * `RESULT.json` (worktree root, read by the orchestrator, rewritten whenever the best moves):
 
 ```json
-{"agent": "r1b2", "round": 1, "final": false,
- "best": {"score": 27.5, "eval_file": "/home/steam/ar/runs/r1b2/r1b2_x/traj_0755499008.jsonl",
-          "run": "r1b2_x", "step": 755499008, "ckpt": "/home/steam/ar/runs/r1b2/r1b2_x/ckpt_latest.pt",
-          "recipe": ["--obs-compass", "1"], "resume_from": null, "commit": "<sha>"},
- "summary": "<= 10 lines: what you tried, what it did at matched steps, what to try next"}
+{"agent": "unr1b2", "round": 1, "final": false, "slot": 2,
+ "best": {"score": 27.5, "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_x/traj_0755499008.jsonl",
+          "run": "unr1b2_x", "step": 755499008, "ckpt": "/home/steam/ar_uni/runs/unr1b2/unr1b2_x/ckpt_latest.pt",
+          "recipe": ["--auto-spine", "..."], "commit": "<sha>", "one_recipe": true,
+          "from_scratch_step0": true, "resume_from": null},
+ "ladder": {"first ramp": 302514176, "window (CP1)": null, "verdict": "alive"},
+ "summary": "<= 10 lines: the explore step, the knob, what it did at matched steps vs the control, next"}
 ```
 
 ## Wrap-up (at `wrapup_at`, or when a message says ROUND OVER; never before)
 
 1. Launch nothing new. Pull the best run, with its checkpoint (`--ckpt`) and the snapshot
    at or before its best eval (`--snapshot <step>`).
-2. Score it. Write `RESULT.json` with `"final": true` and the summary.
-3. Append the round's lesson to NOTES.md: what worked, what did not, the numbers.
+2. Score it and run the ladder. Write `RESULT.json` with `"final": true` and the summary.
+3. Append the round's lesson to NOTES.md: what worked, what did not, the numbers, the ladder.
 4. `git add -A && git commit` (trailers) `&& git push origin ar/$AR_AGENT`.
 5. `box.py release --agent $AR_AGENT`, and confirm with `box.py status --agent $AR_AGENT`.
 6. Stop scheduling wakeups. The orchestrator ends this session at the deadline.
@@ -379,7 +404,7 @@ The user watches every session through Claude Remote Control and may write to yo
 time. Answer first, in a few lines:
 
 * what is running;
-* its latest eval and score against the incumbent;
+* its latest eval, its ladder row and the control at the same step;
 * what you will do next.
 
 ASCII only (the user's terminal is cp1251). Label every line and point of any plot (the user
