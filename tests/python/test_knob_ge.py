@@ -258,3 +258,26 @@ def test_contact_frontier_skips_a_dive():
     assert sup[1:20].all() and not sup[21:].any()
     assert float(np.min(np.where(sup, d, np.inf))) == 500.0
     assert float(d.min()) == 100.0
+
+
+def test_contact_frontier_reads_only_the_8_traj_columns(tmp_path):
+    """The trainer's frontier runs on episodes_from_traj rows, which keep 8 columns
+    [tick, x, y, z, vx, vy, vz, yaw] (v4's first eval died on e[:, 9]): the rule must use vz alone."""
+    from surfgym.route import episodes_from_traj
+    p = tmp_path / "t.jsonl"
+    rows = []
+    for t in range(30):
+        vz = 0.0 if t < 15 else -8.0 * (t - 14)              # ground, then free fall
+        rows.append([t, 0.0, 0.0, 1000.0 - t, 100.0, 0.0, vz, 0.0, 0, 1, 0.0, 0.0, 0.0, 1, 1])
+    p.write_text('{"map": "x", "tick_ms": 10}\n' + "\n".join(str(r).replace("'", '"')
+                                                              for r in rows) + '\n{"end": "fail"}\n')
+    e = episodes_from_traj(p)[0]
+    assert e.shape[1] == 8
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    i = src.index("if args.auto_spine_contact:\n                # --auto-spine-contact: the episode's")
+    blk = src[i:i + 1400]
+    assert "e[:, 9]" not in blk and "_vz = np.asarray(e[:, 6], np.float64)" in blk
+    vz = e[:, 6]
+    sup = np.ones(len(e), bool)
+    sup[1:] = (vz[1:] - vz[:-1]) - (-8.0) > 1.0
+    assert sup[:15].all() and not sup[16:].any()

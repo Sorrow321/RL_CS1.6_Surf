@@ -16665,9 +16665,12 @@ def main() -> None:
                 # --auto-spine-contact: the episode's deepest SUPPORTED state (ground, or a tick
                 # whose vz change departs upward from free fall: the explorer's cell rule), so a
                 # frontier is never a fatal dive's mid-air point
-                _sup = np.asarray(e[:, 9], np.float64) > 0.5
+                # (episodes_from_traj keeps [tick, x, y, z, vx, vy, vz, yaw]: no ground flag - and
+                # none is needed: ground cancels gravity every tick, so its vz change departs from
+                # free fall like a surf face's; the spawn row counts as supported)
                 _vz = np.asarray(e[:, 6], np.float64)
-                _sup[1:] |= (_vz[1:] - _vz[:-1]) - _g_step > 1.0
+                _sup = np.ones(len(e), bool)
+                _sup[1:] = (_vz[1:] - _vz[:-1]) - _g_step > 1.0
                 bests.append(float(np.min(np.where(_sup, d, np.inf))))
             else:
                 bests.append(float(d.min()))
