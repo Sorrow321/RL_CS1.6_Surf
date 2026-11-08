@@ -4111,6 +4111,22 @@ def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
     return hook
 
 
+def banked_min_d(d, vz, g_step: float, tol: float = 1.0, vmax: float = 1e9) -> float:
+    """--auto-spine-banked (unr1b3, 2026-11-08): an episode's deepest d at a tick where the map
+    pushed back - vz did not change by exactly one gravity step ``g_step`` (a fall pinned at the
+    speed cap -vmax is free flight) - so a fatal ballistic dive after the last contact is not
+    counted. ``d``: per-row field distance, ``vz``: per-row vertical velocity. No contact at all ->
+    the first row's d (the episode banked nothing)."""
+    d = np.asarray(d, np.float64)
+    vz = np.asarray(vz, np.float64)
+    if len(d) < 2:
+        return float(d[0]) if len(d) else float("inf")
+    dvz = np.diff(vz)
+    capped = (vz[1:] <= -float(vmax) + 1.0) & (np.abs(dvz) <= tol)
+    c = np.flatnonzero((np.abs(dvz - float(g_step)) > float(tol)) & ~capped) + 1
+    return float(d[c].min()) if len(c) else float(d[0])
+
+
 def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
     """--auto-spine-recheck: a new spine whose end lies at field distance ``end_d`` is still worth
     adopting when it beats the latest greedy frontier ``greedy_med`` (the median deepest d of the
@@ -5210,6 +5226,13 @@ def main() -> None:
                          "--mcts: policy-prior PUCT over macro-actions rooted on the policy's "
                          "greedy line, tools/mcts_search.py; no branched beams). Config only "
                          "when mcts")
+    ap.add_argument("--auto-spine-banked", action="store_true",
+                    help="--auto-spine: the greedy eval's frontier (median deepest d) and the "
+                         "quorum read each episode's CONTACT-BANKED depth - its deepest d at a "
+                         "tick the map pushed back (a fatal dive after the last contact does not "
+                         "count) - the measure an --auto-spine-explorer mcts line ends at, so a "
+                         "search line is compared like with like. Off = the raw deepest d, "
+                         "byte-identical; config only when on")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
     ap.add_argument("--auto-spine-async", action="store_true",
@@ -12297,6 +12320,8 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_recheck and not args.auto_spine:
         raise SystemExit("--auto-spine-recheck needs --auto-spine")
+    if args.auto_spine_banked and not args.auto_spine:
+        raise SystemExit("--auto-spine-banked reads --auto-spine's greedy frontier: give it")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15453,6 +15478,8 @@ def main() -> None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if args.auto_spine_scratch:
             meta["config"]["auto_spine_scratch"] = 1
+        if args.auto_spine_banked:
+            meta["config"]["auto_spine_banked"] = 1
         if args.auto_spine_explorer != "beam":
             meta["config"]["auto_spine_explorer"] = str(args.auto_spine_explorer)
             meta["config"]["auto_spine_mcts_minutes"] = float(args.auto_spine_mcts_minutes)
@@ -16590,7 +16617,15 @@ def main() -> None:
         for e in eps:
             d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
             d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
-            bests.append(float(d.min()))
+            if args.auto_spine_banked:
+                # --auto-spine-banked: the frontier and the quorum read the contact-banked depth
+                # (a fatal dive after the last contact does not count), the measure an MCTS line
+                # ends at
+                _gs = -float(slots[0].core.config.phys.sv_gravity) * float(TICK.ms) / 1000.0
+                bests.append(banked_min_d(d, e[:, 6], _gs, 1.0,
+                                          float(slots[0].core.config.phys.sv_maxvelocity)))
+            else:
+                bests.append(float(d.min()))
             if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
                 _v = np.asarray(e[:, 4:7], np.float64)
                 n_en += crossed_with_energy(d, np.asarray(e[:, 3], np.float64)

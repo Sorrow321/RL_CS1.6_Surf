@@ -4,10 +4,10 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 10.631,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/traj_0906493952.jsonl",
+  "score": 27.126,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/traj_1283981312.jsonl",
   "run": "unr1b3_mcts1",
-  "step": 906493952,
+  "step": 1283981312,
   "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/ckpt_latest.pt",
   "recipe": [
    "--envs",
@@ -320,8 +320,9 @@
  },
  "ladder": {
   "first ramp": 906493952,
-  "window (CP1)": null,
-  "verdict": "alive (first ramp ON TIME; control FAILED it)"
+  "window (CP1)": 1057488896,
+  "pit dive": null,
+  "verdict": "alive: first ramp and window ON TIME (control failed the first ramp); plateau 27.1% at the pit dive since 1.13B (deadline 3.88B)"
  },
  "summary": "Slot 3: policy-prior MCTS over macro-actions (tools/mcts_search.py via beam_tas --mcts) as the explore step of the trainer's own search->curriculum loop, from step 0 (--auto-spine-scratch: first spine = the map spawn; --demo-share 0.25: the found line's backward curriculum beside the recipe's spawn sources). Explorer-alone on October r0/r1: banked progress ~= the plain beam at the pit dive (25.98% vs 25.83% banked; neither banks a landing past 27.5%), but the beam goes much deeper from an idle start (26.1% vs 15.6% at c_puct 0.25, 6.7% at 2.0). Run unr1b3_mcts1 launched 06:00 UTC on box 59668027."
 }

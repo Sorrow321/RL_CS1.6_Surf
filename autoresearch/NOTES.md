@@ -235,3 +235,16 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   on arrival: the policy's 982M eval was already at 83,957 (15.8%). While the policy improves this
   fast (1.7% -> 10.6% -> 15.8% in 150M steps) a 5-min search cannot lead it; the search's job is
   the plateau. Restore check on the 5080: 345/348 decisions.
+
+### 07:14 UTC: window ON TIME, plateau at the pit-dive wall
+* **Window (CP1) cleared at 1.057B, ON TIME** (deadline 2.07B; October 1.04B). Evals since 1.13B:
+  27.0 / 27.1 / 27.1 / 27.1 / 27.1 / 27.1% (CP1) - the October pit-dive stall (26.9-27.1%).
+* The plateau's episodes (1.51B eval): 8/9 last touch the map at 22.2 s at (3,030, 615, 11,870),
+  BANKED 23.57%, then fly 3 s at ~1,500 u/s and die at 25.1 s at (3,010, 840, 11,210) - where raw d
+  reads 27.1%. The greedy "frontier" is a fatal dive.
+* Search 4 (1.36-1.45B): greedy pass dies at 24.85 s (raw 27.0%, banked 25.1%); 42 roots, 1,218
+  waves, 2.5M nodes, 13,314 cells; best BANKED 25.86% - 2.3% deeper on contact than the greedy -
+  rejected: the trainer compares it with the eval's RAW frontier (72,677 = 27.1%). The banked /
+  raw asymmetry I flagged at launch now blocks the loop at exactly the wall it was built for.
+  Fix for a next run (cannot touch this one): --auto-spine-banked, the greedy frontier and the
+  quorum read the eval episodes' contact-banked depth.

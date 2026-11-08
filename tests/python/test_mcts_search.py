@@ -161,3 +161,17 @@ def test_novelty_value_is_new_cells_per_visit_and_steers():
     t.end_wave()
     picks0 = t.select(1, c_puct=0.0, novelty=0.0)
     assert len(picks0) == 1
+
+
+def test_banked_min_d_ignores_a_fatal_dive():
+    sys.path.insert(0, str(ROOT / "python"))
+    from train_fast import banked_min_d
+    # a ramp ride (vz held at 0: contact) to d 500, then a free fall (vz -8 per tick) to d 100
+    d = np.array([1000.0, 800.0, 600.0, 500.0, 400.0, 250.0, 100.0])
+    vz = np.array([0.0, 0.0, 0.0, 0.0, -8.0, -16.0, -24.0])
+    assert banked_min_d(d, vz, -8.0, 1.0, 4000.0) == 500.0
+    # a fall pinned at the speed cap is still free flight
+    vz2 = np.array([0.0, 0.0, 0.0, 0.0, -4000.0, -4000.0, -4000.0])
+    assert banked_min_d(d, vz2, -8.0, 1.0, 4000.0) == 400.0   # the clamp tick itself is contact
+    # no contact at all: nothing banked beyond the first row
+    assert banked_min_d(d[:3], np.array([0.0, -8.0, -16.0]), -8.0, 1.0, 4000.0) == 1000.0

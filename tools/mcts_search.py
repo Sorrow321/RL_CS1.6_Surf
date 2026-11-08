@@ -268,7 +268,7 @@ class Tree:
           ("h", np.float64, 0.0), ("bank_t", np.int64, -1), ("ndec", np.int64, 0),
           ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0),
           ("nov", np.float64, 0.0), ("ox", np.float32, 0.0), ("oy", np.float32, 0.0),
-          ("oz", np.float32, 0.0))
+          ("oz", np.float32, 0.0), ("raw_d", np.float64, np.inf))
 
     def _alloc(self, cap: int):
         for name, dt, fill in self._F:
@@ -674,6 +674,7 @@ def run_mcts(ctx: dict, a) -> dict:
         fin_t = np.full(N, -1, np.int64)
         bank_d = np.full(N, np.inf)
         bank_t = np.full(N, -1, np.int64)
+        raw_d = np.full(N, np.inf)          # diagnostics: the deepest d at ANY live tick
         acts_w = np.zeros((M, N, 6), np.int8)
         view_w = np.zeros((M, N, 2), np.float32)
         cell_keys = []
@@ -712,6 +713,7 @@ def run_mcts(ctx: dict, a) -> dict:
                 imp = c & (d < bank_d)
                 bank_d[imp] = d[imp]
                 bank_t[imp] = tt
+                raw_d = np.where(alive, np.minimum(raw_d, d), raw_d)
             st = coreN.states_view
             if alive.any():
                 ai = np.flatnonzero(alive)
@@ -774,7 +776,7 @@ def run_mcts(ctx: dict, a) -> dict:
                                     ndec=np.where(fin[ch], (fin_t[ch] + K - 1) // K, M),
                                     wave=wave, delta=delta[ch], nov=n_new[ch] / float(M),
                                     ox=stN["origin"][ch, 0], oy=stN["origin"][ch, 1],
-                                    oz=stN["origin"][ch, 2])
+                                    oz=stN["origin"][ch, 2], raw_d=raw_d[ch])
             if tree._cap > len(E_acts):
                 E_acts = np.concatenate([E_acts, np.zeros((tree._cap - len(E_acts), M, 6),
                                                           np.int8)])
@@ -837,12 +839,16 @@ def run_mcts(ctx: dict, a) -> dict:
                "best_node": int(b), "best_d": frontier["d"], "best_tick": int(f_tick),
                "best_pct": round(100.0 * float(tree.score[b]), 3) if not finished else 100.0,
                "greedy_pct": round(100.0 * float(prog(bank_best)), 3),
+               "raw_best_pct": round(100.0 * float(prog(np.min(tree.raw_d[1:tree.n]))), 3)
+               if tree.n > 1 else None,
                "best_depth": int(tree.depth[b]), "max_depth": int(depths.max()) if len(depths)
                else 0, "finished": finished, "finishes": int(tree.finished[1:tree.n].sum()),
                "search_wall_s": round(dt, 1),
                "env_steps_per_s": round(sim_ticks * N / max(dt, 1e-9)),
                "best_by_wave": [round(100 * x, 3) for x in best_hist[::max(1, len(best_hist)
                                                                           // 50)]]}
+    print(f"mcts: deepest RAW d any live tick reached {summary['raw_best_pct']}% (greedy raw "
+          f"{100.0 * float(prog(gbest)):.2f}%)", flush=True)
     print(f"mcts: {wave} waves, {tree.n - 1:,} nodes, {arch.n:,} cells, best "
           f"{summary['best_pct']:.2f}% (greedy {summary['greedy_pct']:.2f}%) at tick {f_tick} "
           f"({ctx['secs'](f_tick):.2f}s), depth {int(tree.depth[b])}"
