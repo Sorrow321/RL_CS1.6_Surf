@@ -311,3 +311,19 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   best d 90,065 (9.6%), chain 7 links P P R P R R R from root 552 of line 2, exact replay;
   ADOPTED at 544M as spine 2 (v1's search 2 at 529M came back stale). Every v2 path has now run
   inside the trainer.
+* **08:46 UTC - v2 STOPPED at 880M (15.66 at 831M); v3 launched.** v2's spines 1-3 came quickly
+  (387M, 544M, 698M; v1 had one by 698M) and the evals tracked v1 (604M 9.9 vs 12.8, 680M 15.1
+  vs 15.8, 755M 15.6 vs 17.3, 831M 15.7 vs 18.8). Then **search 4 (755M) found NOTHING**: no
+  cell deeper than the eval line's own best (d 84,126). Its log: 170 s before the first report,
+  and only 7.6k new cells in 10 min (fresh-archive searches add 20-90k). **The persistent archive
+  is a null with count-based selection:** W = 1/sqrt(1 + chosen) over the whole archive gave the
+  86k carried cells (chosen ~37x each, W ~0.16: total ~14k) about 99% of the selections and the
+  75 new roots at the frontier (W = 1: total 75) about 1% - the archive drowned its own frontier,
+  and it grows with every search. Go-Explore's archive persists, but with Atari-sized archives
+  and a frontier that is new cells; here every search re-roots at the deployed line, which the
+  old cells do not know. (A fix would select by recency or a frontier band; not built - v1's
+  per-search archive is what cracked the start platform and the window.)
+* **v3 = `unr1b4_knob3`, launched 08:45:26 UTC from step 0, commit 9c8be647 (flags only):** v2
+  without `--auto-spine-knob-archive`, i.e. v1's explorer (a fresh archive per search) + the
+  three fixes: `--demo-match-band`, `--auto-spine-knob-evalroots`, `--auto-spine-deeper`. Record
+  gate passed. It should replay v1/v2 to 302M (the fixes are off-path until a spine exists).
