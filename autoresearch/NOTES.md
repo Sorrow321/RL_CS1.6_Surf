@@ -361,3 +361,50 @@ harvest of this box would fail the same way: pull before every deadline.
   `--keys-hold-spawn-duck` (ducked spawns hold duck), `--ge-line-retire` (a learned line gives
   its 20% back), `--ge-line-match-band` (band credit on repeated origins), `--ge-line-front-temp
   1` (band spawns sample keys at 2 and yaw sigma x2 for 1 s). From scratch, step 0.
+* unr1b1_v2 launched 10:48 UTC on box 59665725 (commit 173fb6af). `box.py launch` broke on the
+  path-MTU hole again (exit 255); the trainer kept running, run_arm.sh's record gate died after
+  its greedy recording, and the gate re-run by hand PASSED (greedy, stoch, mixed, POV). The first
+  eval (0.5M) is unr1b1_gel's to the digit (same seed 0, d 98,824).
+
+### 2026-11-08 11:16 UTC - unr1b1_v2 at 281M: first ramp 227M (as v1); line 1 learned and RETIRED
+
+* Evals: 0.8% (0.5M), 1.7% (76M), 5.8% (151.5M), 9.6% (227M; first ramp, v1 had 15.6% there).
+  The same first line as v1 (seed 0: 30.9 s to d 94,179), adopted at 88M; `--ge-line-retire`
+  fired at 151.5M (median greedy d 93,941 <= its success line 94,279): v1 kept that line on 20% of
+  the pool until 540M. Search 2 (from 151.5M) ended at 92,962, behind the greedy's 90,129 by the
+  time it ended. fps 176.7k.
+* Cosmetic: after a retirement the step line's `gelhot` keeps its last value (the share is only
+  recomputed while a line is drawn); it is not a live share.
+
+### 2026-11-08 11:42 UTC - unr1b1_v2 at 558M: window 453.5M (ON TIME), at the pit wall
+
+| step | v2 best (median) | v1 (unr1b1_gel) best |
+|---|---|---|
+| 227M | 9.6% (9.5%) | 15.6% |
+| 302.5M | 9.6% (9.6%) | 15.8% |
+| 378M | 17.9% (15.8%) | 26.8% (window) |
+| 453.5M | 26.6% (25.3%) - window (sgcp_1) | 27.0% |
+| 529M | 26.9% (26.8%) | 27.0% |
+
+* Search 4 (from the 453.5M greedy) found a 26.1 s pit line to d 72,468 (27.30%), adopted at
+  540.5M - the step v1 adopted its pit line at. Its curriculum went straight to rows 2387/2412
+  (2.0-2.25 s before the end: 23.9% / 0.3%), the turn before the slab again; `gelhot` 2.2% live.
+
+### 2026-11-08 12:10 UTC - unr1b1_v2 at 843M: on a pit line past the threshold
+
+* Evals 604M-831M: 26.8% (the pit wall). Search 5 found a line to d 72,196 (27.57%) and it WAS
+  adopted at 691.5M (272 u past line 4's 72,468; v1's equal line was refused by 5 u). Its
+  curriculum: the band from 2434 (1.5 s before the end) 48%, from 2409 12.7% (v1 at the same
+  steps: 41% / 7-11% on line 4). Search 6: 72,315, not adopted. fps 176.7k.
+* Box deadline extended to ~16:16 UTC (the wrap-up pull at 15:55 needs the box).
+
+### 2026-11-08 12:38 UTC - unr1b1_v2 clears the PIT DIVE at 906.5M (v1: 2.114B)
+
+* Evals 906.5M / 982M / 1,057.5M: best 27.6% / 27.6% / 27.5% (the wall in three evals running;
+  v1 crossed once), 1,133M back to 26.8%. Best score 27.581 (traj_0906493952) - the branch's best.
+* Ladder v2: first ramp 227.0M, window 453.5M, pit dive 906.5M (October 0.30 / 1.04 / 1.94B;
+  v1 0.227 / 0.378 / 2.114B). One seed each: v2's 2.3x at the pit is large but not a proof; what
+  changed is the four fixes together (spawn-duck, retire, match-band, band temperature).
+* The pit line v2 learned was search 5's (27.57%), adopted because it beat search 4's line by
+  272 u; v1's equivalent was refused by 5 u. Line curriculum now at rows 2384/2409 of 2584
+  (27.6% / 13.8%). Search 7 found nothing 200 u past the greedy.
