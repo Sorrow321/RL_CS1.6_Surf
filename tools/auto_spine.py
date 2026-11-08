@@ -175,6 +175,8 @@ def knob(a, out: Path):
            "--envs", a.envs, "--skip-gate", "--allow-nonfinisher", "--route-file", "none",
            "--max-ticks", a.beam_ticks, "--torch-seed", a.seed, "--seed", 0,
            "--ge-knob", "--ge-knob-minutes", a.ge_minutes, "--out-dir", kd]
+    if getattr(a, "knob_contact", False):
+        cmd += ["--ge-knob-contact-line"]
     for k in ("decisions", "repeat", "floor", "cell", "energy", "heading", "roots_secs",
               "stall_margin", "archive", "line"):
         v = getattr(a, f"knob_{k}", None)
@@ -568,6 +570,10 @@ def main(argv=None) -> int:
     ap.add_argument("--knob-heading", type=int, default=None)
     ap.add_argument("--knob-roots-secs", type=float, default=None)
     ap.add_argument("--knob-stall-margin", type=float, default=None)
+    ap.add_argument("--knob-contact", action="store_true",
+                    help="--knob: the explorer's 'beats the line' gate on the line's SUPPORTED "
+                         "states (beam_tas --ge-knob-contact-line) and the knob line cut at its "
+                         "best d at or before its last map contact (--cut contact)")
     ap.add_argument("--knob-line", default=None,
                     help="--knob: root the explorer on this STATE_DTYPE line (beam_tas "
                          "--ge-knob-line); None = its own greedy re-rollout")
@@ -599,8 +605,8 @@ def main(argv=None) -> int:
         if kl is not None and len(kl):
             kd_ = field_d(field, kl)
             fin = bool(len(kl)) and ki.get("knob_finishes") and ki.get("knob_best_d") == 0.0
-            e, de = (len(kl) - 1, float(kd_[-1])) if fin else cut_line(kl, kd_, a.contact_tol,
-                                                                         a.cut)
+            e, de = (len(kl) - 1, float(kd_[-1])) if fin else cut_line(
+                kl, kd_, a.contact_tol, "contact" if a.knob_contact else a.cut)
             res.update(knob_len=int(len(kl)), knob_end=e, knob_end_d=de,
                        knob_line_best_d=float(kd_.min()))
             print(f"knob line: {len(kl)} states, best d {kd_.min():,.0f}, cut at {e} d "

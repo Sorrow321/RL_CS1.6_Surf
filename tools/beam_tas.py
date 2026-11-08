@@ -2262,6 +2262,10 @@ def main():
                          "per decision (the paper's 0.95)")
     ap.add_argument("--ge-knob-floor", type=float, default=0.05,
                     help="--ge-knob: the knob stays in [floor, 1 - floor]")
+    ap.add_argument("--ge-knob-contact-line", action="store_true",
+                    help="--ge-knob: the line's stall and best d (the gate a cell must beat) on its "
+                         "SUPPORTED states only (ground / surf contact, the cells' own rule), not "
+                         "on a fatal dive's mid-air points. Off = all states, as before")
     ap.add_argument("--ge-knob-line", default=None, metavar="NPY",
                     help="--ge-knob: root on THIS STATE_DTYPE line (the trainer's own eval states, "
                          "train_fast --auto-spine-knob-evalroots) instead of a greedy re-rollout "

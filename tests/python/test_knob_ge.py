@@ -223,3 +223,38 @@ def test_deeper_rule_wiring():
     j = src.index("demo.reset_spine(sp)", i)
     assert "spine_is_fresh(_de_new, _de_cur, float(args.auto_spine_gain))" in src[i:j]
     assert '"auto_spine_deeper"' in (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+
+
+def test_contact_frontier_wiring():
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert re.search(r'ap\.add_argument\("--auto-spine-contact", action="store_true"', src)
+    assert 'meta["config"]["auto_spine_contact"] = 1' in src
+    assert 'cmd += ["--knob-contact"]' in src
+    # flag off: the frontier is every state's best, as before
+    i = src.index("if args.auto_spine_contact:\n                # --auto-spine-contact: the episode's")
+    assert "bests.append(float(d.min()))" in src[i:i + 900]
+    assert '"auto_spine_contact"' in (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    a = (ROOT / "tools" / "auto_spine.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--knob-contact", action="store_true"' in a
+    assert 'cmd += ["--ge-knob-contact-line"]' in a
+    assert '"contact" if a.knob_contact else a.cut' in a
+    b = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--ge-knob-contact-line", action="store_true"' in b
+    kg = (ROOT / "tools" / "knob_ge.py").read_text(encoding="utf-8")
+    assert 'getattr(args, "ge_knob_contact_line", False)' in kg
+
+
+def test_contact_frontier_skips_a_dive():
+    """The per-tick supported-state rule the trainer's frontier and the explorer's gate share:
+    a line that surfs to d 500 and then dives (free fall) to d 100 has its supported best at 500."""
+    n = 40
+    vz = np.zeros(n)
+    vz[:20] = 0.0                                   # on a surface (pushed back every tick)
+    vz[20:] = -8.0 * np.arange(1, n - 19)           # free fall: -8 u/s per tick at 800 / 10 ms
+    og = np.full(n, -1)
+    d = np.concatenate([np.linspace(900, 500, 20), np.linspace(480, 100, 20)])
+    sup = np.concatenate([[og[0] >= 0], contact_mask(og[1:], vz[:-1], vz[1:], -8.0, 1.0)])
+    # the surface ticks: vz stays 0 against gravity's -8 -> contact; the dive's ticks do not
+    assert sup[1:20].all() and not sup[21:].any()
+    assert float(np.min(np.where(sup, d, np.inf))) == 500.0
+    assert float(d.min()) == 100.0

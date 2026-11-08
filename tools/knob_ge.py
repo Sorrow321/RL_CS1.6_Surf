@@ -375,8 +375,17 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
         line = np.array(L_states, dtype=state_dtype)
         line_obs = np.array(L_obs, np.float32)
     ld = field_d(line["origin"])
-    stall = stall_index(ld, float(args.ge_knob_stall_margin))
-    line_best = float(np.min(ld)) if np.isfinite(ld).any() else float("inf")
+    ld_gate = ld
+    if getattr(args, "ge_knob_contact_line", False):
+        # --ge-knob-contact-line: the line's stall and best on its SUPPORTED states (the cells'
+        # own rule), so the gate is the policy's deepest surface, not its fatal dive's mid-air
+        sup = contact_mask(np.asarray(line["onground"])[1:],
+                           np.asarray(line["velocity"][:-1, 2], np.float64),
+                           np.asarray(line["velocity"][1:, 2], np.float64), g_step, tol)
+        sup = np.concatenate([[int(line["onground"][0]) >= 0], sup])
+        ld_gate = np.where(sup, ld, np.inf)
+    stall = stall_index(ld_gate, float(args.ge_knob_stall_margin))
+    line_best = float(np.min(ld_gate)) if np.isfinite(ld_gate).any() else float("inf")
     roots = root_indices(len(line), stall, tps, float(args.ge_knob_roots_secs), int(K))
     print(f"knob-GE: {'the EVAL line ' + str(lpath) if lpath else 'greedy line'} "
           f"{len(line)} ticks ({len(line) / tps:.1f} s), best d "

@@ -5177,6 +5177,17 @@ def main() -> None:
                          "archive is the run's memory, and each search adds the newest greedy "
                          "line's roots to it instead of starting over. Off = a fresh archive per "
                          "search; config only when on")
+    ap.add_argument("--auto-spine-contact", action="store_true",
+                    help="--auto-spine-knob: measure depth on SUPPORTED states only - the greedy "
+                         "frontier (each eval episode's deepest d over ground / surf-contact ticks, "
+                         "the explorer's cell rule), the knob explorer's 'beats the line' gate and "
+                         "the spine's cut (auto_spine --cut contact) - so a line onto a surface "
+                         "is compared with the policy's deepest surface, not with the mid-air "
+                         "point of its fatal dive (unr1b4 at the CP2 pit: the explorer reached the "
+                         "record's lower level at d 73,917 while the frontier was a dive at 73,455). "
+                         "Pairs with --ratchet-contact, which makes the curriculum's success line "
+                         "and bonus read the contact record. Off = all states, as before; config "
+                         "only when on")
     ap.add_argument("--auto-spine-deeper", action="store_true",
                     help="--auto-spine: a spine the curriculum is still teaching is replaced only "
                          "by one whose end is --auto-spine-gain u DEEPER than its own end (on top "
@@ -12325,6 +12336,8 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_recheck and not args.auto_spine:
         raise SystemExit("--auto-spine-recheck needs --auto-spine")
+    if args.auto_spine_contact and not args.auto_spine_knob:
+        raise SystemExit("--auto-spine-contact measures --auto-spine-knob's depth on contact: give it")
     if args.auto_spine_deeper and not args.auto_spine:
         raise SystemExit("--auto-spine-deeper is a rule of --auto-spine's adoption: give it")
     if args.auto_spine_knob and not args.auto_spine:
@@ -15480,6 +15493,8 @@ def main() -> None:
         meta["config"]["auto_spine_knob_evalroots"] = 1
     if args.auto_spine_deeper:
         meta["config"]["auto_spine_deeper"] = 1
+    if args.auto_spine_contact:
+        meta["config"]["auto_spine_contact"] = 1
     if args.demo_share is not None:
         meta["config"]["demo_share"] = float(args.demo_share)
     if args.auto_spine:
@@ -16641,10 +16656,20 @@ def main() -> None:
             if ALV[4] is None:
                 ALV[4] = spine_cross_row(demo.S, _f.sample, DEMO_END_D)
             need_q = int(alive_need(demo.n, ALV[4], -1, ALIVE_T))
+        _g_step = -float(slots[0].core.config.phys.sv_gravity) / tps   # vz per tick, free fall
         for e in eps:
             d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
             d = np.where(d < _f.reach_max - 0.5 * _f.cell, d, np.inf)
-            bests.append(float(d.min()))
+            if args.auto_spine_contact:
+                # --auto-spine-contact: the episode's deepest SUPPORTED state (ground, or a tick
+                # whose vz change departs upward from free fall: the explorer's cell rule), so a
+                # frontier is never a fatal dive's mid-air point
+                _sup = np.asarray(e[:, 9], np.float64) > 0.5
+                _vz = np.asarray(e[:, 6], np.float64)
+                _sup[1:] |= (_vz[1:] - _vz[:-1]) - _g_step > 1.0
+                bests.append(float(np.min(np.where(_sup, d, np.inf))))
+            else:
+                bests.append(float(d.min()))
             if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
                 _v = np.asarray(e[:, 4:7], np.float64)
                 n_en += crossed_with_energy(d, np.asarray(e[:, 3], np.float64)
@@ -16740,6 +16765,9 @@ def main() -> None:
                 # --auto-spine-knob-archive: one archive for the whole run (searches are one at
                 # a time, so the file is never written twice at once)
                 cmd += ["--knob-archive", str(adir / "knob_archive.npz")]
+            if args.auto_spine_contact:
+                # --auto-spine-contact: the explorer's own gate and the spine's cut on contact too
+                cmd += ["--knob-contact"]
             _le = getattr(GREEDY, "last_eps", None) if GREEDY is not None else None
             if args.auto_spine_knob_evalroots and _le:
                 # --auto-spine-knob-evalroots: the search roots on the DEPLOYED line - the exact
