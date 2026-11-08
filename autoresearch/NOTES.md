@@ -443,3 +443,13 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   but its config dump is gated on --demo-file; cosmetic). It has ~3.9 h: at v3's pace the CP2
   pit comes at ~1.3B (~13:45), leaving ~2 h there. If --ratchet-contact slows the early walls,
   that is a result too.
+* **12:07 UTC - v4 was broken; v5 = `unr1b4_knob5` relaunched 12:05:56 UTC from step 0, commit
+  5635aa00.** v4's auto-spine hook raised `IndexError: index 9 ... size 8` at every eval (the
+  trainer caught it and trained on with NO search): `surfgym.route.episodes_from_traj` keeps only
+  [tick, x, y, z, vx, vy, vz, yaw], and my contact frontier read a ground flag in column 9. Fixed
+  to vz alone (ground cancels gravity every tick, so it reads as supported like a surf face) and
+  tested on REAL episodes_from_traj output; checked on v3's 1,435M pit eval: contact frontier
+  23.6% (median d 76,171) vs all-state 26.6% (73,136) - the explorer's lower-level cells (25.84%)
+  clear it by ~2,250 u. v4 stopped at 95M. v5's flags = v4's (v3 + `--ratchet-contact 1
+  --auto-spine-contact`); its first eval's hook ran clean (frontier 99,277); run.json now records
+  demo_match_band and the other curriculum keys (13415521).
