@@ -606,3 +606,12 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   windowed charge (W = the recipe's own `--respawn-margin 2`, the doomed-tail margin), the lineage
   that finished unitfarmer2. It cannot overtake v3 in the ~8 h left; it measures whether the one
   generic term moves the early walls, the CP2-pit dive above all (v3: 1,284M -> 3,165M stuck there).
+* **18:48 UTC - search 6 of knob3d (6,524M) handed on a line PAST the 30.8% dive: spine at 6,630M,
+  end d 67,501 = 32.28%** (greedy frontier 69,105 = 30.67%: +1,604 u). Rooted on the eval line at
+  tick 3,020 (of 3,218; its best is the death tick), 18 links R P P R P R P R + ten R (13 random,
+  5 policy), exact replay (0 u). The deepest cell appeared at ~450 s of the 600 s search (yield
+  had been ~0 per decision from 180 s): best d 69,477 -> 67,588. Its path: from (1,194, 512,
+  10,115) west and UP - vz +1,162 at (899, -519, 10,104), 10,867 at x 88, i.e. ~500 u above where
+  the policy's dives die (x 140-435, z ~10,300) - then west to x -703, ending in a fall at
+  (-628, 67, 10,342). Searches 2-5 (10 min each, same rule) had not reached it. The curriculum
+  restarts at the spine's end; the post-CP2 block needs > 33% (d < 66,782), due 13.93B.
