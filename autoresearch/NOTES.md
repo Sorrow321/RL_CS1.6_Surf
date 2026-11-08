@@ -444,3 +444,22 @@ harvest of this box would fail the same way: pull before every deadline.
   26.5 s, -x along y ~ -900 at ~1,700 u/s, all nine episodes dying between x 2,180 and 2,670 (z
   10,740-11,430); the best two reach (2,183, -870, 10,980) = 28.24% and 28.08%. The cavity curtain
   sgcp_2 is ~1,400 u further -x (x 768-816, z 10,060-11,300), under the slab.
+
+### 2026-11-08 14:28 UTC - unr1b1_v2 at 2.31B: 29.9% (median 29.6%), a 30% line in training
+
+* Evals 2.04B / 2.11B / 2.19B / 2.27B: best 28.5 / 29.4 / 29.6 / 29.9%, median 28.2 / 29.3 /
+  29.6 / 29.6% - the loop learned and extended. Best score 29.886 (traj_2265448448).
+* Search 14 (from 28.2%): deepest 71,416, not 200 u past. Search 15 (from the 2.11B greedy)
+  found a 33.0 s line to d 69,791 (29.98%), adopted at 2.20B; its band: rows 3075 (38.8%) / 3100
+  (5%) of 3300. The cavity curtain (sgcp_2) not yet entered by any eval.
+
+### 2026-11-08 14:56 UTC - unr1b1_v2 clears the CAVITY (sgcp_2) at 2.341B (October 4.14B)
+
+* Evals 2.341B / 2.416B / 2.492B / 2.567B: best 31.5 / 31.8 / 32.1 / 32.2%, median 31.4 / 31.6 /
+  31.7 / 31.8%, every one entering sgcp_2. Best score 32.158 (traj_2567438336).
+* Ladder v2: first ramp 0.227B, window 0.454B, pit dive 0.906B, cavity 2.341B - October 0.30 /
+  1.04 / 1.94 / 4.14B (deadlines 1.0 / 2.07 / 3.88 / 8.27B). Next: the post-CP2 block (33%,
+  October 6.97B).
+* The cavity fell to the curriculum on search 15's line (2.20B: 33.0 s to d 69,791, 29.98%) -
+  the greedy went 29.9% -> 31.5% within 140M steps of its adoption. Searches 16-17: nothing 200 u
+  past the greedy (deepest 68,012).
