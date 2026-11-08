@@ -614,3 +614,17 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   the path, not yet a law about the knob. What is measured: at the random end the loop reached
   every wall sooner from the pit on (1.81 vs 2.34B, cavity 2.11 vs 2.72B) and passed the block
   run 4 never passed.
+
+### 23:50 UTC: run 5 clears CP4 (3.624B) and CP5 (3.851B) - eight walls ON TIME; best 70.676
+* Ladder run 5: ... CP3 2.643B, **CP4 3.624B**, **CP5 3.851B** (October 9.39B / 11.78B; deadlines
+  18.79B / 23.57B). Evals: 42.06% (3.02B), 46.18% (3.17B), 53.70% (3.47B), 55.79% (3.62B, sgcp_4),
+  one 27.93% dip (3.70B, all 9 at the pit), 57.29% (3.78B, median 27.6%), **70.676% (3.851B,
+  sgcp_5, median 69.3%)**. Searches 9-10 (3.28B, 3.58B) gave lines to 48.97% / 53.08% banked; the
+  greedy kept passing them (search 11 launched at 3.85B from a 31,809 frontier).
+* Checkpoint keeping: ckpt_latest is saved on a ~60 s clock (train_fast.py: "ckpt_latest is for
+  crash recovery ... ~1-min cadence"), not at evals - except that an eval which TRIGGERS a search
+  saves it at that step. A harvest helper on the box (runs/unr1b3_mcts5_snaps/best_keeper.py;
+  reads only, never touches the trainer) copies every new ckpt_latest into a ring and, when an eval
+  beats every earlier one, keeps the ring copy at or before it (PROTOCOL's hand-on rule, the copy
+  after it only if more than twice as near). Kept so far: ckpt_2718433280 (36.914, exact),
+  ckpt_3787456512 (57.288 at 3,775,397,888, +12.1M), ckpt_3850895360 (70.676, exact).
