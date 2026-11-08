@@ -341,3 +341,11 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   repeated-origin rows** (v1's spine 3 had a 21-row standstill). Adopted at 1,074M (2,487 states,
   success line 75,394). In ONE search from the deployed line, v3 got what v1 needed two searches
   for (20.6%, then 23.7%) - and without the standstill.
+* **10:26 UTC - v3 CLEARED THE WINDOW at 1,284M: score 26.727 (best 26.73%, median 26.69%,
+  CP1), on time (deadline 2.07B).** The curriculum on spine 2 walked back without freezing (band
+  rows 2,486 -> 2,261 -> 1,766 -> 1,276 in ~140M steps; the window at rows 2,104-2,110), the 1,208M
+  eval dipped to 15.7% (the policy in flux), and at 1,284M all 9 greedy episodes went through the
+  window to 26.7% - past spine 2's end (24.5%), at the October CP2 wall (26.9-27.1%). The quorum
+  fired search 4 at 1,284M. Pulled the hand-on: `unr1b4_knob3/ckpt_1250426880.pt`. Ladder: first
+  ramp 604M, window 1,284M - both ON TIME. (October's lineage: 0.30B / 1.04B with recipe changes
+  between walls; v1 of this branch: 529M / never - frozen at 20.7%.)
