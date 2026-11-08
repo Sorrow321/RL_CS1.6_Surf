@@ -388,3 +388,11 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   to "at which point is the policy-guided search more useful": neither end is enough; the
   policy carries the depth, random runs supply the branches it continues from, and one
   probability-matching rule on the archive's own yield finds the middle without being told.
+* **11:08 UTC - v3 at the CP2 pit since 1,284M.** Evals 1,359-1,812M: 26.46-26.92 (best **26.919 at
+  1,435M**, hand-on still ckpt_1250426880), medians 22.7-26.8%. Search 5 (1,737M, retry) found
+  nothing either (26,232 cells, knob 0.55-0.70, no cell past the line's 73,455). Next search >=
+  2.13B; the pit dive (27.5%) is due by 3.88B (~13:35 UTC at ~218k steps/s). Probe (analysis, v3
+  untouched): the same explorer on search 5's checkpoint and eval line with the roots spread over
+  the line's last 12 s instead of 4 s - if the decision that matters here comes seconds before
+  the stall (October: the record drops to a lower level ~2-3 s before the pit), a 4 s window
+  never branches from it.
