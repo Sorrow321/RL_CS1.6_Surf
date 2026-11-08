@@ -409,7 +409,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   saves its archive to see whether the explorer reaches the record's lower level at all
   (between the pit kill's top and the plate's level, October's notes) - i.e. whether the limit
   is reach or the "deepest d" output.
-* **11:53 UTC - WHY the explorer cannot hand on a line past the CP2 pit (analysis of a saved
+* **11:52 UTC - WHY the explorer cannot hand on a line past the CP2 pit (analysis of a saved
   archive, search 5's checkpoint and eval line, roots 12 s; 35,033 cells).** The deployed line
   goes east to (4,613, -460, 12,363) at 25.1% (the U-turn level), turns back WEST and dives into
   the pit kill (it dies at (3,688, 1,075, 10,961)); its best d (26.2-26.7%) is taken MID-DIVE.
