@@ -341,7 +341,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   repeated-origin rows** (v1's spine 3 had a 21-row standstill). Adopted at 1,074M (2,487 states,
   success line 75,394). In ONE search from the deployed line, v3 got what v1 needed two searches
   for (20.6%, then 23.7%) - and without the standstill.
-* **10:26 UTC - v3 CLEARED THE WINDOW at 1,284M: score 26.727 (best 26.73%, median 26.69%,
+* **10:25 UTC - v3 CLEARED THE WINDOW at 1,284M: score 26.727 (best 26.73%, median 26.69%,
   CP1), on time (deadline 2.07B).** The curriculum on spine 2 walked back without freezing (band
   rows 2,486 -> 2,261 -> 1,766 -> 1,276 in ~140M steps; the window at rows 2,104-2,110), the 1,208M
   eval dipped to 15.7% (the policy in flux), and at 1,284M all 9 greedy episodes went through the
