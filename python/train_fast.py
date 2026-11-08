@@ -7559,6 +7559,15 @@ def main() -> None:
                     help="--ge-beam: the frontier share skips DOOMED cells (restored >= 2 times, "
                          "no run from them lived 1 s): the fatal flight past a wall is not the "
                          "frontier (unr1b2_geb's 64 deepest cells at the CP2 wall)")
+    ap.add_argument("--ge-beam-chain", type=float, nargs=2, default=None, metavar=("FRAC", "SECS"),
+                    help="--ge-beam: FRAC of the restores from the deepest viable line's own chain "
+                         "in its last SECS (branch where the best line committed); None = off")
+    ap.add_argument("--ge-beam-recent", type=float, nargs=2, default=None, metavar=("FRAC", "STEPS"),
+                    help="--ge-beam: FRAC of the restores (by W) from the cells discovered in the "
+                         "last STEPS explore steps (the novelty frontier); None = off")
+    ap.add_argument("--ge-beam-cell-vz", type=float, default=0.0,
+                    help="--ge-beam: > 0 = the cell's vertical bit is rising / level / falling at "
+                         "+-this u/s (a level arrival is a new cell); 0 = rising / not")
     ap.add_argument("--ge-beam-cell", type=float, nargs=3, default=[64.0, 128.0, 4.0],
                     metavar=("POS", "ENERGY", "HEADING"),
                     help="--ge-beam: the archive's cell key - position cell u, kinetic-energy "
@@ -15652,6 +15661,12 @@ def main() -> None:
             ge_beam_burst_frac=float(args.ge_beam_burst_frac),
             ge_beam_front=[float(x) for x in args.ge_beam_front],
             **({"ge_beam_front_doomed": 1} if args.ge_beam_front_doomed else {}),
+            **({"ge_beam_chain": [float(x) for x in args.ge_beam_chain]}
+               if args.ge_beam_chain is not None else {}),
+            **({"ge_beam_recent": [float(x) for x in args.ge_beam_recent]}
+               if args.ge_beam_recent is not None else {}),
+            **({"ge_beam_cell_vz": float(args.ge_beam_cell_vz)}
+               if float(args.ge_beam_cell_vz) > 0 else {}),
             ge_beam_cell=[float(x) for x in args.ge_beam_cell],
             ge_beam_duty=float(args.ge_beam_duty), ge_beam_threads=int(args.ge_beam_threads),
             ge_beam_sync=float(args.ge_beam_sync), ge_beam_frac=float(args.ge_beam_frac),
@@ -16966,6 +16981,14 @@ def main() -> None:
                "--front-frac", f"{float(args.ge_beam_front[0]):g}",
                "--front-band", f"{float(args.ge_beam_front[1]):g}",
                *(["--front-skip-doomed"] if args.ge_beam_front_doomed else []),
+               *(["--chain-frac", f"{float(args.ge_beam_chain[0]):g}",
+                  "--chain-secs", f"{float(args.ge_beam_chain[1]):g}"]
+                 if args.ge_beam_chain is not None else []),
+               *(["--recent-frac", f"{float(args.ge_beam_recent[0]):g}",
+                  "--recent-steps", str(int(args.ge_beam_recent[1]))]
+                 if args.ge_beam_recent is not None else []),
+               *(["--cell-vz", f"{float(args.ge_beam_cell_vz):g}"]
+                 if float(args.ge_beam_cell_vz) > 0 else []),
                "--cell", f"{float(args.ge_beam_cell[0]):g}",
                "--cell-energy", f"{float(args.ge_beam_cell[1]):g}",
                "--cell-heading", str(int(args.ge_beam_cell[2])),
