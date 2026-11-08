@@ -267,3 +267,12 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   to the user's question so far: the policy-guided side is not useless - it is what goes deep
   - but alone it repeats its own fall; the knob belongs in the middle, and the yield rule puts
   it there (0.52-0.66 in all 4 searches) without being told.
+* **07:20 UTC - search 4 (1,208M, quorum: the greedy flew spine 2 to 20.6%) -> spine 3.** Its
+  re-rolled greedy matched the eval this time (20.6 s, best d 79,130 = 20.6%, stall 1,901, roots
+  [1,501, 1,901]). 21,040 cells, 674,719 runs, knob 0.56-0.64 (cells policy 6,190 / random 14,773
+  over 9.6M / 13.4M decisions: random 1.6x the yield). **The deepest chain: 14 links, 11 RANDOM
+  + 3 policy**, 1,368 ticks from root 1,889, d 76,076 = **23.7%** (the October window stall sat
+  at 20.7-21%), exact replay. Adopted at 1,269M (3,256 states, success line 76,173). The pattern
+  over the four searches: where the policy flies (search 3) the chain is all policy; at a wall
+  that wants a detour (the start platform, the window) the chain is a mix weighted to random
+  links - and the yield rule never had to be told which case it was in.
