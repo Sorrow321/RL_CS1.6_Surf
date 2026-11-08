@@ -590,3 +590,27 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
 * If run 5 fails the pit: run 6 = run 4's recipe + `--auto-spine-mcts-args "--mcts-random-frac 0"`
   (the POLICY end of the same knob: 50% perturbed, 50% plain samples, no random-held children),
   which completes a 3-point sweep of random-frac (0 / 0.5 / 1.0) with everything else fixed.
+
+### 22:56 UTC: **RUN 5 CLEARS THE POST-CP2 BLOCK (2.341B) AND CP3 (2.643B) - six walls ON TIME; new best 36.914**
+* Ladder run 5 (random end of the knob): first ramp 0.529B, window 0.680B, **pit dive 1.812B**,
+  **cavity 2.114B**, **post-CP2 block 2.341B**, **CP3 2.643B** - all ON TIME (October 0.30 / 1.04
+  / 1.94 / 4.14 / 6.97 / 7.32B; deadlines 1.00 / 2.07 / 3.88 / 8.27 / 13.93 / 14.64B). Evals: 27.87%
+  (2.04B), 30.71% (2.11B), 34.96% (2.34B), 36.46% (2.42B), 36.80% (2.64B, sgcp_3), **36.914 at
+  2.718B** (best; hand-on = ckpt_latest at exactly 2,718,433,280, snapshotted on the box to
+  runs/unr1b3_mcts5_snaps/ and pulled). Run 4 (0.5 mix) never got past 32.5% in 14.16B steps.
+* The pit: run 5's searches k05 (banked 26.94%) and k06 (30.04%, 59,643 cells) came after its
+  policy had started through; the 22:08 worry (no perturbed children -> no fine steers) was
+  wrong for this run: the policy threaded the pit itself at 1.81B from the k03/k04 curriculum.
+* **How run 5 passes the post-CP2 block** (eval 2.718B, episode 2 vs run 4's best eval 12.46B):
+  both reach (-750 .. -800, z ~9,750) after the cavity exit's launch. Run 4's episodes then turn
+  back east and bounce on the 32% shelf (x -300 .. -850, z 9,770-10,320) until they fail. Run 5's
+  go WEST, away from the goal: (-721, z 10,471) -> (-1,379, 10,331) -> (-1,953, 10,162) ->
+  (-2,020, 10,113) -> down at (-1,961, 9,630) -> (-1,775, 9,197) -> (-1,669, 9,084) -> back EAST
+  under the sheets: (-978, 9,397) ... toward sgcp_3 (x 0..16, z 8,976-9,472). That is around the
+  west end of the 9,680-9,696 kill sheet (x -1,780 .. -176) - the detour the goal field implied
+  (insight only). Run 5's searches did not find it first (k07 at 2.27B: banked 32.41%, then
+  STALE): the POLICY found the detour itself between 2.27B and 2.34B.
+* Two runs, one seed each, identical until the first adopted line: the difference is a sample of
+  the path, not yet a law about the knob. What is measured: at the random end the loop reached
+  every wall sooner from the pit on (1.81 vs 2.34B, cavity 2.11 vs 2.72B) and passed the block
+  run 4 never passed.
