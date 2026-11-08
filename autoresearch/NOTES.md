@@ -416,3 +416,25 @@ explorer had the detour and now 7,319 cells PAST the gap's west edge (430 viable
 30.35%). One seed: the cap and the explorer's spawns are not separated, but five runs with cap 0.2
 and the same or a weaker explorer all sat at 27.1% for 1-3.4B steps, and this one left within
 ~80M steps of T reaching 2.
+
+### 17:57 UTC: geb6 clears the post-CP2 block and CP3 (best 54.05 at 2,642.9M)
+
+| wall | geb6 | October lineage | deadline |
+|---|---|---|---|
+| post-CP2 block (>33%) | **2,039.0M** | 6,965.7M | 13.93B |
+| CP3 | **2,265.4M** | 7,318.0M | 14.64B |
+
+Evals: 33.3% at 2,039M, 34.0% 2,114M, 36.1% 2,190M, 42.2% (CP3) 2,265M, 46.5% 2,492M, 50.3%
+2,567M, **54.05% at 2,642.9M** (5 of 9 greedy episodes at 54.0%; they cross 31.4% at 36 s, 42% at
+49 s, 50% at 59 s). Box extended to 2026-11-09 05:58 UTC (run ON TIME, ~287k steps/s).
+
+**The explorer is now BEHIND the policy.** Its deepest cell has sat at 31.45% since explorer step
+1,481 (2.16B trainer steps, 126 min): no trace copy (1,500 decisions = 60 s from the true start,
+the current weights at keys T 1.5 + held yaw offset) and no frontier copy has passed 31.45%, while
+the greedy flies to 54%. Its line (31.08%) still gets the GEL share (20% of the pool: no newer line
+beats the greedy, and the adoption rule only REPLACES a line) and its spawns 15% - so 35% of the
+pool starts at or behind 31% while the frontier is at 54%. The run still advances (frozen recipe,
+not changed). Two generic defects for the next recipe: (1) a trace step should fly the policy at
+its EVAL temperature (greedy), or the archive cannot follow a line the noisy copies cannot hold;
+(2) the line share should lapse when the greedy has crossed the line's end and no newer line
+beats it (the curriculum's job is done; the pool returns to the base recipe).
