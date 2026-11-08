@@ -180,3 +180,23 @@ via autoresearch/analysis/mcts_line_report.py; the walls: pit dive > 27.5%, cavi
   first-ramp test: MCTS (pf 0.5, nov 1) 6.71% (the first ramp is 8%), the beam from the same start
   26.10% banked. Allocation is the tell: ~93% of children die per wave, and 256 leaves spread over
   the tree leave few survivors at the deepest frontier, where the beam puts all 4,096 copies.
+* c_puct is the lever: r1 from the idle start, 4 min, pf 0.5 + nov 1: c_puct 2 -> 6.71% (depth 12,
+  5,947 cells), 128 children per leaf -> 5.86% (worse: concentration alone does not help),
+  **c_puct 0.25 -> 15.57% (depth 25, 14,875 cells)**, past the first ramp. With c 2 the exploration
+  term swamps the small progress differences between siblings and the tree goes broad and shallow;
+  the beam's truncation selection is the c -> 0 end of the same knob. Still below the beam's 26.1%
+  banked from the same start, and every variant plateaus after ~300 waves.
+
+### unr1b3_mcts1 - the from-scratch run (launched 2026-11-08 06:00 UTC, box 59668027, commit 1524fea3)
+`box.py launch --run unr1b3_mcts1 --steps 2e10 --` the incumbent recipe +
+`--auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck --auto-spine-milestones
+--auto-spine-explorer mcts --auto-spine-mcts-minutes 5 --auto-spine-envs 2048 --auto-spine-ge-minutes 0
+--auto-spine-patience 3e8 --auto-spine-retry 3e8 --demo-share 0.25 --demo-success-d 100
+--demo-success-bonus 50 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
+--demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.5` (the curriculum constants are za_loop E2's /
+uf2r1b1 A13's; the MCTS runs at beam_tas's --mcts defaults of this commit: M 12, K 16, c_puct 0.25,
+novelty 1, perturb-frac 0.5, keys temp 1.5, yaw sigma 20 deg, hold-p 0.5, cells 128 u x 256 u energy,
+roots every 12 decisions over the greedy line's last 20 s). Nothing changes after launch: every
+search, cut and adoption is the trainer's rule on its own state. Provenance of every spawn file:
+the map spawn (spine0.npy) and the run's own searches on its own weights. Record gate passed (23 s).
+Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy frontier d 98,903).
