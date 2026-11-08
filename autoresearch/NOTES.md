@@ -463,3 +463,22 @@ harvest of this box would fail the same way: pull before every deadline.
 * The cavity fell to the curriculum on search 15's line (2.20B: 33.0 s to d 69,791, 29.98%) -
   the greedy went 29.9% -> 31.5% within 140M steps of its adoption. Searches 16-17: nothing 200 u
   past the greedy (deepest 68,012).
+
+### 2026-11-08 15:30 UTC - the round is extended to 2026-11-09 12:35 UTC (the last round)
+
+* Operator note (the user's decision, 15:10 UTC): round 1 ends 2026-11-09 12:35 UTC (wrap-up
+  11:55) and is the LAST round. An ON-TIME run keeps training (no stopping it for a variant); a
+  run that misses a wall deadline is stopped and a NEW recipe may start from scratch; new runs use
+  --steps 60e9 and a run that reaches its cap is resumed from its own checkpoint with the same
+  flags and a higher cap; box extensions <= 12 h; wake every 45-60 min while a run trains.
+* unr1b1_v2 (launched with --steps 6e9) reaches its cap ~20:15 UTC. Then: copy its launch log and
+  progress.csv aside on the box, and resume it from its own checkpoint with the SAME flags -
+  `MAP=maps/surf_src_sidistic.bsp BUDGET=<60e9 - ckpt step> RECORD_EVERY=75e6
+  CKPT=runs/unr1b1_v2/<its ckpt> ARM_RESUME=1 bash tools/run_arm.sh unr1b1_v2 --envs 1024
+  --ge-line 0.2 --ge-line-minutes 8 --ge-line-threads 12 --ge-line-retire --ge-line-match-band
+  --ge-line-front-temp 1 --keys-hold-spawn-duck` (box.py launch --resume deploys the incumbent's
+  checkpoint, not a run's own) - and diff the new run.json config against the old one. The
+  --ge-line curriculum state is not in the checkpoint: a resumed run starts without a line until
+  its first search adopts one.
+* 15:25 UTC: 2.93B, evals 32.3 / 32.1 / 32.4 / 32.3% (median 31.8-32.1%), best score 32.374
+  (traj_2793930752). Box deadline extended to 2026-11-09 03:26 UTC.
