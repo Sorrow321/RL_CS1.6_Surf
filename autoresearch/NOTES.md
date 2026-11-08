@@ -575,3 +575,9 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   4,259M 28.20, 4,335M 29.32, 4,410M 29.96, 4,486M 29.90, 4,561M 30.07, 4,637M 30.11. Search 1 of
   knob3d (4,561M) adopted a spine at 4,661M ending at d 69,434 = 30.3% (frontier 69,716). Hand-on
   pulled: unr1b4_knob3d/ckpt_4508876800.pt. Next wall: the cavity (curtain sgcp_2), due 8.27B.
+* **16:48 UTC - CAVITY (CP2) CLEARED at 4,712M (score 30.676, CP2), on time (deadline 8.27B;
+  October 4.14B).** v3's ladder: first ramp 604M, window 1,284M, pit dive 3,165M, cavity 4,712M -
+  all on time, one recipe from step 0 (two cap/stop resumes on the same commit and flags). Best
+  **30.681 at 4,788M** (hand-on unr1b4_knob3d/ckpt_4758962176.pt, pulled); evals 4,712-4,939M
+  30.59-30.68. Search 2 of knob3d (4,712M) found nothing past d 69,328. Next: the post-CP2 block
+  (>33%, due 13.93B), CP3 (14.64B).
