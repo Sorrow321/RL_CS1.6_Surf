@@ -557,3 +557,18 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   config carries the knob string intact. Box extended to 2026-11-09 08:54 UTC (one more extension
   after 00:45 covers the round end). Same seed and trainer as run 4, so the two should match until
   the first adopted search line - the first divergence is the explorer's own result.
+
+### 21:21 UTC: run 5 (knob at the random end) - first ramp ON TIME at 0.529B
+* **Search 1 on the IDENTICAL policy** (both runs' step-524k weights; runs 4 and 5 match bit for
+  bit in every progress.csv training column until the first adopted line): run 5's MCTS (random
+  1.0, perturb 0) 934 waves, 1.91M nodes, 446 cells, banked **1.771%** (raw 2.12%), line 1,454
+  ticks; run 4's (0.5 / 0.5) 1,275 waves, 2.61M nodes, 645 cells, banked **1.764%**, 1,207 ticks.
+  Same depth at the spawn trap; the all-random tree is slower per wave and covers 31% fewer cells.
+* Then the runs part: run 4's greedy passed its line by 227M and search 2 (335M) gave a 5.9% line
+  -> first ramp 0.378B. Run 5's greedy sat at 1.6-1.7% until 0.38B, then 4.57% (0.454B), **13.91%
+  (0.529B: first ramp, ON TIME)**, 15.77% (0.605B). Its search 2 (started at 95,810) came back with
+  a 93,949 line after the policy had reached 85,992 by itself: discarded STALE, next search at
+  0.859B. So this ramp was the policy's own progress from the search-1 curriculum.
+* First ramp so far: run 4 0.378B, run 5 0.529B, run 1 0.906B (raw adoption), the control never
+  (0-1.7% to 1.06B). Run 4 and run 5 are both inside the first ramp's seed spread (0.18-1.51B);
+  the matched-step comparison continues at the window (run 4 0.605B).
