@@ -525,3 +525,9 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   (train_fast.py ~11222: "--unstuck is not implemented with --death-charge"), which is in the
   incumbent recipe - so (b) needs that combination built (the tempered draw's log-prob path) before
   it can be one frozen term of this recipe.
+* **14:12 UTC - v3 (continued as unr1b4_knob3c) set a new best: 27.474 at 2,939M** (best episode
+  27.47%, median 26.8%, CP1) - at the pit-dive line (27.5%, due 3.88B) after ~1.6B steps flat at
+  26.5-26.9 (evals 2,335-2,863M: 26.77-26.87). Search 1 of the continuation (2,561M, patience)
+  found nothing (25,418 cells, deepest contact cell d 73,450 = 26.3%, the line's dive 72,952).
+  Hand-on pulled: unr1b4_knob3c/ckpt_2758803456.pt. ladder.py on the knob3c directory alone reads
+  LATE / STOP because its first eval is at 2.26B; its walls are in unr1b4_knob3 (604M, 1,284M).
