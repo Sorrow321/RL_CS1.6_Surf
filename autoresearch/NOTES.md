@@ -248,3 +248,20 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   raw asymmetry I flagged at launch now blocks the loop at exactly the wall it was built for.
   Fix for a next run (cannot touch this one): --auto-spine-banked, the greedy frontier and the
   quorum read the eval episodes' contact-banked depth.
+* **Why the pit wall holds** (the goal field around sgcp_2, probed at y 0): ABOVE the pit slab
+  (z 12-13k, x 800-2,000) the field reads 20-22% progress, BELOW it (z 10.5-11k) 28-31%: the way
+  on is under the slab, into the cavity and through sgcp_2 (x 792, z 10,060-11,300; 30.5%). The
+  policy's last contact is on the slab region at (3,030, 615, 11,870); it then flies west and dies
+  at (3,010, 840, 11,210), 2,200 u short of the curtain. The MCTS tree (pit test, 3.0M nodes) has
+  LIVE nodes as far west as x 600 - all at z >= 12,242, over the slab, where the field is behind.
+* Explorer probes on the run's 1.6B plateau checkpoint (beside training, /root/t2):
+  | explorer | cells | banked | raw best (live tick) |
+  |---|---|---|---|
+  | greedy | - | 23.57% (eval) / 25.1% (seed-1 pass) | 27.0-27.1% (dies) |
+  | in-run search 4 (MCTS, random 0, nov 1) | 13,314 | 25.86% | - |
+  | MCTS random 0.5, nov 1, 6 min | 17,196 | 25.86% | 27.08% |
+  | MCTS random 0.5, **nov 3**, 6 min | **26,542** | **26.02%** | **27.57%** |
+  | beam (policy samples, raw d) | - | - | 26.86% (dies) |
+  Novelty buys coverage (1.5x cells) and a little depth; nothing banks a landing under the slab.
+* For a next run (code ready, CPU-smoked): --auto-spine-banked (compare like with like), and the
+  MCTS defaults random-frac 0.5 (first-ramp trap: 5.08% vs 1.77%) + novelty 3.
