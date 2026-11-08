@@ -571,3 +571,7 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   `_auto_spine_kill` (it kills the auto_spine process, not its process group). Each resume drops
   the curriculum and the spine (not in a checkpoint): the first search comes 3e8 steps after the
   first eval.
+* **16:26 UTC - v3 (knob3d) climbs past the pit: 30.106 at 4,637M** (9/9 at 30.1%, CP1). Evals
+  4,259M 28.20, 4,335M 29.32, 4,410M 29.96, 4,486M 29.90, 4,561M 30.07, 4,637M 30.11. Search 1 of
+  knob3d (4,561M) adopted a spine at 4,661M ending at d 69,434 = 30.3% (frontier 69,716). Hand-on
+  pulled: unr1b4_knob3d/ckpt_4508876800.pt. Next wall: the cavity (curtain sgcp_2), due 8.27B.
