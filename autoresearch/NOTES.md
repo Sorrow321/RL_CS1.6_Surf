@@ -433,3 +433,13 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   snapshot is 340M before it, so the newest is more than twice as near).
 * Ladder, run 4: first ramp 0.378B / window 0.605B / pit dive 2.341B - all ON TIME. Next: the cavity
   (sgcp_2 at x ~792; deadline 8.27B - beyond this round's ~7.5B reach).
+
+### 12:16 UTC: **run 4 clears the CAVITY (sgcp_2) at 2.718B - ON TIME (deadline 8.27B; October 4.14B)**
+* Evals: 29.9% (2.57B, 2.64B), then **CP2 at 2.718B (31.6%)**, 31.7% best at 2.794B (score
+  **31.743**, the new best), 31.6-31.7% through 2.94B - at the post-CP2 block (33%; October's
+  stall 32.3-32.5%, deadline 13.9B). The quorum is met again (6-8/9 past the 70,669 line), so the
+  searches keep firing. Hand-on: ckpt_latest at 3.0015B (md5 33d4ce94...), 208M after the best eval
+  (the 2.0B snapshot is 794M before it).
+* Run 4's ladder so far: first ramp 0.378B, window 0.605B, pit dive 2.341B, cavity 2.718B - every
+  wall ON TIME, and walls 3-4 sooner than the October lineage (1.94B / 4.14B). Run 1 (raw adoption)
+  never got past the pit; the control never past the first ramp.
