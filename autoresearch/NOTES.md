@@ -470,3 +470,22 @@ episodes fall at 27.8% (x ~2,290, z ~11,400, the pit-dive edge) - medians 27.8% 
 and 5.66B against 0-2 of 9 at 3.6-4.1B. Training: stall 10% / crash 34%, ent 0.015 (the plateau
 temperature is up), int 4.9/ep. Explorer unchanged at 31.48%. ON TIME, keeps training; box
 extended to 2026-11-09 08:53 UTC.
+
+### Attribution (21:05 UTC): the RL recipe or the explorer? (one seed each)
+
+* **0-27% (first ramp, window): the explorer probably helped.** In every explorer run its line
+  crossed the first ramp before the greedy (geb: lines adopted at 3.3/5.1/10.4/15.2%, the greedy
+  following within 40M steps); 6 of 6 explorer runs cleared the ramp by 0.45B and the window by
+  0.53B, while the same recipe without it (unop_ctl) never cleared the ramp in 7.6B (best ~6%).
+  But that is ONE control seed, the ramp's from-scratch seed noise is 0.18-1.51B, and October
+  cleared it at the same 302.5M with no explorer.
+* **27-31% (pit dive, CP2): the temperature cap.** Five explorer runs at cap 0.2 sat at 27.1% for
+  up to 3.4B steps - geb5 with the whole detour in its archive and in 21% of its spawns; geb6 left
+  ~80M steps after T reached 2. October's r1b1 ratnovx crossed CP2 at 1,633M at cap 2 with no
+  explorer; geb6 at 1,661M. The explorer's share of the CP2 crossing is not shown.
+* **31-82% (CP3-CP5): the base recipe with cap 2 alone.** The explorer's archive has sat at 31.48%
+  since 2.16B; its line + spawns (35% of the starts) sit at or behind 31%.
+* "Ahead of October" is not explorer credit: October's lineage acquired its flags wall by wall
+  (the ladder's notes), geb6 had the final recipe from step 0.
+* The test that would settle it: the incumbent recipe + `--unstuck-max 2`, no explorer, from
+  scratch.
