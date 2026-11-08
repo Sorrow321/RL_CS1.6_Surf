@@ -111,6 +111,7 @@ TRAIN_ONLY = frozenset({
     "ge_beam", "ge_beam_random", "ge_beam_envs", "ge_beam_cells", "ge_beam_decisions",
     "ge_beam_keys_temp", "ge_beam_duty", "ge_beam_threads", "ge_beam_sync", "ge_beam_frac",
     "ge_beam_gain", "ge_beam_margin", "ge_beam_patience", "ge_beam_burst", "ge_beam_cell",
+    "ge_beam_burst_frac", "ge_beam_front",
     # --yaw-entropy: the yaw head's share of the TRAINING entropy bonus; a recording runs no update
     "yaw_entropy",
     # --demo-success-d: the TRAINING backward curriculum's success rule; a recording spawns at the start

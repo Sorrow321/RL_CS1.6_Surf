@@ -7548,6 +7548,13 @@ def main() -> None:
                     help="--ge-beam: decisions of held random actions at the start of every "
                          "non-random explore run before the policy takes over (the coherent "
                          "random/policy mix in time; 0 = pure policy runs)")
+    ap.add_argument("--ge-beam-burst-frac", type=float, default=1.0,
+                    help="--ge-beam-burst: the share of non-random runs that start with the burst")
+    ap.add_argument("--ge-beam-front", type=float, nargs=2, default=[0.25, 0.0],
+                    metavar=("FRAC", "BAND"),
+                    help="--ge-beam: the share of selected cells drawn from the frontier, and "
+                         "BAND > 0 = drawn by W from the deepest BAND fraction of the cells "
+                         "(0 = uniformly from the 64 deepest)")
     ap.add_argument("--ge-beam-cell", type=float, nargs=3, default=[64.0, 128.0, 4.0],
                     metavar=("POS", "ENERGY", "HEADING"),
                     help="--ge-beam: the archive's cell key - position cell u, kinetic-energy "
@@ -12432,7 +12439,9 @@ def main() -> None:
         print(f"--ge-beam: Go-Explore beside the training (tools/ge_beam.py, "
               f"{int(args.ge_beam_envs)} envs, {int(args.ge_beam_cells)} cells x "
               f"{int(args.ge_beam_decisions)} decisions per step, knob random-frac "
-              f"{float(args.ge_beam_random):g}, burst {int(args.ge_beam_burst)} decisions, cells "
+              f"{float(args.ge_beam_random):g}, burst {int(args.ge_beam_burst)} decisions on "
+              f"{float(args.ge_beam_burst_frac):.0%} of runs, frontier share "
+              f"{float(args.ge_beam_front[0]):g} band {float(args.ge_beam_front[1]):g}, cells "
               f"{'/'.join(f'{x:g}' for x in args.ge_beam_cell)}, keys T "
               f"{float(args.ge_beam_keys_temp):g}, duty "
               f"{float(args.ge_beam_duty):g}); its lines become a backward curriculum on "
@@ -15635,6 +15644,8 @@ def main() -> None:
             ge_beam_decisions=int(args.ge_beam_decisions),
             ge_beam_keys_temp=float(args.ge_beam_keys_temp),
             ge_beam_burst=int(args.ge_beam_burst),
+            ge_beam_burst_frac=float(args.ge_beam_burst_frac),
+            ge_beam_front=[float(x) for x in args.ge_beam_front],
             ge_beam_cell=[float(x) for x in args.ge_beam_cell],
             ge_beam_duty=float(args.ge_beam_duty), ge_beam_threads=int(args.ge_beam_threads),
             ge_beam_sync=float(args.ge_beam_sync), ge_beam_frac=float(args.ge_beam_frac),
@@ -16945,6 +16956,9 @@ def main() -> None:
                "--random-frac", f"{float(args.ge_beam_random):g}",
                "--keys-temp", f"{float(args.ge_beam_keys_temp):g}",
                "--burst", str(int(args.ge_beam_burst)),
+               "--burst-frac", f"{float(args.ge_beam_burst_frac):g}",
+               "--front-frac", f"{float(args.ge_beam_front[0]):g}",
+               "--front-band", f"{float(args.ge_beam_front[1]):g}",
                "--cell", f"{float(args.ge_beam_cell[0]):g}",
                "--cell-energy", f"{float(args.ge_beam_cell[1]):g}",
                "--cell-heading", str(int(args.ge_beam_cell[2])),
