@@ -230,3 +230,8 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   adopted (search 1 stale, search 2 below the gain), so the run differs from the control only by
   --demo-share 0.25 of spawns at the map spawn (the spawn spine), the searches' GPU contention, a
   5080 instead of a 5060 Ti and the seed. Search 3 started at 906M from a 10.6% greedy frontier.
+* Search 3 (906-986M): greedy pass dies at 19.9 s (banked 9.5%); 29 roots, 1,087 waves, 2.2M nodes,
+  8,887 cells, best 12.70% (d 87,021) vs the frontier it started from (89,131): +2,110 u - and STALE
+  on arrival: the policy's 982M eval was already at 83,957 (15.8%). While the policy improves this
+  fast (1.7% -> 10.6% -> 15.8% in 150M steps) a 5-min search cannot lead it; the search's job is
+  the plateau. Restore check on the 5080: 345/348 decisions.
