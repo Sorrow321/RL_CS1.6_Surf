@@ -298,3 +298,15 @@ runs/unr1b2/unr1b2_geb2 (evals, ge/ lines + logs).
 fastest of the three runs - geb 453.5M / 529.0M, geb2 302.5M / 529.0M; October 302.5M /
 1,036.5M); best 25.527 at 378M; 288k steps/s. The control unop_ctl has FAILED the first ramp AND
 the window (2.64B, no greedy eval past 8%).
+
+**geb3 stopped at ~0.86B (09:30 UTC)**, on time (first ramp 227M, CP1 378M), best 27.107 (680M),
+at the CP2wall since 529M. Its explorer was useless there: its frontier sat at 15.75% from
+explore step 408 to 795 (~25 min) while the policy flew to 27% - the archive had been built by
+earlier, weaker weights, the chain roots (half the restores) kept branching from that old line's
+dead end, and nothing re-ran the CURRENT policy from the start. (The X1 wall test never showed
+this: its archive was built by a policy already at the wall.) Fix: `--ge-beam-trace 20 1500` -
+every 20th explore step every env starts at the true start and the current weights fly 1,500
+decisions (60 s) with no bursts (Go-Explore's return with the policy).
+
+**Run unr1b2_geb4** (commit e580109e, launched 09:31 UTC): geb3's flags + `--ge-beam-trace 20
+1500`.

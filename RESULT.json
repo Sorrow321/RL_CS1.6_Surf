@@ -121,8 +121,8 @@
   "resume_from": null
  },
  "run": {
-  "run": "unr1b2_geb3",
-  "commit": "39b2820b",
+  "run": "unr1b2_geb4",
+  "commit": "e580109e",
   "recipe": [
    "--envs",
    "1024",
@@ -236,7 +236,10 @@
    "--ge-beam-front-doomed",
    "--ge-beam-chain",
    "0.5",
-   "5"
+   "5",
+   "--ge-beam-trace",
+   "20",
+   "1500"
   ],
   "extra_flags": [
    "--ge-beam",
@@ -262,17 +265,16 @@
    "--ge-beam-front-doomed",
    "--ge-beam-chain",
    "0.5",
-   "5"
+   "5",
+   "--ge-beam-trace",
+   "20",
+   "1500"
   ],
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null,
-  "launched_utc": "2026-11-08 08:39",
-  "box": 59667641,
-  "ladder": {
-   "first ramp": 227016704,
-   "window (CP1)": 378011648
-  }
+  "launched_utc": "2026-11-08 09:31",
+  "box": 59667641
  },
  "ladder": {
   "first ramp": 453509120,
@@ -300,6 +302,16 @@
    "ladder": {
     "first ramp": 302514176,
     "window (CP1)": 529006592
+   }
+  },
+  {
+   "run": "unr1b2_geb3",
+   "commit": "39b2820b",
+   "best": 27.107,
+   "stopped_at": 860000000,
+   "ladder": {
+    "first ramp": 227016704,
+    "window (CP1)": 378011648
    }
   }
  ]
