@@ -2296,6 +2296,10 @@ def main():
     ap.add_argument("--mcts-roots-secs", type=float, default=20.0,
                     help="--mcts: roots on the greedy line's last SECS before where it died / "
                          "stalled")
+    ap.add_argument("--mcts-roots-flight", type=int, default=0, choices=(0, 1),
+                    help="--mcts: 1 = a greedy line that DIES keeps roots up to its death (its fatal "
+                         "flight after the last contact can still be steered); 0 = roots stop at "
+                         "its last banked contact")
     ap.add_argument("--mcts-root-every", type=int, default=12,
                     help="--mcts: a root every N decisions of the greedy line")
     ap.add_argument("--mcts-max-roots", type=int, default=64)

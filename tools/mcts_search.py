@@ -565,7 +565,13 @@ def run_mcts(ctx: dict, a) -> dict:
     print(f"mcts: greedy line {g_why} at tick {g_end} ({ctx['secs'](g_end):.2f}s), best d "
           f"{gbest:,.0f} (banked {bank_best:,.0f} at tick {g_bank_t}), {len(snaps)} snapshots "
           f"in {time.time() - t0:.0f}s", flush=True)
-    end_ref = g_bank_t if g_why in ("death", "stall") else g_end
+    # roots end where the line ended: a STALL at its last banked contact, a DEATH at the death
+    # itself (--mcts-roots-flight 1: a fatal flight after the last contact can still be steered -
+    # air control - so its states are roots too; 0 = stop at the last contact, as before)
+    if g_why == "stall" or (g_why == "death" and not int(a.mcts_roots_flight)):
+        end_ref = g_bank_t
+    else:
+        end_ref = g_end
     lo_t = max(0, end_ref - int(round(float(a.mcts_roots_secs) * tps)))
     roots = [s for s in snaps if lo_t <= s[1] <= end_ref and s[4] is not None]
     if not roots:
