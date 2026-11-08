@@ -537,3 +537,15 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   deepest contact cell d ~73,450); evals 2,939M 27.47 and 3,165M 27.54 are the first past the
   pit's 26.9 plateau. Hand-on: unr1b4_knob3c/ckpt_3008888832.pt (pulled). Ladder for v3: first
   ramp 604M, window 1,284M, pit dive 3,165M - all ON TIME; next the cavity (CP2), due 8.27B.
+* **14:59 UTC - search 3 of the continuation (3,467M) handed on a line PAST THE PIT: spine at
+  3,558M, end d 72,036 = 27.73%** (greedy frontier 72,900 = 26.9%: +864 u). Rooted on the eval
+  line (26.0 s; its best is its last tick, the dive), 10 links R P P R R P P R P P (4 random, 6
+  policy) from root 2,248, exact replay. Its path: east and LOW (4,951, -717, 11,171), then back
+  WEST over the pit top (3,713, -908, 11,593) to (2,511, -881, 11,410) - past the pit's west edge -
+  the shape October's notes give for the record's line ("under the plate, east, low ... then a
+  ramp, and back west over the pit top at z ~11,469"). Searches 4-5 of v3 and 1-2 of the
+  continuation, from a less trained policy, never reached it in 10 min; the policy's own approach
+  (3.4B steps) brought the detour into reach. So the all-state gate did let it through once a
+  supported cell on the far side existed: the limit at the pit was reach on the far side, which
+  the policy's progress provided - the output-rule analysis above stands for the lower level
+  itself, whose cells were not deeper than the dive. The curriculum is teaching it now.
