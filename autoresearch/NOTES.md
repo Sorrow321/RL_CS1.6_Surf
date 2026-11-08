@@ -542,3 +542,18 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   0.605B, pit 2.341B, cavity 2.718B)? New flag --auto-spine-mcts-args puts the knob in the flag
   set (byte-identical when absent; unit test; CPU-smoked). The search code is unchanged since run
   4's commit (git diff 5b59a646..f5421ec9 of beam_tas/mcts_search/mcts_policy is empty).
+
+### 20:52 UTC: run 4 FAILED the post-CP2 block (deadline 13.93B); run 5 launched (the knob at the random end)
+* Run 4's last eval at or before the deadline (13.892B): 32.459 (best episode 32.5%, CP2, 0/9
+  finishes). `ladder.py`: "STOP: a wall was missed" - **post-CP2 block FAILED** (deadline
+  13,931,380,736). 188 evals; best **32.499 at 12.458B** (traj_12457607168; hand-on checkpoint
+  ckpt_12004098048). Flat at 32.4-32.5% from ~4.6B to 14.16B: ~9.5B steps at one wall while the
+  loop kept adopting 32.4% lines (search 33 at 13.17B: greedy 67,756 u, its line 67,316 u).
+* Final ladder of run 4: first ramp 0.378B, window 0.605B, pit dive 2.341B, cavity 2.718B (all ON
+  TIME; October 0.30 / 1.04 / 1.94 / 4.14B), post-CP2 block FAILED. Stopped at 14.161B (20:51 UTC),
+  harvest pulled; box checkout -> 9eda7009 (code f5421ec9).
+* **Run 5 (`unr1b3_mcts5`) launched 20:52 UTC from step 0**: run 4's recipe + `--auto-spine-mcts-args
+  "--mcts-random-frac 1.0 --mcts-perturb-frac 0"`, `--steps 60e9`; record gate passed; run.json
+  config carries the knob string intact. Box extended to 2026-11-09 08:54 UTC (one more extension
+  after 00:45 covers the round end). Same seed and trainer as run 4, so the two should match until
+  the first adopted search line - the first divergence is the explorer's own result.

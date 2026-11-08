@@ -142,10 +142,11 @@
   "ckpt_step": 8002732032
  },
  "running": {
-  "run": "unr1b3_mcts4",
+  "run": "unr1b3_mcts5",
   "box": 59668027,
-  "launched_utc": "2026-11-08 09:56",
-  "commit": "5b59a646",
+  "launched_utc": "2026-11-08 20:52",
+  "commit": "9eda7009",
+  "code_commit": "f5421ec9",
   "recipe": [
    "--envs",
    "1024",
@@ -270,7 +271,9 @@
    "--demo-min-ep",
    "50",
    "--demo-front-frac",
-   "0.5"
+   "0.5",
+   "--auto-spine-mcts-args",
+   "--mcts-random-frac 1.0 --mcts-perturb-frac 0"
   ],
   "extra_flags": [
    "--auto-spine",
@@ -307,11 +310,15 @@
    "--demo-min-ep",
    "50",
    "--demo-front-frac",
-   "0.5"
+   "0.5",
+   "--auto-spine-mcts-args",
+   "--mcts-random-frac 1.0 --mcts-perturb-frac 0"
   ],
+  "steps_cap": 60000000000.0,
   "one_recipe": true,
   "from_scratch_step0": true,
-  "resume_from": null
+  "resume_from": null,
+  "note": "run 4's recipe + the MCTS knob at the RANDOM end (15 of 16 children random-held, child 0 the policy's mode); nothing else differs"
  },
  "ladder": {
   "run1": {
@@ -324,9 +331,10 @@
    "window (CP1)": 604504064,
    "pit dive": 2340945920,
    "cavity (CP2)": 2718433280,
-   "post-CP2 block": null
+   "post-CP2 block": "FAILED (deadline 13,931,380,736; best 32.499 at 12.458B; stopped at 14.16B)"
   },
-  "verdict": "run 4 alive and ON TIME on 4 walls (first ramp 0.378B, window 0.605B, pit dive 2.341B, cavity 2.718B); round extended to 2026-11-09 12:35 UTC - run 4 keeps training; next deadline post-CP2 block 13.93B"
+  "verdict": "run 4 (0.5 knob mix) cleared 4 walls ON TIME (first ramp 0.378B, window 0.605B, pit dive 2.341B, cavity 2.718B) and FAILED the post-CP2 block (flat 32.4-32.5% from ~4.6B to 14.16B; stopped 20:52 UTC). Run 5 (knob at the random end) launched from scratch 20:52 UTC",
+  "run5": {}
  },
  "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search->curriculum loop from step 0. Run 1 (unr1b3_mcts1): first ramp 0.91B and window 1.06B ON TIME (the control failed the first ramp), then 1.7B steps at the pit dive (27.1%); its loop never adopted a line (stale while the policy improved fast, then banked MCTS lines vs the greedy's raw fatal dive). Explorer: random held children break the spawn trap (5.1% vs the beam's 1.8%); at the pit (a 220 u precision gate, map triggers) every variant banks 26.0-26.6% but none threads it. Run 2 (unr1b3_mcts2, 08:21): banked semantics everywhere (--ratchet-contact 1, --auto-spine-banked) + random 0.5, novelty 3, flight roots, steer 2-20 deg."
 }
