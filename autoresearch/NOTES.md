@@ -310,3 +310,29 @@ decisions (60 s) with no bursts (Go-Explore's return with the policy).
 
 **Run unr1b2_geb4** (commit e580109e, launched 09:31 UTC): geb3's flags + `--ge-beam-trace 20
 1500`.
+
+**geb4 at 898M (10:23 UTC)**: first ramp 302.5M, CP1 529.0M (ON TIME), at the CP2 wall from 604M
+(26.8-26.9%), best 26.893. The trace steps work: the explorer's frontier followed the policy
+past 15.75% to the wall (deepest 27.27%, viable 26.22% at explore step 602). Its archive (10:21)
+has no detour cells yet (49 east-corridor cells, none viable; nothing on the ramp or the return
+leg) after ~10 min of explorer time at the wall; X1 needed ~40 min at full duty. Measured with
+scratchpad detour.py (analysis only).
+
+### Round 1 so far, in one place (10:25 UTC)
+
+| run | explorer | first ramp | CP1 | at CP2 wall from | best | stopped |
+|---|---|---|---|---|---|---|
+| control unop_ctl (operator) | none | FAILED (none by 3.6B) | FAILED | - | ~6% | - |
+| geb (d342b843) | beam + 10-dec bursts on 25%, duty 0.3 | 453.5M | 529.0M | 604M | **27.122** | 1.06B (frontier rule wasted on doomed cells) |
+| geb2 (d26c84ee) | + doomed skip, band 1%, duty 0.5 | 302.5M | 529.0M | 604M | 26.914 | 1.86B (explorer never reached the detour) |
+| geb3 (39b2820b) | + chain roots 5 s, 25-dec bursts on 50%, vz cells | 227.0M | 378.0M | 529M | 27.107 | 0.86B (explorer stuck behind its own policy) |
+| geb4 (e580109e) | + trace steps from the true start | 302.5M | 529.0M | 604M | 26.893 | running |
+
+* Every explorer run clears the first two walls on time - the explorer's lines lead the greedy
+  through the first ramp (adopted at 3.3/5.1/10.4/15.2% in geb, the greedy following within 40M
+  steps) - while the same recipe without it never clears the first ramp. One seed per run, but
+  four of four with the explorer against zero of one without.
+* No run passes the CP2 wall (27.5%). Its line is a 2.8 s detour away from the goal under a fail
+  plate and back level through a 220 u gap. Alone at the wall, the explorer with chain roots +
+  1 s bursts + level/falling cells reaches every piece of that detour in 40-50 min (X1), but has
+  not chained it into a line past the gap's west edge.
