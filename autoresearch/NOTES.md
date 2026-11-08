@@ -553,3 +553,13 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   past the CP2 pit that search 3 of the continuation found (adopted 3,558M; the curriculum walked
   its band back from row 2,978 to 2,283 by ~3.73B, near the chain's root at 2,248). 3,543-3,694M
   evals 27.55-27.63 on the way. The quorum fired search 4 at 3,769M from the new line.
+* **15:36 UTC - OPERATOR NOTE (the user's decision, 15:10 UTC): round 1 is the LAST round, now
+  ending 2026-11-09 12:35 UTC (wrap-up 11:55).** On-time runs keep training; a run that misses a
+  wall deadline is stopped (then a NEW recipe may start from scratch); a run that reaches its step
+  cap is resumed from its own checkpoint with the same flags and a higher cap (new runs:
+  --steps 60e9); boxes extended <= 12 h at a time; wake every 45-60 min while a run just trains;
+  the verdict is the ladder. So v3 (on time: pit dive at 3,165M; cavity CP2 due 8.27B) keeps
+  training: its continuation's cap (4,258,632,704) will be resumed from its own ckpt_final.pt on
+  the same commit with the same flags and --steps raised. Box extended to 2026-11-09 03:35 UTC.
+  3,844-3,996M evals: 28.20 / 28.17 / 28.21 (9/9 past the pit); search 4 (3,769M) found nothing
+  deeper (27,724 cells).
