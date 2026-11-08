@@ -371,3 +371,9 @@ file is live: 103 viable frontier-band cells (18.5-26.4%, median 23.0%), rewritt
 explore steps; 3 of them on the detour (2 east-ramp, 1 level-west in the gap) - 15% of the pool
 over 103 rows is ~6 spawns per row per pool rebuild, so the detour rows already get ~18 spawns an
 iteration. Pit-dive deadline 3.88B ~ 15:35 UTC: geb5 runs to the wrap-up.
+
+**geb5 at 1.29B (12:45 UTC)**: greedy still 27.0-27.1% (best 27.082). With X1b finished its
+explorer fills the detour fast: east corridor 640 cells (1 viable), ramp 5,602 (37), level-west
+in the gap 495 (6; furthest west x 3,776). The spawn file has 263 rows, 55 of them (21%) on the
+detour (4 corridor, 46 ramp, 5 level-west): ~3% of all training spawns now start on the detour.
+Whether the policy learns to commit to it from the true start is what the next evals show.
