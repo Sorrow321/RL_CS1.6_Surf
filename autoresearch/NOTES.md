@@ -408,3 +408,27 @@ harvest of this box would fail the same way: pull before every deadline.
 * The pit line v2 learned was search 5's (27.57%), adopted because it beat search 4's line by
   272 u; v1's equivalent was refused by 5 u. Line curriculum now at rows 2384/2409 of 2584
   (27.6% / 13.8%). Search 7 found nothing 200 u past the greedy.
+
+### 2026-11-08 13:05 UTC - unr1b1_v2 at 1.43B: the pit crossed in 5 of 7 evals; curriculum 4 s back
+
+* Evals 906.5M-1,435M: best 27.6 / 27.6 / 27.5 / 26.8 / 27.6 / 27.5 / 26.9 / 27.6% (median
+  26.5-26.9%); best score 27.611 (traj_1434976256).
+* Line 5's curriculum walked from rows 2384/2409 to 2159-2209 of 2584 (3.8-4.3 s before its end;
+  20-21% at the band, a 3.8% backoff at 2184). Searches 7-9 from 27.5-27.6% greedy lines: nothing
+  200 u past the greedy (deepest 72,118-72,243). fps 176.5k.
+
+### 2026-11-08 13:34 UTC - unr1b1_v2 at 1.73B: the pit every eval; the explorer's root window is the limit
+
+* Evals 1.43B-1.66B: best 27.6 / 27.6 / 27.5 / 27.5% (median 26.8-26.9%); best score 27.636
+  (traj_1510473728). Line 5's curriculum: rows 2159/2184/2209 (20-34% / 3.7%).
+* Searches 10-11 from 27.6% greedy lines: deepest 72,085-72,107 vs the greedy's 72,154 - nothing
+  200 u deeper. In v1 the cavity loop (line 15, 28.18%) branched off at the turn ~(4,283, 291),
+  and v1's greedy stalled AT the turn, so its roots ("the last 4 s before the stall") covered the
+  branch. v2's greedy now stalls ~4 s later, in the pit, so the turn is outside the root window.
+* A generic fix for the next version: roots over a longer stretch of the line (e.g. half the
+  roots in the last 4 s, half spread over the 4-12 s before; or the root window grows each time a
+  search returns nothing), so a detour that branches seconds before the stall stays reachable.
+* Built (default off, for the next version): `--ge-line-roots-grow` - each search that ends
+  without an adopted line doubles the next search's root window (auto_spine --roots-secs 4 -> 8
+  -> 16 s, the cap); an adopted line resets it to 4 s. Tests: refusal, config dump, flag off
+  bit-identical (4 passed).

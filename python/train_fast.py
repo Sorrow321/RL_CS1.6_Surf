@@ -5200,6 +5200,13 @@ def main() -> None:
                          "policy's own line succeeds ~6%% - the chain steers ~10 deg further than "
                          "the policy ever samples (view sigma ~0.07). Off = bit-identical; config "
                          "only when set; never restored")
+    ap.add_argument("--ge-line-roots-grow", action="store_true",
+                    help="--ge-line: every search that ends without an adopted line doubles the "
+                         "NEXT search's root window (auto_spine --roots-secs: the line's last 4 s "
+                         "before its stall -> 8 -> 16 s, the cap); an adopted line resets it to 4 s. "
+                         "unr1b1_v2: once the greedy stalled ~4 s past the turn the cavity loop "
+                         "branches off at, no search from 'the last 4 s' could reach the branch. Off "
+                         "= 4 s always, as before; config only when on; never restored")
     ap.add_argument("--ge-line-front-ticks", type=int, default=100,
                     help="--ge-line-front-temp: the hot window after a band spawn, physics ticks")
     ap.add_argument("--ge-line-match-band", action="store_true",
@@ -12720,8 +12727,8 @@ def main() -> None:
     GEL_END_D = None                      # the adopted line's success line (record <= this)
     GELS = {"on": False, "proc": None, "k": 0, "field": None, "eval": None, "best_d": None,
             "line_end": None, "adopted": 0}
-    if ((args.ge_line_retire or args.ge_line_match_band or args.ge_line_front_temp is not None)
-            and args.ge_line is None):
+    if ((args.ge_line_retire or args.ge_line_match_band or args.ge_line_front_temp is not None
+         or args.ge_line_roots_grow) and args.ge_line is None):
         raise SystemExit("--ge-line-retire / --ge-line-match-band / --ge-line-front-temp shape "
                          "the --ge-line curriculum")
     if args.ge_line_front_temp is not None and not float(args.ge_line_front_temp) > 0.0:
@@ -15473,6 +15480,8 @@ def main() -> None:
             meta["config"]["ge_line_retire"] = 1
         if args.ge_line_match_band:
             meta["config"]["ge_line_match_band"] = 1
+        if args.ge_line_roots_grow:
+            meta["config"]["ge_line_roots_grow"] = 1
         if args.ge_line_front_temp is not None:
             meta["config"]["ge_line_front_temp"] = float(args.ge_line_front_temp)
             meta["config"]["ge_line_front_ticks"] = int(args.ge_line_front_ticks)
@@ -16844,6 +16853,8 @@ def main() -> None:
         kdir.mkdir(parents=True, exist_ok=True)
         np.save(kdir / "line.npy", np.array(eps[b], dtype=STATE_DTYPE, copy=True))
         thr = int(args.ge_line_threads) or int(os.environ.get("OMP_NUM_THREADS", "8"))
+        # --ge-line-roots-grow: 4 s doubled per search that ended without an adopted line, cap 16
+        _rsec = (4.0 * 2.0 ** min(int(GELS.get("fails", 0)), 2)) if args.ge_line_roots_grow else 4.0
         cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
                                          / "auto_spine.py"),
                "--line", str(kdir / "line.npy"), "--map", str(slots[0].core.bsp_path),
@@ -16855,6 +16866,8 @@ def main() -> None:
                "--seed", str(GELS["k"]), "--threads", str(thr)]
         if args.maxvel is not None:
             cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+        if args.ge_line_roots_grow:
+            cmd += ["--roots-secs", f"{_rsec:g}"]
         try:
             fh = open(kdir / "auto_spine.log", "w", encoding="utf-8", errors="replace")
             proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT,
@@ -16864,7 +16877,7 @@ def main() -> None:
             return
         GELS["proc"] = (proc, fh, time.time(), kdir)
         print(f"[{global_step:>13,d}] --ge-line search {GELS['k']}: Go-Explore from episode "
-              f"{b}'s last 4 s before its stall, {float(args.ge_line_minutes):g} min on {thr} "
+              f"{b}'s last {_rsec:g} s before its stall, {float(args.ge_line_minutes):g} min on {thr} "
               f"threads beside the training (pid {proc.pid}, log {kdir / 'auto_spine.log'})",
               flush=True)
 
@@ -16903,6 +16916,7 @@ def main() -> None:
             print(f"!! --ge-line search {GELS['k']}: {ex}", flush=True)
         _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
         if not res or not res.get("spine"):
+            GELS["fails"] = GELS.get("fails", 0) + 1
             print(f"[{global_step:>13,d}] --ge-line search {GELS['k']}: no line past the best "
                   f"greedy episode in {dt:.0f}s (exit {proc.returncode}; deepest chain end d "
                   f"{(res or {}).get('ge_end_d', float('nan')):,.0f})", flush=True)
@@ -16918,6 +16932,7 @@ def main() -> None:
             why = (f"its end d {de:,.0f} does not beat the current line's end {cur:,.0f} by "
                    f"{gain:g} u, and the greedy has not crossed that one's success line")
         if why:
+            GELS["fails"] = GELS.get("fails", 0) + 1
             print(f"[{global_step:>13,d}] --ge-line search {GELS['k']}: line NOT adopted - "
                   f"{why} ({dt:.0f}s)", flush=True)
             return
@@ -16938,6 +16953,7 @@ def main() -> None:
         GELS["line_end"] = de
         GELS["adopted"] += 1
         GELS["retired"] = False
+        GELS["fails"] = 0
         GELS["eps"] = GELS["wins"] = 0
         gel_idx[:] = -1
         (out / "gel" / "current.json").write_text(json.dumps(
