@@ -426,3 +426,20 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   detour beats a frontier that is a dive; the curriculum then teaches the lower level and the
   next search roots there. The pit's far side (back west over the pit top, then CP2 at x ~800)
   was not reached in any probe (min cell x 885 is the approach).
+* **11:58 UTC - v3 STOPPED at 2,259M (best 26.919 at 1,435M; evals 1,284-2,190M all 26.5-26.9,
+  the CP2 pit); v4 launched.** Pulled: unr1b4_knob3/ckpt_latest.pt (md5 1070b4a6...; for a round 2
+  that would CONTINUE v3) and ckpt_1250426880.pt (the hand-on for 26.919). Why stop an on-time
+  run (pit dive due 3.88B): 1.0B steps flat, two searches and four probes null, and the archive
+  analysis above names the cause - the policy is PAID for its fatal dive (the ratchet pays the
+  falling d and the recipe charges nothing for dying), so the dive is its local optimum, and every
+  gate compares the explorer's supported states with that dive.
+* **v4 = `unr1b4_knob4`, launched 11:58:15 UTC from step 0, commit 105960e0** = v3's flags +
+  `--ratchet-contact 1` (an existing generic reward correction: the ratchet pays a record that
+  moves only on supported ticks, so an apex over open air - or a dive into a kill - pays at the
+  landing that reaches it, or never; the curriculum's success line and bonus read the same
+  contact record) + `--auto-spine-contact` (NEW: the greedy frontier, the explorer's gate and the
+  spine's cut on supported states). Record gate passed; run.json: ratchet_contact 1,
+  auto_spine_contact 1, evalroots 1, deeper 1 (demo_match_band is on - it is in the launch line -
+  but its config dump is gated on --demo-file; cosmetic). It has ~3.9 h: at v3's pace the CP2
+  pit comes at ~1.3B (~13:45), leaving ~2 h there. If --ratchet-contact slows the early walls,
+  that is a result too.
