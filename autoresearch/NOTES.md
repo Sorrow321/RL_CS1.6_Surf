@@ -298,3 +298,10 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   landing), the curriculum's success and bonus (paid_record), the quorum and frontier
   (--auto-spine-banked) and the MCTS's own score. It is a generic objective correction (no map
   constant) and it removes the reward run 1's policy collected for diving deeper into the pit.
+* Run 2 at 0.52B: the same spawn trap as run 1 and the control (1.6-1.7%, evals 76-453M).
+  Search 1 (0.5M-107M): stale by 59 u (the policy moved during the 6 min). **Search 2 (453-557M):
+  the FIRST ADOPTED SPINE of this program** - greedy pass dies at 3.12 s (banked 1.43%, raw 1.59%),
+  7 roots over 0.0-2.9 s (the spawn itself included), 1,419 waves, 2.9M nodes, 2,501 cells, best
+  banked 2.86% (raw 4.24%) at 7.95 s, replay exact; vs the eval's BANKED frontier 98,258 -> +1,433 u
+  -> NEW SPINE (795 states, end d 96,826, success line d <= 96,926). The banked comparison and the
+  random children are what let the loop act at the trap where run 1's searches were stale or short.
