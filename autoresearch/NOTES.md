@@ -377,3 +377,25 @@ explorer fills the detour fast: east corridor 640 cells (1 viable), ramp 5,602 (
 in the gap 495 (6; furthest west x 3,776). The spawn file has 263 rows, 55 of them (21%) on the
 detour (4 corridor, 46 ramp, 5 level-west): ~3% of all training spawns now start on the detour.
 Whether the policy learns to commit to it from the true start is what the next evals show.
+
+## Round 1 extended (operator note, 2026-11-08 15:10 UTC): one round to 2026-11-09 12:35 UTC
+
+The user's decision: round 1 is the LAST round (wrap-up 2026-11-09 11:55 UTC); an ON TIME run keeps
+training, a run that misses a wall deadline is stopped and a NEW recipe may start from scratch with
+`--steps 60e9`; boxes extend <= 12 h at a time; wake every 45-60 min while a run trains; the
+verdict is the ladder (which recipe got furthest, and when).
+
+**geb5 FAILED the pit dive (stopped 15:20 UTC at 3.95B)**: no greedy eval past 27.5% by the 3.88B
+deadline (3.851B: 27.098, 3.926B: 27.093; best 27.109 at 3.247B). Its explorer had the whole
+detour (east corridor 4,325 cells / 110 viable, ramp 20,523 / 225, level-west 4,739 / 246,
+furthest west x 3,106 at 14:38) and 596 frontier spawns, ~21% of them on the detour, for 3.4B steps
+- and the greedy never once entered the corridor. So the states were there and the policy did
+not take them: the explore step is no longer the bottleneck at this wall.
+
+**Next recipe, unr1b2_geb6** (15:21 UTC, commit 8955493b): geb5's flags + `--unstuck-max 2`. Why:
+every run here sat at CP2 with the plateau temperature pinned at the recipe's cap 0.2 since
+~900M; that cap is October's BASEMENT-era value (round 5), never re-run from scratch (the
+meta-analysis says so), while October's from-scratch CP2 crossing (r1b1 ratnovx, 1,633M: ratchet +
+novel spawns) ran at T cap 2, and October's r2b3_t0 lost the CP2 line without the temperature.
+One constant for the whole run, set at launch; T still rises only on a plateau (0.5 per 100M after
+200M without 500 u) and halves on a new best, on the key heads only.
