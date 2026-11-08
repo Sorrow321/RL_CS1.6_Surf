@@ -2272,6 +2272,11 @@ def main():
                     help="--mcts: the share of each expansion's SAMPLED children that explore (the "
                          "held yaw offset, --mcts-keys-temp, --mcts-view-temp); the rest sample "
                          "the policy at temperature 1. 1 = every sampled child explores")
+    ap.add_argument("--mcts-energy", type=float, default=0.0,
+                    help="--mcts: weight of the ENERGY HEIGHT kept at a node's banked point in the "
+                         "search's value, in the checkpoint's own --energy-pot exchange rate (1 = "
+                         "the recipe's: K x d0 / 1e5 u of progress per u of h); the line handed on "
+                         "is still the deepest banked one. 0 = off")
     ap.add_argument("--mcts-random-frac", type=float, default=0.5,
                     help="--mcts: the share of each expansion's SAMPLED children that are RANDOM: "
                          "their first decision drawn at --mcts-random-temp on every head (keys "

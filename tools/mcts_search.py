@@ -268,7 +268,8 @@ class Tree:
           ("h", np.float64, 0.0), ("bank_t", np.int64, -1), ("ndec", np.int64, 0),
           ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0),
           ("nov", np.float64, 0.0), ("ox", np.float32, 0.0), ("oy", np.float32, 0.0),
-          ("oz", np.float32, 0.0), ("raw_d", np.float64, np.inf))
+          ("oz", np.float32, 0.0), ("raw_d", np.float64, np.inf),
+          ("h_bank", np.float64, np.nan))
 
     def _alloc(self, cap: int):
         for name, dt, fill in self._F:
@@ -428,10 +429,12 @@ class Tree:
         fin = np.flatnonzero(self.finished[1:n]) + 1
         if len(fin):
             return int(fin[np.argmin(self.tick[fin])])
-        sc = self.score[1:n]
-        if not np.isfinite(sc).any():
+        bd = self.bank_d[1:n]
+        if not np.isfinite(bd).any():
             return -1
-        top = np.flatnonzero(sc >= np.nanmax(sc[np.isfinite(sc)]) - 1e-12) + 1
+        # the DEEPEST banked node (the score may carry an energy term for the search's guidance;
+        # the line handed on is judged on depth, as the trainer compares it)
+        top = np.flatnonzero(bd <= np.nanmin(bd[np.isfinite(bd)]) + 1e-9) + 1
         return int(top[np.argmin(np.where(self.bank_t[top] >= 0, self.bank_t[top],
                                           self.tick[top]))])
 
@@ -588,6 +591,21 @@ def run_mcts(ctx: dict, a) -> dict:
     def prog(d):
         return (d_ref - np.asarray(d, np.float64)) / d_ref
 
+    # --mcts-energy W: the search's value also holds the ENERGY HEIGHT h kept at the banked point,
+    # in the trainer's own units - its race reward pays 100 per d0 of progress and --energy-pot K
+    # pays K per 1000 u of h, so 1 u of h is worth K x d0 / 1e5 u of progress; W scales that
+    # (1 = the recipe's own exchange rate, 0 = off). A line that banks progress AND keeps its speed
+    # outranks one that banks a little more and stops dead.
+    _K = float(ctx["cfg"].get("energy_pot") or 0.0)
+    lam = float(a.mcts_energy) * _K * d_ref / 1e5
+    h_ref = float(energy_h(np.asarray(ctx["row0"]).reshape(-1))[0])
+
+    def e_score(h):
+        if lam <= 0.0:
+            return 0.0
+        h = np.asarray(h, np.float64)
+        return np.where(np.isfinite(h), lam * (h - h_ref) / d_ref, 0.0)
+
     # ---- the population core and the stores ---------------------------------------------------
     coreN = ctx["build_sim"](ctx["cfg"], ctx["map_path"], N, ctx["ep_cap"], tick=ctx["TICK"])
     ctx["arm"](coreN)
@@ -613,7 +631,9 @@ def run_mcts(ctx: dict, a) -> dict:
     r_cells, _ = arch.visit(arch.keys(r_states["origin"], r_states["velocity"]))
     r_bank = np.asarray([r[5] for r in roots], np.float64)
     r_bank = np.where(np.isfinite(r_bank), r_bank, d_ref)
-    tree.add_children(0, prog(r_bank), np.ones(len(roots), bool), slot=r_slots, cell=r_cells,
+    r_h = energy_h(r_states)
+    tree.add_children(0, prog(r_bank) + e_score(r_h), np.ones(len(roots), bool), slot=r_slots,
+                      cell=r_cells, h_bank=r_h,
                       tick=np.asarray([r[1] for r in roots], np.int64),
                       bank_d=r_bank, end_d=field_d(gf, r_states["origin"]),
                       h=energy_h(r_states), root_dec=np.asarray([r[0] for r in roots]),
@@ -688,6 +708,7 @@ def run_mcts(ctx: dict, a) -> dict:
         bank_d = np.full(N, np.inf)
         bank_t = np.full(N, -1, np.int64)
         raw_d = np.full(N, np.inf)          # diagnostics: the deepest d at ANY live tick
+        h_bk = np.full(N, np.nan)           # the energy height at the banked tick
         acts_w = np.zeros((M, N, 6), np.int8)
         view_w = np.zeros((M, N, 2), np.float32)
         cell_keys = []
@@ -726,6 +747,10 @@ def run_mcts(ctx: dict, a) -> dict:
                 imp = c & (d < bank_d)
                 bank_d[imp] = d[imp]
                 bank_t[imp] = tt
+                if imp.any():
+                    _vv = st["velocity"][imp].astype(np.float64)
+                    h_bk[imp] = (st["origin"][imp, 2].astype(np.float64)
+                                 + (_vv * _vv).sum(axis=1) / (2.0 * G_ENERGY))
                 raw_d = np.where(alive, np.minimum(raw_d, d), raw_d)
             st = coreN.states_view
             if alive.any():
@@ -776,7 +801,8 @@ def run_mcts(ctx: dict, a) -> dict:
         own_better = bank_d < tree.bank_d[own]
         c_bank_d = np.where(own_better, bank_d, tree.bank_d[own])
         c_bank_t = np.where(own_better, tree.tick[own] + bank_t, tree.bank_t[own])
-        sc = np.where(fin, 2.0, prog(c_bank_d))
+        c_h_bank = np.where(own_better, h_bk, tree.h_bank[own])
+        sc = np.where(fin, 2.0, prog(c_bank_d) + e_score(c_h_bank))
         ntick = tree.tick[own] + np.where(fin, fin_t, M * K)
         n_before = tree.n
         for l, leaf in enumerate(leaves):
@@ -789,7 +815,8 @@ def run_mcts(ctx: dict, a) -> dict:
                                     ndec=np.where(fin[ch], (fin_t[ch] + K - 1) // K, M),
                                     wave=wave, delta=delta[ch], nov=n_new[ch] / float(M),
                                     ox=stN["origin"][ch, 0], oy=stN["origin"][ch, 1],
-                                    oz=stN["origin"][ch, 2], raw_d=raw_d[ch])
+                                    oz=stN["origin"][ch, 2], raw_d=raw_d[ch],
+                                    h_bank=c_h_bank[ch])
             if tree._cap > len(E_acts):
                 E_acts = np.concatenate([E_acts, np.zeros((tree._cap - len(E_acts), M, 6),
                                                           np.int8)])
@@ -799,12 +826,13 @@ def run_mcts(ctx: dict, a) -> dict:
             E_view[ids] = np.transpose(view_w[:, ch], (1, 0, 2))
         tree.end_wave()
         b = tree.best_node()
-        best_hist.append(float(tree.score[b]) if b > 0 else float("nan"))
+        best_hist.append(float(prog(tree.bank_d[b])) if b > 0 else float("nan"))
         if wave % log_every == 0 or fin.any():
+            _bp = 100 * float(prog(tree.bank_d[b])) if b > 0 else float("nan")
             dt = time.time() - t_loop
             print(f"mcts wave {wave:4d}: {L:4d} leaves, nodes {tree.n:,} (+{tree.n - n_before}), "
                   f"alive {int(al.sum())}/{N}, fin {int(fin.sum())}, cells {arch.n:,} "
-                  f"(+{new_cells}), best {100 * float(tree.score[b]):.2f}% "
+                  f"(+{new_cells}), best {_bp:.2f}% "
                   f"(d {tree.bank_d[b]:,.0f}, depth {int(tree.depth[b])}), "
                   f"{sim_ticks * N / max(dt, 1e-9):,.0f} env-steps/s", flush=True)
         wave += 1
@@ -843,6 +871,7 @@ def run_mcts(ctx: dict, a) -> dict:
                "yaw_sigma": sigma, "yaw_sigma_min": float(a.mcts_yaw_sigma_min or 0.0),
                "roots_flight": int(a.mcts_roots_flight), "hold_p": float(a.mcts_hold_p),
                "novelty": float(a.mcts_novelty), "perturb_frac": float(a.mcts_perturb_frac),
+               "energy": float(a.mcts_energy), "energy_lambda": lam,
                "random_frac": float(a.mcts_random_frac), "random_temp": float(a.mcts_random_temp),
                "keys_temp": float(a.mcts_keys_temp),
                "view_temp": float(a.mcts_view_temp), "c_puct": cpuct,
@@ -851,7 +880,7 @@ def run_mcts(ctx: dict, a) -> dict:
                "greedy_end_tick": int(g_end), "greedy_end": g_why,
                "greedy_best_d": float(gbest), "greedy_bank_d": float(bank_best),
                "best_node": int(b), "best_d": frontier["d"], "best_tick": int(f_tick),
-               "best_pct": round(100.0 * float(tree.score[b]), 3) if not finished else 100.0,
+               "best_pct": round(100.0 * float(prog(tree.bank_d[b])), 3) if not finished else 100.0,
                "greedy_pct": round(100.0 * float(prog(bank_best)), 3),
                "raw_best_pct": round(100.0 * float(prog(np.min(tree.raw_d[1:tree.n]))), 3)
                if tree.n > 1 else None,

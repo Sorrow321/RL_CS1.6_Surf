@@ -87,8 +87,12 @@ def test_finished_node_wins_best_node():
 def test_best_node_ties_take_the_earliest_bank():
     t = Tree()
     r = _roots(t, 1, scores=[0.2])
-    k = t.add_children(int(r[0]), [0.6, 0.6], [True, True], tick=[50, 50], bank_t=[45, 30])
+    k = t.add_children(int(r[0]), [0.6, 0.9], [True, True], tick=[50, 50], bank_t=[45, 30],
+                       bank_d=[500.0, 500.0])
+    # equal banked depth: the earliest bank wins, whatever the (energy-carrying) score says
     assert t.best_node() == int(k[1])
+    k2 = t.add_children(int(k[0]), [0.1], [True], tick=[80], bank_t=[70], bank_d=[400.0])
+    assert t.best_node() == int(k2[0])          # the DEEPEST bank, not the highest score
 
 
 def test_cell_weight_steers_exploration():
