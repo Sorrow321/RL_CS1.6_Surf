@@ -342,7 +342,15 @@ python autoresearch/box.py release --agent $AR_AGENT
   later flags win. `--no-recipe` gives a bare scratch preset (then it is not the program's
   recipe: say what you replaced it with).
 * If `launch` returns an ssh error (exit 255, "Broken pipe"), the run usually started anyway:
-  check `ps` on the box and `runs/<run>_launch.txt` before launching again.
+  check `ps` on the box and `runs/<run>_launch.txt` before launching again. If it died before
+  its record gate ran (no `traj_<step>_rec_*` files), run the gate detached:
+  `setsid nohup python3 tools/record_gate.py <run> --pid <trainer pid> --wait-secs 900 >
+  runs/<run>_gate.txt 2>&1 < /dev/null &`.
+* If short ssh commands work but `pull` stalls ("Broken pipe", an empty `_pull.tgz`), the box's
+  DIRECT port drops large downloads (seen 2026-11-08 on the operator's control box). Use vast's
+  proxy instead: `vastai show instance <id> --raw` gives `ssh_host` / `ssh_port`; put them in
+  `$AR_HOME/boxes/$AR_AGENT.json` as `host` / `port` (keep the direct pair as `host_direct` /
+  `port_direct`) and pull again.
 * A spawn-state file built from the policy's OWN states is passed with `launch --self-states
   "<how it was built>" -- --spawn-states <file>`; inside a one-recipe run, lines and spawn files
   are made by the run itself (the auto-spine machinery), never by hand.
