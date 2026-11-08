@@ -792,6 +792,30 @@ class Explorer:
         line["stuck_ticks"] = 0
         return line
 
+    def write_spawns(self, path: Path, band: float, max_rows: int) -> int:
+        """--spawn-file: the VIABLE current cells (a run from them lived --viable-secs) in the
+        deepest ``band`` fraction of the viable cells on the goal field, as STATE_DTYPE rows
+        (tick / stuck zeroed) for train_fast --ge-beam-spawn - the explorer's exact states next to
+        the frontier (a detour away from the goal sits at about the frontier's depth, where no
+        line is deeper than the greedy) as training spawns: Go-Explore's return by reset."""
+        A = self.A
+        n = A.n
+        ok = np.flatnonzero(A.cur[:n] & (A.surv[:n] >= int(self.P.viable_ticks))
+                            & np.isfinite(A.d[:n]) & (A.mode[:n] != MODE_ROOT))
+        if not len(ok):
+            return 0
+        k = max(1, int(np.ceil(float(band) * len(ok))))
+        pick = ok[np.argpartition(A.d[ok], k - 1)[:k]] if k < len(ok) else ok
+        if len(pick) > int(max_rows):
+            pick = self.rng.choice(pick, int(max_rows), replace=False)
+        rows = np.array(A.state[pick], copy=True)
+        rows["tick"] = 0
+        rows["stuck_ticks"] = 0
+        tmp = Path(str(path) + ".tmp.npy")
+        np.save(tmp, rows)
+        os.replace(tmp, path)
+        return int(len(rows))
+
     def maybe_export(self, out: Path):
         P, A = self.P, self.A
         b = self.best_viable()
@@ -899,6 +923,12 @@ def parse(argv=None):
                          "true start and the current policy flies --trace-decisions (no bursts): "
                          "the archive follows the policy's own line as the weights improve")
     ap.add_argument("--trace-decisions", type=int, default=1000)
+    ap.add_argument("--spawn-file", default=None,
+                    help="write the viable cells of the deepest --spawn-band of viable cells "
+                         "here every --spawn-every explore steps (train_fast --ge-beam-spawn)")
+    ap.add_argument("--spawn-every", type=int, default=20)
+    ap.add_argument("--spawn-band", type=float, default=0.1)
+    ap.add_argument("--spawn-max", type=int, default=20000)
     ap.add_argument("--front-band", type=float, default=0.0,
                     help="> 0: the frontier share is drawn by W from the deepest FRACTION of the "
                          "cells (at least --front-k) instead of uniformly from the --front-k "
@@ -985,6 +1015,10 @@ def main(argv=None) -> int:
             tmp = out / "status.json.tmp"
             tmp.write_text(json.dumps(s), encoding="utf-8")
             os.replace(tmp, out / "status.json")
+        if a.spawn_file and a.spawn_every > 0 and ex.steps % int(a.spawn_every) == 0:
+            ns = ex.write_spawns(Path(a.spawn_file), float(a.spawn_band), int(a.spawn_max))
+            if ns:
+                print(f"SPAWNS {ns} viable frontier-band cells -> {a.spawn_file}", flush=True)
         if time.time() - last_save >= float(a.save_every):
             last_save = time.time()
             ex.A.save(out / "archive.npz")

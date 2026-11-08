@@ -7565,6 +7565,12 @@ def main() -> None:
     ap.add_argument("--ge-beam-recent", type=float, nargs=2, default=None, metavar=("FRAC", "STEPS"),
                     help="--ge-beam: FRAC of the restores (by W) from the cells discovered in the "
                          "last STEPS explore steps (the novelty frontier); None = off")
+    ap.add_argument("--ge-beam-spawn", type=float, default=0.0,
+                    help="--ge-beam: > 0 = this share of every training spawn pool is drawn from "
+                         "the explorer's VIABLE cells in the deepest 10%% band of its viable cells "
+                         "(<run>/ge/spawns.npy, rewritten every 20 explore steps): exact reachable "
+                         "states next to the frontier, a detour away from the goal included, which "
+                         "no depth-ranked line ever carries (Go-Explore's return by reset). 0 = off")
     ap.add_argument("--ge-beam-trace", type=int, nargs=2, default=None, metavar=("EVERY", "DECISIONS"),
                     help="--ge-beam: every EVERY-th explore step is a trace from the true start with "
                          "the current weights for DECISIONS decisions (the archive follows the "
@@ -12452,7 +12458,10 @@ def main() -> None:
             raise SystemExit("--ge-beam-frac + --spawn-states-frac must stay below 1")
         GEB = {"c": None, "proc": None, "fh": None, "dir": out / "ge", "sync_t": -1e9,
                "line_mt": None, "line_k": 0, "end_d": None, "src": None, "adopt_step": 0,
-               "greedy_d": float("inf"), "eval": None, "starts": 0, "n_adopt": 0}
+               "greedy_d": float("inf"), "eval": None, "starts": 0, "n_adopt": 0,
+               "sp": None, "sp_mt": None, "sp_rng": np.random.default_rng(41)}
+        if not 0.0 <= float(args.ge_beam_spawn) < 1.0:
+            raise SystemExit("--ge-beam-spawn must be in [0, 1)")
         print(f"--ge-beam: Go-Explore beside the training (tools/ge_beam.py, "
               f"{int(args.ge_beam_envs)} envs, {int(args.ge_beam_cells)} cells x "
               f"{int(args.ge_beam_decisions)} decisions per step, knob random-frac "
@@ -15673,6 +15682,8 @@ def main() -> None:
                if float(args.ge_beam_cell_vz) > 0 else {}),
             **({"ge_beam_trace": [int(x) for x in args.ge_beam_trace]}
                if args.ge_beam_trace is not None else {}),
+            **({"ge_beam_spawn": float(args.ge_beam_spawn)}
+               if float(args.ge_beam_spawn) > 0 else {}),
             ge_beam_cell=[float(x) for x in args.ge_beam_cell],
             ge_beam_duty=float(args.ge_beam_duty), ge_beam_threads=int(args.ge_beam_threads),
             ge_beam_sync=float(args.ge_beam_sync), ge_beam_frac=float(args.ge_beam_frac),
@@ -16998,6 +17009,8 @@ def main() -> None:
                *(["--trace-every", str(int(args.ge_beam_trace[0])),
                   "--trace-decisions", str(int(args.ge_beam_trace[1]))]
                  if args.ge_beam_trace is not None else []),
+               *(["--spawn-file", str(_gd / "spawns.npy"), "--spawn-every", "20",
+                  "--spawn-band", "0.1"] if float(args.ge_beam_spawn) > 0 else []),
                "--cell", f"{float(args.ge_beam_cell[0]):g}",
                "--cell-energy", f"{float(args.ge_beam_cell[1]):g}",
                "--cell-heading", str(int(args.ge_beam_cell[2])),
@@ -17048,6 +17061,28 @@ def main() -> None:
         if _pr is None and GEB["starts"] < 4:
             _ge_start()
         _f = _ge_field()
+        if float(args.ge_beam_spawn) > 0:
+            # --ge-beam-spawn: the explorer's frontier-band cells, re-read when rewritten
+            _sp = GEB["dir"] / "spawns.npy"
+            try:
+                _smt = os.path.getmtime(_sp)
+            except OSError:
+                _smt = None
+            if _smt is not None and _smt != GEB["sp_mt"]:
+                try:
+                    _rows = np.load(_sp, allow_pickle=False)
+                    if _rows.dtype == STATE_DTYPE and _rows.ndim == 1 and len(_rows):
+                        _first = GEB["sp"] is None
+                        GEB["sp"], GEB["sp_mt"] = _rows, _smt
+                        if _first or it_no % 20 == 1:
+                            _sd = np.asarray(_f.sample(np.asarray(_rows["origin"], np.float64)),
+                                             np.float64)
+                            print(f"[{global_step:>13,d}] ge-beam spawns: {len(_rows):,} explorer "
+                                  f"frontier cells (d {_sd.min():,.0f}..{_sd.max():,.0f}) -> "
+                                  f"{float(args.ge_beam_spawn):.0%} of every spawn pool",
+                                  flush=True)
+                except (OSError, ValueError) as ex:
+                    print(f"!! ge-beam spawns unreadable ({ex})", flush=True)
         if GEB["eval"] is not None:
             from surfgym.route import episodes_from_traj
             _ep, GEB["eval"] = GEB["eval"], None
@@ -19673,6 +19708,14 @@ def main() -> None:
                 _fpos = FINL.rng.choice(np.flatnonzero(_free), _fm, replace=False)
                 _pool = _pool.copy()
                 _pool[_fpos] = FINL.draw(_fm)
+            if GEB is not None and GEB["sp"] is not None:
+                # --ge-beam-spawn: the explorer's frontier-band cells on their share of the pool
+                if len(_pool) < 4096:
+                    _pool = np.resize(_pool, 4096)
+                _sm = int(round(len(_pool) * float(args.ge_beam_spawn)))
+                _spos = GEB["sp_rng"].choice(len(_pool), _sm, replace=False)
+                _pool = _pool.copy()
+                _pool[_spos] = GEB["sp"][GEB["sp_rng"].integers(0, len(GEB["sp"]), _sm)]
             if GEB is not None and GEB["c"] is not None:
                 # --ge-beam: the explorer line's share of the pool (positions the --spawn-states
                 # rows did not take), from the curriculum's admitted range

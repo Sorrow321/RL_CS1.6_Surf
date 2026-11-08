@@ -221,3 +221,28 @@ def test_trace_step_starts_at_the_root(tmp_path):
     assert A.depth[deep] > 10 * 4                             # longer than a normal step
     line = ex.replay_line(deep)
     assert len(line) == int(A.depth[deep]) + 1
+
+
+def test_write_spawns_band(tmp_path):
+    """--spawn-file: only viable, non-root current cells, the deepest --spawn-band of them, with
+    tick / stuck zeroed."""
+    A = gb.Archive()
+    s = np.zeros(1, STATE_DTYPE)[0]
+    for i in range(200):
+        st = np.array(s, copy=True)
+        st["tick"] = 7
+        st["origin"] = [i, 0, 0]
+        A.add(i, st, -1, 0, float(i), 0, 0, 0, gb.MODE_ROOT if i == 0 else gb.MODE_POLICY, 0)
+    A.surv[:200] = 1000
+    A.surv[:20] = 0                                   # the 20 deepest are not viable
+    ex = gb.Explorer.__new__(gb.Explorer)
+    ex.A = A
+    ex.P = SimpleNamespace(viable_ticks=100)
+    ex.rng = np.random.default_rng(0)
+    f = tmp_path / "sp.npy"
+    n = ex.write_spawns(f, 0.1, 10_000)
+    rows = np.load(f)
+    assert n == len(rows) == 18                       # ceil(0.1 x 180 viable)
+    xs = sorted(int(x) for x in rows["origin"][:, 0])
+    assert xs == list(range(20, 38))
+    assert (rows["tick"] == 0).all()
