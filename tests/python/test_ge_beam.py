@@ -159,3 +159,31 @@ def test_frontier_skips_doomed_cells():
     A2.chosen[:3] = 5
     A2.surv[:3] = 1
     assert len(A2.select(rng, 10, 1.0, 2, 0.0, 100)) == 10      # all doomed: still a selection
+
+
+@pytest.mark.skipif(not MAP.exists(), reason="the map is not in this checkout")
+def test_chain_roots(tmp_path):
+    """--chain-frac: the roots are nodes on the deepest viable cell's own chain, within the last
+    --chain-secs of its depth."""
+    pytest.importorskip("torch")
+    import torch
+    cfg = {"reward": "race", "act_every": 4, "view_continuous": 1, "view_absolute": "velocity",
+           "keys_hold": True, "maxvel": 4000.0, "ep_ticks": 30000, "lidar_cell": 32.0,
+           "race_no_corner_cut": 1, "tick_ms": 10.0, "pitch_rate": 1.33, "yaw_adaptive": 1}
+    ck = tmp_path / "cfg.pt"
+    torch.save({"config": cfg, "global_step": 0}, ck)
+    ctx = gb.setup(str(ck), str(MAP), 16, torch.device("cpu"), with_policy=False)
+    P = SimpleNamespace(cell=64.0, cell_energy=128.0, cell_heading=4, cells=4, decisions=30,
+                        random_frac=1.0, repeat=0.9, keys_temp=1.0, view_temp=1.0,
+                        view_hold=[0.0, 25.0], front_frac=0.25, front_k=8, replace_ticks=25,
+                        viable_ticks=10, gain=1.0, out=str(tmp_path), resume=False, burst=0,
+                        max_nodes=10**7, chain_frac=0.5, chain_secs=0.5)
+    ex = gb.Explorer(ctx, P, np.random.default_rng(3))
+    for _ in range(5):
+        ex.step()
+    b = ex.best_viable()
+    roots = ex.chain_roots(0.5)
+    if b >= 0:
+        chain = set(ex.A.chain(b))
+        assert len(roots) and set(roots.tolist()) <= chain
+        assert (ex.A.depth[roots] >= ex.A.depth[b] - 50).all()

@@ -492,6 +492,16 @@ class Explorer:
         sel = A.select(self.rng, int(P.cells), float(P.front_frac), int(P.front_k),
                        float(getattr(P, "front_band", 0.0)),
                        int(P.viable_ticks) if getattr(P, "front_skip_doomed", False) else 0)
+        nc = int(round(int(P.cells) * float(getattr(P, "chain_frac", 0.0))))
+        if nc > 0:
+            ch = self.chain_roots(float(P.chain_secs))
+            if len(ch):
+                # --chain-frac: that share of the selection replaced by nodes of the deepest
+                # viable line's own chain in its last --chain-secs (where the line committed)
+                sel = np.array(sel, copy=True)
+                pos = self.rng.choice(len(sel), min(nc, len(sel)), replace=False)
+                sel[pos] = self.rng.choice(ch, len(pos))
+                np.add.at(A.chosen, sel[pos], 1)
         pool = np.array(A.state[sel], copy=True)
         pool["tick"] = 0
         pool["stuck_ticks"] = 0
@@ -670,6 +680,17 @@ class Explorer:
         self.steps += 1
         return n_new, n_fin
 
+    def chain_roots(self, secs: float) -> np.ndarray:
+        """Nodes on the chain of the deepest viable cell whose depth is within ``secs`` seconds
+        of its end (the exact states the best line passed through just before it stopped)."""
+        b = self.best_viable()
+        if b < 0:
+            return np.zeros(0, np.int64)
+        ch = np.asarray(self.A.chain(b), np.int64)
+        t_end = int(self.A.depth[b])
+        lo = t_end - int(round(float(secs) * 1000.0 / self.C.tick.ms))
+        return ch[self.A.depth[ch] >= lo]
+
     # -- lines --------------------------------------------------------------------------------
     def best_viable(self):
         """The deepest cell a run from which lived >= --viable-secs (or a finish) -> node or -1."""
@@ -818,6 +839,11 @@ def parse(argv=None):
     ap.add_argument("--front-skip-doomed", action="store_true",
                     help="the frontier share skips cells restored >= 2 times from which no run "
                          "lived --viable-secs (a fatal flight's cells)")
+    ap.add_argument("--chain-frac", type=float, default=0.0,
+                    help="share of the selected cells drawn from the CHAIN of the deepest viable "
+                         "cell within its last --chain-secs (branch where the best line "
+                         "committed); 0 = off")
+    ap.add_argument("--chain-secs", type=float, default=5.0)
     ap.add_argument("--front-band", type=float, default=0.0,
                     help="> 0: the frontier share is drawn by W from the deepest FRACTION of the "
                          "cells (at least --front-k) instead of uniformly from the --front-k "
