@@ -276,3 +276,28 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   over the four searches: where the policy flies (search 3) the chain is all policy; at a wall
   that wants a detour (the start platform, the window) the chain is a mix weighted to random
   links - and the yield rule never had to be told which case it was in.
+* **07:31 UTC - v1 STOPPED at 1,473M; v2 launched.** v1's evals 1,133-1,435M all read 20.6-20.7%
+  (best **20.692 at 1,284M**; pulled: ckpt_latest, ckpt_1000341504, ckpt_1250426880 - the hand-on
+  for 20.692 is ckpt_1250426880). **Why it stalled - a recipe bug, not the explorer:** spine 3
+  passes the window curtain sgcp_1 (rows 1,995-2,001; the greedy stalls ~row 1,900), then wanders
+  slowly in a low-energy pocket and STANDS STILL on the ground at rows 2,815-2,835 (|v| = 0, one
+  origin). DemoCurriculum matches a spawn to its spine row by origin and keeps the LAST row of a
+  repeated origin, so every spawn on the band [2,820, 2,824] was credited to row 2,835: the band
+  showed "0 eps" for 100+ iterations and tau froze at 2,820 - the curriculum never spawned the
+  stretch between the greedy's stall and the window. The fix exists (`--demo-match-band`,
+  pbr6b4); random explore links stop the player more often than a beam does, so a knob spine
+  needs it more. v1's next search could not come before ~1.59B (patience), the window deadline
+  is 2.07B, and the same defect would recur at every slow stretch (the cavity), so the run that
+  round 2 may continue should carry the fix.
+* **v2 = `unr1b4_knob2`, launched 07:29:48 UTC from step 0, commit 9c8be647** - v1's flags plus
+  four generic fixes, nothing tuned on the map: `--demo-match-band` (the standstill bug);
+  `--auto-spine-knob-evalroots` (NEW: the search roots on the exact states of the eval's median
+  episode as the greedy-line pool captured them, instead of a 1-env re-rollout whose GPU numerics
+  differ from the eval's batch: v1's search 3 re-rolled a line that died at 2.0% while the eval
+  flew 15.8-18.6%); `--auto-spine-knob-archive` (NEW: ONE archive for the whole run - cells,
+  their root lines, the runs that reached them - so a hard wall gets the sum of several searches,
+  as Go-Explore intends); `--auto-spine-deeper` (NEW: a spine still being taught is replaced only
+  by a deeper one, or a persistent archive handing back its same best line would restart the
+  walk-back). The v2 explorer paths were smoked on the box from a separate worktree beside v1
+  (an eval-style line as roots; a second search loaded the first's archive: 2,290 cells, 1 line,
+  1,119 runs -> saved 2,339 cells, 2 lines). Record gate passed.
