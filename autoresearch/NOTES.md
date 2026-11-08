@@ -226,3 +226,17 @@ harvest of this box would fail the same way: pull before every deadline.
   success line). Search 6 runs from the 755.5M eval.
 * Training: unstuck temperature at its 0.2 cap ("T 0.20", stuck 405M), novel ceiling 27.6%,
   fps 173.6k.
+
+### 2026-11-08 06:40 UTC - v2 flags for the next run (commit 0ac44ba3; unr1b1_gel keeps 2450a18a)
+
+* `--ge-line-retire`: once the MEDIAN greedy episode crosses the adopted line's success line,
+  the line's pool share goes back to the recipe's own rows until the next line is adopted.
+* `--ge-line-match-band`: the line curriculum credits a repeated-origin spawn to its copy in
+  the frontier band (the `--demo-match-band` rule).
+* The trainer deletes a finished search's exact-chain archive (0.3-1.3 GB each; ~70 searches
+  in 12 h would fill a 60 GB box disk). For the running 2450a18a run I delete them by hand:
+  `find runs/unr1b1_gel/gel -name archive.npz -mmin +15 -delete` (the trainer never reads them).
+* Tests: v2 config dump + refusals pass; flag off still bit-identical to the base trainer
+  (re-run on 0ac44ba3: 1 passed).
+* Searches 5 and 6 both ended at d 72,198 (27.57%, a fall into the pit) and were refused by
+  the current-line rule (195 u past line 4's end, 200 u asked).
