@@ -621,3 +621,11 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   6.7-31.3% over ~500 episodes, the junction with the policy's own line at row ~3,020). Search 7
   (6,977M) found a line to d 67,302, kept out by the 200 u gain rule (the spine being taught ends at
   67,501).
+* **19:46 UTC - v3 FLIES SEARCH 6's LINE: 32.268 at 7,354M, 32.427 at 7,430M (median 32.3%, 7/9
+  past 31.6%)** - ~0.8B steps after the spine (6,630M), the curriculum walked back from row 3,038 to
+  ~1,320 by 7.4B. Hand-on unr1b4_knob3d/ckpt_7259815936.pt pulled. The 7,430M episodes reach their
+  best d (67,353-67,469) at x -690..-800, z 10,220-10,290, falling at vz ~-1,000+, then land
+  ~3-8 s later on a lower floor at z ~9,715 (y +-300, d ~67,950 - behind their best) and end
+  `fail` there: past the dive, the next wall is getting out of that lower level. Search 8
+  (7,430M) roots on the new line. The post-CP2 block needs > 33% (d < 66,782), due 13.93B (~03:35
+  UTC); October stalled here at 32.3-32.5% and cleared it at 6.97B.
