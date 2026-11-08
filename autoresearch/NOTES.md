@@ -489,3 +489,10 @@ extended to 2026-11-09 08:53 UTC.
   (the ladder's notes), geb6 had the final recipe from step 0.
 * The test that would settle it: the incumbent recipe + `--unstuck-max 2`, no explorer, from
   scratch.
+
+### 21:52 UTC: geb6 still on the 81-82% plateau at 6.66B (best 82.47 at 6,417.8M, +0.02)
+
+Evals 5.74-6.64B: best-of-9 80.8-82.5% except three dips (56.0% 5.81B, 57.1% 6.12B, 49.9% 6.19B);
+medians are erratic (10.6% at 6.42B, 17.4% at 6.49B): the greedy loses its early crossings in
+some episodes while the deep ones still reach 82%. Training crash share 39% (34% at 5.66B), int
+5.8/ep, ent 0.015. Explorer 31.48%. ON TIME (CP6 deadline 28.5B); keeps training.
