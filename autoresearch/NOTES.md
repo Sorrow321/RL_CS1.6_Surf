@@ -364,3 +364,25 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   deg, --mcts-energy 1). Its first iterations reproduce run 1's numbers EXACTLY (step 1.57M: kl
   0.0081, ev -0.099, best 1,164 u): the trainer is deterministic here, so until run 4 adopts a
   spine it should track run 1 - a controlled pair for what adoption does.
+
+### 10:25 UTC: RUN 4 - the MCTS -> curriculum loop clears the first ramp 2.4x sooner (controlled pair)
+* **Run 4 cleared the first ramp at 0.378B (14.9% best / 10.9% median), ON TIME; 18.3% at 0.454B.**
+  Run 1 needed 0.906B; the control never (1.7% at 1.06B).
+* The pair: runs 1 and 4 share the seed, the box and the trainer, which is deterministic here -
+  their 0.5M evals are identical (1.166) and both sit at 1.7% through 0.15B. **Their search 1 found
+  the SAME line** (end d 97,913 in run 1, 97,921 in run 4; 1.76% banked, 12 s): run 1 compared it
+  with the eval's RAW frontier (97,964: the fatal dive) and discarded it as stale; run 4 compared it
+  with the BANKED frontier (99,207) and adopted it at 106M. From there:
+  | step | run 1 | run 4 | run 4's loop |
+  |---|---|---|---|
+  | 0.106B | - | - | search 1 adopted: 1.76% banked (12.1 s, 645 cells) |
+  | 0.227B | 1.6% | **4.5%** | (9/9 past spine 1's line) |
+  | 0.335B | - | - | search 2 adopted: 5.86% banked (7.76 s, 6,334 cells) |
+  | 0.378B | 1.7% | **14.9%** | first ramp cleared |
+  | 0.454B | 1.6% | **18.3%** | |
+  | 0.486B | - | - | search 3 adopted: 15.13% banked (13.86 s, 27,814 cells) |
+  (Run 4 also differs in the MCTS defaults - energy, random children, novelty 3, flight roots - and
+  has no success bonus; but search 1, the adoption that split the pair, found the same point in
+  both runs, so the split is the adoption rule.) One seed; the effect is 2.4x on a wall whose
+  from-scratch spread is 0.18-1.51B, so it is suggestive, not proof - but the pair is controlled
+  up to the first adoption, which the October noise floor is not.
