@@ -7526,6 +7526,51 @@ def main() -> None:
                     help="--auto-finish: no search before this many steps after the launch")
     ap.add_argument("--auto-finish-timeout", type=float, default=3000.0,
                     help="--auto-finish: wall-clock cap (s) of one search")
+    ap.add_argument("--ge-beam", action="store_true",
+                    help="(unr1b2) Go-Explore beside the training whose explore step is a "
+                         "POLICY-GUIDED BEAM (tools/ge_beam.py): an archive of exact states "
+                         "(64 u x energy x heading cells, W = 1/sqrt(1 + runs that touched it)), "
+                         "copies of THIS run's newest weights (synced to <run>/ge/policy.pt every "
+                         "--ge-beam-sync s) restored at the selected cells, every new cell any copy "
+                         "reaches archived; the deepest viable cell's line, once it beats the "
+                         "latest greedy eval's best episode by --ge-beam-gain u, becomes a backward "
+                         "curriculum (the --finish-line machinery) on --ge-beam-frac of every "
+                         "training spawn pool; success = the episode's paid ratchet record "
+                         "reaches the line's end d + --ge-beam-margin, or a finish. A deeper line "
+                         "replaces it once the greedy crosses it, the curriculum reached the "
+                         "line's start, or --ge-beam-patience steps passed. Single map, one GPU. "
+                         "Off = none (byte-identical); config only when on; never restored")
+    ap.add_argument("--ge-beam-random", type=float, default=0.0,
+                    help="--ge-beam: THE KNOB - the share of explore runs that are Nature bursts "
+                         "(uniform keys, uniform view offset from the velocity, 95%% repeat) "
+                         "instead of policy samples (0 = the pure policy beam)")
+    ap.add_argument("--ge-beam-envs", type=int, default=512,
+                    help="--ge-beam: the explorer's population")
+    ap.add_argument("--ge-beam-cells", type=int, default=64,
+                    help="--ge-beam: cells restored per explore step")
+    ap.add_argument("--ge-beam-decisions", type=int, default=150,
+                    help="--ge-beam: decisions per explore step (a run lasts until it dies or "
+                         "the step ends)")
+    ap.add_argument("--ge-beam-keys-temp", type=float, default=1.5,
+                    help="--ge-beam: policy runs draw the key heads at logits / T")
+    ap.add_argument("--ge-beam-duty", type=float, default=1.0,
+                    help="--ge-beam: share of wall time the explorer runs (it sleeps the rest)")
+    ap.add_argument("--ge-beam-threads", type=int, default=4,
+                    help="--ge-beam: the explorer's OMP / torch CPU threads")
+    ap.add_argument("--ge-beam-sync", type=float, default=120.0,
+                    help="--ge-beam: seconds between weight syncs to the explorer")
+    ap.add_argument("--ge-beam-frac", type=float, default=0.2,
+                    help="--ge-beam: the share of every training spawn pool the line's "
+                         "curriculum replaces, in (0, 1)")
+    ap.add_argument("--ge-beam-gain", type=float, default=300.0,
+                    help="--ge-beam: u a line's end must beat the greedy's best episode (and a "
+                         "replacement the current line's end) by")
+    ap.add_argument("--ge-beam-margin", type=float, default=200.0,
+                    help="--ge-beam: a line episode succeeds when its record d <= the line's "
+                         "end d + this")
+    ap.add_argument("--ge-beam-patience", type=float, default=3e8,
+                    help="--ge-beam: steps after which a deeper line replaces the current one "
+                         "even if the greedy has not crossed it")
     ap.add_argument("--finish-line-pace", type=float, nargs=2, default=None,
                     metavar=("FRAC", "SECS"),
                     help="--finish-line / --auto-finish: a finish from a finish-line spawn row "
@@ -12352,6 +12397,56 @@ def main() -> None:
         FINL = _make_finl(np.load(args.finish_line, allow_pickle=False), args.finish_line,
                           args.finish_line_tau0)
 
+    # ---- --ge-beam (unr1b2): Go-Explore beside the training, its explore step a policy beam ---
+    # tools/ge_beam.py runs on this run's own weights and writes lines (STATE_DTYPE per tick)
+    # from the true start to its deepest viable cell; a line that beats the greedy becomes a
+    # backward curriculum on its own share of the pool (the --finish-line machinery, success =
+    # the paid record reaching the line's end). GEB is None flag-off: nothing below runs.
+    GEB = None
+    if args.ge_beam:
+        if args.maps or D.enabled:
+            raise SystemExit("--ge-beam is single-map, single-GPU")
+        if not args.race_ratchet:
+            raise SystemExit("--ge-beam's success line reads the ratchet record: needs "
+                             "--race-ratchet")
+        if not 0.0 < float(args.ge_beam_frac) < 1.0:
+            raise SystemExit("--ge-beam-frac must be in (0, 1)")
+        if not 0.0 <= float(args.ge_beam_random) <= 1.0:
+            raise SystemExit("--ge-beam-random must be in [0, 1]")
+        if FINL is not None or args.auto_finish or demo is not None:
+            raise SystemExit("--ge-beam owns the line curriculum: not with --finish-line / "
+                             "--auto-finish / --demo-file")
+        if SPAWN_STATES is not None and float(args.ge_beam_frac) + float(SS_FRAC) >= 1.0:
+            raise SystemExit("--ge-beam-frac + --spawn-states-frac must stay below 1")
+        GEB = {"c": None, "proc": None, "fh": None, "dir": out / "ge", "sync_t": -1e9,
+               "line_mt": None, "line_k": 0, "end_d": None, "src": None, "adopt_step": 0,
+               "greedy_d": float("inf"), "eval": None, "starts": 0, "n_adopt": 0}
+        print(f"--ge-beam: Go-Explore beside the training (tools/ge_beam.py, "
+              f"{int(args.ge_beam_envs)} envs, {int(args.ge_beam_cells)} cells x "
+              f"{int(args.ge_beam_decisions)} decisions per step, knob random-frac "
+              f"{float(args.ge_beam_random):g}, keys T {float(args.ge_beam_keys_temp):g}, duty "
+              f"{float(args.ge_beam_duty):g}); its lines become a backward curriculum on "
+              f"{float(args.ge_beam_frac):.0%} of every spawn pool once one beats the greedy by "
+              f"{float(args.ge_beam_gain):g} u (success: record <= end d + "
+              f"{float(args.ge_beam_margin):g}); a deeper one replaces it when the greedy "
+              f"crosses it, its curriculum reaches the line start, or after "
+              f"{float(args.ge_beam_patience):,.0f} steps", flush=True)
+
+    def _make_gel(_gl, _src):
+        """--ge-beam: the backward curriculum on an explorer line (the --finish-line constants
+        as defaults: 0.5 s band, 0.25 s steps doubling to 4 s, rho 0.2, cooldown 5)."""
+        _gl = np.asarray(_gl)
+        if _gl.dtype != STATE_DTYPE or _gl.ndim != 1 or len(_gl) < 2:
+            raise ValueError(f"{_src}: a 1-D STATE_DTYPE array of >= 2 rows is needed")
+        _gl = _gl.copy()
+        _gl["tick"] = 0
+        _gl["stuck_ticks"] = 0
+        return DemoCurriculum(_gl, window=max(1, TICK.secs_to_ticks(0.5)), rate=0.2,
+                              min_ep=50.0, seed=37, grow=max(1, TICK.secs_to_ticks(0.25)),
+                              front_frac=0.5, cooldown=5,
+                              grow_max=max(1, TICK.secs_to_ticks(4.0)),
+                              name="ge-beam curriculum")
+
     # ---- --respawn-frontier: the forward potential curriculum -----------
     # Built AFTER the reservoir, because it needs it: the reservoir supplies
     # the spawn SPEED distribution and keeps reporting min-depth, which is
@@ -15522,6 +15617,17 @@ def main() -> None:
     if args.auto_finish:
         meta["config"]["auto_finish"] = 1
         meta["config"]["finish_line_frac"] = float(args.finish_line_frac)
+    # --ge-beam (unr1b2): written ONLY when on (a record of the run; never restored)
+    if args.ge_beam:
+        meta["config"].update(
+            ge_beam=1, ge_beam_random=float(args.ge_beam_random),
+            ge_beam_envs=int(args.ge_beam_envs), ge_beam_cells=int(args.ge_beam_cells),
+            ge_beam_decisions=int(args.ge_beam_decisions),
+            ge_beam_keys_temp=float(args.ge_beam_keys_temp),
+            ge_beam_duty=float(args.ge_beam_duty), ge_beam_threads=int(args.ge_beam_threads),
+            ge_beam_sync=float(args.ge_beam_sync), ge_beam_frac=float(args.ge_beam_frac),
+            ge_beam_gain=float(args.ge_beam_gain), ge_beam_margin=float(args.ge_beam_margin),
+            ge_beam_patience=float(args.ge_beam_patience))
     # --finish-line: written ONLY when on (a record of the run; never restored)
     if args.finish_line:
         meta["config"]["finish_line"] = str(args.finish_line)
@@ -16361,6 +16467,7 @@ def main() -> None:
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
     fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
+    gel_idx = np.full(N, -1, np.int64)    # --ge-beam line index of each env's start
     fin_paced = np.zeros(N, bool)         # --finish-line-pace: this tick's paced finishes
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
     if demo is not None and args.demo_success_d is not None:
@@ -16801,6 +16908,134 @@ def main() -> None:
     if args.auto_finish:
         import atexit
         atexit.register(_auto_finish_kill)
+
+    # --ge-beam (unr1b2): the explorer process, its weights, and the line adoption rule
+    def _ge_field():
+        return slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+
+    def _ge_sync():
+        GEB["dir"].mkdir(parents=True, exist_ok=True)
+        _tmp = GEB["dir"] / "policy.pt.tmp"
+        torch.save({"policy": policy.state_dict(), "config": meta["config"],
+                    "global_step": int(global_step)}, _tmp)
+        os.replace(_tmp, GEB["dir"] / "policy.pt")
+        GEB["sync_t"] = time.time()
+
+    def _ge_start():
+        import subprocess as _sp
+        _gd = GEB["dir"]
+        cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
+                                         / "ge_beam.py"),
+               "--ckpt", str(_gd / "policy.pt"), "--map", str(slots[0].core.bsp_path),
+               "--out", str(_gd), "--serve", "--resume",
+               "--envs", str(int(args.ge_beam_envs)), "--cells", str(int(args.ge_beam_cells)),
+               "--decisions", str(int(args.ge_beam_decisions)),
+               "--random-frac", f"{float(args.ge_beam_random):g}",
+               "--keys-temp", f"{float(args.ge_beam_keys_temp):g}",
+               "--duty", f"{float(args.ge_beam_duty):g}",
+               "--threads", str(int(args.ge_beam_threads)), "--seed", str(int(GEB["starts"]))]
+        _env = dict(os.environ, OMP_NUM_THREADS=str(int(args.ge_beam_threads)))
+        try:
+            fh = open(_gd / f"ge_beam_{GEB['starts']}.log", "w", encoding="utf-8",
+                      errors="replace")
+            GEB["proc"] = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT, env=_env)
+            GEB["fh"] = fh
+            print(f"[{global_step:>13,d}] ge-beam: explorer started (pid {GEB['proc'].pid}, "
+                  f"log {fh.name}): " + " ".join(cmd), flush=True)
+        except OSError as ex:
+            print(f"!! ge-beam: explorer did not start: {ex}", flush=True)
+        GEB["starts"] += 1
+
+    def _ge_adopt(info, line, end_d, why):
+        GEB["c"] = _make_gel(line, info["line"])
+        GEB["end_d"] = float(end_d)
+        GEB["src"] = info
+        GEB["line_k"] = int(info["k"])
+        GEB["adopt_step"] = int(global_step)
+        GEB["n_adopt"] += 1
+        gel_idx[:] = -1
+        _cur = {"step": int(global_step), "adopted": GEB["n_adopt"], "why": why,
+                "end_d": float(end_d), "greedy_d": GEB["greedy_d"], **info}
+        (GEB["dir"] / "current.json").write_text(json.dumps(_cur, indent=1), encoding="utf-8")
+        print(f"[{global_step:>13,d}] ge-beam: line {info['k']} ADOPTED ({why}): "
+              f"{GEB['c'].n:,} states ({GEB['c'].n * TICK.ms / 1000.0:.1f} s, "
+              f"{info.get('links')} links), end d {end_d:,.0f} "
+              f"({info.get('end_progress')}%), greedy best d {GEB['greedy_d']:,.0f}; the "
+              f"curriculum starts at its end; {float(args.ge_beam_frac):.0%} of the pool",
+              flush=True)
+
+    def _ge_tick():
+        """--ge-beam, once an iteration: sync the weights, keep the explorer alive, read the
+        greedy frontier and the newest line, adopt it by the rule (--ge-beam help)."""
+        if time.time() - GEB["sync_t"] >= float(args.ge_beam_sync):
+            _ge_sync()
+        _pr = GEB["proc"]
+        if _pr is not None and _pr.poll() is not None:
+            GEB["fh"].close()
+            print(f"!! ge-beam: the explorer exited (code {_pr.returncode}); "
+                  + ("restarting it" if GEB["starts"] < 4 else "not restarted (4 starts)"),
+                  flush=True)
+            GEB["proc"] = _pr = None
+        if _pr is None and GEB["starts"] < 4:
+            _ge_start()
+        _f = _ge_field()
+        if GEB["eval"] is not None:
+            from surfgym.route import episodes_from_traj
+            _ep, GEB["eval"] = GEB["eval"], None
+            _eps = [e for e in episodes_from_traj(_ep) if len(e)][:max(1, int(args.eval_eps
+                                                                               or 9))]
+            if _eps:
+                _bd = []
+                for e in _eps:
+                    _d = np.asarray(_f.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
+                    _d = np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
+                    _bd.append(float(_d.min()))
+                GEB["greedy_d"] = float(np.min(_bd))
+        _lj = GEB["dir"] / "line.json"
+        try:
+            _mt = os.path.getmtime(_lj)
+        except OSError:
+            _mt = None
+        if _mt is not None and _mt != GEB["line_mt"]:
+            GEB["line_mt"] = _mt
+            try:
+                _info = json.loads(_lj.read_text(encoding="utf-8"))
+                _line = np.load(_info["line"], allow_pickle=False)
+                _ed = float(_f.sample(np.asarray(_line[-1]["origin"], np.float64)[None])[0])
+                GEB["latest"] = (_info, _line, _ed)
+            except (OSError, ValueError, KeyError) as ex:
+                print(f"!! ge-beam: line.json unreadable ({ex})", flush=True)
+        if GEB.get("latest") is None:
+            return
+        _info, _line, _ed = GEB["latest"]
+        if GEB["src"] is not None and int(_info["k"]) == int(GEB["src"]["k"]):
+            return
+        _gain = float(args.ge_beam_gain)
+        _ref = GEB["greedy_d"] if np.isfinite(GEB["greedy_d"]) else GEB.setdefault(
+            "start_d", float(np.mean(_f.sample(np.asarray(slots[0].pool["origin"],
+                                                          np.float64)))))
+        if not _ed < _ref - _gain:
+            return
+        if GEB["c"] is None:
+            _ge_adopt(_info, _line, _ed, "first line past the greedy")
+            return
+        if not _ed < GEB["end_d"] - _gain:
+            return
+        if GEB["greedy_d"] <= GEB["end_d"] + float(args.ge_beam_margin):
+            _ge_adopt(_info, _line, _ed, "the greedy crossed the current line")
+        elif GEB["c"].tau == 0:
+            _ge_adopt(_info, _line, _ed, "the curriculum reached the line's start")
+        elif global_step - GEB["adopt_step"] >= float(args.ge_beam_patience):
+            _ge_adopt(_info, _line, _ed, "patience")
+
+    def _ge_kill():
+        _pr = GEB.get("proc") if GEB is not None else None
+        if _pr is not None and _pr.poll() is None:
+            _pr.kill()
+
+    if GEB is not None:
+        import atexit
+        atexit.register(_ge_kill)
 
     def _auto_spine_finish(res, dt, med):
         """A search's result: no spine -> retry later; a spine -> it replaces the curriculum's."""
@@ -19369,6 +19604,18 @@ def main() -> None:
                 _fpos = FINL.rng.choice(np.flatnonzero(_free), _fm, replace=False)
                 _pool = _pool.copy()
                 _pool[_fpos] = FINL.draw(_fm)
+            if GEB is not None and GEB["c"] is not None:
+                # --ge-beam: the explorer line's share of the pool (positions the --spawn-states
+                # rows did not take), from the curriculum's admitted range
+                if len(_pool) < 4096:
+                    _pool = np.resize(_pool, 4096)
+                _free = np.ones(len(_pool), bool)
+                if SPAWN_STATES is not None:
+                    _free[_pos] = False
+                _gm = min(int(round(len(_pool) * float(args.ge_beam_frac))), int(_free.sum()))
+                _gpos = GEB["c"].rng.choice(np.flatnonzero(_free), _gm, replace=False)
+                _pool = _pool.copy()
+                _pool[_gpos] = GEB["c"].draw(_gm)
             _slot.core.set_spawn_pool(_pool)
         if STALL_CUT and demo is not None:
             # --demo-stall-cut: before this iteration's draws (a cut spine is drawn at once)
@@ -19556,6 +19803,13 @@ def main() -> None:
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
                   + (f"  |  spine-line bonuses {DEMO_BONUS_N[0]:,}" if DEMO_BONUS else ""))
             print(f"  {demo.region_report()}")
+        if GEB is not None and GEB["c"] is not None and it_no % 20 == 1 and GEB["c"].last_info:
+            # --ge-beam: the explorer line curriculum's band, range and success rate
+            _glo = GEB["c"]._draw()[0]
+            print(f"  ge-beam line {GEB['line_k']}: {GEB['c'].last_info}  |  starts from "
+                  f"{(GEB['c'].n - 1 - _glo) * TICK.ms / 1000.0:.2f} s before the line's end "
+                  f"(of {GEB['c'].n * TICK.ms / 1000.0:.1f} s)  |  tracked eps "
+                  f"{GEB['c'].ep.sum():,.0f}  successes {GEB['c'].win.sum():,.1f}", flush=True)
         if FINL is not None and it_no % 20 == 1 and FINL.last_info:
             # --finish-line: its band, range and finish rate (the line's own coordinates)
             _flo = FINL._draw()[0]
@@ -20339,6 +20593,22 @@ def main() -> None:
                         if _fkn.any():
                             FINL.note_outcomes(fin_idx[_fei][_fkn], _fgoal[_fkn])
                         fin_idx[_fei] = FINL.match(sv_view[_fei]["origin"])
+                    if GEB is not None and GEB["c"] is not None and ended.any():
+                        # --ge-beam: the ended episodes that started on the explorer line and
+                        # whether their paid record reached the line's end (or they finished),
+                        # then the fresh spawns' line index
+                        _gei = np.flatnonzero(ended)
+                        _ggoal = fleet.goal_hits().astype(bool)[_gei]
+                        _grb = (slots[0].reward_fn.paid_record(boot=True)
+                                if hasattr(slots[0].reward_fn, "paid_record")
+                                else getattr(slots[0].reward_fn, "_rec_boot", None))
+                        if _grb is not None:
+                            _ggoal = _ggoal | (np.asarray(_grb)[_gei]
+                                               <= GEB["end_d"] + float(args.ge_beam_margin))
+                        _gkn = gel_idx[_gei] >= 0
+                        if _gkn.any():
+                            GEB["c"].note_outcomes(gel_idx[_gei][_gkn], _ggoal[_gkn])
+                        gel_idx[_gei] = GEB["c"].match(sv_view[_gei]["origin"])
                     if respawn is None and goalsys is not None and ended.any():
                         # --goal-planner ramps without the reservoir: the ended envs respawned
                         # at the map start; their windows are drawn all the same
@@ -21901,6 +22171,8 @@ def main() -> None:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
                 if args.auto_finish and _i == 0 and not _s.heldout:
                     AFIN["eval"] = path     # --auto-finish: read after the eval block
+                if GEB is not None and _i == 0 and not _s.heldout:
+                    GEB["eval"] = path      # --ge-beam: the greedy frontier, read after the block
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0
@@ -22170,6 +22442,23 @@ def main() -> None:
                 AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
                 print(f"!! auto-spine: {type(_ex).__name__}: {_ex}; next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
+        if GEB is not None:
+            try:
+                _ge_tick()
+            except Exception as _ex:         # the explorer never ends the run
+                print(f"!! ge-beam: {type(_ex).__name__}: {_ex}", flush=True)
+            if it_no % 20 == 1:
+                try:
+                    _gs = json.loads((GEB["dir"] / "status.json").read_text(encoding="utf-8"))
+                    print(f"  ge-beam explorer: step {_gs.get('step')}  cells "
+                          f"{_gs.get('cells'):,}  deepest {_gs.get('deepest_progress')}%  viable "
+                          f"{_gs.get('viable_progress')}% (mode {_gs.get('viable_mode')})  new "
+                          f"cells policy/random {_gs.get('new_policy'):,}/"
+                          f"{_gs.get('new_random'):,}  lines {_gs.get('exported_k')}  |  "
+                          f"curriculum line {GEB['line_k'] or '-'}, greedy best d "
+                          f"{GEB['greedy_d']:,.0f}", flush=True)
+                except (OSError, ValueError, TypeError):
+                    pass
         if args.auto_finish and AFIN.get("proc") is not None:
             try:
                 _auto_finish_poll()

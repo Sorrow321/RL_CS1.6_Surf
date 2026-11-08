@@ -105,6 +105,12 @@ TRAIN_ONLY = frozenset({
     "finish_line_grow_max", "finish_line_rate",
     # --auto-finish: the trainer's own search for a finishing line (a training spawn curriculum)
     "auto_finish", "finish_line_pace", "finish_line_pace_bonus",
+    # --ge-beam (unr1b2): the trainer's own Go-Explore (policy-beam explore step) beside the
+    # training and the backward curriculum on its lines - a share of the TRAINING spawn pool; a
+    # recording spawns at the map start like the trainer's eval
+    "ge_beam", "ge_beam_random", "ge_beam_envs", "ge_beam_cells", "ge_beam_decisions",
+    "ge_beam_keys_temp", "ge_beam_duty", "ge_beam_threads", "ge_beam_sync", "ge_beam_frac",
+    "ge_beam_gain", "ge_beam_margin", "ge_beam_patience",
     # --yaw-entropy: the yaw head's share of the TRAINING entropy bonus; a recording runs no update
     "yaw_entropy",
     # --demo-success-d: the TRAINING backward curriculum's success rule; a recording spawns at the start
