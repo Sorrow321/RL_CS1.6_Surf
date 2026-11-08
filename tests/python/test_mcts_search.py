@@ -179,3 +179,31 @@ def test_banked_min_d_ignores_a_fatal_dive():
     assert banked_min_d(d, vz2, -8.0, 1.0, 4000.0) == 400.0   # the clamp tick itself is contact
     # no contact at all: nothing banked beyond the first row
     assert banked_min_d(d[:3], np.array([0.0, -8.0, -16.0]), -8.0, 1.0, 4000.0) == 1000.0
+
+
+def test_auto_spine_passes_the_mcts_knob_to_beam_tas(tmp_path, monkeypatch):
+    import types
+    import auto_spine
+    seen = {}
+
+    def fake_run(cmd, log, timeout):
+        seen["cmd"] = [str(c) for c in cmd]
+        return 0
+    monkeypatch.setattr(auto_spine, "run", fake_run)
+    a = types.SimpleNamespace(ckpt="c.pt", map="m.bsp", envs=64, greedy_envs=4, beam_ticks=100,
+                              seed=1, timeout=10, explorer="mcts", mcts_minutes=2.0,
+                              mcts_extra="--mcts-random-frac 1.0 --mcts-perturb-frac 0")
+    auto_spine.beam(a, tmp_path)
+    c = seen["cmd"]
+    assert "--mcts" in c and c[c.index("--mcts-minutes") + 1] == "2"
+    assert c[c.index("--mcts-random-frac") + 1] == "1.0"
+    assert c[c.index("--mcts-perturb-frac") + 1] == "0"
+    a.mcts_extra = "--envs 9"
+    try:
+        auto_spine.beam(a, tmp_path)
+        raise AssertionError("a non --mcts-* flag must be refused")
+    except SystemExit:
+        pass
+    a.mcts_extra = ""
+    auto_spine.beam(a, tmp_path)
+    assert "--mcts-random-frac" not in seen["cmd"]

@@ -139,7 +139,7 @@ TRAIN_ONLY = frozenset({
     # TRAINING curriculum's first spine and its search; --demo-share: that curriculum's share
     # of the TRAINING spawn pool. A recording spawns at the map start like the trainer's eval
     "auto_spine_scratch", "auto_spine_explorer", "auto_spine_mcts_minutes", "demo_share",
-    "auto_spine_banked",
+    "auto_spine_banked", "auto_spine_mcts_args",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore

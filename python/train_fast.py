@@ -5233,6 +5233,11 @@ def main() -> None:
                          "count) - the measure an --auto-spine-explorer mcts line ends at, so a "
                          "search line is compared like with like. Off = the raw deepest d, "
                          "byte-identical; config only when on")
+    ap.add_argument("--auto-spine-mcts-args", default=None,
+                    help="--auto-spine-explorer mcts: extra beam_tas --mcts-* flags for the search "
+                         "as ONE string (e.g. '--mcts-random-frac 1.0 --mcts-perturb-frac 0': the "
+                         "knob is part of the run's flag set, not of a code default). Absent = "
+                         "beam_tas's defaults, byte-identical; config only when set")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
     ap.add_argument("--auto-spine-async", action="store_true",
@@ -12320,6 +12325,9 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_recheck and not args.auto_spine:
         raise SystemExit("--auto-spine-recheck needs --auto-spine")
+    if args.auto_spine_mcts_args and args.auto_spine_explorer != "mcts":
+        raise SystemExit("--auto-spine-mcts-args passes flags to the MCTS explorer: give "
+                         "--auto-spine-explorer mcts")
     if args.auto_spine_banked and not args.auto_spine:
         raise SystemExit("--auto-spine-banked reads --auto-spine's greedy frontier: give it")
     if args.auto_spine_energy is not None and not args.auto_spine:
@@ -15483,6 +15491,8 @@ def main() -> None:
         if args.auto_spine_explorer != "beam":
             meta["config"]["auto_spine_explorer"] = str(args.auto_spine_explorer)
             meta["config"]["auto_spine_mcts_minutes"] = float(args.auto_spine_mcts_minutes)
+        if args.auto_spine_mcts_args:
+            meta["config"]["auto_spine_mcts_args"] = str(args.auto_spine_mcts_args)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16718,6 +16728,8 @@ def main() -> None:
             # --auto-spine-explorer mcts: the search is beam_tas --mcts (no branched beams)
             cmd += ["--explorer", "mcts",
                     "--mcts-minutes", f"{float(args.auto_spine_mcts_minutes):g}"]
+            if args.auto_spine_mcts_args:
+                cmd += ["--mcts-extra", str(args.auto_spine_mcts_args)]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and
