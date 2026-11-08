@@ -219,3 +219,21 @@ non-doomed cells, count-weighted; the explorer runs half the time).
 over duty 0.3). The same lead-and-follow: lines adopted at 1.3/1.7/2.8/3.2/3.5/4.9/6.0/11.7%
 (12M..369M), greedy 1.7 -> 2.7 -> 4.3 -> 10.7 -> 15.7% (76M..378M), no 225M-step stall at 1.7%
 this time. Control unop_ctl: still no first ramp at 1.36B.
+
+**geb2 at 851M (07:27 UTC)**: window CP1 at 529M (ON TIME), best 26.914 (680M); at the CP2 wall
+again from 604M. Explorer: deepest 27.24%, deepest viable 26.42% (geb: 25.92% - the doomed-cell
+skip moved the viable frontier ~500 u deeper), 272k cells, 40 lines; no line adopted since 369M
+(none beats the greedy). The curriculum's line-26 success fell 96% -> 60% while 4-5 of 9 greedy
+episodes now stop at 15.8% (the policy changed its line there).
+
+**The CP2 wall's anatomy (measurement only, CLAUDE.md 0b)**: the greedy dies inside a
+trigger_teleport (-> sidstart) box x 2,592..6,240, y +-1,152, z 10,752..11,332; another one sits
+above, x 2,528..3,680, z 11,552..11,972 - the way on is the ~220 u gap between them (and thin
+"no_jump" teleports at z 11,392 near y +-900). The explorer HAS 1,379 cells in that gap
+(x 2,400..3,800, z 11,332..11,552), every one falling at vz ~ -950..-980 u/s, none viable (no
+run from them lived 1 s): all are mid-dive into the lower box. Nothing arrives level or rising.
+So the wall is not a missing cell but a missing APPROACH: the line must enter the gap with ~zero
+vertical speed, which the policy's dive never produces and a 0.4 s burst at 2,000 u/s does not
+fix. A generic explore step that could: branching much earlier on the chain (seconds before the
+dive, where the height/speed is still adjustable), more coherent (held) perturbation there, or
+a cell key that separates level from falling (vz bins) so a level arrival counts as new.
