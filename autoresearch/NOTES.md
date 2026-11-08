@@ -401,7 +401,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   roots -> 245 root cells, vs 95 in a 4 s window): 35,471 cells (search 5: 26,232), knob
   0.63-0.72, the deepest contact cell d 73,917 (25.8%), never past the line. A wider root window
   alone does not crack this wall in 10 min; not adopted for anything.
-* **11:41 UTC - two more explorer-only probes at the CP2 pit (search 5's checkpoint and line, 10 min
+* **11:40 UTC - two more explorer-only probes at the CP2 pit (search 5's checkpoint and line, 10 min
   each): both NULL.** Runs of 300 decisions (12 s): 24,396 cells, deepest contact d 73,903; cells
   of 128 u: 7,080 cells, deepest 73,910. With the roots-12 probe (73,917) and searches 4-5
   (73,562 / ~73,9xx), every explorer variant saturates at the same deepest contact state, d
