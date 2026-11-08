@@ -5191,6 +5191,17 @@ def main() -> None:
                          "the recipe's own rows until the next line is adopted (unr1b1_gel kept "
                          "a learned line on 20%% of the pool for 390M steps). Off = the line keeps "
                          "its share, as before; config only when on; never restored")
+    ap.add_argument("--ge-line-front-temp", type=float, default=None,   # None = off
+                    help="--ge-line: T > 0 = an env whose episode STARTED on the adopted line's "
+                         "frontier band samples the keys at 1 + T and the yaw sigma x (1 + T) for "
+                         "its first --ge-line-front-ticks physics ticks (the --demo-front-temp rule "
+                         "on the line curriculum; PPO scores each row at its own temperature). "
+                         "unr1b1_gel: the band just before the explorer's chain leaves the "
+                         "policy's own line succeeds ~6%% - the chain steers ~10 deg further than "
+                         "the policy ever samples (view sigma ~0.07). Off = bit-identical; config "
+                         "only when set; never restored")
+    ap.add_argument("--ge-line-front-ticks", type=int, default=100,
+                    help="--ge-line-front-temp: the hot window after a band spawn, physics ticks")
     ap.add_argument("--ge-line-match-band", action="store_true",
                     help="--ge-line: the line curriculum's --demo-match-band rule (a spawn whose "
                          "origin the line repeats is credited to its copy inside the frontier band; "
@@ -12709,8 +12720,12 @@ def main() -> None:
     GEL_END_D = None                      # the adopted line's success line (record <= this)
     GELS = {"on": False, "proc": None, "k": 0, "field": None, "eval": None, "best_d": None,
             "line_end": None, "adopted": 0}
-    if (args.ge_line_retire or args.ge_line_match_band) and args.ge_line is None:
-        raise SystemExit("--ge-line-retire / --ge-line-match-band shape the --ge-line curriculum")
+    if ((args.ge_line_retire or args.ge_line_match_band or args.ge_line_front_temp is not None)
+            and args.ge_line is None):
+        raise SystemExit("--ge-line-retire / --ge-line-match-band / --ge-line-front-temp shape "
+                         "the --ge-line curriculum")
+    if args.ge_line_front_temp is not None and not float(args.ge_line_front_temp) > 0.0:
+        raise SystemExit("--ge-line-front-temp must be > 0")
     if args.ge_line is not None:
         if not 0.0 < float(args.ge_line) < 1.0:
             raise SystemExit("--ge-line must be in (0, 1)")
@@ -15458,6 +15473,9 @@ def main() -> None:
             meta["config"]["ge_line_retire"] = 1
         if args.ge_line_match_band:
             meta["config"]["ge_line_match_band"] = 1
+        if args.ge_line_front_temp is not None:
+            meta["config"]["ge_line_front_temp"] = float(args.ge_line_front_temp)
+            meta["config"]["ge_line_front_ticks"] = int(args.ge_line_front_ticks)
     if args.auto_spine:
         # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for
         # byte); never restored - the loop is a property of the run, not of the weights
@@ -17341,7 +17359,9 @@ def main() -> None:
     DFT = float(args.demo_front_temp or 0.0) > 0.0 and demo is not None
     GTEMP = float(args.respawn_greedy_temp or 0.0) > 0.0 and GREEDY is not None
     FRONT_RES = float(args.front_temp or 0.0) > 0.0
-    FRONT = FRONT_RES or DFT or GTEMP
+    GELT = args.ge_line is not None and float(args.ge_line_front_temp or 0.0) > 0.0
+    gelt_share = float("nan")
+    FRONT = FRONT_RES or DFT or GTEMP or GELT
     greedy_sp = np.zeros(N, bool)        # --respawn-greedy-temp: env spawned on a greedy row
     gt_share = float("nan")
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
@@ -17386,6 +17406,13 @@ def main() -> None:
         print(f"--respawn-greedy-temp {args.respawn_greedy_temp:g}: an env whose episode started "
               f"on a greedy-line row samples the keys at {_gt_k:g} and the yaw sigma x {_gt_v:g} "
               f"for its first {GT_TICKS} ticks; PPO scores each row at its own temperature")
+    if GELT:
+        _gelt_k = 1.0 + float(args.ge_line_front_temp)
+        GELT_TICKS = int(args.ge_line_front_ticks)
+        print(f"--ge-line-front-temp {args.ge_line_front_temp:g}: an env whose episode started on "
+              f"the line curriculum's frontier band samples the keys at {_gelt_k:g} and the yaw "
+              f"sigma x {_gelt_k:g} for its first {GELT_TICKS} ticks; PPO scores each row at its "
+              f"own temperature")
     if DFT:
         _dft_k = 1.0 + float(args.demo_front_temp)
         _dft_v = (float(args.demo_front_view) if args.demo_front_view is not None else _dft_k)
@@ -17398,7 +17425,7 @@ def main() -> None:
     def set_front_temp() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
         the post-step distance of every env, the new spawn's for an env that just ended)."""
-        nonlocal front_share, dft_share, gt_share
+        nonlocal front_share, dft_share, gt_share, gelt_share
         d = reward_fn.paid_record() if FRONT_CONTACT else reward_fn._d
         band = (np.zeros(N, bool) if (d is None or not FRONT_RES)
                 else (np.asarray(d) <= front_thr))
@@ -17414,6 +17441,14 @@ def main() -> None:
             # keeps the cold value
             ftv_np[np.flatnonzero(hot)[:, None], np.arange(NZ - 1)[None, :]] = _dft_v
             dft_share = float(hot.mean())
+        if (GELT and _dft_len[0] is not None and GEL is not None
+                and not GELS.get("retired")):
+            # --ge-line-front-temp: the envs whose episode started on the line curriculum's
+            # frontier band (gel_idx is the line index of each env's spawn), in the hot window
+            hotl = demo_hot_mask(gel_idx, GEL._band(), _dft_len[0], GELT_TICKS)
+            ftk_np[hotl] = _gelt_k
+            ftv_np[np.flatnonzero(hotl)[:, None], np.arange(NZ - 1)[None, :]] = _gelt_k
+            gelt_share = float(hotl.mean())
         if GTEMP and _dft_len[0] is not None:
             # --respawn-greedy-temp: the envs whose episode started on a greedy-line row,
             # inside their hot window (the same per-row slots; the yaw head(s) only)
@@ -19821,7 +19856,9 @@ def main() -> None:
         if GEL is not None and it_no % 100 == 1 and GEL.last_info:
             print(f"  ge-line: {GEL.last_info}  |  line episodes {GELS.get('eps', 0):,}  "
                   f"reached its end {GELS.get('wins', 0):,}  (line {GELS['k']}, "
-                  f"{GELS['adopted']} adopted)", flush=True)
+                  f"{GELS['adopted']} adopted)"
+                  + (f"  |  band-hot {gelt_share:.1%}" if GELT else "")
+                  + ("  |  RETIRED" if GELS.get("retired") else ""), flush=True)
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
@@ -22730,6 +22767,9 @@ def main() -> None:
         if DFT:
             # --demo-front-temp: the share of envs hot at the last decision
             hyg_note += f"  demohot {dft_share:.1%}"
+        if GELT:
+            # --ge-line-front-temp: the share of envs hot at the last decision
+            hyg_note += f"  gelhot {gelt_share:.1%}"
         if GTEMP:
             # --respawn-greedy-temp: the share of envs hot at the last decision
             hyg_note += f"  greedyhot {gt_share:.1%}"

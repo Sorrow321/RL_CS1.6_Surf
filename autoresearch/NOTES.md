@@ -262,3 +262,20 @@ harvest of this box would fail the same way: pull before every deadline.
   (vz -1,101 at (3,679, 800, 11,603)), ending at 26.9%. The skill is height at the turn, not speed.
   Line 4 is ducked at row 2440 (unducked by 2450).
 * Box deadline extended to 13:23 UTC; disk 3.4 GB after the cleanup.
+
+### 2026-11-08 07:52 UTC - 1.64B: line 11 adopted, the greedy still at the pit wall
+
+* Evals 1.36B-1.586B: 26.7-26.9%. Search 11 (from the 1.51B greedy) found a 26.3 s line to
+  d 72,152 (27.61%), 241 u past line 4: adopted at 1.597B. Its curriculum went straight to the
+  same kind of spot: rows 2450 (22.8%) <-> 2475 (5.8%) of 2625, 1.5-1.75 s before its end.
+* The run has sat at the pit wall for 1.13B steps (since 453.5M); the deadline is 3.88B.
+* v2.1 `--ge-line-front-temp T` (+ `--ge-line-front-ticks`, default 100): an env whose episode
+  started on the line curriculum's frontier band samples the keys at 1 + T and the yaw sigma x
+  (1 + T) for its first ticks (the `--demo-front-temp` rule through the same per-env temperature
+  slots; PPO scores each row at its own temperature; `gelhot X%` on the step line). Aimed at the
+  pit's band (6-10% success just before the chain leaves the policy's line, a ~10 deg steer the
+  policy's view sigma ~0.07 rarely samples). Verified on CPU: refusals, config dump, flag off
+  bit-identical (4 passed), and an instrumented smoke where a line was adopted and line spawns
+  were matched (126/126 respawns; map-start spawns are the line's row 0) and the band ran hot
+  (gelhot 1.6-20.3%). A smoke shorter than the first search + an episode never respawns on the
+  line: give it ~40k steps with --ep-ticks 300.

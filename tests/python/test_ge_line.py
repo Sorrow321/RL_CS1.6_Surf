@@ -98,7 +98,8 @@ def test_train_only():
     sys.path.insert(0, str(ROOT / "tools"))
     import record_ckpt
     for k in ("ge_line", "ge_line_minutes", "ge_line_gain", "ge_line_success",
-              "ge_line_threads", "ge_line_retire", "ge_line_match_band"):
+              "ge_line_threads", "ge_line_retire", "ge_line_match_band",
+              "ge_line_front_temp", "ge_line_front_ticks"):
         assert k in record_ckpt.TRAIN_ONLY, k
 
 
@@ -146,7 +147,11 @@ def test_refusals():
     assert bad.returncode != 0 and "no --race-ratchet" in bad.stdout + bad.stderr
     bad = _train("gel_bad3", ["--ge-line-retire"], steps=512)
     assert bad.returncode != 0 and "shape the --ge-line curriculum" in bad.stdout + bad.stderr
-    for run in ("gel_bad1", "gel_bad2", "gel_bad3"):
+    bad = _train("gel_bad4", ["--ge-line-front-temp", "1"], steps=512)
+    assert bad.returncode != 0 and "shape the --ge-line curriculum" in bad.stdout + bad.stderr
+    bad = _train("gel_bad5", ["--ge-line", "0.2", "--ge-line-front-temp", "0"], steps=512)
+    assert bad.returncode != 0 and "--ge-line-front-temp must be > 0" in bad.stdout + bad.stderr
+    for run in ("gel_bad1", "gel_bad2", "gel_bad3", "gel_bad4", "gel_bad5"):
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
 
 
@@ -155,12 +160,14 @@ def test_retire_and_match_band_are_dumped():
     run = "gel_v2"
     try:
         r = _train(run, ["--ge-line", "0.2", "--ge-line-minutes", "0.1", "--ge-line-retire",
-                         "--ge-line-match-band"], steps=6144)
+                         "--ge-line-match-band", "--ge-line-front-temp", "1"], steps=6144)
         out = r.stdout + r.stderr
         assert r.returncode == 0, out[-6000:]
         assert re.search(r"--ge-line search 1: Go-Explore from episode", out), out[-6000:]
+        assert "--ge-line-front-temp 1: an env whose episode started on the line" in out
         cfg = json.loads((ROOT / "runs" / run / "run.json").read_text())["config"]
         assert cfg["ge_line_retire"] == 1 and cfg["ge_line_match_band"] == 1
+        assert cfg["ge_line_front_temp"] == 1.0 and cfg["ge_line_front_ticks"] == 100
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
 
