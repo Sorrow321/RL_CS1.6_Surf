@@ -176,7 +176,7 @@ def knob(a, out: Path):
            "--max-ticks", a.beam_ticks, "--torch-seed", a.seed, "--seed", 0,
            "--ge-knob", "--ge-knob-minutes", a.ge_minutes, "--out-dir", kd]
     for k in ("decisions", "repeat", "floor", "cell", "energy", "heading", "roots_secs",
-              "stall_margin"):
+              "stall_margin", "archive"):
         v = getattr(a, f"knob_{k}", None)
         if v is not None:
             cmd += [f"--ge-knob-{k.replace('_', '-')}", v]
@@ -188,7 +188,7 @@ def knob(a, out: Path):
         info.update({f"knob_{k}": s.get(k) for k in (
             "cells", "runs", "lam_final", "ends", "cells_by_mode", "decisions_by_mode",
             "line_best_d", "best_d", "finishes", "replay_ok", "chain_cells", "chain_modes",
-            "root_index", "line_end_d")})
+            "root_index", "line_end_d", "cells_new", "root_line", "lines", "cells_carried")})
     f = kd / "knob_line.npy"
     if rc != 0 or not f.exists():
         return None, info
@@ -568,6 +568,9 @@ def main(argv=None) -> int:
     ap.add_argument("--knob-heading", type=int, default=None)
     ap.add_argument("--knob-roots-secs", type=float, default=None)
     ap.add_argument("--knob-stall-margin", type=float, default=None)
+    ap.add_argument("--knob-archive", default=None,
+                    help="--knob: the explorer's archive persists in this npz across searches "
+                         "(beam_tas --ge-knob-archive); None = a fresh archive per search")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args(argv)
     if a.selftest:

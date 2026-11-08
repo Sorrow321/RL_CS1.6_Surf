@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import time
 from pathlib import Path
 
@@ -134,12 +135,59 @@ class KnobArchive:
     the times it was chosen, ticks from the line's start along its chain (``depth``) and the
     mode that found it (-1 root, 0 policy, 1 random)."""
 
+    COLS = ("key", "state", "obs", "parent", "run", "off", "root", "line", "d", "chosen",
+            "depth", "born", "fin")
+
     def __init__(self, obs_dim: int, state_dtype, cap: int = 1 << 15) -> None:
         self.obs_dim = int(obs_dim)
         self.dtype = state_dtype
         self.n = 0
         self.index: dict[int, int] = {}
         self._alloc(int(cap))
+
+    def save(self, path, lines: list, store: dict) -> None:
+        """--ge-knob-archive: the archive, the greedy lines its roots sit on (concatenated, with
+        offsets) and the action tables of the runs its cells came from, to ONE npz (a temp file,
+        renamed: a search killed mid-write leaves the previous archive)."""
+        n = self.n
+        cols = {k: getattr(self, k)[:n] for k in self.COLS}
+        lines = [np.asarray(x, self.dtype) for x in lines]
+        line_states = np.concatenate(lines) if lines else np.zeros(0, self.dtype)
+        line_off = np.cumsum([0] + [len(x) for x in lines]).astype(np.int64)
+        rid = np.array(sorted(store), np.int64)
+        acts = [np.asarray(store[int(r)][0], np.int8).reshape(-1, 6) for r in rid]
+        views = [store[int(r)][1] for r in rid]
+        has_view = bool(len(views)) and all(v is not None for v in views)
+        run_off = np.cumsum([0] + [len(a) for a in acts]).astype(np.int64)
+        run_acts = np.concatenate(acts) if acts else np.zeros((0, 6), np.int8)
+        run_view = (np.concatenate([np.asarray(v, np.float32).reshape(-1, 2) for v in views])
+                    if has_view else np.zeros((0, 2), np.float32))
+        path = str(path)
+        tmp = (path[:-4] if path.endswith(".npz") else path) + ".tmp.npz"
+        np.savez(tmp, line_states=line_states, line_off=line_off, run_id=rid, run_off=run_off,
+                 run_acts=run_acts, run_view=run_view, has_view=np.int8(has_view),
+                 obs_dim=np.int64(self.obs_dim), **cols)
+        os.replace(tmp, path)
+
+    @classmethod
+    def load(cls, path, state_dtype):
+        """-> (archive, lines, store) as save() wrote them; the key index is rebuilt."""
+        z = np.load(str(path), allow_pickle=False)
+        a = cls(int(z["obs_dim"]), state_dtype, cap=max(1 << 15, 2 * len(z["key"])))
+        n = len(z["key"])
+        for k in cls.COLS:
+            getattr(a, k)[:n] = z[k]
+        a.n = n
+        a.index = {int(k): i for i, k in enumerate(z["key"]) if not bool(z["fin"][i])}
+        lo = z["line_off"]
+        lines = [np.array(z["line_states"][lo[i]:lo[i + 1]], dtype=state_dtype)
+                 for i in range(len(lo) - 1)]
+        ro = z["run_off"]
+        hv = bool(int(z["has_view"]))
+        store = {int(r): (np.array(z["run_acts"][ro[i]:ro[i + 1]]),
+                          np.array(z["run_view"][ro[i]:ro[i + 1]]) if hv else None)
+                 for i, r in enumerate(z["run_id"])}
+        return a, lines, store
 
     def _alloc(self, cap: int) -> None:
         old = None if not hasattr(self, "key") else self._cols()
@@ -151,6 +199,7 @@ class KnobArchive:
         self.run = np.full(cap, -1, np.int64)
         self.off = np.zeros(cap, np.int64)
         self.root = np.full(cap, -1, np.int64)
+        self.line = np.full(cap, -1, np.int64)
         self.d = np.full(cap, np.inf, np.float64)
         self.chosen = np.zeros(cap, np.int64)
         self.depth = np.zeros(cap, np.int64)
@@ -161,11 +210,10 @@ class KnobArchive:
                 getattr(self, name)[:self.n] = arr[:self.n]
 
     def _cols(self) -> dict:
-        return {k: getattr(self, k) for k in ("key", "state", "obs", "parent", "run", "off",
-                                              "root", "d", "chosen", "depth", "born", "fin")}
+        return {k: getattr(self, k) for k in self.COLS}
 
     def add(self, key: int, state, obs_row, parent: int, run: int, off: int, root: int,
-            d: float, depth: int, born: int, fin: bool = False) -> int:
+            d: float, depth: int, born: int, fin: bool = False, line: int = -1) -> int:
         if self.n >= self.cap:
             self._alloc(self.cap * 2)
         i = self.n
@@ -177,6 +225,7 @@ class KnobArchive:
         self.run[i] = int(run)
         self.off[i] = int(off)
         self.root[i] = int(root)
+        self.line[i] = int(line)
         self.d[i] = float(d)
         self.depth[i] = int(depth)
         self.born[i] = int(born)
@@ -326,14 +375,32 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
     mins, maxs = coreN.map_bounds()
     hasher = CellHash(mins, maxs, cell=float(args.ge_knob_cell),
                       energy=float(args.ge_knob_energy), heading=int(args.ge_knob_heading))
-    arch = KnobArchive(int(np.asarray(obs).shape[1]), state_dtype)
+    apath = getattr(args, "ge_knob_archive", None)
+    lines: list = []
+    store: dict[int, tuple] = {}
+    if apath and Path(apath).exists():
+        # --ge-knob-archive: Go-Explore's archive is the RUN's memory, not one search's - the
+        # cells, the lines their roots sit on and the runs that reached them carry over, and
+        # this search adds the newest greedy line's roots to them
+        arch, lines, store = KnobArchive.load(apath, state_dtype)
+        if arch.obs_dim != int(np.asarray(obs).shape[1]):
+            raise SystemExit(f"--ge-knob-archive {apath}: obs width {arch.obs_dim} != "
+                             f"{int(np.asarray(obs).shape[1])}")
+        print(f"knob-GE: archive {apath}: {arch.n:,} cells, {len(lines)} lines, "
+              f"{len(store):,} runs carried over (deepest d "
+              f"{float(np.min(arch.d[:arch.n])) if arch.n else float('inf'):,.0f})", flush=True)
+    else:
+        arch = KnobArchive(int(np.asarray(obs).shape[1]), state_dtype)
+    line_id = len(lines)
+    lines.append(line)
+    n_old = arch.n
     rkeys = hasher.keys(line[roots])
     for r, kk in zip(roots, rkeys):
         if int(kk) in arch.index:
             continue
         arch.add(int(kk), line[int(r)], line_obs[int(r)], -1, -1, 0, int(r), float(ld[int(r)]),
-                 int(r), -1)
-    n_roots = arch.n
+                 int(r), -1, line=line_id)
+    n_roots = arch.n - n_old
     print(f"knob-GE: {n_roots} root cells (cell {float(args.ge_knob_cell):g} u, kinetic-energy "
           f"buckets {float(args.ge_knob_energy):g} u, heading sectors "
           f"{int(args.ge_knob_heading)}); runs of {int(args.ge_knob_decisions)} decisions, "
@@ -352,10 +419,16 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
     run_ticks = np.zeros(N, np.int64)
     run_new = np.zeros(N, np.int64)
     run_live = np.zeros(N, bool)
+    run_maxoff = np.zeros(N, np.int64)      # ticks into the run of its last new cell
     run_acts = np.zeros((N, L, 6), np.int8)
     run_view = np.zeros((N, L, 2), np.float32)
-    store: dict[int, tuple] = {}
-    next_run = 0
+    next_run = (max(store) + 1) if store else 0
+
+    def keep_run(i):
+        # the run's tables up to the decision of its last new cell (all its cells' links)
+        nd = int(min(run_dec[i], -(-int(run_maxoff[i]) // int(K))))
+        store[int(run_id[i])] = (run_acts[i, :nd].copy(),
+                                 run_view[i, :nd].copy() if VIEWC else None)
     rnd_a = np.zeros((N, 6), np.int32)
     rnd_yaw = np.zeros(N, np.float32)
     held_a = held_v = None
@@ -392,8 +465,7 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
             if len(ended):
                 knob.credit(run_mode[ended], run_new[ended], np.maximum(run_dec[ended], 1))
                 for i in ended[run_new[ended] > 0]:
-                    store[int(run_id[i])] = (run_acts[i, :run_dec[i]].copy(),
-                                             run_view[i, :run_dec[i]].copy() if VIEWC else None)
+                    keep_run(i)
                 run_id[ended] = -1
             # ---- returns: restore W-chosen cells into every free env ----------------------
             free = np.flatnonzero(run_id < 0)
@@ -414,6 +486,7 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
                 run_dec[free] = 0
                 run_ticks[free] = 0
                 run_new[free] = 0
+                run_maxoff[free] = 0
                 run_live[free] = True
                 draw_random(free[run_mode[free] == 1])
         a = spol.act(obs)
@@ -452,6 +525,7 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
             c = int(run_cell[i])
             arch.add(-1, pre[i], None, c, int(run_id[i]), int(run_ticks[i]), -1, 0.0,
                      int(arch.depth[c] + run_ticks[i]), int(run_mode[i]), fin=True)
+            run_maxoff[i] = max(int(run_maxoff[i]), int(run_ticks[i]))
             run_new[i] += 1
             born_cells[int(run_mode[i])] += 1
             n_new_since += 1
@@ -479,6 +553,7 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
                         arch.add(int(nk[j]), nst[j], obs[i], c, int(run_id[i]),
                                  int(run_ticks[i]), -1, float(nd[j]),
                                  int(arch.depth[c] + run_ticks[i]), int(run_mode[i]))
+                        run_maxoff[i] = max(int(run_maxoff[i]), int(run_ticks[i]))
                         run_new[i] += 1
                         born_cells[int(run_mode[i])] += 1
                         n_new_since += 1
@@ -504,12 +579,16 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
     log_f.close()
     # the runs still in flight keep their actions too (their cells may be the best)
     for i in np.flatnonzero((run_id >= 0) & (run_new > 0)):
-        store[int(run_id[i])] = (run_acts[i, :run_dec[i]].copy(),
-                                 run_view[i, :run_dec[i]].copy() if VIEWC else None)
+        keep_run(i)
+    if apath:
+        arch.save(apath, lines, store)
+        print(f"knob-GE: archive saved -> {apath} ({arch.n:,} cells, {len(lines)} lines, "
+              f"{len(store):,} runs)", flush=True)
 
     # ---- 3. the deepest chain, replayed exactly from its root ------------------------------
     b = arch.best()
-    summary = {"cells": int(arch.n), "roots": int(n_roots), "runs": int(next_run),
+    summary = {"cells": int(arch.n), "cells_new": int(arch.n - n_old), "roots": int(n_roots),
+               "runs": int(next_run),
                "ticks": int(t), "secs": round(time.time() - t_start, 1),
                "lam_final": float(knob.lam), "ends": [int(x) for x in knob.ends],
                "cells_by_mode": [int(x) for x in born_cells],
@@ -525,10 +604,11 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
         return 2
     ch = arch.chain(b)
     r0 = int(arch.root[ch[0]])
+    rline = lines[int(arch.line[ch[0]])] if int(arch.line[ch[0]]) >= 0 else line
     core_r = build_sim(cfg, map_path, 1, 10 ** 7, tick=tick)
     arm(core_r)
     core_r.reset(int(gate_seed))
-    states = [line[r0].copy()]
+    states = [rline[r0].copy()]
     worst = 0.0
     replay_ok = True
     for c in ch[1:]:
@@ -568,10 +648,11 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
                 replay_ok = False
                 break
     chain_states = np.array(states[1:], dtype=state_dtype)
-    full = np.concatenate([np.asarray(line[:r0 + 1], state_dtype), chain_states])
+    full = np.concatenate([np.asarray(rline[:r0 + 1], state_dtype), chain_states])
     fd = field_d(full["origin"])
     np.save(out_dir / "knob_line.npy", full)
     summary.update(replay_ok=bool(replay_ok), replay_worst_err=worst, root_index=r0,
+                   root_line=int(arch.line[ch[0]]), lines=len(lines), cells_carried=int(n_old),
                    chain_cells=len(ch), chain_ticks=int(len(chain_states)),
                    line=str(out_dir / "knob_line.npy"), line_n=int(len(full)),
                    line_end_d=float(fd[-1]) if len(fd) else None,

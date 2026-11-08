@@ -143,3 +143,42 @@ def test_auto_spine_knob_path_and_beam_tas_flags():
     b = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
     assert 'ap.add_argument("--ge-knob", action="store_true"' in b
     assert "from knob_ge import knob_ge_search" in b
+
+
+def test_archive_save_load_round_trip(tmp_path):
+    a = KnobArchive(15, STATE_DTYPE, cap=2)
+    line0 = np.zeros(5, STATE_DTYPE)
+    line0["origin"][:, 0] = np.arange(5)
+    r = a.add(11, line0[3], np.full(15, 3.0), -1, -1, 0, 3, 500.0, 3, -1, line=0)
+    c = a.add(12, _st(9), np.full(15, 9.0), r, 7, 40, -1, 400.0, 43, 1)
+    f = a.add(-1, _st(10), None, c, 8, 5, -1, 0.0, 48, 0, fin=True)
+    a.chosen[r] = 5
+    store = {7: (np.arange(60, dtype=np.int8).reshape(10, 6), np.ones((10, 2), np.float32)),
+             8: (np.zeros((2, 6), np.int8), np.zeros((2, 2), np.float32))}
+    p = tmp_path / "arch.npz"
+    a.save(p, [line0], store)
+    assert not (tmp_path / "arch.tmp.npz").exists()
+    b, lines, st2 = KnobArchive.load(p, STATE_DTYPE)
+    assert b.n == 3 and b.index == {11: 0, 12: 1}          # a finish is never a key
+    assert b.chain(f) == [r, c, f] and b.best() == f
+    assert int(b.chosen[r]) == 5 and int(b.line[r]) == 0 and int(b.line[c]) == -1
+    assert float(b.obs[c][0]) == 9.0 and float(b.d[c]) == 400.0 and bool(b.fin[f])
+    assert len(lines) == 1 and np.array_equal(lines[0]["origin"], line0["origin"])
+    assert sorted(st2) == [7, 8] and np.array_equal(st2[7][0], store[7][0])
+    assert st2[7][1].dtype == np.float32 and np.array_equal(st2[7][1], store[7][1])
+    # it grows on after a load
+    b.add(13, _st(11), None, c, 9, 3, -1, 300.0, 46, 0)
+    assert b.n == 4 and b.index[13] == 3
+
+
+def test_archive_flag_wiring():
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert re.search(r'ap\.add_argument\("--auto-spine-knob-archive", action="store_true"', src)
+    assert 'meta["config"]["auto_spine_knob_archive"] = 1' in src
+    assert 'cmd += ["--knob-archive", str(adir / "knob_archive.npz")]' in src
+    b = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--ge-knob-archive", default=None' in b
+    a = (ROOT / "tools" / "auto_spine.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--knob-archive", default=None' in a
+    rec = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"auto_spine_knob_archive"' in rec

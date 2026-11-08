@@ -5170,6 +5170,13 @@ def main() -> None:
                          "random share set by each mode's new-cell yield per decision) instead "
                          "of the beam + branched beams + GE ladder; --auto-spine-ge-minutes is "
                          "its budget. Off = the search as it was; config only when on")
+    ap.add_argument("--auto-spine-knob-archive", action="store_true",
+                    help="--auto-spine-knob: the explorer's archive PERSISTS across the run's "
+                         "searches (runs/<run>/auto/knob_archive.npz: every cell, the greedy "
+                         "lines their roots sit on, the runs that reached them) - Go-Explore's "
+                         "archive is the run's memory, and each search adds the newest greedy "
+                         "line's roots to it instead of starting over. Off = a fresh archive per "
+                         "search; config only when on")
     ap.add_argument("--demo-share", type=float, default=None,   # None = off
                     help="--demo-file / --auto-spine: the spine's curriculum takes this SHARE of "
                          "every training spawn pool (positions drawn uniformly, like "
@@ -12303,6 +12310,10 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_recheck and not args.auto_spine:
         raise SystemExit("--auto-spine-recheck needs --auto-spine")
+    if args.auto_spine_knob and not args.auto_spine:
+        raise SystemExit("--auto-spine-knob is --auto-spine's search: give --auto-spine")
+    if args.auto_spine_knob_archive and not args.auto_spine_knob:
+        raise SystemExit("--auto-spine-knob-archive keeps --auto-spine-knob's archive: give it")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15441,6 +15452,8 @@ def main() -> None:
         meta["config"]["auto_spine_scratch"] = 1
     if args.auto_spine_knob:
         meta["config"]["auto_spine_knob"] = 1
+    if args.auto_spine_knob_archive:
+        meta["config"]["auto_spine_knob_archive"] = 1
     if args.demo_share is not None:
         meta["config"]["demo_share"] = float(args.demo_share)
     if args.auto_spine:
@@ -16697,6 +16710,10 @@ def main() -> None:
         if args.auto_spine_knob:
             # --auto-spine-knob: the one knob explorer instead of the beam + GE ladder
             cmd += ["--knob"]
+            if args.auto_spine_knob_archive:
+                # --auto-spine-knob-archive: one archive for the whole run (searches are one at
+                # a time, so the file is never written twice at once)
+                cmd += ["--knob-archive", str(adir / "knob_archive.npz")]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and

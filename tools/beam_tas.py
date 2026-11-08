@@ -2262,6 +2262,11 @@ def main():
                          "per decision (the paper's 0.95)")
     ap.add_argument("--ge-knob-floor", type=float, default=0.05,
                     help="--ge-knob: the knob stays in [floor, 1 - floor]")
+    ap.add_argument("--ge-knob-archive", default=None, metavar="NPZ",
+                    help="--ge-knob: the archive PERSISTS in this file across searches - loaded "
+                         "at the start when it exists (its cells, the greedy lines their roots "
+                         "sit on, the runs that reached them), the newest greedy line's roots "
+                         "added, saved at the end. None = a fresh archive per search, as before")
     ap.add_argument("--ge-knob-horizon", type=int, default=16,
                     help="--ge-knob: the yield sums decay by 1/e over this many POPULATIONS of "
                          "run ends (new cells come in bursts; 1 swung the knob end to end)")
