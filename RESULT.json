@@ -8,7 +8,7 @@
   "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/traj_1283981312.jsonl",
   "run": "unr1b3_mcts1",
   "step": 1283981312,
-  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/ckpt_latest.pt",
+  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts1/ckpt_1000341504.pt",
   "recipe": [
    "--envs",
    "1024",
@@ -143,10 +143,10 @@
   "resume_from": null
  },
  "running": {
-  "run": "unr1b3_mcts1",
+  "run": "unr1b3_mcts2",
   "box": 59668027,
-  "launched_utc": "2026-11-08 06:00",
-  "commit": "1524fea3",
+  "launched_utc": "2026-11-08 08:21",
+  "commit": "29202df0",
   "recipe": [
    "--envs",
    "1024",
@@ -237,15 +237,18 @@
    "1",
    "--maxvel",
    "4000",
+   "--ratchet-contact",
+   "1",
    "--auto-spine",
    "--auto-spine-scratch",
    "--auto-spine-async",
    "--auto-spine-recheck",
    "--auto-spine-milestones",
+   "--auto-spine-banked",
    "--auto-spine-explorer",
    "mcts",
    "--auto-spine-mcts-minutes",
-   "5",
+   "6",
    "--auto-spine-envs",
    "2048",
    "--auto-spine-ge-minutes",
@@ -276,15 +279,18 @@
    "0.5"
   ],
   "extra_flags": [
+   "--ratchet-contact",
+   "1",
    "--auto-spine",
    "--auto-spine-scratch",
    "--auto-spine-async",
    "--auto-spine-recheck",
    "--auto-spine-milestones",
+   "--auto-spine-banked",
    "--auto-spine-explorer",
    "mcts",
    "--auto-spine-mcts-minutes",
-   "5",
+   "6",
    "--auto-spine-envs",
    "2048",
    "--auto-spine-ge-minutes",
@@ -322,7 +328,7 @@
   "first ramp": 906493952,
   "window (CP1)": 1057488896,
   "pit dive": null,
-  "verdict": "alive: first ramp and window ON TIME (control failed the first ramp); plateau 27.1% at the pit dive since 1.13B (deadline 3.88B)"
+  "verdict": "run 1 (best) stopped at 2.83B stuck at the pit dive (27.1%); run 2 alive"
  },
- "summary": "Slot 3: policy-prior MCTS over macro-actions (tools/mcts_search.py via beam_tas --mcts) as the explore step of the trainer's own search->curriculum loop, from step 0 (--auto-spine-scratch: first spine = the map spawn; --demo-share 0.25: the found line's backward curriculum beside the recipe's spawn sources). Explorer-alone on October r0/r1: banked progress ~= the plain beam at the pit dive (25.98% vs 25.83% banked; neither banks a landing past 27.5%), but the beam goes much deeper from an idle start (26.1% vs 15.6% at c_puct 0.25, 6.7% at 2.0). Run unr1b3_mcts1 launched 06:00 UTC on box 59668027."
+ "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search->curriculum loop from step 0. Run 1 (unr1b3_mcts1): first ramp 0.91B and window 1.06B ON TIME (the control failed the first ramp), then 1.7B steps at the pit dive (27.1%); its loop never adopted a line (stale while the policy improved fast, then banked MCTS lines vs the greedy's raw fatal dive). Explorer: random held children break the spawn trap (5.1% vs the beam's 1.8%); at the pit (a 220 u precision gate, map triggers) every variant banks 26.0-26.6% but none threads it. Run 2 (unr1b3_mcts2, 08:21): banked semantics everywhere (--ratchet-contact 1, --auto-spine-banked) + random 0.5, novelty 3, flight roots, steer 2-20 deg."
 }

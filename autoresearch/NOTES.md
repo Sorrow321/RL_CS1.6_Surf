@@ -279,3 +279,22 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
 * MCTS with roots through the fatal flight (--mcts-roots-flight 1, 8 s, 16 roots, random 0.5,
   nov 3, 6 min): banked 26.22%, raw 27.59%, 20,498 cells - no live branch through the window.
   The 20 deg held offsets are coarse for a 220 u window; testing 5 deg held offsets next.
+* Fine perturbations at the pit gate (5 deg held offsets on every sampled child, keys temp 1, roots
+  through the flight, nov 3, 6 min): banked **26.61%** (best of all variants; 20 deg: 26.22%), raw
+  27.54%, 11,727 cells; nearly every child dies at the gate (11/2048 alive at wave 200).
+
+### 08:20 UTC: run 1 STOPPED at 2.829B (pit-dive deadline 3.88B), run 2 launched
+* unr1b3_mcts1 sat at 27.0-27.1% from 1.13B to 2.83B (1.7B steps, 23 evals). Its loop could not
+  act at this wall by construction: searches 4-6 each banked 25.9-26.5% (deeper than the greedy's
+  banked 23.6%) and each was compared with the greedy's RAW 27.1% fatal dive. Stopped ~40 min
+  before its deadline so run 2 gets the time. Harvested: ckpt_latest (md5 200041b7...),
+  ckpt_1000341504 (the snapshot at/before its best eval 27.126 @ 1.28B; md5 f2a0f547...).
+  **Run 1 final ladder: first ramp 0.906B ON TIME, window 1.057B ON TIME, pit dive not cleared.**
+* **Run 2 `unr1b3_mcts2`** (launched 08:21 UTC, commit 29202df0, same box): the incumbent recipe +
+  run 1's extra flags + `--ratchet-contact 1 --auto-spine-banked --auto-spine-mcts-minutes 6` and
+  the new MCTS defaults of this commit (random-frac 0.5, novelty 3, roots through a fatal flight,
+  steer scale log-uniform 2-20 deg). One semantics everywhere: progress counts where the map pushes
+  back - the reward (--ratchet-contact: a ballistic apex or a fatal dive pays nothing until a
+  landing), the curriculum's success and bonus (paid_record), the quorum and frontier
+  (--auto-spine-banked) and the MCTS's own score. It is a generic objective correction (no map
+  constant) and it removes the reward run 1's policy collected for diving deeper into the pit.
