@@ -447,3 +447,9 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   Best eval **32.338 at 3.171B** (hand-on: ckpt_3001024512, 170M before it, md5 1208da42...).
   Search 10 (3.2B) adopted a line banking 30.2% (+232 u over the greedy's banked frontier);
   search 11 fired on patience at 3.55B.
+* 13:12 UTC: run 4 at 4.23B, flat at 31.6-32.1% (CP2) since 2.72B - the post-CP2 block (33%).
+  The plateau's episodes (4.15B eval): 7/9 pass sgcp_2 (x 792), last touch the map at ~31.5 s
+  (banked ~30.0%), fly ~2 s west and die at (-400, ~150, 10,600) at 31.6-31.8% raw. sgcp_3 is at
+  x ~0, z 8,940-9,508, y +-336: the line must DROP ~1,100 u more before x ~0 - another narrow
+  window. Searches 11 (3.66B) and 12 (4.11B) adopted lines banking only 30.2-30.3% (+200..350 u
+  over the greedy's banked frontier): at this wall the 6-min MCTS finds no deeper landing yet.
