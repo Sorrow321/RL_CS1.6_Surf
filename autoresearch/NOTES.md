@@ -399,3 +399,20 @@ meta-analysis says so), while October's from-scratch CP2 crossing (r1b1 ratnovx,
 novel spawns) ran at T cap 2, and October's r2b3_t0 lost the CP2 line without the temperature.
 One constant for the whole run, set at launch; T still rises only on a plateau (0.5 per 100M after
 200M without 500 u) and halves on a new best, on the key heads only.
+
+### BREAKTHROUGH (16:59 UTC): geb6 clears the pit dive and CP2
+
+| wall | geb6 | October lineage | deadline |
+|---|---|---|---|
+| first ramp | 302.5M | 302.5M | 1.00B |
+| window (CP1) | 453.5M | 1,036.5M | 2.07B |
+| pit dive (>27.5%) | **1,208.5M** | 1,939.9M | 3.88B |
+| cavity (CP2) | **1,661.5M** | 4,136.1M | 8.27B |
+
+Best eval 31.38 (31.4%, CP2) at 1,661.5M. The greedy sat at 27.0% from 529M; the plateau
+temperature started rising ~730M and reached the new cap 2 ~1.13B; 27.9% at 1,208M, 28.4% at
+1,359M, 29.6% at 1,435M, 31.4% (CP2) at 1,661M; T fell back to 0.21 on the new bests. Its
+explorer had the detour and now 7,319 cells PAST the gap's west edge (430 viable; deepest viable
+30.35%). One seed: the cap and the explorer's spawns are not separated, but five runs with cap 0.2
+and the same or a weaker explorer all sat at 27.1% for 1-3.4B steps, and this one left within
+~80M steps of T reaching 2.
