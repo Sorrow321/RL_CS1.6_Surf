@@ -126,6 +126,8 @@ def test_trainer_wiring_off_by_default_and_dumped_only_when_on():
     assert "DEMO_LIVE = [not AUTO_SCRATCH]" in src
     assert "if demo is not None and DEMO_LIVE[0] and DEMO_SHARE is None:" in src
     assert 'cmd += ["--knob"]' in src
+    # --demo-share keeps the recipe's pool, so the novel / backward-mix rows stay wired with it
+    assert src.count('(demo is not None and DEMO_SHARE is None, "--demo-file")') == 2
     rec = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     block = rec[rec.index("TRAIN_ONLY = frozenset({"):]
     block = block[:block.index("})")]

@@ -12206,7 +12206,9 @@ def main() -> None:
         print(f"demo curriculum: {demo.n} states from {args.demo_file}, "
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "
-              f"(demo replaces the reservoir share of the pool)")
+              + (f"(demo takes {DEMO_SHARE:.0%} of the pool; the rest is the recipe's own)"
+                 if DEMO_SHARE is not None else
+                 "(demo replaces the reservoir share of the pool)"))
         if args.demo_success_bonus is not None and args.demo_success_d is None:
             raise SystemExit("--demo-success-bonus pays the --demo-success-d line: give both")
         if args.demo_success_energy is not None:
@@ -12556,7 +12558,10 @@ def main() -> None:
         for _bad, _why in ((args.respawn_random, "--respawn-random"),
                            (args.respawn_frontier, "--respawn-frontier"),
                            (args.respawn_backward, "--respawn-backward"),
-                           (demo is not None, "--demo-file"),
+                           # --demo-share: the pool is built as without a spine (novel rows
+                           # included) and the spine takes its share after; only the replace
+                           # rule drops the reservoir rows the novel ones are mixed into
+                           (demo is not None and DEMO_SHARE is None, "--demo-file"),
                            (bool(args.goals), "--goals"),
                            (D.enabled, "DDP (the visit grid and the ceiling are per rank)")):
             if _bad:
@@ -12601,7 +12606,7 @@ def main() -> None:
         for _bad, _why in ((MULTI, "--maps"), (D.enabled, "DDP"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_frontier, "--respawn-frontier"),
-                           (demo is not None, "--demo-file"),
+                           (demo is not None and DEMO_SHARE is None, "--demo-file"),
                            (bool(args.goals), "--goals")):
             if _bad:
                 raise SystemExit(f"--respawn-backward-mix is not wired with {_why}")
