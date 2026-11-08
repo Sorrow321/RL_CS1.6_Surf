@@ -301,3 +301,17 @@ harvest of this box would fail the same way: pull before every deadline.
 * Search 15 (from the 2.114B greedy, best d 72,836) found a 30.6 s line to d 71,583 (28.18%),
   adopted at 2.20B; its band succeeds 89% / 73% and the curriculum is doubling back fast
   (steps 200, 400).
+* Line 15's chain (546 states from row 2513, (4,283, 291, 12,001)) is a DETOUR the field does not
+  pay: +x away from the goal (progress 26.0% -> 24.2%) through (5,647, 242, 11,010), a turn at
+  (5,408, -475), back -x along y ~ -900..-1,040, ending at (2,222, -903, 10,990) falling toward the
+  cavity curtain sgcp_2 (x 768-816, z 10,060-11,300) at 28.18%. The random explorer found the
+  loop in one 8 min search.
+
+### 2026-11-08 09:13 UTC - 2.50B: the pit crossing was one episode; line 15's loop is the new hard part
+
+* Evals 2.19B-2.49B: 26.8-26.9% (the 27.6% at 2.114B was one episode of nine; the ladder keeps
+  the first crossing). Search 16 ended at d 72,172 (not adopted; line 15 ends at 71,583).
+* Line 15's curriculum walked back fast (89%, 73% success at its first bands: steps 200, 400)
+  to rows 2783/2808 of 3058 and now oscillates there (29.7% from 2808, ~2% from 2783): the return
+  leg of the chain's +x loop ((5,408, -475) -> (4,719, -734)), ~2.5 s before the line's end.
+* Box deadline extended to 15:12 UTC; credit $49.89, fleet burn $1.27/h.
