@@ -109,3 +109,68 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   `ps` on the box and `runs/<run>_launch.txt` before launching again.
 
 ## Round log
+
+### unr1b4 (round 1, slot 4: the knob as one rule) - the plan (2026-11-08 04:59 UTC)
+
+* **Why not in-trainer bursts.** The cheapest form of slot 4 (the trainer's own envs as the
+  explorer: a coherent per-episode coin between a held random burst and the policy after every
+  own-state respawn) is October's ez-greedy with a coin, and October measured ez bursts on this
+  map three times (r1b1_ez2 everywhere, r1b1_novezf and r3b3_ezf at the frontier): nulls -
+  "bursts kill episodes", "the reservoir never keeps them", "a burst cannot change altitude in
+  the air" (`/home/steam/ar/archive/r7/r7b2/NOTES.md`). What they lacked is what Go-Explore
+  adds: an archive that KEEPS every new place with the exact actions that reached it, and a
+  curriculum that teaches the line. So the knob lives in a real archive search.
+* **The explorer** (`tools/knob_ge.py`, run by `tools/beam_tas.py --ge-knob` on the
+  checkpoint-faithful wrappers, called by `tools/auto_spine.py --knob`): roots = the policy's
+  own greedy line from the true start, its last 4 s before it stalls (first tick within 500 u of
+  its best d); cells = 64 u position x 64 u kinetic-energy buckets, CONTACT states only (ground
+  or a surf face: a ballistic apex is not a place to continue from); W = 1/sqrt(1 + chosen);
+  restore exactly (clock zeroed, the scalar obs row stored with the cell); runs of 100
+  decisions (4 s), each committed to RANDOM (uniform engine keys + a yaw target drawn in the
+  policy's velocity frame through its own off_warp, held, redrawn with p 0.05 per decision) or
+  POLICY (its own samples, T = 1). **The knob** = the random share lambda = probability
+  matching on the new-cell yield per decision of each mode (decayed over ~one population of
+  run ends), 0.5 until 256 ends per mode, clipped to [0.05, 0.95]. The deepest cell's chain
+  (each link = the run's engine + view rows) is replayed open-loop from its root and checked at
+  every junction (origin within 1 u), then spliced onto the greedy line.
+* **The loop in the trainer** (one recipe, frozen): `--auto-spine --auto-spine-scratch` (NEW:
+  no starting spine; the first search after `--auto-spine-patience` steps from the first eval;
+  nothing drawn, paid or matched before) `--auto-spine-knob` (NEW: the search is the knob
+  explorer) `--demo-share 0.25` (NEW: the spine curriculum takes 25% of the spawn pool and the
+  recipe's own pool - reservoir, novel, greedy, perturbed rows - keeps the rest, instead of the
+  default rule that REPLACES the whole reservoir share; so the run differs from the control by
+  the search-fed share and nothing else) + the pb/zl curriculum constants (`--demo-window 5
+  --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-front-frac 0.67 --demo-success-d
+  100 --demo-success-bonus 50 --auto-spine-milestones --auto-spine-async --auto-spine-recheck`).
+* Flags off = bit-identical by construction (DEMO_ON = demo_file, DEMO_LIVE true, DEMO_SHARE
+  None -> the old paths); config keys dumped only when on; TRAIN_ONLY in record_ckpt.
+  tests/python/test_knob_ge.py (11 pass with test_auto_spine_recheck), test_auto_spine.py and
+  test_demo_success_d.py still pass. Commit caa7f81b.
+* Next: a box; smoke the explorer alone on an early scratch checkpoint (does it run, does the
+  knob move, does the chain replay exactly, does it find cells past the greedy line), smoke the
+  scratch bootstrap (a search fires on patience and its spine goes live), then the run.
+* 05:08 UTC: box **59667168** (RTX 3090, 0.28 $/h, 3 h deadline). Smoke `unr1b4_smoke` (the
+  full recipe with `--auto-spine-patience 2e7 --auto-spine-retry 2e7 --auto-spine-ge-minutes 2`,
+  evals every 10M): the record gate passes with the new flags (greedy, stoch, mixed, POV). First
+  launch refused: `--respawn-novel` and `--respawn-backward-mix` refused any spine curriculum;
+  under `--demo-share` the recipe's own pool is still built, so they stay wired (c8a0e0bd).
+* **Smoke result (05:05-05:13 UTC, `unr1b4_smoke`, analysis of the mechanics only).** The first
+  search fired on patience at 21.5M (the greedy dies on the start platform at 4.6 s, best d
+  97,748 of 97,768): in 129 s (2 min budget) the explorer built **6,402 contact cells from 37
+  roots over 368,608 runs** (2,048 envs; ~27 decisions per run, most die fast), cells by mode
+  policy 2,750 / random 3,615 over 4.0M / 5.8M decisions (yield 6.9e-4 vs 6.2e-4 per decision:
+  a tie); best cell d **96,845 = 903 u past the greedy line**, chain of 5 links (modes random,
+  random, policy, random, policy) from root 97, **replayed exactly (0 u junction error)**. The
+  trainer adopted it ("NEW SPINE from knob ... the FIRST spine is live"), the curriculum drew
+  from it at once (band success 100%, spine-line bonuses paid), and the recipe's own pool stayed
+  intact beside the 25% share (novel 737 rows, backward-mix 369, greedy 922). Training 181k
+  steps/s on this 3090 after the search. **Defect fixed**: the knob's yield sums decayed over ONE
+  population of run ends, and lambda swung 0.55 -> 0.18 -> 0.52 -> 0.95 in 2 min while the two
+  modes' totals stayed within 10%: now 16 populations (98b702cf).
+* **The run: `unr1b4_knob`, launched 05:14 UTC from step 0, commit 98b702cf**, box 59667168. Extra
+  flags after `config.incumbent_recipe`: `--auto-spine --auto-spine-scratch --auto-spine-knob
+  --auto-spine-async --auto-spine-recheck --auto-spine-milestones --auto-spine-patience 3e8
+  --auto-spine-envs 2048 --auto-spine-ge-minutes 10 --demo-share 0.25 --demo-window 5
+  --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-front-frac 0.67 --demo-success-d 100
+  --demo-success-bonus 50 --ckpt-every 2.5e8`, `--steps 1e10`, evals every 75M. Nothing changes
+  after launch; the first search comes ~300M steps after the first eval.
