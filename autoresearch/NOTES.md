@@ -220,3 +220,12 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
 * v2 is ready and NOT running (adccf082, `--auto-spine-knob-archive`: one archive for the whole
   run instead of a fresh one per search; unit-tested). Built while v1 looked slow; v1 is on time,
   so it keeps the box.
+* **06:15 UTC - search 2 (529M weights, quorum-triggered) was STALE.** Its greedy line: 9.7 s,
+  best d 91,558 (8.1%), stall 882, 89 root cells. In 10 min: 43,001 cells over 880,657 runs;
+  the deepest d 90,117 (9.6%) by 33 s and 90,088 at the end (flat from ~1 min; yields 1.1e-2 ->
+  3e-4 per decision); knob 0.58-0.66 (random ~1.5x the yield; cells policy 14,386 / random
+  28,526 over 14.2M / 19.4M decisions); chain 12 links, 5 random + 7 policy, exact replay. But by
+  604M the greedy alone was at 11.9% median (12.4% cover) - past the spine's 9.6% - so
+  `--auto-spine-recheck` discarded it (next search >= 916.6M, the 3e8 retry). Past the start wall
+  the recipe's own RL outruns a 10-min search; the search pays where the policy sits still
+  (the 1.7% wall: 450M steps).
