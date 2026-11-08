@@ -327,3 +327,8 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   without `--auto-spine-knob-archive`, i.e. v1's explorer (a fresh archive per search) + the
   three fixes: `--demo-match-band`, `--auto-spine-knob-evalroots`, `--auto-spine-deeper`. Record
   gate passed. It should replay v1/v2 to 302M (the fixes are off-path until a spine exists).
+* **09:58 UTC - v3 so far** (`unr1b4_knob3`, 972M): replayed v1/v2 to 302M; search 1 -> spine 1
+  (the same 796-state line as v2's) live at 391M; 453M 6.2%; search 2 (529M, a fresh archive on
+  the eval line) STALE like v1's; **first ramp at 604M (10.1%), on time**; 680M 15.15, 755M
+  15.75, 831M 17.27, 906M 17.96 - on v1's curve. Search 3 is due at the 982M eval, then the
+  window, where the fixes (match-band, eval-line roots) should first make the difference.
