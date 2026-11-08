@@ -663,3 +663,15 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   the norm - 0.67x at 700M, efWD_blue050 - never tested as a stabiliser), a KL-adaptive lr
   (rl_games' schedule; not in the trainer). Not for v6: its ~6.7B steps end before v3's runaway
   began, and a slower lr would cost the early walls it is meant to measure.
+* **22:45 UTC - v3 RECOVERED by itself: 32.301 at 9,016M, new best 32.447 at 9,695M** (median 32.3%
+  at 9,469 / 9,544 / 9,695M; two relapses to ~2% at 9,242-9,317M and one 27.6 at 9,620M). Hand-on
+  unr1b4_knob3d/ckpt_9510584320.pt pulled. The KL did NOT come down (median per 250M bucket 3.9
+  (9.0B), 4.4 (9.25B), 5.4 (9.5B), p90 16-20, max 115) while the greedy came back, so the KL's size
+  does not track the collapse; part of it may sit in a head with no physics effect (pitch: no
+  entropy term, sigma at its 0.5 cap) - per-head KL is not logged. Same picture as 7,430M: all 7
+  good episodes reach their best (d 67,333-67,503) at x -630..-820, z 10,200-10,340, falling at vz
+  ~-1,050, then land on the lower floor (z 9,715-9,880) and end there. Searches 10-12 (8,433 /
+  8,879 / 9,326M) found lines to d 67,384 / 67,373 / 67,499 - none 200 u deeper than the spine
+  being taught (67,501), so no new spine since 6,630M. The curriculum is back at the spine's first
+  rows (starts [13-23, 3,413], success 0-1.2% over ~240 episodes: the true-start region is what
+  it is re-learning). Post-CP2 (>33%, d < 66,782) due 13.93B (~03:40 UTC).
