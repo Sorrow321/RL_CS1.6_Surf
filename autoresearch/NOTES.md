@@ -188,3 +188,24 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
 * 05:44 UTC: the explorer-only knob ablation on search 1's checkpoint (`runs/unr1b4_abl/` on the
   box: the rule, lambda fixed 0 = all policy, lambda fixed 1 = all random; 10 min each, in
   parallel so they share the contention; same roots and seeds).
+* **05:55 UTC - THE KNOB ABLATION (explorer only, no training; search 1's checkpoint at 302.5M,
+  the 1.7% start-platform wall; the same greedy line, roots, seeds and 10 min budget, the three
+  arms in parallel so they shared the contention; ~5.7-6.3M decisions each):**
+
+  | arm | cells | deepest d | progress | cells / 1k decisions (by mode) | best chain |
+  |---|---|---|---|---|---|
+  | **the rule** (lambda 0.52-0.62 throughout) | **11,888** | **94,760** | **4.93%** | policy 1.54, random 2.34 | 11 links: R P P R P P P P R R P |
+  | lambda 0 (all policy) | 3,018 | 97,908 | 1.77% | policy 0.50 | 10 policy links |
+  | lambda 1 (all random) | 6,440 | 96,924 | 2.76% (flat from ~2 min) | random 1.01 | 2 random links |
+
+  (the greedy line: 1.70%; the in-run search 1, same rule with ~3x less contention: 5.55%.)
+  **The middle of the knob beats both ends, and by a lot: 3.9x / 1.8x the cells, 3.2 / 2.2
+  points more progress at matched decisions.** It is a synergy, not an average: inside one
+  archive the policy's yield per decision is 3.1x its yield alone (it continues FORWARD from
+  the new contact states the random runs reach sideways) and the random runs' is 2.3x theirs
+  alone (they branch from the places the policy carried them to); the deepest chains alternate
+  the modes. Alone, the policy repeats its own fall and random saturates within 2 minutes.
+  The yield rule kept lambda in the middle by itself (the two modes' yields stayed within
+  1.5x), which is where it should be here. One seed per arm, one wall: a probe, not a law.
+  Cost noted: three explorers beside the trainer cut it from ~250k to ~25k steps/s for 10 min
+  (CPU threads oversubscribed); one at a time from now on.
