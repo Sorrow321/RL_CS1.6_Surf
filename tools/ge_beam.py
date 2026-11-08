@@ -406,13 +406,32 @@ VIEW_FOLLOW = np.array([-90, -60, -30, -15, 0, 15, 30, 60, 90], np.float32)
 MODE_POLICY, MODE_RANDOM, MODE_ROOT, MODE_BURST = 0, 1, 2, 3
 
 
+def vz_cell_hash(mins, maxs, cell, energy, heading, vz_level: float):
+    """explore_phase1.CellHash whose vertical bit is THREE-way when vz_level > 0: rising (vz >
+    +vz_level), level, falling (vz < -vz_level) - instead of rising / not, so a level arrival is
+    a new cell, not the dive that reached the same place first. vz_level 0 = CellHash itself."""
+    from explore_phase1 import CellHash
+    h = CellHash(mins, maxs, cell=cell, energy=energy, heading=heading)
+    if not vz_level > 0 or not heading > 0:
+        return h
+
+    class VzHash(CellHash):
+        def keys(self, states):
+            k = CellHash.keys(self, states)               # (...)*2 + rising
+            vz = np.asarray(states["velocity"], np.float64)[..., 2]
+            k = k // 2                                    # drop the rising bit
+            vb = np.where(vz > vz_level, 2, np.where(vz < -vz_level, 0, 1)).astype(np.int64)
+            return k * 3 + vb
+    v = VzHash(mins, maxs, cell=cell, energy=energy, heading=heading)
+    return v
+
+
 class Explorer:
     def __init__(self, ctx, P, rng):
-        from explore_phase1 import CellHash
         self.C, self.P, self.rng = ctx, P, rng
         mins, maxs = ctx.core1.map_bounds()
-        self.hash = CellHash(mins, maxs, cell=P.cell, energy=P.cell_energy,
-                             heading=P.cell_heading)
+        self.hash = vz_cell_hash(mins, maxs, P.cell, P.cell_energy, P.cell_heading,
+                                 float(getattr(P, "cell_vz", 0.0)))
         self.A = Archive()
         self.K = ctx.K
         self.steps = 0
@@ -855,6 +874,9 @@ def parse(argv=None):
                     help="velocity heading sectors (x rising / not) of the cell key")
     ap.add_argument("--max-nodes", type=int, default=12_000_000,
                     help="the archive stops growing at this many nodes (memory guard)")
+    ap.add_argument("--cell-vz", type=float, default=0.0,
+                    help="> 0 (needs --cell-heading > 0): the cell's vertical bit is rising / "
+                         "level / falling at +-this many u/s instead of rising / not")
     ap.add_argument("--replace-secs", type=float, default=0.25,
                     help="a cell's state is replaced by an arrival this many seconds sooner")
     ap.add_argument("--viable-secs", type=float, default=1.0,
