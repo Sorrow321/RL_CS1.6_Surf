@@ -409,3 +409,20 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   saves its archive to see whether the explorer reaches the record's lower level at all
   (between the pit kill's top and the plate's level, October's notes) - i.e. whether the limit
   is reach or the "deepest d" output.
+* **11:53 UTC - WHY the explorer cannot hand on a line past the CP2 pit (analysis of a saved
+  archive, search 5's checkpoint and eval line, roots 12 s; 35,033 cells).** The deployed line
+  goes east to (4,613, -460, 12,363) at 25.1% (the U-turn level), turns back WEST and dives into
+  the pit kill (it dies at (3,688, 1,075, 10,961)); its best d (26.2-26.7%) is taken MID-DIVE.
+  The explorer DOES reach the record's lower level: **230 contact cells between the pit kill's
+  top and the plate's level** (x 3,978-6,063, z 11,332-11,879; October's notes put the record
+  at (4,041, 661, 11,814) and (5,554, 454, 11,079) there), and the archive's deepest cell of all
+  is one of them ((4,343, -906, 11,346), d 73,917 = 25.84%, a random-mode cell). But the field
+  rates that detour no better than the policy's fatal dive (73,917 vs 73,455), and both gates
+  compare a CONTACT cell with a FALL point - knob_ge's "beats the line's own best d" and the
+  trainer's gain test against the greedy's median deepest d. **So at a deceptive wall the
+  limit is the output rule, not reach.** Generic fix for a later recipe (not built): measure the
+  greedy frontier on CONTACT states too - the deepest d at or before each eval episode's last
+  map contact (auto_spine's `--cut contact` rule, already written) - so a supported state on the
+  detour beats a frontier that is a dive; the curriculum then teaches the lower level and the
+  next search roots there. The pit's far side (back west over the pit top, then CP2 at x ~800)
+  was not reached in any probe (min cell x 885 is the approach).
