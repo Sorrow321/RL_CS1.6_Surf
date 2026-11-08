@@ -268,7 +268,11 @@
   "from_scratch_step0": true,
   "resume_from": null,
   "launched_utc": "2026-11-08 08:39",
-  "box": 59667641
+  "box": 59667641,
+  "ladder": {
+   "first ramp": 227016704,
+   "window (CP1)": 378011648
+  }
  },
  "ladder": {
   "first ramp": 453509120,

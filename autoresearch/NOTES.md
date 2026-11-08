@@ -293,3 +293,8 @@ runs/unr1b2/unr1b2_geb2 (evals, ge/ lines + logs).
 --ge-beam-burst 25 --ge-beam-burst-frac 0.5 --ge-beam-cell 128 256 4 --ge-beam-cell-vz 250
 --ge-beam-envs 512 --ge-beam-threads 8 --ge-beam-duty 0.5 --ge-beam-front 0.5 0.01
 --ge-beam-front-doomed --ge-beam-chain 0.5 5` (X1's explorer at twice its envs and threads).
+
+**geb3 at 424M (09:03 UTC)**: first ramp at 227.0M, window CP1 at 378.0M (both ON TIME; the
+fastest of the three runs - geb 453.5M / 529.0M, geb2 302.5M / 529.0M; October 302.5M /
+1,036.5M); best 25.527 at 378M; 288k steps/s. The control unop_ctl has FAILED the first ramp AND
+the window (2.64B, no greedy eval past 8%).
