@@ -109,3 +109,80 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   `ps` on the box and `runs/<run>_launch.txt` before launching again.
 
 ## Round log
+
+### unr1b2 (slot 2: the policy-guided beam as Go-Explore's explore step) - 2026-11-08
+
+**What was built** (commits 57395473, e97d7667; `tools/ge_beam.py`, `train_fast --ge-beam`,
+`tests/python/test_ge_beam.py`, `tools/ge_beam_report.py`):
+
+* An archive of EXACT states: cells = 64 u position x kinetic-energy height bucket x velocity
+  heading sector x rising (explore_phase1.CellHash), selection W = 1/sqrt(1 + runs that touched
+  the cell) (Nature) plus a 25% share drawn from the 64 deepest cells on the goal field. A cell
+  keeps its first arrival unless a later one is 0.25 s sooner (a NEW node: chains through the
+  old one stay exact).
+* The explore step restores the selected cells through the core's OWN reset (spawn pool = the
+  selected states, yaw jitter 0), so a 1-env replay of the recorded rows from the same state is
+  bit-identical; a copy that dies is re-seeded at another selected cell mid-hold (its first row
+  lasts h0 ticks) - every applied engine row is recorded. EVERY new cell any copy reaches is
+  archived with its link (parent cell + rows); no culling.
+* The knob, two forms: `--random-frac` = share of runs that are Nature bursts (uniform keys,
+  uniform view offset in {-90..90} deg from the velocity, 95% repeat), and `--burst B` = every
+  other run starts with B decisions of such held random rows, then the policy (keys at T 1.5,
+  a held yaw-z offset N(0, 0.3) redrawn every 25 decisions).
+* Lines: the deepest VIABLE cell (a run from it lived >= 1 s) is replayed link by link (each
+  link's end checked against the archived state to 1e-3 u) into per-tick states from the true
+  start; exported when 100 u deeper than the last. The trainer adopts a line once it beats the
+  latest greedy eval's best episode by 300 u, as a DemoCurriculum (the --finish-line constants:
+  0.5 s band, 0.25 -> 4 s steps, rho 0.2, cooldown 5) on 20% of every spawn pool; success = the
+  paid ratchet record <= the line's end d + 200 u (or a finish). A deeper line replaces it when
+  the greedy crosses the current one, the curriculum reaches the line's start, or 3e8 steps.
+* Box 59667641 (RTX 4080, Threadripper PRO 3955WX 32 threads, 0.31 $/h).
+
+**Explorer alone, the knob as the share of random runs** (2026-11-08 05:05-05:16 UTC, box
+59667641, October checkpoint r0 = sidEM2cap2surfGR at 749.7M, whose greedy passes the window and
+stalls at the CP2 wall 26.9-27.1%; three explorers in parallel, 512 envs, 64 cells x 150
+decisions per step, cells 64 u x 128 u energy x 4 headings, 10 min each, ~540 steps, ~3M runs;
+scored with tools/ge_beam_report.py on the grader's goalc field, start_d 99,675):
+
+| random-frac | deepest | deepest viable (line) | max CP | cells | cells found by random runs |
+|---|---|---|---|---|---|
+| 0 (policy beam) | 27.44% | 26.24% (25.8 s line, CP1) | 1 | 1.88M | - |
+| 0.5 | 27.21% | 25.52% | 1 | 2.15M | 54% (top-200 deepest: 74%) |
+| 1 (Nature step) | 5.30% | 5.29% | 0 | 0.31M | 100% |
+
+* The policy beam reaches the policy's own frontier in < 30 s of explorer time (8 lines exported
+  in the first 30 s) and stays there: 27.44% is the greedy's own wall (pit dive = 27.5%), not
+  past it. Random bursts from restored cells cannot fly the track (5.3% in 10 min) - the
+  policy's competence is what moves the archive along the map.
+* No setting passed the pit dive in 10 minutes. The archive grows ~5k cells per step at this
+  cell size (2.5M nodes, 2.3 GB RSS in 10 min) - far too many for hours, and the count weight
+  spreads over millions of cells. Next: coarser cells and the burst form of the knob.
+
+**Explorer alone, the burst form of the knob and coarser cells** (05:24-05:34 UTC, same box,
+checkpoint and protocol; cells 128 u x 256 u energy x 4 headings; goalc progress):
+
+| explorer | minutes | deepest | deepest viable (line) | max CP | cells |
+|---|---|---|---|---|---|
+| policy beam (burst 0) | 9.9 | 27.48% | 26.33% (25.9 s) | 1 | 355k |
+| burst 10 decisions on EVERY run | (1.5) | 9.7% (r0's field) | - | - | - |
+| burst 25 decisions on every run | (1.5) | 5.7% (r0's field) | - | - | - |
+| policy beam, frontier band 2% (frontier share 0.5) | 7.8 | 27.41% | 26.29% | 1 | 307k |
+| burst 10 on 25% of runs | 7.6 | 27.38% | 26.48% (27.1 s) | 1 | 352k |
+
+* A 0.4 s random burst at the start of EVERY run wrecks the flight (9.7% vs 27.8% after 1.5
+  min; stopped): the same lesson as per-decision epsilon at speed - the policy cannot recover
+  from a random start state at surf speed often enough to carry the frontier.
+* On a quarter of the runs it is neutral for the frontier and the burst runs found 48% of the
+  200 deepest cells; the frontier band changed nothing measurable in 8 min.
+* Coarse cells reach the same frontier with 5x fewer cells (355k vs 1.88M in 10 min).
+* Verdict for the explorer ALONE: the policy beam returns to the policy's frontier (through
+  the window, CP1) within a minute from the true start, and NO setting of the knob passes the
+  pit-dive wall (27.5%) in 8-10 min of 1/3 of a 4080 box. Random exploration alone cannot even
+  fly the track. Where the knob matters is breadth at the frontier, not reaching it.
+* The loop launched with: policy beam, 10-decision bursts on 25% of runs, cells 128/256/4, 512
+  envs, 8 threads, duty 0.3.
+
+**Run unr1b2_geb** (launched 05:35 UTC, record gate passed 05:37; box 59667641; commit
+d342b843): `box.py launch --run unr1b2_geb --steps 2e10 -- --ge-beam --ge-beam-burst 10
+--ge-beam-burst-frac 0.25 --ge-beam-cell 128 256 4 --ge-beam-envs 512 --ge-beam-threads 8
+--ge-beam-duty 0.3` on top of config.incumbent_recipe, from step 0, one recipe.
