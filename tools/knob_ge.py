@@ -71,7 +71,10 @@ def knob_share(c_rand: float, n_rand: float, c_pol: float, n_pol: float,
 class Knob:
     """The decayed yield sums behind knob_share. ``horizon`` = the number of run ends over
     which an old run's evidence decays by 1/e (set to the population: about one generation of
-    runs); ``warm`` = run ends per mode before the rule speaks (lambda 0.5 until then);
+    runs; the search passes 16 populations: one population (the first smoke, unr1b4_smoke
+    2026-11-08) swung lambda 0.55 -> 0.18 -> 0.52 -> 0.95 within 2 minutes while the two modes'
+    totals stayed within 10% of each other - new cells come in bursts); ``warm`` = run ends per
+    mode before the rule speaks (lambda 0.5 until then);
     ``fixed`` = a constant lambda instead of the rule (the two ends of the knob for an
     ablation: 0 = all policy, 1 = all random)."""
 
@@ -338,7 +341,7 @@ def knob_ge_search(args, *, cfg, map_path, ep_cap, tick, arm, K, VIEWC, VIEW_ABS
           + (f"FIXED at {float(args.ge_knob_lambda):g}" if args.ge_knob_lambda is not None
              else f"by yield (floor {float(args.ge_knob_floor):g})"), flush=True)
 
-    knob = Knob(horizon=N, floor=float(args.ge_knob_floor),
+    knob = Knob(horizon=int(args.ge_knob_horizon) * N, floor=float(args.ge_knob_floor),
                 warm=int(args.ge_knob_warm), fixed=args.ge_knob_lambda)
     L = int(args.ge_knob_decisions)
     rep = float(args.ge_knob_repeat)

@@ -2262,6 +2262,9 @@ def main():
                          "per decision (the paper's 0.95)")
     ap.add_argument("--ge-knob-floor", type=float, default=0.05,
                     help="--ge-knob: the knob stays in [floor, 1 - floor]")
+    ap.add_argument("--ge-knob-horizon", type=int, default=16,
+                    help="--ge-knob: the yield sums decay by 1/e over this many POPULATIONS of "
+                         "run ends (new cells come in bursts; 1 swung the knob end to end)")
     ap.add_argument("--ge-knob-warm", type=int, default=256,
                     help="--ge-knob: run ends per mode before the yield rule speaks (0.5 until)")
     ap.add_argument("--ge-knob-lambda", type=float, default=None,
