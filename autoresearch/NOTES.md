@@ -629,3 +629,19 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   `fail` there: past the dive, the next wall is getting out of that lower level. Search 8
   (7,430M) roots on the new line. The post-CP2 block needs > 33% (d < 66,782), due 13.93B (~03:35
   UTC); October stalled here at 32.3-32.5% and cleared it at 6.97B.
+* **20:40 UTC - v3 COLLAPSED at ~7.6B: evals 7,656-8,110M score 1.1-2.2 (one 15.2 episode at
+  7,808M), from 32.37 at 7,581M.** The greedy now stands on the spawn platform until eval patience
+  (2/9) or drops off it to z ~13,830 and dies (7/9) - the control's picture. The training log has a
+  runaway PPO step size before it: median approx_kl per 250M bucket 0.018-0.024 over 0-4B,
+  0.03-0.05 over 4.25-6.5B, 0.063 (6.75B), 0.103 (7.0B), 0.19 (7.25B), **0.64-0.77 (7.5-8.0B)**, with
+  single updates at 13.4 / 22.0 (7,592-7,597M, where the training reward fell 41 -> 13) and up to
+  45.6; value loss 1.8-2.1 -> 5-6. View sigma 0.05-0.07 (yaw) / 0.49 (pitch, capped). The incumbent
+  runs PPO at lr 3e-4 with no KL guard (`--target-kl` unset). October saw the same class
+  (docs/research-results.md 2026-10-07: first-minibatch KL 3-30 with a collapsed sigma at lr 3e-4;
+  `--target-kl 0.02` did not stop it, `--lr 1e-4` did; a later scan found KL spikes do not
+  predict collapses). The run is ON TIME by the ladder (its walls stay cleared; the post-CP2 block
+  is due 13.93B), so per the operator note it keeps training; the best stays 32.427 (7,430M,
+  hand-on ckpt_7259815936 from before the collapse). Search 9 (7,883M) rooted on a collapsed eval
+  (925 ticks) and found a line to 67,388 - kept out by the gain rule. **Lesson for the next
+  generation: the late-run instability is a recipe property (lr 3e-4, no step-size guard, a
+  near-deterministic view head); a frozen recipe needs its stabiliser at step 0.**
