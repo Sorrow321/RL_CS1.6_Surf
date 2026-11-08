@@ -364,3 +364,10 @@ sits at about the greedy's depth (a 2.0-unit field dip), so none of it reached t
 its viable cells (rewritten every 20 explore steps): the exact detour states, next to the
 frontier, where October's notes say the CP2 wall is cracked ("put it into the unvisited states
 next to its frontier").
+
+**geb5 at 813M (12:17 UTC)**: first ramp 378.0M, CP1 529.0M (ON TIME), at the CP2 wall from 529M
+(27.0-27.1%), best 27.077. Its explorer is at the wall (deepest 27.46%, viable 26.43%). The spawn
+file is live: 103 viable frontier-band cells (18.5-26.4%, median 23.0%), rewritten every 20
+explore steps; 3 of them on the detour (2 east-ramp, 1 level-west in the gap) - 15% of the pool
+over 103 rows is ~6 spawns per row per pool rebuild, so the detour rows already get ~18 spawns an
+iteration. Pit-dive deadline 3.88B ~ 15:35 UTC: geb5 runs to the wrap-up.
