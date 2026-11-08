@@ -305,3 +305,22 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   banked 2.86% (raw 4.24%) at 7.95 s, replay exact; vs the eval's BANKED frontier 98,258 -> +1,433 u
   -> NEW SPINE (795 states, end d 96,826, success line d <= 96,926). The banked comparison and the
   random children are what let the loop act at the trap where run 1's searches were stale or short.
+
+### 09:15 UTC: run 2 FAILED the first ramp; a dead-end spine plus its bonus; run 3 without the bonus
+* Run 2 after the adoption: the greedy learned the spine (2.8% from 0.68B, 9/9 past its success
+  line, the curriculum walked back to tau 0 at 97% band success) - and stayed there: 2.84-2.85%
+  through 1.06B -> **FAILED the first ramp** (deadline 1.0B). Search 3 (680-783M) found the same
+  2.86% point (no gain); the next would have been 1.08B. Stopped at 1.139B (ckpt_latest pulled).
+* Why: the spine is a DEAD END. It leaves the platform east like the dying greedy but drifts
+  south (y -178 at 3 s: it survives the drop the greedy dies in), then runs south-east to
+  (9,870, -990, 13,850) and stops at 2.86% with no speed. Run 1's own first-ramp route (its 0.906B
+  eval) leaves the same way but lands NORTH (y +195), keeps ~1,330 u/s north-east to (9,878, 974)
+  at 4 s and on east to the ramps at x 12,000-13,400 (8% at 9 s). The MCTS's banked score preferred
+  the south branch (2.86% banked vs the north route's 2.80% at 4 s - it only pulls ahead at 4.5 s).
+* And the bonus made the dead end the best-paid place on the map: --demo-success-bonus 50 for
+  crossing its success line (paid ~841k times by 1.06B), kept forever by --auto-spine-milestones.
+  Run 1 never adopted a spine, so nothing anchored its policy and it found the ramp by itself.
+* **Run 3 `unr1b3_mcts3`** (09:15 UTC, commit 29202df0): run 2's recipe WITHOUT
+  --demo-success-bonus and --auto-spine-milestones. The search's lines stay a spawn curriculum
+  (25% of the pool, the backward walk on the success line) but reaching one is not paid, so a
+  search line that is a local optimum cannot outbid the field. Everything else as run 2.
