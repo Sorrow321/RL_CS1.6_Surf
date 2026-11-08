@@ -345,3 +345,19 @@ harvest of this box would fail the same way: pull before every deadline.
   spawning with the line's own held keys (the `--demo-keys` rule): the greedy prefix's keys are
   in the eval rows (fwd, side, buttons), the chain's in the archive's link actions
   (auto_spine.chain_keys) - not built.
+
+### 2026-11-08 10:48 UTC - unr1b1_gel STOPPED at 3.50B (on time but stuck); next: unr1b1_v2
+
+* Why stop an ON-TIME run: since 2.6B the greedy is one deterministic line dying at 27.0-27.1%;
+  line 15's curriculum has sat on the ducked flight (2783: 0.2%, 2808: 37%) for ~0.9B steps; 9
+  searches in a row found nothing 200 u past line 15. With 5 h left, a corrected recipe from
+  scratch has more upside than 3B more steps of a stuck line, and the round keeps unr1b1_gel's
+  best eval (27.574 at 2.114B) either way.
+* Harvested to $AR_HOME/runs/unr1b1/unr1b1_gel/: 47 evals, progress.csv, run.json, the launch
+  log, ckpt_latest.pt (the final weights, ~3.50B, md5 57119706...), snapshots ckpt_1000341504 /
+  ckpt_2000683008 (the newest at or before the best eval) / ckpt_3001024512, gel_lines.tgz (every
+  search's line, spine, roots, logs; archives deleted).
+* unr1b1_v2 = the same loop + four generic fixes for defects this run showed (commit ea5ba4c7):
+  `--keys-hold-spawn-duck` (ducked spawns hold duck), `--ge-line-retire` (a learned line gives
+  its 20% back), `--ge-line-match-band` (band credit on repeated origins), `--ge-line-front-temp
+  1` (band spawns sample keys at 2 and yaw sigma x2 for 1 s). From scratch, step 0.
