@@ -399,3 +399,17 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   0% band success over ~500 eps per window; backing off 5 states per cooldown it needs ~200M steps
   to return to the end. The greedy stays at its banked 23.6% (0/9 past the 26.9% line), so searches
   now fire on patience (1.057B, 1.133B).
+
+### 11:20 UTC: run 4's MCTS threads the pit gate (in search; the policy still learning it)
+* Searches 5 (1.06-1.13B) and 6 (1.59-1.62B), both patience-triggered, adopted lines ending at d
+  ~72,042 = **27.72% BANKED - past the pit-dive threshold (27.5%)**; 2.9M nodes, 30-31.5k cells,
+  raw live best 28.4%. Spine 6 (29 s): over the pit, a landing in its east part (5,038, 563,
+  11,015) at 25.5 s, a loop back west at y ~ -880, z 11,400-11,800, a contact at (3,109, -896,
+  11,720) at 28.5 s, and **across the gate plane x = 2,592 at z 11,412** - inside the ~220 u window
+  between the pit-floor teleport (top 11,332) and the layer above (11,552), at the other y (the
+  'no_jump' trap is at y +832..+960) - alive at (2,518, -882, 11,412). The fine end of the steer
+  mixture plus the patience searches found what the 6-min explorer-alone tests on run 1's policy
+  did not.
+* The policy has not followed yet: evals 26.7-26.9% (the greedy still dives at 26.8% raw, banked
+  23.6%), 0/9 past the 27.7% line. The curriculum walked back to ~26.8 s on spine 6 (61.8% band
+  success), then 3.2% at the last ~2 s - the gate itself. Pit-dive deadline 3.88B (~13:05 UTC).
