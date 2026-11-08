@@ -255,3 +255,15 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   cause. What differs is the batch (9 eval envs vs the explorer's 1-env rollout core) and so
   the GPU kernels' numerics; on a chaotic map that is enough for another line. The fix stands:
   root the search on the eval's own states.
+* **07:11 UTC - the knob ablation, second checkpoint (search 3's, 982M; roots on the start
+  platform because its re-rolled greedy died at 2.0%; 10 min each, each explorer alone beside
+  the trainer):** the rule (search 3 itself) 98,709 cells, deepest 20.4%; **lambda 0 (all
+  policy) 74,690 cells, the SAME 20.4%** (d 79,296, a 10-link all-policy chain); lambda 1 (all
+  random) 6,728 cells, 2.8%. So over the two checkpoints the rule's mix is never worse than the
+  better pure end and, at the wall where the policy itself was stuck (1.7%), 2.8x deeper than it:
+  where the policy can fly a stretch the policy chains carry the depth (the mix keeps ~45% of
+  the runs on them and adds breadth: 1.3x the cells), and where it cannot, random branches give
+  the policy somewhere new to continue from. Pure random never gets past ~3% at speed. Answer
+  to the user's question so far: the policy-guided side is not useless - it is what goes deep
+  - but alone it repeats its own fall; the knob belongs in the middle, and the yield rule puts
+  it there (0.52-0.66 in all 4 searches) without being told.
