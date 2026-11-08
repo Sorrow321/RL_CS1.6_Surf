@@ -361,3 +361,30 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   cracked it with RL mechanisms that are all in the recipe (greedy-death spawns, no time charge),
   so v3 runs on: the pit dive is due by 3.88B, the next search at >= 1.68B (retry). 1,359M eval:
   frontier 26.5%, median 24.6%.
+* **10:45 UTC - the knob over all 12 searches** (`autoresearch/analysis/knob_table.py` on the
+  pulled search logs; "line best" = the line the search rooted on; v1 search 3 re-rolled a line
+  that died at 2.0%):
+
+  | run / search | step | line best | deepest cell | knob range | cells / 1k decisions, policy / random | deepest chain | outcome |
+  |---|---|---|---|---|---|---|---|
+  | v1 / 1 | 303M | 1.7% | 5.5% | 0.46-0.64 | 0.32 / 0.49 | RPPRPPPPRRPPR | adopted |
+  | v1 / 2 | 529M | 8.1% | 9.6% | 0.51-0.66 | 1.01 / 1.47 | RPPRPPRRPRPP | stale |
+  | v1 / 3 | 982M | 2.0% | 20.4% | 0.53-0.61 | 2.67 / 3.36 | PPPPPPPPPP | adopted |
+  | v1 / 4 | 1,208M | 20.6% | 23.7% | 0.53-0.76 | 0.64 / 1.11 | RPRRRRRRRPPRRR | adopted (froze) |
+  | v2 / 1 | 303M | 1.7% | 5.6% | 0.31-0.73 | 0.35 / 0.52 | RPRRPPRRPPP | adopted |
+  | v2 / 2 | 454M | 5.9% | 9.6% | 0.54-0.70 | 0.49 / 0.75 | PPRPRRR | adopted |
+  | v2 / 3 | 605M | 9.9% | 15.3% | 0.56-0.66 | 1.28 / 1.63 | PPRRPPRRRPPP | adopted |
+  | v2 / 4 | 755M | 15.6% | 15.4% | 0.42-0.66 | 0.35 / 0.29 | - | none (drowned) |
+  | v3 / 1 | 303M | 1.7% | 5.6% | 0.32-0.69 | 0.34 / 0.49 | RPRRPPRRPPP | adopted |
+  | v3 / 2 | 529M | 7.0% | 9.6% | 0.52-0.71 | 0.60 / 1.03 | PRPRRRP | stale |
+  | v3 / 3 | 982M | 18.7% | 24.5% | 0.50-0.65 | 0.92 / 1.19 | PPRPPRRPRP | adopted -> window |
+  | v3 / 4 | 1,284M | 26.7% | 26.2% | 0.54-0.74 | 0.42 / 0.77 | - | none (CP2 pit) |
+
+  Read-out: the yield rule kept the random share inside 0.31-0.76 in every search, never near an
+  end; random runs found 1.2-1.8x the policy's new cells per decision in 11 of 12; and the
+  deepest chain was a MIX of both modes in 9 of the 10 searches that found one (the exception,
+  all policy, is the stretch the policy already flew). Together with the two explorer-only
+  ablations (all policy 1.77% / all random 2.76% / the rule 4.93% at the 1.7% wall), the answer
+  to "at which point is the policy-guided search more useful": neither end is enough; the
+  policy carries the depth, random runs supply the branches it continues from, and one
+  probability-matching rule on the archive's own yield finds the middle without being told.
