@@ -532,3 +532,13 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   (-400..-800, z 10,000-10,400), 35.5% at (-800, z 9,600), 36.5% at (0, z 9,200) - the way on goes
   DOWN between sheets to the west and back east under them. Every searched branch that leaves the
   32% shelf dies on a sheet within a macro or two, so the trees stay 3-4 macros deep.
+* 18:33 UTC, run 4 at 11.03B: still 32.4-32.5% (searches 26-28: one more 32.4% line, one null).
+  **Plan at its 13.93B post-CP2 deadline (~20:45 UTC) if it misses: stop it (harvest first) and
+  launch run 5 from scratch = run 4's recipe + `--auto-spine-mcts-args "--mcts-random-frac 1.0
+  --mcts-perturb-frac 0"` (commit f5421ec9; --steps 60e9 per the operator note)** - the MCTS knob
+  at the RANDOM end (15 of 16 children random-held, the 16th the policy's mode), everything else
+  identical. It answers the program's question with the one thing that differs: does the
+  policy-guided half of run 4's explorer matter (run 4 = the 0.5 mix: first ramp 0.378B, window
+  0.605B, pit 2.341B, cavity 2.718B)? New flag --auto-spine-mcts-args puts the knob in the flag
+  set (byte-identical when absent; unit test; CPU-smoked). The search code is unchanged since run
+  4's commit (git diff 5b59a646..f5421ec9 of beam_tas/mcts_search/mcts_policy is empty).
