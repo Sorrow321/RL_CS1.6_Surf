@@ -523,4 +523,4 @@ passes at 62 s, i.e. where a 60 s from-start trace ends, and where the greedy it
 2.64B to 2.94B. Reading: the policy's tolerance to noise improved (the trainer's key temperature
 has been up on the plateau since ~4B), so T 1.5 copies now hold the line for a full trace, and
 the trace length caps the rest. No adoption (54% is behind the greedy's 82%); its frontier cells
-(15% of starts) now sit near 44-54% instead of <= 31%.
+(15% of starts) now span 34-54% (3,872 cells, d 45,643..65,526 at 7.57B) instead of ~31%.
