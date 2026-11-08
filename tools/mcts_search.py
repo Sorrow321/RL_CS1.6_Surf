@@ -667,7 +667,14 @@ def run_mcts(ctx: dict, a) -> dict:
             # coherent steering: an explore child keeps its parent's held offset with
             # probability --mcts-hold-p (Go-Explore's action repeat, one level up), else draws
             # a fresh one; the greedy child and the policy samples steer with none
-            fresh = rng.normal(0.0, sigma, N)
+            if float(a.mcts_yaw_sigma_min or 0.0) > 0.0:
+                # a SCALE MIXTURE: each child's steer scale log-uniform in [min, sigma] - fine
+                # offsets thread a precision gate, coarse ones explore (one knob, both ends)
+                _lo = math.log(float(a.mcts_yaw_sigma_min))
+                _sc = np.exp(rng.uniform(_lo, math.log(sigma), N))
+                fresh = rng.normal(0.0, 1.0, N) * _sc
+            else:
+                fresh = rng.normal(0.0, sigma, N)
             keep = rng.random(N) < float(a.mcts_hold_p)
             delta = np.where(explore, np.where(keep, tree.delta[own], fresh), 0.0)
         else:
@@ -833,7 +840,8 @@ def run_mcts(ctx: dict, a) -> dict:
     summary = {"mode": "mcts", "waves": wave, "nodes": int(tree.n - 1),
                "alive_nodes": int(tree.alive[1:tree.n].sum()), "cells": int(arch.n),
                "roots": len(roots), "macro_decisions": M, "children": Kc,
-               "yaw_sigma": sigma, "hold_p": float(a.mcts_hold_p),
+               "yaw_sigma": sigma, "yaw_sigma_min": float(a.mcts_yaw_sigma_min or 0.0),
+               "roots_flight": int(a.mcts_roots_flight), "hold_p": float(a.mcts_hold_p),
                "novelty": float(a.mcts_novelty), "perturb_frac": float(a.mcts_perturb_frac),
                "random_frac": float(a.mcts_random_frac), "random_temp": float(a.mcts_random_temp),
                "keys_temp": float(a.mcts_keys_temp),

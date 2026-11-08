@@ -2263,7 +2263,7 @@ def main():
     ap.add_argument("--mcts-yaw-sigma", type=float, default=20.0,
                     help="--mcts: the sampled children's held yaw offset ~ N(0, SIGMA) deg "
                          "(child 0 takes the policy's mode with none)")
-    ap.add_argument("--mcts-novelty", type=float, default=1.0,
+    ap.add_argument("--mcts-novelty", type=float, default=3.0,
                     help="--mcts: weight of the NOVELTY value in PUCT - new archive cells per "
                          "visit in a child's subtree (each macro earns the fraction of its "
                          "decisions that opened a new cell), beside the max-backed progress; "
@@ -2272,7 +2272,7 @@ def main():
                     help="--mcts: the share of each expansion's SAMPLED children that explore (the "
                          "held yaw offset, --mcts-keys-temp, --mcts-view-temp); the rest sample "
                          "the policy at temperature 1. 1 = every sampled child explores")
-    ap.add_argument("--mcts-random-frac", type=float, default=0.0,
+    ap.add_argument("--mcts-random-frac", type=float, default=0.5,
                     help="--mcts: the share of each expansion's SAMPLED children that are RANDOM: "
                          "their first decision drawn at --mcts-random-temp on every head (keys "
                          "near-uniform, the view target spread over its range) and HELD for the "
@@ -2282,6 +2282,10 @@ def main():
     ap.add_argument("--mcts-hold-p", type=float, default=0.5,
                     help="--mcts: a sampled child keeps its parent's held yaw offset with this "
                          "probability (coherent steering over several macros), else draws one")
+    ap.add_argument("--mcts-yaw-sigma-min", type=float, default=2.0,
+                    help="--mcts: > 0 = each explore child's held-offset SCALE is log-uniform in "
+                         "[this, --mcts-yaw-sigma] (fine offsets thread a precision gate, coarse "
+                         "ones explore); 0 = the fixed --mcts-yaw-sigma")
     ap.add_argument("--mcts-keys-temp", type=float, default=1.5,
                     help="--mcts: the sampled children's keys temperature")
     ap.add_argument("--mcts-view-temp", type=float, default=1.0,
@@ -2296,7 +2300,7 @@ def main():
     ap.add_argument("--mcts-roots-secs", type=float, default=20.0,
                     help="--mcts: roots on the greedy line's last SECS before where it died / "
                          "stalled")
-    ap.add_argument("--mcts-roots-flight", type=int, default=0, choices=(0, 1),
+    ap.add_argument("--mcts-roots-flight", type=int, default=1, choices=(0, 1),
                     help="--mcts: 1 = a greedy line that DIES keeps roots up to its death (its fatal "
                          "flight after the last contact can still be steered); 0 = roots stop at "
                          "its last banked contact")

@@ -265,3 +265,17 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   Novelty buys coverage (1.5x cells) and a little depth; nothing banks a landing under the slab.
 * For a next run (code ready, CPU-smoked): --auto-spine-banked (compare like with like), and the
   MCTS defaults random-frac 0.5 (first-ramp trap: 5.08% vs 1.77%) + novelty 3.
+
+### 08:10 UTC: the pit wall is a PRECISION gate (map triggers read with surfgym.zones.parse_bsp)
+* The plateau's flight (2.42B eval, ep 0): over the pit going east at 21.5 s (2,430, 632, 11,668),
+  up the far side to (4,645, 335, 12,309) at 23.5 s, a turn, then west and down - dead at
+  (3,100, 850, 11,200) at ~24.8 s, inside the pit-floor trigger_teleport -> sidstart (x 2,592-6,240,
+  y +-1,152, z 10,752-11,332; --teleport-fail makes it a death). The cavity under the slab is
+  bounded below by another teleport (x 1,312-2,400, z 9,536-10,632); entering it from the pit means
+  crossing x = 2,592 inside a ~220 u window (z 11,332-11,552, under the teleport layer of x
+  2,528-3,680) at ~2,000 u/s, clear of a thin 'no_jump' teleport at y 832-960. The policy's
+  westward fall was heading for the cavity's height but crossed the pit floor 120+ u too low.
+  (AABBs of trigger models are upper bounds - the real brushes can be thinner.)
+* MCTS with roots through the fatal flight (--mcts-roots-flight 1, 8 s, 16 roots, random 0.5,
+  nov 3, 6 min): banked 26.22%, raw 27.59%, 20,498 cells - no live branch through the window.
+  The 20 deg held offsets are coarse for a 220 u window; testing 5 deg held offsets next.
