@@ -200,3 +200,33 @@ roots every 12 decisions over the greedy line's last 20 s). Nothing changes afte
 search, cut and adoption is the trainer's rule on its own state. Provenance of every spawn file:
 the map spawn (spine0.npy) and the run's own searches on its own weights. Record gate passed (23 s).
 Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy frontier d 98,903).
+* **Search 1** (524k-102M steps, 305 s beside training): the untrained greedy idles at the spawn
+  (stall at 34 s, best 0.28%); 15 roots in its first 7 s; 620 waves, 1.27M nodes but only **164
+  cells**, best 1.77% at 47 s (depth 91 - deep in time, not in space), replay exact. auto_spine
+  adopted it against the frontier the search started from (98,903 -> line 97,913, gain 990 u), the
+  trainer's --auto-spine-recheck discarded it: the policy itself had reached 97,964 meanwhile. Next
+  try at 402M. An explorer whose children are samples of an untrained policy explores like that
+  policy: it idles. The trainer: ~281k steps/s on the 5080 (with the search beside it).
+
+### 06:30-06:40 UTC: both from-scratch runs stall at the spawn; the first ramp is the battleground
+* **The control FAILED the first ramp** (1.7% at 1.06B, $AR_HOME/control LADDER: STOP). unr1b3_mcts1
+  sits at the same 1.6-1.7% through 0.68B (9 evals). Its 9 eval episodes are IDENTICAL: straight
+  east off the spawn platform (7837, 0, 15042) -> fall -> death at 3.0 s at (8,933, 252, 13,836),
+  1.61%. The policy learned the nearest field gradient into a kill; the first ramp needs a left turn.
+* Search 2 (402-549M): no spine (MCTS 97,910 vs greedy 98,083: 173 u < the 200 u gain).
+* Explorer-alone on the run's OWN 0.7B checkpoint, in a separate worktree on the box (/root/t2) so
+  the run's checkout (and so its searches' code) stays at the launch commit: --mcts-random-frac 0.5
+  (random children: first draw at temperature 5 on every head, held for the macro) -> 1.85%, 981
+  cells, depth 5 after 230 waves: the 2.9 s greedy line gives only 5 roots (0.5-2.4 s) and most
+  children fall off the platform.
+* Explorer-alone on the run's 0.7B checkpoint, 4 min each (2048 envs, beside the training):
+  beam 1.78% (dies with the policy); MCTS as in the run 1.77%; MCTS --mcts-random-frac 0.5
+  (M 12) **5.08%** (3,210 cells, still rising); random 1.0 + M 25 (1 s) 1.77% (2,187 cells);
+  random 0.5 + M 25 3.93%. The first separation from the beam: at a deadly start the policy's
+  samples die with it, random held children (mixed 50/50 with policy samples) keep exploring;
+  all-random is worse than the mix, and 0.48 s macros beat 1 s ones. None reached 8% in 4 min.
+* **unr1b3_mcts1 cleared the first ramp at 906M: 10.6% (best AND median), ON TIME (deadline 1.0B)**
+  - the control failed this wall (1.7% at 1.06B). NOT the MCTS's credit: no search spine had been
+  adopted (search 1 stale, search 2 below the gain), so the run differs from the control only by
+  --demo-share 0.25 of spawns at the map spawn (the spawn spine), the searches' GPU contention, a
+  5080 instead of a 5060 Ti and the seed. Search 3 started at 906M from a 10.6% greedy frontier.
