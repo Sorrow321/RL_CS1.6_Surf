@@ -165,15 +165,25 @@ class Archive:
     def current(self) -> np.ndarray:
         return np.flatnonzero(self.cur[:self.n])
 
-    def select(self, rng, b: int, front_frac: float, front_k: int) -> np.ndarray:
+    def select(self, rng, b: int, front_frac: float, front_k: int,
+               front_band: float = 0.0) -> np.ndarray:
+        """b cells: (1 - front_frac) by W = 1/sqrt(1 + seen) over every cell, front_frac from the
+        frontier - uniform over the front_k deepest on the goal field, or (front_band > 0) by W
+        over the deepest front_band FRACTION of the cells (a scale-free band around the wall)."""
         cur = self.current()
         nf = int(round(b * front_frac)) if len(cur) > 1 else 0
         w = 1.0 / np.sqrt(1.0 + self.seen[cur].astype(np.float64))
         out = [rng.choice(cur, b - nf, p=w / w.sum())]
         if nf:
-            k = min(int(front_k), len(cur))
-            deep = cur[np.argpartition(self.d[cur], k - 1)[:k]] if k < len(cur) else cur
-            out.append(rng.choice(deep, nf))
+            k = (max(int(front_k), int(np.ceil(float(front_band) * len(cur))))
+                 if front_band > 0 else int(front_k))
+            k = min(k, len(cur))
+            pick = np.argpartition(self.d[cur], k - 1)[:k] if k < len(cur) else np.arange(len(cur))
+            if front_band > 0:
+                wb = w[pick]
+                out.append(rng.choice(cur[pick], nf, p=wb / wb.sum()))
+            else:
+                out.append(rng.choice(cur[pick], nf))
         sel = np.concatenate(out).astype(np.int64)
         np.add.at(self.chosen, sel, 1)
         return sel
@@ -459,8 +469,11 @@ class Explorer:
         burst-then-policy run when --burst > 0 (--burst decisions of held random actions from
         the restored cell, then the policy), else a policy run."""
         P = self.P
-        m = np.where(self.rng.random(n) < float(P.random_frac), MODE_RANDOM,
-                     MODE_BURST if int(P.burst) > 0 else MODE_POLICY).astype(np.int8)
+        u = self.rng.random(n)
+        bf = float(getattr(P, "burst_frac", 1.0))
+        m = np.where(u < float(P.random_frac), MODE_RANDOM,
+                     np.where((int(P.burst) > 0) & (self.rng.random(n) < bf), MODE_BURST,
+                              MODE_POLICY)).astype(np.int8)
         return m
 
     def step(self):
@@ -468,7 +481,8 @@ class Explorer:
         C, P, A, K = self.C, self.P, self.A, self.K
         N, core = C.N, C.coreN
         D = int(P.decisions)
-        sel = A.select(self.rng, int(P.cells), float(P.front_frac), int(P.front_k))
+        sel = A.select(self.rng, int(P.cells), float(P.front_frac), int(P.front_k),
+                       float(getattr(P, "front_band", 0.0)))
         pool = np.array(A.state[sel], copy=True)
         pool["tick"] = 0
         pool["stuck_ticks"] = 0
@@ -778,6 +792,9 @@ def parse(argv=None):
                     help="decisions of held random actions (--repeat) at the start of every "
                          "non-random run before the policy takes over (0 = pure policy runs): "
                          "the coherent random/policy mix in TIME")
+    ap.add_argument("--burst-frac", type=float, default=1.0,
+                    help="--burst: the share of non-random runs that start with the burst (the "
+                         "rest are pure policy runs)")
     ap.add_argument("--repeat", type=float, default=0.95, help="random runs: action repeat p")
     ap.add_argument("--keys-temp", type=float, default=1.5,
                     help="policy runs: key heads at logits / T")
@@ -789,6 +806,10 @@ def parse(argv=None):
     ap.add_argument("--front-frac", type=float, default=0.25,
                     help="share of the selected cells drawn from the --front-k deepest")
     ap.add_argument("--front-k", type=int, default=64)
+    ap.add_argument("--front-band", type=float, default=0.0,
+                    help="> 0: the frontier share is drawn by W from the deepest FRACTION of the "
+                         "cells (at least --front-k) instead of uniformly from the --front-k "
+                         "deepest")
     ap.add_argument("--cell", type=float, default=64.0)
     ap.add_argument("--cell-energy", type=float, default=128.0,
                     help="kinetic-energy-height bucket (u) of the cell key")
