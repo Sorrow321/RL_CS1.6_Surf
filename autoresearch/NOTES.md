@@ -438,3 +438,18 @@ not changed). Two generic defects for the next recipe: (1) a trace step should f
 its EVAL temperature (greedy), or the archive cannot follow a line the noisy copies cannot hold;
 (2) the line share should lapse when the greedy has crossed the line's end and no newer line
 beats it (the curriculum's job is done; the pool returns to the base recipe).
+
+### 18:56 UTC: geb6 clears CP4 and CP5 (best 69.56 at 3,624.4M)
+
+| wall | geb6 | October lineage | deadline |
+|---|---|---|---|
+| CP4 | **3,020.4M** | 9,392.6M | 18.79B |
+| CP5 | **3,397.9M** | 11,783.4M | 23.57B |
+
+Evals: 54.0-54.2% from 2.64B to 2.94B, 56.2% (CP4) 3,020M, 59.7% 3,171M, 61.5% 3,247M, 63.4% (CP5)
+3,398M, 66.0% 3,473M, 69.5% 3,549M, **69.56% at 3,624.4M** (7 of 9 greedy episodes at 69.0-69.6%;
+they cross 54% at 62 s and 63% at 76 s, and all end in a fail at z ~5,245 at 80-81 s - one place,
+like every earlier wall). The episode cap (300 s) is far away. At ~286k steps/s the run reaches
+~21B by the wrap-up; CP6's deadline is 28.5B, so the round's clock, not the ladder, ends it.
+Training: stall 19% / crash 28% of rollout episodes (from 10% / 7% at 2.7B) as the frontier
+spawns move deeper. The explorer's deepest cell: 31.48% (still behind).

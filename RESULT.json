@@ -4,10 +4,10 @@
  "final": false,
  "slot": 2,
  "best": {
-  "score": 54.045,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb6/traj_2642935808.jsonl",
+  "score": 69.561,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb6/traj_3624402944.jsonl",
   "run": "unr1b2_geb6",
-  "step": 2642935808,
+  "step": 3624402944,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -308,10 +308,12 @@
   "cavity (CP2)": 1661468672,
   "post-CP2 block": 2038956032,
   "CP3": 2265448448,
-  "CP4": null,
-  "verdict": "geb6 ON TIME through CP3 (October: pit dive 1.94B, CP2 4.14B, post-CP2 6.97B, CP3 7.32B); training on"
+  "CP4": 3020423168,
+  "CP5": 3397910528,
+  "CP6": null,
+  "verdict": "geb6 ON TIME through CP5 (October: pit dive 1.94B, CP2 4.14B, CP3 7.32B, CP4 9.39B, CP5 11.78B); training on"
  },
- "summary": "Slot 2: Go-Explore whose explore step is a policy-guided beam (tools/ge_beam.py, train_fast --ge-beam: exact-state archive, policy beam + held bursts on half the runs, chain roots, level/falling cells, trace steps from the true start, the deepest viable line as a backward curriculum, and the explorer's frontier cells as 15% of the spawn pool). With the recipe's plateau-temperature cap raised from 0.2 to 2 (geb6) the run cleared the first ramp 302.5M, window 453.5M, pit dive 1,208.5M, CP2 1,661.5M, the post-CP2 block 2,039.0M and CP3 2,265.4M - ahead of October at every wall (pit dive 1.94B, CP2 4.14B, CP3 7.32B) - best 54.05 (CP3) at 2,642.9M. Five earlier runs with the 0.2 cap all stopped at the CP2 wall (27.1%); the control without the explorer never cleared the first ramp.",
+ "summary": "Slot 2: Go-Explore whose explore step is a policy-guided beam (tools/ge_beam.py, train_fast --ge-beam: exact-state archive, policy beam + held bursts on half the runs, chain roots, level/falling cells, trace steps from the true start, the deepest viable line as a backward curriculum, and the explorer's frontier cells as 15% of the spawn pool). With the recipe's plateau-temperature cap raised from 0.2 to 2 (geb6) the run cleared the first ramp 302.5M, window 453.5M, pit dive 1,208.5M, CP2 1,661.5M, the post-CP2 block 2,039.0M, CP3 2,265.4M, CP4 3,020.4M and CP5 3,397.9M - ahead of October at every wall (pit dive 1.94B, CP2 4.14B, CP3 7.32B, CP5 11.78B) - best 69.56 (CP5) at 3,624.4M. Five earlier runs with the 0.2 cap all stopped at the CP2 wall (27.1%); the control without the explorer never cleared the first ramp.",
  "previous_runs": [
   {
    "run": "unr1b2_geb",
