@@ -4,10 +4,10 @@
  "final": false,
  "slot": 2,
  "best": {
-  "score": 27.107,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb/traj_0981991424.jsonl",
+  "score": 27.122,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb/traj_1057488896.jsonl",
   "run": "unr1b2_geb",
-  "step": 981991424,
+  "step": 1057488896,
   "ckpt": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb/ckpt_1000341504.pt",
   "recipe": [
    "--envs",
@@ -271,7 +271,7 @@
   {
    "run": "unr1b2_geb",
    "commit": "d342b843",
-   "best": 27.107,
+   "best": 27.122,
    "stopped_at": 1061683200,
    "ladder": {
     "first ramp": 453509120,
