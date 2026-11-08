@@ -301,3 +301,13 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   walk-back). The v2 explorer paths were smoked on the box from a separate worktree beside v1
   (an eval-style line as roots; a second search loaded the first's archive: 2,290 cells, 1 line,
   1,119 runs -> saved 2,339 cells, 2 lines). Record gate passed.
+* **08:16 UTC - v2 so far.** To 302.5M it is v1 bit for bit (the evals at 76/151/227/302M read
+  the same fwd/path/track/frontier to the unit: the fixes are off-path until a spine exists), so
+  from there it is a clean A/B on the fixes. Search 1 (302.5M, rooted on eval episode 4: 332
+  ticks, the same line v1 re-rolled) -> 5.5%, spine 1 live at 387M (v1: 393M). **453M: 6.85
+  (v1 2.6% at 453M)**; quorum -> search 2 at 453M (v1: 529M). **First ramp at 529M (8.131), on
+  time**, like v1. Search 2: roots on the eval's own line (7.3 s, d 93,823), the archive carried
+  over (15,130 cells, 1 line, 7,310 runs) + 74 new root cells -> saved 37,226 cells over 2 lines;
+  best d 90,065 (9.6%), chain 7 links P P R P R R R from root 552 of line 2, exact replay;
+  ADOPTED at 544M as spine 2 (v1's search 2 at 529M came back stale). Every v2 path has now run
+  inside the trainer.
