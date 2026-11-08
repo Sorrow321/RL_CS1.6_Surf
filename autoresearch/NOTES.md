@@ -237,3 +237,20 @@ vertical speed, which the policy's dive never produces and a 0.4 s burst at 2,00
 fix. A generic explore step that could: branching much earlier on the chain (seconds before the
 dive, where the height/speed is still adjustable), more coherent (held) perturbation there, or
 a cell key that separates level from falling (vz bins) so a level arrival counts as new.
+
+**Explorer alone AT the CP2 wall** (07:31-07:46 UTC, beside geb2 on the same box; checkpoint
+unr1b2_geb/ckpt_1000341504.pt = this lineage's own policy stuck at 27.1%; 256 envs, 4 threads,
+15 min, cells 128/256/4, band 1%, doomed skip; `--chain-frac 0.5 --chain-secs 5` = half the
+selections from the deepest viable line's own chain in its last 5 s):
+
+| explorer | deepest | deepest viable | max CP |
+|---|---|---|---|
+| geb2's live explorer (no chain roots), ~1 h at the wall | 27.24% | 26.42% | 1 |
+| W2: chain roots, 10-decision bursts on 25% of runs | 27.48% | 26.89% | 1 |
+| W1: chain roots, 25-decision bursts on 50% of runs | 27.50% | 26.97% | 1 |
+
+Chain roots move the viable frontier ~0.5% deeper (to ~1 s short of the death point) but no
+variant finds a viable state past 27.5% - the approach into the gap is not produced. Next test
+(60 min, 08:48 UTC): W1 + `--cell-vz 250` (rising / level / falling cells, so a level arrival
+is kept instead of losing its cell to the dive that got there first), and the same with 12 s
+runs and 10 s of chain roots. geb2 keeps training meanwhile (on time; pit-dive deadline 3.88B).
