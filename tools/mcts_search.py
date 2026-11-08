@@ -259,10 +259,11 @@ class Tree:
           ("depth", np.int64, 0), ("visits", np.float64, 0.0), ("vloss", np.float64, 0.0),
           ("q", np.float64, -np.inf), ("score", np.float64, -np.inf),
           ("alive", bool, False), ("pending", bool, False), ("exhausted", bool, False),
+          ("blocked", bool, False),
           ("finished", bool, False), ("slot", np.int64, -1), ("cell", np.int64, -1),
           ("tick", np.int64, 0), ("bank_d", np.float64, np.inf), ("end_d", np.float64, np.inf),
           ("h", np.float64, 0.0), ("bank_t", np.int64, -1), ("ndec", np.int64, 0),
-          ("root_dec", np.int64, -1), ("wave", np.int64, -1))
+          ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0))
 
     def _alloc(self, cap: int):
         for name, dt, fill in self._F:
@@ -347,7 +348,8 @@ class Tree:
         span = (self.qhi - self.qlo) if np.isfinite(self.qhi - self.qlo) else 0.0
         lo = self.qlo if np.isfinite(self.qlo) else 0.0
         inv = 1.0 / span if span > 1e-12 else 0.0
-        while len(leaves) < n_leaves and fails < max_fail and not self.exhausted[0]:
+        while (len(leaves) < n_leaves and fails < max_fail and not self.exhausted[0]
+               and not self.blocked[0]):
             node, path = 0, [0]
             ok = False
             while True:
@@ -359,16 +361,29 @@ class Tree:
                     break                     # pending leaf / terminal
                 cs = int(self.cstart[node])
                 ch = np.arange(cs, cs + nc)
-                selm = ~self.exhausted[ch] & ~(self.pending[ch] & (self.ncld[ch] == 0))
+                selm = (~self.exhausted[ch] & ~self.blocked[ch]
+                        & ~(self.pending[ch] & (self.ncld[ch] == 0)))
                 if not selm.any():
-                    if not (self.pending[ch] & (self.ncld[ch] == 0)).any():
+                    if (self.pending[ch] & (self.ncld[ch] == 0)).any() or self.blocked[ch].any():
+                        # everything below is pending this wave: block the node for the rest of
+                        # the wave, so the next descent spreads to its siblings instead of
+                        # failing here again (batched selection, one wave = one batch)
+                        self.blocked[node] = True
+                    else:
                         self._exhaust_up(node)
                     break
                 ch = ch[selm]
                 qn = (np.where(np.isfinite(self.q[ch]), self.q[ch], lo) - lo) * inv
                 npar = self.visits[node] + self.vloss[node]
                 nch = self.visits[ch] + self.vloss[ch]
-                w = cell_w(self.cell[ch]) if cell_w is not None else 1.0
+                if cell_w is not None:
+                    # Go-Explore's 1/sqrt(1 + visits), RELATIVE among the siblings: the least
+                    # visited end cell keeps the full exploration term (an absolute weight
+                    # vanishes once every cell has thousands of visits)
+                    w = cell_w(self.cell[ch])
+                    w = w / max(float(w.max()), 1e-12)
+                else:
+                    w = 1.0
                 u = qn + c_puct * (1.0 / nc) * w * math.sqrt(max(npar, 1.0)) / (1.0 + nch)
                 node = int(ch[int(np.argmax(u))])
                 path.append(node)
@@ -384,6 +399,7 @@ class Tree:
     def end_wave(self):
         self.vloss[:self.n] = 0.0
         self.pending[:self.n] = False
+        self.blocked[:self.n] = False
 
     def path_to(self, i: int) -> list:
         out = []
@@ -612,8 +628,15 @@ def run_mcts(ctx: dict, a) -> dict:
         obsN[:] = O
         sideN.scatter(idxN, SD)
         polN.greedy = rank == 0
-        delta = np.where(rank == 0, 0.0, rng.normal(0.0, sigma, N)) if sigma > 0 else \
-            np.zeros(N)
+        if sigma > 0:
+            # coherent steering: a sampled child keeps its parent's held offset with
+            # probability --mcts-hold-p (Go-Explore's action repeat, one level up), else draws
+            # a fresh one; the greedy child steers with none
+            fresh = rng.normal(0.0, sigma, N)
+            keep = rng.random(N) < float(a.mcts_hold_p)
+            delta = np.where(rank == 0, 0.0, np.where(keep, tree.delta[own], fresh))
+        else:
+            delta = np.zeros(N)
         alive = np.ones(N, bool)
         fin = np.zeros(N, bool)
         fin_t = np.full(N, -1, np.int64)
@@ -713,7 +736,7 @@ def run_mcts(ctx: dict, a) -> dict:
                                     bank_d=c_bank_d[ch], end_d=end_d[ch], h=hN[ch],
                                     bank_t=c_bank_t[ch],
                                     ndec=np.where(fin[ch], (fin_t[ch] + K - 1) // K, M),
-                                    wave=wave)
+                                    wave=wave, delta=delta[ch])
             if tree._cap > len(E_acts):
                 E_acts = np.concatenate([E_acts, np.zeros((tree._cap - len(E_acts), M, 6),
                                                           np.int8)])
@@ -764,7 +787,8 @@ def run_mcts(ctx: dict, a) -> dict:
     summary = {"mode": "mcts", "waves": wave, "nodes": int(tree.n - 1),
                "alive_nodes": int(tree.alive[1:tree.n].sum()), "cells": int(arch.n),
                "roots": len(roots), "macro_decisions": M, "children": Kc,
-               "yaw_sigma": sigma, "keys_temp": float(a.mcts_keys_temp),
+               "yaw_sigma": sigma, "hold_p": float(a.mcts_hold_p),
+               "keys_temp": float(a.mcts_keys_temp),
                "view_temp": float(a.mcts_view_temp), "c_puct": cpuct,
                "cell_w": float(a.mcts_cell_w), "cell": float(a.mcts_cell),
                "cell_energy": float(a.mcts_cell_energy),

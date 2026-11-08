@@ -135,3 +135,16 @@ def test_row_store_grows():
     assert list(sl) == [0, 1, 2]
     S, O, SD = st.rows([2, 0])
     assert list(S["tick"]) == [3, 1] and SD["k"].shape == (2, 2) and SD["k"][0, 0] == 2
+
+
+def test_a_pending_subtree_is_blocked_and_the_batch_spreads():
+    t = Tree()
+    r = _roots(t, 2, scores=[0.0, 1.0])
+    # the deep root has 2 children, the shallow one 6: a batch of 8 must take all 8 leaves
+    t.add_children(int(r[1]), [1.0, 1.0], [True, True])
+    t.add_children(int(r[0]), [0.0] * 6, [True] * 6)
+    picks = t.select(8, c_puct=0.01, max_fail=4)
+    assert len(picks) == 8 and len(set(picks)) == 8
+    assert t.blocked[r[1]]
+    t.end_wave()
+    assert not t.blocked[:t.n].any()

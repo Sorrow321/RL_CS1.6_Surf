@@ -2257,11 +2257,14 @@ def main():
                     help="--mcts: decisions per macro-action (an edge)")
     ap.add_argument("--mcts-k", type=int, default=16,
                     help="--mcts: children per expansion (envs // K leaves per wave)")
-    ap.add_argument("--mcts-cpuct", type=float, default=1.0,
+    ap.add_argument("--mcts-cpuct", type=float, default=2.0,
                     help="--mcts: PUCT exploration constant")
     ap.add_argument("--mcts-yaw-sigma", type=float, default=20.0,
                     help="--mcts: the sampled children's held yaw offset ~ N(0, SIGMA) deg "
                          "(child 0 takes the policy's mode with none)")
+    ap.add_argument("--mcts-hold-p", type=float, default=0.5,
+                    help="--mcts: a sampled child keeps its parent's held yaw offset with this "
+                         "probability (coherent steering over several macros), else draws one")
     ap.add_argument("--mcts-keys-temp", type=float, default=1.5,
                     help="--mcts: the sampled children's keys temperature")
     ap.add_argument("--mcts-view-temp", type=float, default=1.0,
