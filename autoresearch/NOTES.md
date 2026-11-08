@@ -456,3 +456,47 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
 * 13:45 UTC: run 4 at 4.91B: median up to 32.4% (32.1-32.4% evals), best **32.431 at 4.681B**.
   Searches 13 (4.56B) / 14 (4.71B) adopted lines banking 32.1% / 32.4% (+2,100 / +280 u over the
   greedy's banked frontier); the greedy's banked frontier followed them, 30.0% -> 32.1%.
+* 14:13 UTC: run 4 at 5.55B, 32.4% (median 32.4%) since 4.6B - below the 33% block. Search 15
+  (5.16B) adopted another 32.4%-banked line; search 16 fired on patience at 5.51B. Box deadline
+  extended to 16:42 UTC (past round end: a box that dies before the scoring is a known hazard).
+
+## Round 1 lesson (unr1b3, slot 3: policy-prior MCTS) - the recipe that worked and why
+
+**The recipe (run 4, `unr1b3_mcts4`, commit 5b59a646, from step 0, nothing changed after launch):**
+the incumbent recipe + `--auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck
+--auto-spine-banked --auto-spine-explorer mcts --auto-spine-mcts-minutes 6 --auto-spine-envs 2048
+--auto-spine-ge-minutes 0 --auto-spine-patience 3e8 --auto-spine-retry 3e8 --demo-share 0.25
+--demo-success-d 100 --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5
+--demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.5`, the MCTS at beam_tas's --mcts defaults of
+that commit (M 12, K 16, c_puct 0.25, novelty 3, random-frac 0.5, perturb-frac 0.5, keys temp 1.5,
+steer log-uniform 2-20 deg held with p 0.5, energy value 1, roots through a fatal flight, cells
+128 u x 256 u energy). **To continue it in round 2: deploy its newest checkpoint and launch with
+--resume and exactly these extra flags; diff run.json's config.**
+
+**What decided it (in order of evidence):**
+1. **Compare like with like.** A search line ends where it last BANKED progress (a contact); the
+   eval's greedy frontier counts a fatal dive's raw depth. Comparing the two (run 1) rejected every
+   useful line at the spawn trap and at the pit gate. `--auto-spine-banked` is the one-line fix, and
+   it split two otherwise identical runs: same first search line, run 1 stale vs run 4 adopted ->
+   first ramp at 0.906B vs 0.378B, and only run 4 ever got past the pit.
+2. **Do not PAY for reaching a search line.** With --demo-success-bonus 50 (+ milestones), run 2's
+   first spine - a south dead end at 2.86% - became the best-paid place on the map (paid ~841k
+   times) and the run failed the first ramp. Without the bonus the line is only a spawn curriculum
+   and a local optimum cannot outbid the field.
+3. **Keep the raw ratchet.** Both --ratchet-contact runs (2, 3) failed the first ramp; run 3's
+   yaw sigma blew up to 1.28 with 57% crashes (the ~1.5 s platform drop pays nothing until landing).
+4. **What the MCTS needed** (explorer-alone tests on the October r0/r1 and runs' own checkpoints):
+   c_puct 0.25, not 2 (with 2 the tree goes broad and shallow: 6.7% vs 15.6% from an idle start);
+   half the sampled children RANDOM (first draw at temperature 5, held for the macro: 5.1% vs the
+   beam's 1.8% at the spawn trap where the policy's own samples die with it); per-wave blocking of
+   pending subtrees and a sibling-relative cell weight (else the batch collapses / exploration
+   vanishes); roots THROUGH a fatal flight and a 2-20 deg steer mixture (fine offsets threaded the
+   pit gate's ~220 u window: the line that cleared it banked 27.72%, found by patience searches 5/6).
+5. **The curriculum taught WHERE, not the exact line**: the policy crossed the pit gate at y +650
+   where the searched line went at y -880; the backward walk (25% of spawns) reached tau 0 first.
+
+**Where it stops**: the post-CP2 block (33%): episodes pass sgcp_2 and die at (-400, ~150, 10,600);
+sgcp_3 needs a ~1,100 u lower line near x ~0. Searches 13-15 found +0.3% at best there.
+**Open**: the 100 u --demo-success-d margin stalls a backward walk at a hard stretch (run 4's spine
+4: 0% band success at the pit landing for ~200M steps); --mcts-energy's value is shown only on one
+trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
