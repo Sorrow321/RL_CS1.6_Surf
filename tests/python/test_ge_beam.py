@@ -187,3 +187,37 @@ def test_chain_roots(tmp_path):
         chain = set(ex.A.chain(b))
         assert len(roots) and set(roots.tolist()) <= chain
         assert (ex.A.depth[roots] >= ex.A.depth[b] - 50).all()
+
+
+@pytest.mark.skipif(not MAP.exists(), reason="the map is not in this checkout")
+def test_trace_step_starts_at_the_root(tmp_path):
+    """--trace-every: a trace step restores only the root cells (every run is a chain from the
+    true start) and runs --trace-decisions; its cells replay exactly like any other."""
+    pytest.importorskip("torch")
+    import torch
+    cfg = {"reward": "race", "act_every": 4, "view_continuous": 1, "view_absolute": "velocity",
+           "keys_hold": True, "maxvel": 4000.0, "ep_ticks": 30000, "lidar_cell": 32.0,
+           "race_no_corner_cut": 1, "tick_ms": 10.0, "pitch_rate": 1.33, "yaw_adaptive": 1}
+    ck = tmp_path / "cfg.pt"
+    torch.save({"config": cfg, "global_step": 0}, ck)
+    ctx = gb.setup(str(ck), str(MAP), 16, torch.device("cpu"), with_policy=False)
+    P = SimpleNamespace(cell=64.0, cell_energy=128.0, cell_heading=4, cells=4, decisions=10,
+                        random_frac=1.0, repeat=0.9, keys_temp=1.0, view_temp=1.0,
+                        view_hold=[0.0, 25.0], front_frac=0.25, front_k=8, replace_ticks=25,
+                        viable_ticks=10, gain=1.0, out=str(tmp_path), resume=False, burst=0,
+                        max_nodes=10**7, chain_frac=0.5, chain_secs=0.5, trace_decisions=60)
+    ex = gb.Explorer(ctx, P, np.random.default_rng(4))
+    ex.step()
+    n0 = ex.A.n
+    chosen0 = ex.A.chosen[:n0].copy()
+    ex.step(trace=True)
+    A = ex.A
+    root = np.flatnonzero(A.mode[:A.n] == gb.MODE_ROOT)
+    grew = np.flatnonzero(A.chosen[:n0] > chosen0)
+    assert set(grew.tolist()) <= set(root.tolist())          # only the roots were restored
+    new = np.arange(n0, A.n)
+    assert len(new) and set(A.parent[new].tolist()) <= set(root.tolist())
+    deep = new[int(np.argmax(A.depth[new]))]
+    assert A.depth[deep] > 10 * 4                             # longer than a normal step
+    line = ex.replay_line(deep)
+    assert len(line) == int(A.depth[deep]) + 1

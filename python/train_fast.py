@@ -7565,6 +7565,10 @@ def main() -> None:
     ap.add_argument("--ge-beam-recent", type=float, nargs=2, default=None, metavar=("FRAC", "STEPS"),
                     help="--ge-beam: FRAC of the restores (by W) from the cells discovered in the "
                          "last STEPS explore steps (the novelty frontier); None = off")
+    ap.add_argument("--ge-beam-trace", type=int, nargs=2, default=None, metavar=("EVERY", "DECISIONS"),
+                    help="--ge-beam: every EVERY-th explore step is a trace from the true start with "
+                         "the current weights for DECISIONS decisions (the archive follows the "
+                         "policy's own line); None = off")
     ap.add_argument("--ge-beam-cell-vz", type=float, default=0.0,
                     help="--ge-beam: > 0 = the cell's vertical bit is rising / level / falling at "
                          "+-this u/s (a level arrival is a new cell); 0 = rising / not")
@@ -15667,6 +15671,8 @@ def main() -> None:
                if args.ge_beam_recent is not None else {}),
             **({"ge_beam_cell_vz": float(args.ge_beam_cell_vz)}
                if float(args.ge_beam_cell_vz) > 0 else {}),
+            **({"ge_beam_trace": [int(x) for x in args.ge_beam_trace]}
+               if args.ge_beam_trace is not None else {}),
             ge_beam_cell=[float(x) for x in args.ge_beam_cell],
             ge_beam_duty=float(args.ge_beam_duty), ge_beam_threads=int(args.ge_beam_threads),
             ge_beam_sync=float(args.ge_beam_sync), ge_beam_frac=float(args.ge_beam_frac),
@@ -16989,6 +16995,9 @@ def main() -> None:
                  if args.ge_beam_recent is not None else []),
                *(["--cell-vz", f"{float(args.ge_beam_cell_vz):g}"]
                  if float(args.ge_beam_cell_vz) > 0 else []),
+               *(["--trace-every", str(int(args.ge_beam_trace[0])),
+                  "--trace-decisions", str(int(args.ge_beam_trace[1]))]
+                 if args.ge_beam_trace is not None else []),
                "--cell", f"{float(args.ge_beam_cell[0]):g}",
                "--cell-energy", f"{float(args.ge_beam_cell[1]):g}",
                "--cell-heading", str(int(args.ge_beam_cell[2])),

@@ -503,16 +503,26 @@ class Explorer:
                               MODE_POLICY)).astype(np.int8)
         return m
 
-    def step(self):
+    def step(self, trace: bool = False):
+        """One explore step. ``trace``: every env starts at the true start (the root cells) and
+        the CURRENT policy flies for --trace-decisions with no bursts - Go-Explore's return with
+        the policy, so the archive follows the policy's own line as the weights improve (without
+        it the frontier stays at an old policy's dead end: geb3's explorer sat at 15.75% for
+        400 steps while the policy flew to 27%)."""
         import torch
         C, P, A, K = self.C, self.P, self.A, self.K
         N, core = C.N, C.coreN
-        D = int(P.decisions)
-        sel = A.select(self.rng, int(P.cells), float(P.front_frac), int(P.front_k),
-                       float(getattr(P, "front_band", 0.0)),
-                       int(P.viable_ticks) if getattr(P, "front_skip_doomed", False) else 0)
+        D = int(P.trace_decisions) if trace else int(P.decisions)
+        if trace:
+            roots = np.flatnonzero(A.mode[:A.n] == MODE_ROOT)
+            sel = self.rng.choice(roots, int(P.cells))
+            np.add.at(A.chosen, sel, 1)
+        else:
+            sel = A.select(self.rng, int(P.cells), float(P.front_frac), int(P.front_k),
+                           float(getattr(P, "front_band", 0.0)),
+                           int(P.viable_ticks) if getattr(P, "front_skip_doomed", False) else 0)
         nr = int(round(int(P.cells) * float(getattr(P, "recent_frac", 0.0))))
-        if nr > 0 and self.steps > 0:
+        if nr > 0 and self.steps > 0 and not trace:
             # --recent-frac: that share from the cells discovered in the last --recent-steps
             # explore steps (the NOVELTY frontier - detour states behind the distance frontier
             # are found here first), by W
@@ -525,7 +535,7 @@ class Explorer:
                 sel[pos] = self.rng.choice(rc, len(pos), p=w / w.sum())
                 np.add.at(A.chosen, sel[pos], 1)
         nc = int(round(int(P.cells) * float(getattr(P, "chain_frac", 0.0))))
-        if nc > 0:
+        if nc > 0 and not trace:
             ch = self.chain_roots(float(P.chain_secs))
             if len(ch):
                 # --chain-frac: that share of the selection replaced by nodes of the deepest
@@ -554,7 +564,10 @@ class Explorer:
         if (root < 0).any():
             raise RuntimeError(f"{int((root < 0).sum())} envs reset to a state that is not a "
                                "selected cell (yaw jitter on? pool changed?)")
-        mode = self._run_modes(N)
+        if trace and C.policy is not None:
+            mode = np.full(N, MODE_POLICY, np.int8)
+        else:
+            mode = self._run_modes(N)                     # (no network, tests: random runs)
         burst_left = np.where(mode == MODE_BURST, int(P.burst), 0).astype(np.int64)
         run_id = np.arange(N, dtype=np.int64) + self.runs
         self.runs += N
@@ -651,7 +664,8 @@ class Explorer:
                 root[di] = nr
                 run_id[di] = np.arange(len(di)) + self.runs
                 self.runs += len(di)
-                mode[di] = self._run_modes(len(di))
+                mode[di] = (MODE_POLICY if trace and C.policy is not None
+                            else self._run_modes(len(di)))
                 burst_left[di] = np.where(mode[di] == MODE_BURST, int(P.burst), 0)
                 np.add.at(self.runs_by_mode, mode[di], 1)
                 run_ticks[di] = 0
@@ -880,6 +894,11 @@ def parse(argv=None):
                     help="share of the selected cells drawn (by W) from the cells discovered in "
                          "the last --recent-steps explore steps (the novelty frontier); 0 = off")
     ap.add_argument("--recent-steps", type=int, default=50)
+    ap.add_argument("--trace-every", type=int, default=0,
+                    help="> 0: every Nth explore step is a TRACE step - every env starts at the "
+                         "true start and the current policy flies --trace-decisions (no bursts): "
+                         "the archive follows the policy's own line as the weights improve")
+    ap.add_argument("--trace-decisions", type=int, default=1000)
     ap.add_argument("--front-band", type=float, default=0.0,
                     help="> 0: the frontier share is drawn by W from the deepest FRACTION of the "
                          "cells (at least --front-k) instead of uniformly from the --front-k "
@@ -951,7 +970,8 @@ def main(argv=None) -> int:
     last_log = 0.0
     while True:
         t0 = time.time()
-        n_new, n_fin = ex.step()
+        tr = bool(a.trace_every > 0 and ex.steps % int(a.trace_every) == 0)
+        n_new, n_fin = ex.step(trace=tr)
         info = ex.maybe_export(out)
         dt = time.time() - t0
         if info is not None:
