@@ -386,3 +386,16 @@ Search 1 fired at the first eval (524k steps, 9/9 past the spawn line, greedy fr
   both runs, so the split is the adoption rule.) One seed; the effect is 2.4x on a wall whose
   from-scratch spread is 0.18-1.51B, so it is suggestive, not proof - but the pair is controlled
   up to the first adoption, which the October noise floor is not.
+
+### 10:55 UTC: run 4 - window ON TIME at 0.605B, then the pit wall
+* **Window (CP1) cleared at 0.605B, ON TIME** (run 1: 1.057B; October 1.04B). 26.9% at 0.755B, then
+  26.6-26.8% through 1.13B: the pit-dive wall again. Run 4's best eval 26.855 (< run 1's 27.126).
+* Search 4 (0.64-0.71B) adopted a 33 s line, end d 72,827 (26.9% banked) vs the greedy's banked
+  76,306 (23.4%); 2.78M nodes, **36,546 cells**, raw best 27.40%. The line loops over the pit twice,
+  LANDS IN ITS EAST PART at z ~11,000 (x 4,400-5,200: inside the pit-floor teleport's AABB, so its
+  real brushes are thinner than the box) and surfs back west at y ~ -900 toward the cavity - a
+  candidate route under the slab, not the policy's fatal west dive.
+* The curriculum walked back from its end to ~28.8 s on it (the pit landing) and stalls there at
+  0% band success over ~500 eps per window; backing off 5 states per cooldown it needs ~200M steps
+  to return to the end. The greedy stays at its banked 23.6% (0/9 past the 26.9% line), so searches
+  now fire on patience (1.057B, 1.133B).
