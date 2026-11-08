@@ -460,3 +460,13 @@ Evals: 61.2% at 3,700M (one dip), 72.2% 3,775M, 76.1% 3,851M, 82.2% 3,926M, **82
 then 80.9-82.4% to 4,606M (0.6B flat). October's CP6 note: "stops at 72%, 83% and a creep 84-86%";
 its CP6 came at 14.26B (deadline 28.5B). Training ent rose 0.005 -> 0.015 and int to 4.65/ep:
 the plateau temperature is up again. Explorer still at 31.48%.
+
+### 20:53 UTC: geb6 on the 81-82% plateau (5.66B; best still 82.45 at 4.0B)
+
+Evals 4.76-5.66B: 80.6-82.3% (one 61.5% dip at 4.76B). The deep episodes peak at x -5,200..-6,600,
+z ~4,400 at 91-93 s and fall (October: "stops at 72%, 83% and a creep 84-86%" before CP6 at
+14.26B; deadline 28.5B). The early crossing has become less reliable: at 5.66B 5 of 9 greedy
+episodes fall at 27.8% (x ~2,290, z ~11,400, the pit-dive edge) - medians 27.8% at 5.06B, 5.36B
+and 5.66B against 0-2 of 9 at 3.6-4.1B. Training: stall 10% / crash 34%, ent 0.015 (the plateau
+temperature is up), int 4.9/ep. Explorer unchanged at 31.48%. ON TIME, keeps training; box
+extended to 2026-11-09 08:53 UTC.
