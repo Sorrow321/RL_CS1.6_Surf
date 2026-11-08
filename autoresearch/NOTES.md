@@ -240,3 +240,25 @@ harvest of this box would fail the same way: pull before every deadline.
   (re-run on 0ac44ba3: 1 passed).
 * Searches 5 and 6 both ended at d 72,198 (27.57%, a fall into the pit) and were refused by
   the current-line rule (195 u past line 4's end, 200 u asked).
+
+### 2026-11-08 06:57 UTC - 1.06B: still 26.9%, the line curriculum walks back one notch
+
+* Evals 906M-1,057M: 26.9% best, 26.8% median (pit wall). Search 7 ended at d 72,257, not adopted.
+* Line 4's curriculum now oscillates between rows 2449 and 2474 (the band from 2474, 2.0 s
+  before the line's end, rose from 7-11% to ~20% success; from 2449, 2.25 s, ~5%): the policy is
+  learning the turn, 0.25 s per ~450M steps. The chain starts at row 2466; below it the bands are
+  the greedy's own states.
+* fps 174k; disk on the box 2.8 GB after deleting the finished searches' archives.
+
+### 2026-11-08 07:30 UTC - 1.34B: what the pit wall is (insight, from this run's own lines)
+
+* Evals to 1.284B: 26.9% (pit wall since 453.5M). Searches 8-9 ended at d 72,206 / 72,305 (not
+  adopted). Line 4's curriculum still oscillates between rows 2449 (5% success) and 2474 (20-24%).
+* Line 4's chain vs the 1.28B greedy's best episode at the same turn ((4,615, -106) -> (4,636,
+  38) -> heading -x): the SAME energy height (13,710-13,750 u) but the chain flies the turn 50-70
+  u higher (z 12,361 vs 12,304 at the apex, (4,316, -326, 12,402) vs (4,424, -320, 12,348) before
+  it). At (4,124, 832) the chain LANDS on a slab at z ~11,939 (vz -818 -> -36, energy -457 u) and
+  slides along it to the pit; the greedy passes ~40 u under that slab's level and keeps falling
+  (vz -1,101 at (3,679, 800, 11,603)), ending at 26.9%. The skill is height at the turn, not speed.
+  Line 4 is ducked at row 2440 (unducked by 2450).
+* Box deadline extended to 13:23 UTC; disk 3.4 GB after the cleanup.
