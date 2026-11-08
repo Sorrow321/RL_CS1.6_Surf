@@ -5177,6 +5177,13 @@ def main() -> None:
                          "archive is the run's memory, and each search adds the newest greedy "
                          "line's roots to it instead of starting over. Off = a fresh archive per "
                          "search; config only when on")
+    ap.add_argument("--auto-spine-deeper", action="store_true",
+                    help="--auto-spine: a spine the curriculum is still teaching is replaced only "
+                         "by one whose end is --auto-spine-gain u DEEPER than its own end (on top "
+                         "of --auto-spine-recheck's test against the greedy) - with a persistent "
+                         "archive (--auto-spine-knob-archive) a search that found nothing new hands "
+                         "back the same best line, and adopting it would restart the walk-back at "
+                         "that line's end. Off = adopt as before; config only when on")
     ap.add_argument("--auto-spine-knob-evalroots", action="store_true",
                     help="--auto-spine-knob: the explorer roots on the DEPLOYED greedy line - the "
                          "exact per-tick states of the eval's median episode (by deepest d), as "
@@ -12318,6 +12325,8 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_recheck and not args.auto_spine:
         raise SystemExit("--auto-spine-recheck needs --auto-spine")
+    if args.auto_spine_deeper and not args.auto_spine:
+        raise SystemExit("--auto-spine-deeper is a rule of --auto-spine's adoption: give it")
     if args.auto_spine_knob and not args.auto_spine:
         raise SystemExit("--auto-spine-knob is --auto-spine's search: give --auto-spine")
     if args.auto_spine_knob_archive and not args.auto_spine_knob:
@@ -15469,6 +15478,8 @@ def main() -> None:
         meta["config"]["auto_spine_knob_archive"] = 1
     if args.auto_spine_knob_evalroots:
         meta["config"]["auto_spine_knob_evalroots"] = 1
+    if args.auto_spine_deeper:
+        meta["config"]["auto_spine_deeper"] = 1
     if args.demo_share is not None:
         meta["config"]["demo_share"] = float(args.demo_share)
     if args.auto_spine:
@@ -16956,6 +16967,20 @@ def main() -> None:
                       f"discarded - its end d {_de_new:,.0f} does not beat the latest greedy "
                       f"frontier {float(AUTO['med']):,.0f} by {float(args.auto_spine_gain):g} u "
                       f"(the search started at {med:,.0f}); next try at step "
+                      f"{AUTO['retry_at']:,}", flush=True)
+                return
+        if args.auto_spine_deeper and DEMO_LIVE[0]:
+            # --auto-spine-deeper: a spine the curriculum is still teaching is replaced only by
+            # a DEEPER one - a search that found nothing past it (a persistent archive hands its
+            # best cell back) would otherwise restart the walk-back at the same line's end
+            _de_new = float(_f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0])
+            _de_cur = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
+            if not spine_is_fresh(_de_new, _de_cur, float(args.auto_spine_gain)):
+                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+                AUTO["last"] = int(global_step)
+                print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: spine kept - the new "
+                      f"end d {_de_new:,.0f} is not {float(args.auto_spine_gain):g} u deeper than "
+                      f"the one being taught ({_de_cur:,.0f}); next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
         demo.reset_spine(sp)

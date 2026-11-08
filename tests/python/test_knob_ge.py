@@ -212,3 +212,14 @@ def test_evalroots_flag_wiring():
         ROOT / "tools" / "auto_spine.py").read_text(encoding="utf-8")
     kg = (ROOT / "tools" / "knob_ge.py").read_text(encoding="utf-8")
     assert "if not np.isnan(arch.obs[int(c), 0]):" in kg      # a root without obs leaves it
+
+
+def test_deeper_rule_wiring():
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert re.search(r'ap\.add_argument\("--auto-spine-deeper", action="store_true"', src)
+    assert 'meta["config"]["auto_spine_deeper"] = 1' in src
+    # the rule runs only with a LIVE spine, before the swap, and compares end distances
+    i = src.index("if args.auto_spine_deeper and DEMO_LIVE[0]:")
+    j = src.index("demo.reset_spine(sp)", i)
+    assert "spine_is_fresh(_de_new, _de_cur, float(args.auto_spine_gain))" in src[i:j]
+    assert '"auto_spine_deeper"' in (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
