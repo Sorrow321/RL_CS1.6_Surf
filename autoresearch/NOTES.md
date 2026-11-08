@@ -209,3 +209,14 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   1.5x), which is where it should be here. One seed per arm, one wall: a probe, not a law.
   Cost noted: three explorers beside the trainer cut it from ~250k to ~25k steps/s for 10 min
   (CPU threads oversubscribed); one at a time from now on.
+* **06:03 UTC - FIRST RAMP CLEARED at 529.0M (score 8.354: best 8.3%, median 7.4%), on time
+  (deadline 1.0B).** The control `unop_ctl` (same recipe, no search) still reads 1.7% at 604M
+  and 680M. The loop did it in two moves: search 1 (302.5M) took the archive from the greedy's
+  1.7% to 5.55%; the spine went live at 393M; the curriculum's band walked it back from row 893
+  to 713 by 453M (greedy 2.6%) and to 368 by ~505M (30% band success, 68.7k spine-line bonuses,
+  training reward 6 -> 30/ep); at 529M the greedy flew the spine and past it (7.4-8.3%), the
+  quorum fired (search 2 at 529M, from the new line). So the knob explorer + curriculum broke the
+  wall the bare recipe has sat at since 76M. One seed; but the control has been flat for 600M.
+* v2 is ready and NOT running (adccf082, `--auto-spine-knob-archive`: one archive for the whole
+  run instead of a fresh one per search; unit-tested). Built while v1 looked slow; v1 is on time,
+  so it keeps the box.
