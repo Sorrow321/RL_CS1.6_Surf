@@ -510,3 +510,9 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
 * So: **run 4 keeps training** (ON TIME on all 4 walls so far). Box extended to 2026-11-09 03:36 UTC.
   Its next deadline: the post-CP2 block at 13.93B (~20:40 UTC at 362k steps/s); its --steps 2e10
   cap arrives ~01:15 UTC -> resume with the same extra flags and --steps 60e9.
+* 16:00 UTC, explorer-alone at the post-CP2 block (run 4's ~7.4B checkpoint, run 4's own MCTS
+  defaults, **15 min** instead of the run's 6): greedy pass dies at 34.15 s (raw 32.43%, banked
+  31.84%); 42 roots over 14.4-34.1 s; 2,911 waves, 5.96M nodes, **40,817 cells** (saturated by wave
+  ~400); best banked **32.37%** at depth 4, raw best 32.45%. A 2.5x longer search does not open
+  this wall: the tree covers the region and finds no landing lower down toward sgcp_3. Not the
+  fallback recipe if run 4 misses its 13.93B deadline.
