@@ -2287,7 +2287,7 @@ def main():
     ap.add_argument("--mcts-root-every", type=int, default=12,
                     help="--mcts: a root every N decisions of the greedy line")
     ap.add_argument("--mcts-max-roots", type=int, default=64)
-    ap.add_argument("--mcts-stall-secs", type=float, default=10.0,
+    ap.add_argument("--mcts-stall-secs", type=float, default=30.0,
                     help="--mcts: the greedy pass stops after SECS without a new best d (32 u)")
     ap.add_argument("--mcts-contact-tol", type=float, default=1.0,
                     help="--mcts: |dvz - one gravity step| above this = the map pushed back")
