@@ -453,3 +453,21 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   clear it by ~2,250 u. v4 stopped at 95M. v5's flags = v4's (v3 + `--ratchet-contact 1
   --auto-spine-contact`); its first eval's hook ran clean (frontier 99,277); run.json now records
   demo_match_band and the other curriculum keys (13415521).
+* **13:21 UTC - v5 FAILED THE FIRST RAMP; v3 CONTINUED.** v5 (`unr1b4_knob5`, v3 +
+  `--ratchet-contact 1 --auto-spine-contact`): 1.7% to 378M, spine 1 (to 5.5%) live at 392M - the
+  same search as v3's - but the greedy needed until 680M to fly it (v3: ~453M), and search 2 (680M)
+  found no supported cell more than 58 u past the line's contact best (10,753 cells; its roots
+  [508, 908] sat before the line's crawl to its best at 1,297); evals 680-982M all 5.5-5.6%
+  (982M: 5.595) -> no eval past 8% by 1.0B: FAILED at wall 1. **Read-out: paying only supported
+  progress slows the early map** - the platform's launch onto the first ramp is airborne, unpaid
+  until it lands - and it was never tested at the pit it was meant for. A recipe that wants the
+  contact ratchet for deceptive walls would need it from where the dives are, not from step 0 -
+  which a frozen recipe cannot say; or a frontier on contact (the half that is free of this cost)
+  without the contact ratchet. Not tried.
+* **`unr1b4_knob3c` = v3 CONTINUED** from its own newest checkpoint (box
+  runs/unr1b4_knob3/ckpt_latest.pt, md5 9ac57e6e..., step 2,258,632,704 - written at its 11:57
+  stop, after my 11:57:12 pull), on v3's commit 9c8be647 (checked out on the box) with v3's exact
+  extra flags; the trainer restored the recipe; run.json config diffed against v3's: 292 keys, 1
+  differs (steps). The interruption is treated as a crash-resume: the reservoir, the curriculum
+  and the spine are not in a checkpoint, so it starts with no spine and searches after 3e8
+  steps. The pit dive is due at 3.88B (~15:30 UTC at ~215k steps/s).
