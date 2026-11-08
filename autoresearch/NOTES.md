@@ -267,7 +267,7 @@ ablations, sections 3.1-3.10). "~" = read off a figure.
   to the user's question so far: the policy-guided side is not useless - it is what goes deep
   - but alone it repeats its own fall; the knob belongs in the middle, and the yield rule puts
   it there (0.52-0.66 in all 4 searches) without being told.
-* **07:20 UTC - search 4 (1,208M, quorum: the greedy flew spine 2 to 20.6%) -> spine 3.** Its
+* **07:13 UTC - search 4 (1,208M, quorum: the greedy flew spine 2 to 20.6%) -> spine 3.** Its
   re-rolled greedy matched the eval this time (20.6 s, best d 79,130 = 20.6%, stall 1,901, roots
   [1,501, 1,901]). 21,040 cells, 674,719 runs, knob 0.56-0.64 (cells policy 6,190 / random 14,773
   over 9.6M / 13.4M decisions: random 1.6x the yield). **The deepest chain: 14 links, 11 RANDOM
