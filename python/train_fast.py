@@ -5185,6 +5185,17 @@ def main() -> None:
                          "within this many u of the line's end (or it finishes)")
     ap.add_argument("--ge-line-threads", type=int, default=0,
                     help="--ge-line: the explorer's OMP threads (0 = the trainer's own count)")
+    ap.add_argument("--ge-line-retire", action="store_true",
+                    help="--ge-line: once the MEDIAN greedy episode crosses the adopted line's "
+                         "success line (the line is learned), its share of the pool goes back to "
+                         "the recipe's own rows until the next line is adopted (unr1b1_gel kept "
+                         "a learned line on 20%% of the pool for 390M steps). Off = the line keeps "
+                         "its share, as before; config only when on; never restored")
+    ap.add_argument("--ge-line-match-band", action="store_true",
+                    help="--ge-line: the line curriculum's --demo-match-band rule (a spawn whose "
+                         "origin the line repeats is credited to its copy inside the frontier band; "
+                         "unr1b1_gel's first line stopped seeing band outcomes at row 641). Off = "
+                         "the last copy, as before; config only when on; never restored")
     ap.add_argument("--auto-spine-milestones", action="store_true",
                     help="--auto-spine + --demo-success-bonus: when a new spine replaces the "
                          "curriculum's, the old success line becomes a MILESTONE that keeps "
@@ -12698,6 +12709,8 @@ def main() -> None:
     GEL_END_D = None                      # the adopted line's success line (record <= this)
     GELS = {"on": False, "proc": None, "k": 0, "field": None, "eval": None, "best_d": None,
             "line_end": None, "adopted": 0}
+    if (args.ge_line_retire or args.ge_line_match_band) and args.ge_line is None:
+        raise SystemExit("--ge-line-retire / --ge-line-match-band shape the --ge-line curriculum")
     if args.ge_line is not None:
         if not 0.0 < float(args.ge_line) < 1.0:
             raise SystemExit("--ge-line must be in (0, 1)")
@@ -15441,6 +15454,10 @@ def main() -> None:
             ge_line_gain=float(args.ge_line_gain),
             ge_line_success=float(args.ge_line_success),
             ge_line_threads=int(args.ge_line_threads))
+        if args.ge_line_retire:
+            meta["config"]["ge_line_retire"] = 1
+        if args.ge_line_match_band:
+            meta["config"]["ge_line_match_band"] = 1
     if args.auto_spine:
         # --auto-spine: dumped only when on (a flag-off run.json is the control's byte for
         # byte); never restored - the loop is a property of the run, not of the weights
@@ -16780,6 +16797,14 @@ def main() -> None:
         b = int(np.argmin(bests))
         GELS["best_d"] = float(bests[b])
         crossed = GEL_END_D is not None and GELS["best_d"] <= GEL_END_D
+        if (args.ge_line_retire and GEL is not None and not GELS.get("retired")
+                and float(np.median(bests)) <= GEL_END_D):
+            # --ge-line-retire: the median greedy episode crosses the line's success line
+            GELS["retired"] = True
+            print(f"[{global_step:>13,d}] --ge-line-retire: the median greedy episode reaches d "
+                  f"{float(np.median(bests)):,.0f} <= the line's success line {GEL_END_D:,.0f}; "
+                  f"its {GEL_FRAC:.0%} of the pool goes back to the recipe's rows until the next "
+                  f"line", flush=True)
         print(f"[{global_step:>13,d}] --ge-line: the best greedy episode ({b}) reaches d "
               f"{bests[b]:,.0f}" + ("; no line yet" if GEL is None else
                                      f"; the line's success line d <= {GEL_END_D:,.0f} "
@@ -16844,6 +16869,11 @@ def main() -> None:
         fh.close()
         GELS["proc"] = None
         dt = time.time() - t0
+        for _arch in kdir.glob("ge*/archive.npz"):
+            # the explorer's exact-chain archive (0.3-1.3 GB a search) is read by nobody once
+            # its chain is replayed: dropped, so a 12 h run's ~70 searches cannot fill the disk
+            # (the spine, the line, the roots and the logs stay)
+            _arch.unlink(missing_ok=True)
         res = None
         try:
             for ln in (kdir / "auto_spine.log").read_text(
@@ -16882,12 +16912,14 @@ def main() -> None:
             _ggm = max(_gg, TICK.secs_to_ticks(4.0))
             GEL = DemoCurriculum(sp, window=_gw, rate=0.2, min_ep=50.0, seed=37, grow=_gg,
                                  front_frac=0.5, cooldown=5, grow_max=_ggm,
+                                 match_band=bool(args.ge_line_match_band),
                                  name="ge-line curriculum")
         else:
             GEL.reset_spine(sp)
         GEL_END_D = de + float(args.ge_line_success)
         GELS["line_end"] = de
         GELS["adopted"] += 1
+        GELS["retired"] = False
         GELS["eps"] = GELS["wins"] = 0
         gel_idx[:] = -1
         (out / "gel" / "current.json").write_text(json.dumps(
@@ -19592,7 +19624,7 @@ def main() -> None:
                 _fpos = FINL.rng.choice(np.flatnonzero(_free), _fm, replace=False)
                 _pool = _pool.copy()
                 _pool[_fpos] = FINL.draw(_fm)
-            if GEL is not None:
+            if GEL is not None and not GELS.get("retired"):
                 # --ge-line: its share of the pool from the adopted line's admitted range
                 # (positions the --spawn-states rows did not take)
                 if len(_pool) < 4096:

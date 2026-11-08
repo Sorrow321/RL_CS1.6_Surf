@@ -208,3 +208,21 @@ sets TCP_MAXSEG 1200 on its own socket, and `tools/pull_run_mss.py --agent A --r
 [--snapshot STEP]` runs box.py pull's exact tar stream (and md5-checked checkpoint copies)
 through it into `$AR_HOME/runs/<agent>/<run>/` (200 KB in 1 s). The fleet watchdog's own
 harvest of this box would fail the same way: pull before every deadline.
+
+### 2026-11-08 06:35 UTC - 784M: the pit wall; the control FAILED the first ramp
+
+* The control `unop_ctl` (the incumbent recipe, no search) has FAILED wall 1: 1.7% at every
+  eval to 1.057B (deadline 1.0B), ladder "STOP: a wall was missed". This run passed it at 227M.
+* unr1b1_gel: 26.9-27.0% at every eval 453.5M-755.5M (the pit wall, threshold 27.5%).
+* Search 4 (from the 27.0% line) found a 26.8 s line to d 72,393 (27.37%), adopted at 540.5M.
+  Its chain (209 states from the greedy line's row 2466) makes the greedy's own turn at
+  (4,635, 37, 12,347) but holds ~550 u more energy height on the descent (E 13,139 vs the
+  greedy's ~12,585: ~450 u higher at the same x), and falls into the pit at 27.57%.
+* The line curriculum found the hard spot and sits on it: the band from row 2499 (1.75 s before
+  the end) succeeds ~41%, from row 2474 (2.0 s) ~7-11%; tau oscillates 2474 <-> 2499 every few
+  iterations since ~600M. The policy cannot yet keep that height through the turn.
+* Search 5 found a line to d 72,198 (27.57%, past the wall's threshold) and was NOT adopted: it
+  beat the current line's end by 195 u, the rule asks 200 u (the greedy had not crossed line 4's
+  success line). Search 6 runs from the 755.5M eval.
+* Training: unstuck temperature at its 0.2 cap ("T 0.20", stuck 405M), novel ceiling 27.6%,
+  fps 173.6k.
