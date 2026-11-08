@@ -2806,7 +2806,8 @@ def main():
                             score=tr.score[:_n], q=tr.q[:_n], visits=tr.visits[:_n],
                             alive=tr.alive[:_n], finished=tr.finished[:_n], tick=tr.tick[:_n],
                             bank_d=tr.bank_d[:_n], end_d=tr.end_d[:_n], h=tr.h[:_n],
-                            cell=tr.cell[:_n], wave=tr.wave[:_n], cell_seen=ar.seen[:ar.n])
+                            cell=tr.cell[:_n], wave=tr.wave[:_n], cell_seen=ar.seen[:ar.n],
+                            ox=tr.ox[:_n], oy=tr.oy[:_n], oz=tr.oz[:_n])
         if args.save_frontier and len(fr["acts"]):
             save_frontier_line(fr, cfg, map_path, ep_cap, TICK, arm, row0, obs_start,
                                gate_seed, K, out_dir, ogf, finished=bool(fr["finished"]))

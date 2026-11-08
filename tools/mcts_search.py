@@ -267,7 +267,8 @@ class Tree:
           ("tick", np.int64, 0), ("bank_d", np.float64, np.inf), ("end_d", np.float64, np.inf),
           ("h", np.float64, 0.0), ("bank_t", np.int64, -1), ("ndec", np.int64, 0),
           ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0),
-          ("nov", np.float64, 0.0))
+          ("nov", np.float64, 0.0), ("ox", np.float32, 0.0), ("oy", np.float32, 0.0),
+          ("oz", np.float32, 0.0))
 
     def _alloc(self, cap: int):
         for name, dt, fill in self._F:
@@ -507,6 +508,10 @@ def run_mcts(ctx: dict, a) -> dict:
     vmax = float(core1.config.phys.sv_maxvelocity)
     tol = float(a.mcts_contact_tol)
     pol1, side1 = mk_wrapper(core1, True)
+    with torch.inference_mode():
+        # allocate the lazily-built side arrays at tick 0, so the spawn itself can be a root (every
+        # feed reads tick 0 as an episode start, so the decision's own call sees the same state)
+        pol1._obs(obs1)
     every = max(1, int(a.mcts_root_every))
     stall_ticks = int(round(float(a.mcts_stall_secs) * tps))
     G_acts, G_view = [], []
@@ -520,7 +525,7 @@ def run_mcts(ctx: dict, a) -> dict:
     while tick < max_ticks:
         if dec % every == 0:
             s = core1.get_states()[0:1].copy()
-            snaps.append((dec, tick, s, obs1[0:1].copy(), side1.gather([0]) if dec > 0 else None,
+            snaps.append((dec, tick, s, obs1[0:1].copy(), side1.gather([0]),
                           bank_best, g_bank_t))
         act = pol1.act(obs1)
         view = pol1.view
@@ -606,7 +611,9 @@ def run_mcts(ctx: dict, a) -> dict:
                       tick=np.asarray([r[1] for r in roots], np.int64),
                       bank_d=r_bank, end_d=field_d(gf, r_states["origin"]),
                       h=energy_h(r_states), root_dec=np.asarray([r[0] for r in roots]),
-                      bank_t=np.asarray([r[6] for r in roots], np.int64), ndec=0, wave=-1)
+                      bank_t=np.asarray([r[6] for r in roots], np.int64), ndec=0, wave=-1,
+                      ox=r_states["origin"][:, 0], oy=r_states["origin"][:, 1],
+                      oz=r_states["origin"][:, 2])
     print(f"mcts: {len(roots)} roots over ticks {roots[0][1]}..{roots[-1][1]} "
           f"({ctx['secs'](roots[0][1]):.1f}-{ctx['secs'](roots[-1][1]):.1f}s), d_ref {d_ref:,.0f}; "
           f"side state {namesN}", flush=True)
@@ -765,7 +772,9 @@ def run_mcts(ctx: dict, a) -> dict:
                                     bank_d=c_bank_d[ch], end_d=end_d[ch], h=hN[ch],
                                     bank_t=c_bank_t[ch],
                                     ndec=np.where(fin[ch], (fin_t[ch] + K - 1) // K, M),
-                                    wave=wave, delta=delta[ch], nov=n_new[ch] / float(M))
+                                    wave=wave, delta=delta[ch], nov=n_new[ch] / float(M),
+                                    ox=stN["origin"][ch, 0], oy=stN["origin"][ch, 1],
+                                    oz=stN["origin"][ch, 2])
             if tree._cap > len(E_acts):
                 E_acts = np.concatenate([E_acts, np.zeros((tree._cap - len(E_acts), M, 6),
                                                           np.int8)])
