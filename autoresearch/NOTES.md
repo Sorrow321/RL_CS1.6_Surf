@@ -127,7 +127,7 @@ rows (origin, velocity, yaw, pitch, onground).
 |---|---|---|---|
 | first ramp | r2b2_sband@151.5M, stalls 4.48% | max 5.71% (757k cells, 4.5M bursts) | NO (8%) |
 | window | r2b2_sbandx@526.4M, stalls 20.44% | max 20.75% (353k cells, 3.4M bursts) | NO (sgcp_1 never entered) |
-| pit dive | r2b2_sdef@1263M, stalls 26.97% | (see below) | |
+| pit dive | r2b2_sdef@1263M, stalls 26.97% | max 27.48% (1.89M cells, 2.7M bursts), a fast fall | NO (27.5%) |
 | true spawn | the map spawn | ~5.7% after 14 min (812k cells, 9.9M bursts) | NO |
 
 * First ramp: the October line that clears 8% (r2b2_sband@302.5M) climbs a +y ramp at ~1,200
@@ -138,3 +138,73 @@ rows (origin, velocity, yaw, pitch, onground).
   climbing at ~760 u/s and goes through near y ~40; the stalled line arrives at z ~12,890 and
   the explorer's deepest cells slide along the wall at z ~13,192 (20.75%): close, not through.
 * 96-97% of bursts die; the archive grows 100-500k cells a minute, nearly all ballistic air.
+* `--cell-contact` (archive only states the map holds) at the window: 57k cells instead of 353k,
+  but max 20.44% (worse than 20.75%): the hole needs a flight, and contact roots do not find it.
+* So the Nature explore step ALONE does not get past walls 1-3 in minutes from where a policy
+  stops (the pit within 0.02% of its threshold, on a fall). It still leads a from-scratch policy
+  between walls (the CPU smoke: a random policy's 0.01% line -> 2.5% in 20 s of explorer).
+
+### 2026-11-08 05:15 UTC - the loop: `--ge-line` (commit 2450a18a), run unr1b1_gel
+
+* `train_fast.py --ge-line FRAC`: after every greedy eval, while no search runs, the best
+  greedy episode (exact states, the `--respawn-greedy` capture; `GreedyLinePool.last_eps`) goes
+  to `tools/auto_spine.py --line` BESIDE the training: no beam, no policy, the uniform explorer
+  above (`--ge-boost 1.0`: no velocity boosts, `--ge-select-energy 1`, exact chains) rooted on
+  the line's last 4 s before its stall for `--ge-line-minutes`. The deepest chain (goalc d) is
+  replayed exactly and spliced onto the line. It is ADOPTED when its end beats the best greedy
+  episode's deepest d by `--ge-line-gain` (200 u), and the current line's end by as much unless
+  the greedy has crossed the current line's success line. The adopted line is a
+  DemoCurriculum on FRAC of every training spawn pool (the `--finish-line` composition: the
+  recipe's reservoir / novel / greedy / front-perturb rows are kept): half the draws on the
+  frontier band (0.5 s), half uniform behind it to the line's end; the start widens 0.25 s per
+  advance (doubling to 4 s, cooldown 5 iterations, min 50 episodes) while the band's episodes
+  reach the end (ratchet record within `--ge-line-success` 100 u of its d, or a finish) >= 20%.
+* Tests (`tests/python/test_ge_line.py`, CPU, sidistic): flag off bit-identical to the trainer
+  before the change (config + every progress.csv number; 2 passed, 11:43); TRAIN_ONLY; a smoke
+  where 6 searches ran beside the training, 3 lines were adopted, a shallower one was refused.
+* Run `unr1b1_gel`: the incumbent recipe + `--ge-line 0.2 --ge-line-minutes 8
+  --ge-line-threads 12`, from scratch, 6e9 steps budget. `box.py launch` returned exit 255
+  (broken pipe) but the trainer (pid 5119) and run_arm.sh (its record gate) kept running; the
+  box record therefore does not list the run - it is `runs/unr1b1_gel` on box 59665725.
+* The control at matched steps (05:06 mirror): 1.7% at 76-378M, first ramp not cleared, 174k
+  steps/s.
+
+### 2026-11-08 06:05 UTC - unr1b1_gel at 459M: first ramp 227M, WINDOW 378M; the control 1.7%
+
+| step | unr1b1_gel best (median) | max_cp | control unop_ctl best |
+|---|---|---|---|
+| 0.5M | 0.8% (0.4%) | 0 | 1.4% |
+| 76M | 1.7% (1.7%) | 0 | 1.7% |
+| 151.5M | 6.7% (5.8%) | 0 | 1.7% |
+| 227M | 15.6% (12.7%) - first ramp | 0 | 1.7% |
+| 302.5M | 15.8% (15.8%) | 0 | 1.6% |
+| 378M | 26.8% (23.5%) - window (sgcp_1) | 1 | 1.7% |
+| 453.5M | 27.0% (26.9%) - at the pit wall | 1 | 1.7% (to 680M) |
+
+* Ladder: first ramp 227.0M (October 302.5M, deadline 1.0B) ON TIME; window 378.0M (October
+  1,036.5M, deadline 2.07B) ON TIME. fps 172k with the search running, the control's 174k.
+* What the explorer did: search 1 (from the 0.5M eval's best episode, d 98,824) found a 30.9 s
+  line to d 94,179 (5.5%) in 495 s, adopted at 89M; the band succeeded 35% and walked back to
+  row 641 of 3092; the greedy crossed its success line by 151.5M (6.7%). Search 2 (from 6.7%)
+  found nothing 200 u past the greedy (92,957 vs 92,984); the POLICY then cleared the first
+  ramp (227M) and the window (378M) by itself. Search 3 (from 15.8%) found 83,628 vs 83,888 at
+  its start, but the greedy was at 72,995 when it ended: not adopted (the latest-greedy rule).
+* So: the control sits at 1.7% for 600M steps; this run left 1.7% within 75M steps of the
+  first line. One seed each - October from scratch cleared the first ramp in 0.18-1.51B and 4
+  runs never did - so the line is the likely cause, not a proof.
+* A flaw to fix in the next version: once the greedy has crossed the adopted line's success line
+  the line keeps 20% of the spawn pool (here the map's first 5.5%) until a deeper line is found.
+  Its band also stopped receiving outcomes at row 641 ("0 eps"): probably repeated origins in
+  the line's slow start (the `--demo-match-band` defect) - harmless here, the greedy was past it.
+
+### Harness issue (unr1b1, 2026-11-08 05:45): a path-MTU black hole from the box to the droplet
+
+`box.py pull` returned an empty tar ("empty file") and scp stalled at 0 bytes: from box
+59665725 (193.181.215.114:33140, behind vast's NAT 10.66.0.1) to the droplet every TCP segment
+over ~1,400 bytes is dropped (`head -c 1000` arrives in 1 s, `head -c 1400` never does; the
+droplet's route cache says PMTU 1420; the box's /proc/sys is read-only, so no MTU probing).
+Workaround on this branch, nothing system-wide: `tools/mss_proxy.py` is an ssh ProxyCommand that
+sets TCP_MAXSEG 1200 on its own socket, and `tools/pull_run_mss.py --agent A --run R [--ckpt]
+[--snapshot STEP]` runs box.py pull's exact tar stream (and md5-checked checkpoint copies)
+through it into `$AR_HOME/runs/<agent>/<run>/` (200 KB in 1 s). The fleet watchdog's own
+harvest of this box would fail the same way: pull before every deadline.
