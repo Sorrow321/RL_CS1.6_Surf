@@ -516,3 +516,10 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   ~400); best banked **32.37%** at depth 4, raw best 32.45%. A 2.5x longer search does not open
   this wall: the tree covers the region and finds no landing lower down toward sgcp_3. Not the
   fallback recipe if run 4 misses its 13.93B deadline.
+* 17:50 UTC, explorer-alone at the post-CP2 block with roots over the WHOLE greedy line
+  (--mcts-roots-secs 40: 64 roots over 0-34.1 s, 10 min): 1,589 waves, 3.25M nodes, 41,286 cells,
+  best banked **32.16%** (raw 32.47%) at depth 3 - no better than 20 s roots (32.37% in 15 min).
+  Neither a longer search nor earlier roots opens this wall from run 4's policy: the tree saturates
+  the region (31-41k cells) and every landing past ~32.4% is out of reach of the policy's samples,
+  random held actions and 2-20 deg steers within the macro horizon. If run 4 misses 13.93B, the
+  next recipe cannot be "the same search, longer".
