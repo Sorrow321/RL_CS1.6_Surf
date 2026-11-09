@@ -679,3 +679,24 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   trainer keeps search 15's line (5-7 of 9 greedy episodes past its success line) and retries
   after --auto-spine-retry 3e8 steps. A run whose greedy has early-death modes (the 6.342B eval:
   median 22.3%) can lose a search to one unlucky replay.
+
+### 02:53 UTC: run 5 clears CP7 at 6.720B (ten walls ON TIME); best 98.01 at 7.022B; the basement stall
+* Ladder run 5: ... CP6 6.116B, **CP7 6.720B** (October 15.23B, deadline 30.47B). Evals: 92.67
+  (6.569B), 96.51 (6.644B), **97.012 (6.720B, sgcp_7)**, 97.98 (6.795B), then flat 97.84-98.01
+  through 7.78B (best **98.010 at 7.022B, median 97.3%, exact checkpoint**; 98.007 at 7.324B).
+  Pulled, md5 verified: ckpt_7021789184.pt (hand-on) and ckpt_6719799296.pt (first CP7 eval).
+* Searches after CP6: k17 (6.569B; 42 roots over 86.9-106.6 s, 2.97M nodes but only 15,280
+  cells, best 92.56%) came back STALE - the policy had already passed its line (greedy frontier
+  d 6,298 vs the line's 7,416), so CP7 is the policy's own. k18 (7.022B) and k19 (7.475B)
+  returned NO line: the search tool's greedy replay died at 27.2% (49 s, the pit) and stalled at
+  22.6% (56 s), so their roots sat there (281 and 400 cells). The run's greedy has early-death
+  modes: 4 of the 9 episodes of the 7.022B eval died at exactly 27.79% at (2,280, 735, 11,414),
+  and 7 evals since 6.72B have medians of 29-87%. One search in three now goes to a replay
+  that dies early. That is a property of the recipe: the search roots on a single greedy replay.
+* Where it stops (MEASUREMENT only): best points (2,380-2,640, -620..470, z 1,000-1,350) at
+  ~115-118 s, then a fall to the basement floor (z 693-711), which the field marks unreachable
+  (d sentinel at (2,416, 396, 720)), and the eval's 30 s patience. The field's route from
+  (2,637, 337, 1,165) climbs to (2,733, 209, 1,421), crosses at (2,925, 17, 1,357) and drops down
+  a shaft at (2,893, -79) to the finish slab (x 2,872-3,048, y -88..88, z 176-184). The policy
+  arrives under that rim. October: "basement stall 98.0-98.3%", chamber entry ~19.35B, "over
+  the rim at 25,065M", first finish 25.45B.

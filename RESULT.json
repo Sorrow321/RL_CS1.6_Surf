@@ -4,13 +4,13 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 91.524,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/traj_6493306880.jsonl",
+  "score": 98.01,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/traj_7021789184.jsonl",
   "run": "unr1b3_mcts5",
-  "step": 6493306880,
-  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/ckpt_6493306880.pt",
-  "ckpt_step": 6493306880,
-  "ckpt_note": "the run's own ckpt_latest saved at exactly the best eval's step, kept by the on-box keeper (md5 d47680206fe38085410d838a936d70ce). Also pulled: ckpt_6115819520.pt (exact, the first CP6 eval 89.937; md5 6424d57fc2e2d9c912e2bf1dfd636945).",
+  "step": 7021789184,
+  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/ckpt_7021789184.pt",
+  "ckpt_step": 7021789184,
+  "ckpt_note": "the run's own ckpt_latest saved at exactly the best eval's step (the eval triggered search 18), kept by the on-box keeper (md5 697b270423edef53d381360dcaf80f74). Also pulled: ckpt_6719799296.pt (exact, the first CP7 eval 97.012; md5 76e0be645f210eecce48500854f9310b).",
   "recipe": [
    "--envs",
    "1024",
@@ -337,7 +337,7 @@
    "cavity (CP2)": 2718433280,
    "post-CP2 block": "FAILED (deadline 13,931,380,736; best 32.499 at 12.458B; stopped at 14.16B)"
   },
-  "verdict": "run 5 (MCTS knob at the RANDOM end, from scratch 20:52 UTC) is ON TIME on 9 walls: first ramp 0.529B, window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B, CP4 3.624B, CP5 3.851B, CP6 6.116B (October 0.30/1.04/1.94/4.14/6.97/7.32/9.39/11.78/14.26B); best 91.524 at 6.493B; next CP7 (deadline 30.47B, past the round's reach). Run 4 (0.5 mix) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% to 14.16B)",
+  "verdict": "run 5 (MCTS knob at the RANDOM end, from scratch 20:52 UTC) is ON TIME on 10 walls: first ramp 0.529B, window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B, CP4 3.624B, CP5 3.851B, CP6 6.116B, CP7 6.720B (October 0.30/1.04/1.94/4.14/6.97/7.32/9.39/11.78/14.26/15.23B); best 98.01 at 7.022B, then October's basement stall (97.8-98.0% since 6.80B); next the chamber entry (98.5%, deadline 38.69B) and the finish (50.90B), both past the round's reach. Run 4 (0.5 mix) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% to 14.16B)",
   "run5": {
    "first ramp": 529006592,
    "window (CP1)": 680001536,
@@ -348,8 +348,9 @@
    "CP4": 3624402944,
    "CP5": 3850895360,
    "CP6": 6115819520,
-   "CP7": null
+   "CP7": 6719799296,
+   "chamber entry": null
   }
  },
- "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search -> backward curriculum loop from step 0 (--auto-spine --auto-spine-explorer mcts --auto-spine-banked, scratch spine, 25% demo share of the policy's OWN search lines). Run 4 (knob 0.5: half random-held, quarter perturbed, quarter policy samples): first ramp 0.378B, window 0.605B, pit 2.341B, cavity 2.718B, then FAILED the post-CP2 block (32.5% for 9.5B steps). Run 5 (knob at the random end, --auto-spine-mcts-args '--mcts-random-frac 1.0 --mcts-perturb-frac 0', identical to run 4 until the first adopted line): 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643 / 3.624 / 3.851 / 6.116B through CP6 (October needed 14.26B for CP6); best 91.524 at 6.493B. The 84% creep before CP6 held 1.8B steps until search 15 found a loop back west that climbs into the gap; the policy flew it within 0.35B steps."
+ "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search -> backward curriculum loop from step 0 (--auto-spine --auto-spine-explorer mcts --auto-spine-banked, scratch spine, 25% demo share of the policy's OWN search lines). Run 4 (knob 0.5: half random-held, quarter perturbed, quarter policy samples): first ramp 0.378B, window 0.605B, pit 2.341B, cavity 2.718B, then FAILED the post-CP2 block (32.5% for 9.5B steps). Run 5 (knob at the random end, --auto-spine-mcts-args '--mcts-random-frac 1.0 --mcts-perturb-frac 0', identical to run 4 until the first adopted line): 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643 / 3.624 / 3.851 / 6.116 / 6.720B through CP7 (October needed 15.23B for CP7); best 98.01 at 7.022B, then the basement stall below the rim before the finish shaft. The 84% creep before CP6 fell to a search line (a loop back west that climbs into the gap) the policy learned within 0.35B steps; CP7 came from the policy alone (search 17 STALE)."
 }
