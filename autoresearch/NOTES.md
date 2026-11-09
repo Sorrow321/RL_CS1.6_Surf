@@ -766,3 +766,12 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   adopted a spine to d 70,513 (29.3%); its curriculum starts at rows 3,313-3,388 (success 97.9%),
   then 3,073 (33.7%). Training healthy: kl 0.011, yaw sigma 0.073, 217k steps/s. Next: the cavity
   (CP2), due 8.27B (v3 4,712M) - at 217k steps/s v6 reaches ~6.4B by the 11:55 wrap-up.
+* **07:55 UTC - v6 CAVITY (CP2) at 2,643M (30.77), ON TIME - v3 4,712M, October 4.14B.** v6's
+  ladder: first ramp 604M / window 1,435M / pit dive 1,888M / cavity 2,643M (v3: 604M / 1,284M /
+  3,165M / 4,712M). Evals 2,492-2,945M 29.43-31.14, best **31.135 at 2,718M** (v3's best 32.482
+  stays the RESULT best until v6 passes it). Searches 6, 7, 8 each adopted a spine: d 70,513
+  (29.3%, 2,441M), 69,521 (30.3%, 2,586M), **67,404 (32.4%, 2,954M)**. At 2,945M 6/9 episodes reach
+  30.3-30.8% at x 330-870, z 10,200-10,450, slow (hspd 60-380) and end falling (vz -280..-680) -
+  v3's 30.8% plateau region (v3 sat there 4.7-7.3B, until search 6's spine at 6.63B to 32.28%); 3/9
+  fall earlier at 27.8% (x ~2,285, z 11,415). Post-CP2 (> 33%, d < 66,782) due 13.93B; v6 reaches
+  ~6.1B by the wrap-up.
