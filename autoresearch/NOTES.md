@@ -1106,3 +1106,16 @@ spawn pools exactly as run 5. `--steps 60e9`. From step 0.
   (wins per child: R > E > P > 0), and the best lines mix all kinds. The win-counted memory is
   kept for the run: it is the version whose shares follow evidence, and the tail is where run 5's
   lines came from. Bench box time: ~27 min (identity 1, three arms 6.3 each).
+
+### 21:21 UTC: run `azr1b2_sib` launched from step 0 (commit 932167fe, box 59951396)
+
+`python autoresearch/box.py launch --agent azr1b2 --run azr1b2_sib --steps 60e9 --
+--auto-spine-mcts-args "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256
+--mcts-mix-warm 2"` = run 5's 126 flags + that one value flag (the trainer keeps the last, so it
+replaces run 5's `"--mcts-random-frac 1.0 --mcts-perturb-frac 0"`; run.json's
+`auto_spine_mcts_args` reads the rule string). Search cadence, budget, roots, curriculum and both
+spawn pools are run 5's. Record gate passed (4 recordings, 34 s). Search 1 fired at step 524,288
+as in run 5, its beam.log reads `child mix rule sib (floor 0.05, horizon 256 wins, warm 2)`.
+Provenance of every spawn file: the map spawn (auto/spine0.npy) and the run's own searches on its
+own weights; no demo, no file passed by hand. Box deadline extended to 2026-11-10 09:13 UTC (the
+watchdog's extend is now+12 h, monotone: extend again on later wakeups until it covers 22:40).
