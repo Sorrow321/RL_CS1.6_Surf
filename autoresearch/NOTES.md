@@ -717,7 +717,7 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   (-25,165,824 steps, ~70 s: the keeper's ring had nothing closer), md5 3aef0257... Also pulled
   and verified: ckpt_8305246208.pt (exact, 111.524, 5/9) and ckpt_8217690112.pt (-12.1M before
   the first finishing eval).
-* **The finish came from the search.** Search 20 (launched ~7.77B from a greedy line that died
+* **The finish came from the search.** Search 20 (launched at the 7.928B eval; its own greedy replay died
   at 117.98 s, d 2,046): 41 roots over 98.4-117.6 s, 843 waves, 1.73M nodes, 45,171 cells, a
   FINISHING line at 119.41 s found in 207 s (depth 22). The curriculum restarted at its end
   (success line d <= 100) and the greedy finished 0.23B steps later (8.230B). Searches 21 and 23
