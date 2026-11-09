@@ -1135,3 +1135,7 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   The MCTS flags are run 5's (beam_tas --mcts defaults of this branch = run 5's commit's + the knob
   string); search budget 3 min (above). Provenance of every label: this run's own trees on its own
   weights from the true start; no demo, no file passed by hand. Nothing changes after launch.
+* 21:36 UTC: record gate PASSED on azr1b4_tree1's first checkpoint (round 0: greedy, stoch,
+  mixed, POV video, 30 s). Round 0 = the smoke's tree at 3 min (deterministic): best 1.766%, 1.28M nodes,
+  12,874 node rows + 120 line rows, distil 12 s (loss 4.72, acc 0.73), eval best 0.36%, 61.5M ticks.
+  Round 1's greedy line wandered 46 s before dying (raw best 0.8%); its 41 roots sit at 26-46 s.
