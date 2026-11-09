@@ -553,3 +553,20 @@ c08c41fc..., 70 s); snapshots are every ~1.0B (ckpt_1000341504 .. ckpt_100034150
 Evals 10.80-11.78B (14): all CP5, best-of-9 81.0-82.4% (no CP4 dip this hour), medians 32-81%.
 The explorer inched to 54.71% (viable 54.54%, line 97; 75% of its 100 deepest cells now come
 from burst copies). ON TIME; keeps training.
+
+### 03:58 UTC: geb6 leaves the 82% plateau - 84.2-84.6% from 12.2B, best 84.60 at 12.53B
+
+* Evals 11.85-12.91B: 82.3 (11.85B), **29.6% at 11.93B** (all nine episodes at the same 29.6%,
+  a one-eval collapse), 83.8, 81.1, 82.2, then **84.2-84.6% in 9 of 9 evals from 12.23B**
+  (84.604 at 12,533.1M, median 84.5% there). Still CP5; October's CP6 note reads "stops at 72%,
+  83% and a creep 84-86%" - geb6 is in the same creep. Best moved in RESULT.json.
+* What changed just before: the trainer ADOPTED the explorer's line 97 at 11,929.1M (68.0 s,
+  25 links, end d 45,380 = 54.47%) - its comparison is against the LATEST eval's best d, and the
+  29.6% collapse eval (best d 70,143) put the 54% line "past the greedy". The curriculum's 20% of
+  starts moved from line 53 (all of 0-30%, half of them on its first 0.5 s, i.e. the map start)
+  to the last 0.75-1.5 s of line 97 (54.5%), success 52-54%. Reading (one seed, not shown): the
+  shift puts a fifth of the training episodes 30 s further down the route, nearer the frontier;
+  the 84% level appeared 0.3B steps after it. It may also be coincidence: the plateau had held
+  for 7.9B steps and October crept through the same 83-86% band without an explorer.
+* Explorer 55.62% (line 100, 55.55%). Snapshot ckpt_12004098048.pt pulled (md5 a14dc9f1...,
+  81 s) - the newest milestone at or before the best eval. ON TIME; keeps training.
