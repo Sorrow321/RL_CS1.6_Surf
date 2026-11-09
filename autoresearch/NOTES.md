@@ -700,3 +700,38 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   a shaft at (2,893, -79) to the finish slab (x 2,872-3,048, y -88..88, z 176-184). The policy
   arrives under that rim. October: "basement stall 98.0-98.3%", chamber entry ~19.35B, "over
   the rim at 25,065M", first finish 25.45B.
+
+### 03:52 UTC: RUN 5 FINISHES SIDISTIC FROM SCRATCH at 8.230B steps - all 12 walls ON TIME; best 113.759
+* Ladder run 5 (one recipe, from step 0, launched 2026-11-08 20:52 UTC): first ramp 0.529B,
+  window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B, CP4 3.624B,
+  CP5 3.851B, CP6 6.116B, CP7 6.720B, **chamber entry 8.230B, finish 8.230B** (the eval at
+  ~03:09 UTC, ~6.3 h after launch). The October lineage, with recipe changes between runs, took
+  0.30 / 1.04 / 1.94 / 4.14 / 6.97 / 7.32 / 9.39 / 11.78 / 14.26 / 15.23 / 19.35 / 25.45B.
+* Evals (score.py, goal hull None = plain-box trigger, box_only 0 everywhere): basement stall
+  97.86-98.01 to 8.154B, then 108.182 (8.230B, 2/9 finishes, 121.21 s), 111.524 (8.305B, 5/9,
+  exact checkpoint), 109.31 (3/9), 108.20 (2/9), **113.759 (8.532B, 7/9 finishes, 120.57 s, median
+  100%)**, 110.42 (4/9), 108.22, 108.23, 111.56 (5/9), 111.54, 110.41, 112.68 (9.060B, 6/9, 119.51 s),
+  112.65 (9.136B, 6/9). Every eval since 8.23B finishes 2-7 of 9; finish times 119.5-121.4 s
+  (October's first greedy finish: 118.05 s).
+* Hand-on checkpoint (PROTOCOL): ckpt_8506572800.pt, the newest at or before the best eval
+  (-25,165,824 steps, ~70 s: the keeper's ring had nothing closer), md5 3aef0257... Also pulled
+  and verified: ckpt_8305246208.pt (exact, 111.524, 5/9) and ckpt_8217690112.pt (-12.1M before
+  the first finishing eval).
+* **The finish came from the search.** Search 20 (launched ~7.77B from a greedy line that died
+  at 117.98 s, d 2,046): 41 roots over 98.4-117.6 s, 843 waves, 1.73M nodes, 45,171 cells, a
+  FINISHING line at 119.41 s found in 207 s (depth 22). The curriculum restarted at its end
+  (success line d <= 100) and the greedy finished 0.23B steps later (8.230B). Searches 21 and 23
+  then got the policy's own finishing replay as their line (0 s of search).
+* The finishing line (eval 8.532B, 120.57 s; MEASUREMENT only): past sgcp_7 it flies low over the
+  shaft area ((2,716, 470, 888)), out east to (3,981, -2, 950), back west at z ~770-880, climbs
+  on a surface (vz +872 at (2,584, -462, 1,203)) to (3,080, -13, 1,675) above the rim, kills its
+  horizontal speed over the shaft ((2,946, -9, 1,611), v ~(-30, -71)) and drops straight down
+  (x 2,961, y ~0) to the finish slab at z ~180. Like the CP6 gap: a loop that comes back higher.
+* A curriculum regression, recovered: search 22 (8.758B) started from a greedy replay that stalled
+  at 40 s (1.44%) and adopted a line to 27.70% (d 72,085), because the frontier it had to beat was
+  the median of an eval whose median episode died at the start (97,952); the curriculum
+  restarted at 27.7% for ~42M steps until search 23 put the finishing line back (8.842B). The
+  trainer's "N/9 past the success line" count stays 0/9 on finishing evals (its d check does not
+  count a finished episode), so patience keeps launching searches beside the training.
+* The early-death modes persist (medians 1.8-29% on some evals: the start, the pit at 27.8%).
+  More finishes per eval is where the score still grows (10 points for 9/9), plus ~0.03 per second.
