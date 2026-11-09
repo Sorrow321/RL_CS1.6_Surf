@@ -17,8 +17,8 @@ slots and the rules. This section is the evidence you start from.
 * This program: `AR_HOME=/home/steam/ar_az`, checkout `/home/steam/RL_Surf_az` (branch
   `az/main`), agents `azr1b1..4` on branches `ar/azr1b1..4`, tmux session `ar_az`.
 * Run 5, read-only: `$AR_HOME/reference/run5/` (run.json, progress.csv, launch log, every eval,
-  `search_ticks.json`, `auto_bundle.tgz` with all 51 searches' logs and summaries, 19
-  checkpoints). Its own log is below in this file ("Round 1 FINAL lesson").
+  `search_ticks.json`, `auto_bundle.tgz` with all 51 searches' logs and summaries, 18
+  checkpoint snapshots). Its own log is below in this file ("Round 1 FINAL lesson").
 * The last program's other slots: `git show origin/ar/unr1b4:autoresearch/NOTES.md` (the knob
   as a rule, `tools/knob_ge.py`), `origin/ar/unr1b2` (the policy-guided beam), `origin/ar/unr1b1`
   (the Nature paper's random bursts). Their runs: `/home/steam/ar_uni/runs/` (read-only).
