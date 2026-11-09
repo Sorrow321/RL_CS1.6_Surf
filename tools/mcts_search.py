@@ -1033,6 +1033,7 @@ def run_mcts(ctx: dict, a) -> dict:
         summary["ticks_total"] += summary["ticks_line"]
         summary["labels_node"] = int((labels["kind"] == 0).sum())
         summary["labels_line"] = int((labels["kind"] == 1).sum())
+        summary["labels_prefix"] = int((labels["kind"] == 2).sum())
         summary["labels_nodes_expanded"] = int(labels.pop("n_expanded"))
         summary["line_replay_d"] = labels.pop("replay_d")
     return {"frontier": frontier, "summary": summary, "tree": tree, "archive": arch,
@@ -1045,13 +1046,14 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
 
     NODE rows - every expanded node with a target (node_targets): the row its decision read
     (scalar half + image pose, captured when its children were drawn), the best children's
-    first moves, the node's Q. LINE rows - every decision of the best line from the true start,
-    replayed open loop on a 1-env core through a greedy wrapper that only READS (the executed
+    first moves, the node's Q (kind 0). LINE rows - every decision of the best line from the true
+    start, replayed open loop on a 1-env core through a greedy wrapper that only READS (the executed
     engine row and view are the line's; the held keys are set to the executed row after each
     decision, beam_tas.prefix_sync's rule): where the line took a random-held child the label is
     that held move, elsewhere the network's own greedy move at the replayed state. A line row's
     value is the Q of the path node its decision belongs to (the root's for the greedy prefix).
-    -> dict of arrays (scal, pose, probs, vmu, vsd, value, kind 0 node / 1 line, w) + ticks."""
+    -> dict of arrays (scal, pose, probs, vmu, vsd, value, kind: 0 node / 1 the line's searched
+    part / 2 its greedy prefix, w) + ticks."""
     import torch
     import train_fast as _tf
     from surfgym.keyshold import HELD_HEADS
@@ -1074,7 +1076,7 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
             "kind": [np.zeros(int(k.sum()), np.int8)]}
     # ---- line rows ---------------------------------------------------------------------------
     node_d = [int(root)] * int(rdec)
-    kind_d = [0] * int(rdec)
+    kind_d = [-1] * int(rdec)          # -1: the greedy PREFIX up to the root (the policy's own)
     for nid in path[1:]:
         nd = int(tree.ndec[nid])
         node_d += [int(nid)] * nd
@@ -1092,7 +1094,7 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     with torch.inference_mode():
         pol._obs(o)               # the greedy pass's own tick-0 call (its feeds' first read)
     keys = bool(ctx["KEYS"])
-    l_scal, l_pose, l_pact, l_pz, l_val = [], [], [], [], []
+    l_scal, l_pose, l_pact, l_pz, l_val, l_rk = [], [], [], [], [], []
     ticks = 0
     n_held = 0
     for d in range(int(n_dec)):
@@ -1110,6 +1112,8 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
                 l_pact.append(np.asarray(pol.policy_act, np.int64)[0].copy())
                 l_pz.append(np.asarray(pol.view_z, np.float32)[0].copy())
             l_val.append(float(tree.q[node_d[d]]))
+            # row kind: 1 = the line's SEARCHED part (the tree's choices), 2 = its greedy prefix
+            l_rk.append(2 if kind_d[d] == -1 else 1)
         row = np.ascontiguousarray(np.asarray(acts[d], np.int32).reshape(1, -1))
         vw = np.ascontiguousarray(np.asarray(views[d], np.float32).reshape(1, -1))
         if keys and getattr(pol, "keys", None) is not None:
@@ -1137,7 +1141,7 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
         rows["vmu"].append(np.stack(l_pz))
         rows["vsd"].append(np.zeros((nl, len(l_pz[0])), np.float32))
         rows["value"].append(np.asarray(l_val, np.float32))
-        rows["kind"].append(np.ones(nl, np.int8))
+        rows["kind"].append(np.asarray(l_rk, np.int8))
     out = {}
     for key, parts in rows.items():
         parts = [p for p in parts if len(p)]

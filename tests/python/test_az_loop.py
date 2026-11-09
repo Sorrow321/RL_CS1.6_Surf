@@ -164,27 +164,36 @@ def test_distil_loss_fits_a_fixed_target(keys_hold):
 
 def test_label_buffer_keeps_the_last_trees_and_mixes_kinds():
     import az_loop
-    buf = az_loop.LabelBuffer(2, torch.device("cpu"))
+    buf = az_loop.LabelBuffer(2, torch.device("cpu"), z_clip=3.0)
 
-    def lab(n_node, n_line, v):
-        n = n_node + n_line
+    def lab(n_node, n_line, n_pre, v):
+        n = n_node + n_line + n_pre
         return {"scal": np.full((n, 3), v, np.float32), "pose": np.zeros((n, 6), np.float32),
-                "probs": np.zeros((n, 6, 15), np.float32), "vmu": np.zeros((n, 2), np.float32),
-                "vsd": np.zeros((n, 2), np.float32), "value": np.full(n, v, np.float32),
-                "kind": np.r_[np.zeros(n_node), np.ones(n_line)].astype(np.int8),
+                "probs": np.zeros((n, 6, 15), np.float32),
+                "vmu": np.full((n, 2), 5.0, np.float32), "vsd": np.zeros((n, 2), np.float32),
+                "value": np.full(n, v, np.float32),
+                "kind": np.r_[np.zeros(n_node), np.ones(n_line),
+                              np.full(n_pre, 2)].astype(np.int8),
                 "w": np.ones(n, np.float32)}
-    buf.add(0, lab(10, 2, 0.0))
-    buf.add(1, lab(5, 5, 1.0))
-    buf.add(2, lab(7, 1, 2.0))
-    assert buf.rounds() == [1, 2] and buf.rows() == 18
-    draw, n_line, n_node = buf.sampler(40, 0.5, torch.Generator().manual_seed(0))
-    assert (n_line, n_node) == (6, 12)
+    buf.add(0, lab(10, 2, 3, 0.0))
+    buf.add(1, lab(5, 5, 2, 1.0))
+    buf.add(2, lab(7, 1, 0, 2.0))
+    assert buf.rounds() == [1, 2] and buf.rows() == 20
+    draw, n_kind = buf.sampler(40, {0: 0.5, 1: 0.25, 2: 0.25}, torch.Generator().manual_seed(0))
+    assert n_kind == {0: 12, 1: 6, 2: 2}
     b = draw()
     assert b["scal"].shape == (40, 3)
-    assert int((b["kind"] == 1).sum()) == 20
+    assert int((b["kind"] == 0).sum()) == 20 and int((b["kind"] == 1).sum()) == 10
+    assert int((b["kind"] == 2).sum()) == 10
     assert set(np.unique(b["value"].numpy())) <= {1.0, 2.0}
-    # recency 0: only the newest tree is drawn (its weight 0**0 = 1, older ones 0)
-    draw0, _nl, _nn = buf.sampler(40, 0.5, torch.Generator().manual_seed(0), recency=0.0)
-    assert set(np.unique(draw0()["value"].numpy())) == {2.0}
+    assert float(b["vmu"].max()) == 3.0          # view targets clipped at |z| 3
+    # recency 0: only the newest tree is drawn (its weight 0**0 = 1, older ones 0); its empty
+    # prefix pool hands its share to the other two
+    draw0, _nk = buf.sampler(40, {0: 0.5, 1: 0.25, 2: 0.25}, torch.Generator().manual_seed(0),
+                             recency=0.0)
+    b0 = draw0()
+    assert set(np.unique(b0["value"].numpy())) == {2.0}
+    assert int((b0["kind"] == 2).sum()) == 0 and len(b0["kind"]) == 40
+    assert int((b0["kind"] == 0).sum()) == 27
     buf.add(3, None)                          # an empty tree is skipped
     assert buf.rounds() == [1, 2]

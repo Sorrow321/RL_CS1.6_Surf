@@ -73,13 +73,19 @@ def add_args(ap) -> None:
     ap.add_argument("--az-recency", type=float, default=0.5,
                     help="--az-loop: a label row of a tree N rounds older than the newest is drawn "
                          "with weight RECENCY**N (1 = every buffered tree alike)")
-    ap.add_argument("--az-line-frac", type=float, default=0.5,
-                    help="--az-loop: share of each batch drawn from the best lines' rows (the rest "
-                         "from the expanded nodes' rows; all from one kind when the other is empty)")
+    ap.add_argument("--az-line-frac", type=float, default=0.25,
+                    help="--az-loop: share of each batch drawn from the best lines' SEARCHED rows "
+                         "(the tree's choices, decision by decision)")
+    ap.add_argument("--az-prefix-frac", type=float, default=0.25,
+                    help="--az-loop: share drawn from the best lines' greedy PREFIX rows (the "
+                         "policy's own moves up to the root: the anchor); the rest of the batch "
+                         "comes from the expanded nodes' rows. An empty pool's share goes to the "
+                         "others in proportion")
     ap.add_argument("--az-lr", type=float, default=None,
                     help="--az-loop: Adam learning rate (default: the checkpoint's own lr)")
     ap.add_argument("--az-value-coef", type=float, default=0.25,
-                    help="--az-loop: weight of the value MSE (MuZero's 0.25 against the policy's 1)")
+                    help="--az-loop: weight of the value MSE (MuZero's 0.25 against the "
+                         "policy's 1)")
     ap.add_argument("--az-pitch-coef", type=float, default=0.0,
                     help="--az-loop: weight of the PITCH head in the view term (0: under "
                          "--view-absolute the pitch only aims the camera; the trainer's "
@@ -179,8 +185,10 @@ class LabelBuffer:
     def _cat(self):
         return {k: torch.cat([t[k] for _, t in self.sets]) for k in LABEL_KEYS}
 
-    def sampler(self, batch: int, line_frac: float, gen: torch.Generator, recency: float = 1.0):
-        """-> f() returning one batch dict; rows of each kind drawn with replacement, a row of
+    def sampler(self, batch: int, fracs: dict, gen: torch.Generator, recency: float = 1.0):
+        """-> (f() returning one batch dict, {kind: rows}). ``fracs`` {kind: share of the batch}
+        (0 node rows, 1 the lines' searched rows, 2 their greedy prefixes); a kind with no rows
+        hands its share to the others in proportion. Rows are drawn with replacement, a row of
         the tree ``age`` rounds older than the newest weighted ``recency ** age`` (1 = uniform):
         where the policy has moved on, the newer tree's labels win the disagreement."""
         allr = self._cat()
@@ -188,29 +196,27 @@ class LabelBuffer:
         newest = max(r for r, _ in self.sets)
         rw = torch.cat([torch.full((len(t["kind"]),), float(recency) ** (newest - r),
                                    device=self.device) for r, t in self.sets])
-        idx_line = torch.nonzero(kind == 1).reshape(-1)
-        idx_node = torch.nonzero(kind == 0).reshape(-1)
-        w_line, w_node = rw[idx_line], rw[idx_node]
-        if len(idx_line) and len(idx_node):
-            n_line = int(round(batch * float(line_frac)))
-            n_line = min(max(n_line, 1), batch - 1)
-        elif len(idx_line):
-            n_line = batch
-        else:
-            n_line = 0
-        n_node = batch - n_line
+        pools = {}
+        for kd in sorted(fracs):
+            ix = torch.nonzero(kind == int(kd)).reshape(-1)
+            if len(ix) and float(fracs[kd]) > 0.0 and float(rw[ix].sum()) > 0.0:
+                pools[kd] = (ix, rw[ix], float(fracs[kd]))
+        tot = sum(f for _i, _w, f in pools.values())
+        counts, left = {}, int(batch)
+        for j, kd in enumerate(sorted(pools)):
+            n = (left if j == len(pools) - 1
+                 else max(1, int(round(batch * pools[kd][2] / tot))))
+            n = min(n, left)
+            counts[kd] = n
+            left -= n
 
         def draw():
-            parts = []
-            if n_line:
-                parts.append(idx_line[torch.multinomial(w_line, n_line, replacement=True,
-                                                        generator=gen)])
-            if n_node:
-                parts.append(idx_node[torch.multinomial(w_node, n_node, replacement=True,
-                                                        generator=gen)])
+            parts = [pools[kd][0][torch.multinomial(pools[kd][1], counts[kd], replacement=True,
+                                                    generator=gen)]
+                     for kd in sorted(pools) if counts[kd] > 0]
             ix = torch.cat(parts)
             return {k: v[ix] for k, v in allr.items()}
-        return draw, int(len(idx_line)), int(len(idx_node))
+        return draw, {int(kd): int((kind == int(kd)).sum()) for kd in sorted(fracs)}
 
 
 def render_img(lidar, pose):
@@ -228,8 +234,10 @@ def distil(policy, packer, lidar, opt, buf: LabelBuffer, a, gen, view_w) -> dict
     import train_fast as _tf
     if buf.rows() == 0:
         return {"steps": 0}
-    draw, n_line, n_node = buf.sampler(int(a.az_batch), float(a.az_line_frac), gen,
-                                       float(a.az_recency))
+    fr_line, fr_pre = float(a.az_line_frac), float(a.az_prefix_frac)
+    draw, n_kind = buf.sampler(int(a.az_batch), {0: max(0.0, 1.0 - fr_line - fr_pre),
+                                                 1: fr_line, 2: fr_pre}, gen,
+                               float(a.az_recency))
     policy.train()
     acc = None
     t0 = time.time()
@@ -247,8 +255,8 @@ def distil(policy, packer, lidar, opt, buf: LabelBuffer, a, gen, view_w) -> dict
     policy.eval()
     s = (acc / max(1, int(a.az_steps))).tolist()
     out = {k: float(v) for k, v in zip(STAT_NAMES, s)}
-    out.update(steps=int(a.az_steps), rows_line=n_line, rows_node=n_node,
-               secs=round(time.time() - t0, 1))
+    out.update(steps=int(a.az_steps), rows_node=n_kind.get(0, 0), rows_line=n_kind.get(1, 0),
+               rows_prefix=n_kind.get(2, 0), secs=round(time.time() - t0, 1))
     return out
 
 
@@ -305,7 +313,7 @@ def score_eval(path: Path) -> dict:
 CSV_COLS = ("time/total_timesteps", "round", "wall_s", "search_s", "distil_s", "eval_s",
             "ticks_search", "ticks_line", "ticks_eval", "mcts_waves", "mcts_nodes", "mcts_cells",
             "mcts_roots", "mcts_best_pct", "mcts_greedy_pct", "mcts_raw_best_pct", "mcts_finished",
-            "labels_node", "labels_line", "buf_rows", "loss", "ce", "acc", "joint_acc", "yaw_mse",
+            "labels_node", "labels_line", "labels_prefix", "buf_rows", "loss", "ce", "acc", "joint_acc", "yaw_mse",
             "value_mse", "eval_score", "eval_best_pct", "eval_median_pct", "eval_cp",
             "eval_finishes")
 
@@ -438,6 +446,7 @@ def run_az(B: dict, a) -> None:
                "mcts_raw_best_pct": sm.get("raw_best_pct"), "mcts_finished": int(
                    bool(sm.get("finished"))),
                "labels_node": sm.get("labels_node"), "labels_line": sm.get("labels_line"),
+               "labels_prefix": sm.get("labels_prefix"),
                "buf_rows": buf.rows(), **{k: ds.get(k) for k in STAT_NAMES},
                "eval_score": sc.get("score"), "eval_best_pct": sc.get("best_progress_pct"),
                "eval_median_pct": sc.get("median_progress_pct"), "eval_cp": sc.get("max_cp"),
@@ -447,7 +456,8 @@ def run_az(B: dict, a) -> None:
         print(f"[{int(st['total']):>14,}] az round {rnd}: search {t_search:.0f}s "
               f"(best {sm.get('best_pct')}% vs greedy {sm.get('greedy_pct')}%, "
               f"{sm.get('nodes'):,} nodes, {sm.get('cells'):,} cells), labels "
-              f"{sm.get('labels_node')}/{sm.get('labels_line')} node/line, distil "
+              f"{sm.get('labels_node')}/{sm.get('labels_line')}/{sm.get('labels_prefix')} "
+              f"node/line/prefix, distil "
               f"{t_distil:.0f}s (loss {ds.get('loss', float('nan')):.3f}, acc "
               f"{ds.get('acc', float('nan')):.3f}, value mse "
               f"{ds.get('value_mse', float('nan')):.4f}), eval {t_eval:.0f}s: score "
