@@ -820,3 +820,75 @@ at shelf height (|y| < 48, z <= 10,640).
   effect, no entropy term). Leads for the next program, untested: a sigma floor on yaw as on pitch
   (`--pitch-sigma-min`), the pitch head out of the ratio, per-head clipping, a KL-targeted step size
   (constants set once for every map).
+
+### 2026-11-09 11:59 UTC - ROUND LESSON (unr1b1, slot 1: the Nature paper's random explore step)
+
+**The ladder (2x October deadlines; ON TIME = cleared at or before the deadline):**
+
+| wall | unr1b1_v2 (the recipe) | unr1b1_gel (v1) | control unop_ctl (no search) | October |
+|---|---|---|---|---|
+| first ramp | 227.0M ON TIME | 227M | FAILED (1.7% past 1.0B) | - |
+| window (CP1) | 453.5M ON TIME | 378M | - | - |
+| pit dive | 906.5M ON TIME | 2.114B | - | - |
+| cavity (CP2) | 2.341B ON TIME | - (stopped 3.5B at 27.0%) | - | 4.14B |
+| post-CP2 block (33%) | FAILED (deadline 13.93B; stopped 14.10B) | - | - | 6.97B |
+
+Best eval: 32.476 at 6.30B (unr1b1_v2, `traj_6302990336.jsonl`), 0 finishes (wrap-up check: score.py --best over 188 evals, all valid; ladder.py: STOP, a wall was missed).
+
+**The recipe (frozen at launch, commit 173fb6af, from scratch, one seed):** the incumbent recipe
++ `--ge-line 0.2 --ge-line-minutes 8 --ge-line-threads 12 --ge-line-retire --ge-line-match-band
+--ge-line-front-temp 1 --keys-hold-spawn-duck`. After every greedy eval the best greedy episode
+goes to `tools/auto_spine.py --line`: the Nature explore step (uniform random actions, repeat 0.95
+per 4-tick decision, views held at offsets from the velocity, cells 64 u x energy 32 u x
+rising/not, energy-weighted selection, exact chains) rooted on the line's last 4 s before its
+stall, 8 min on 12 CPU threads beside the training; a chain that beats the best greedy by 200 u
+is spliced on and becomes a backward curriculum on 20% of the spawn pools.
+
+**What worked**
+* The loop, not the explorer alone. On its own the explore step passed none of walls 1-3 in
+  6-14 min from where October policies stalled (05:00 entry). Inside the loop it cleared four
+  walls ON TIME from scratch, the cavity 1.8x sooner than October; the incumbent recipe without
+  the loop (the operator's control) failed the first ramp (1.7% past 1.0B).
+* v2 adopted four lines, all spliced onto its own greedy line: search 1's at 88M (learned and
+  retired by 151.5M), search 4's pit line at 540.5M, search 5's 272 u deeper one at 691.5M (the
+  pit at 906.5M; learned and retired by ~2.0B) and search 15's 29.98% line at 2.20B (the greedy
+  29.9% -> 31.5% within 140M steps; retired at 2.34B with the cavity cleared).
+* v2 = v1 + four generic fixes for defects v1 showed (retire a learned line, credit the band on
+  repeated origins, a temperature on band spawns, ducked spawns hold duck): the pit at 906.5M
+  against v1's 2.114B, v1 stuck at 27.0% on a line its curriculum never absorbed (one seed each;
+  v1 was faster to the window, 378M vs 453.5M).
+
+**What did not**
+* The post-CP2 block. v2 sat at 32.4-32.5% from 2.8B to 14.1B (11.3B steps): 94
+  searches in all, the last line from search 15 at 2.20B, then 79 without one. The explorer
+  alone at the slot found nothing either: 16 s roots (24 min); one 3 h archive (80M runs,
+  saturated at +24 u); repeat 0.90; 8 heading sectors in the cell key.
+* Why, measured in the simulator (MEASUREMENT only): the block is a precision gate - only a skim
+  through the shelf's ~80 u slit at shelf height with >= ~1,000 u/s toward the slot passes (45 of
+  9,600 hands-off bench flights; 0 of 132,840 from the line's own positions at 0.6-2.5x its
+  speed). The explore step itself from the line's last 2.5 s puts 1 of 90,000 bursts in the slit
+  at shelf height (at 189 u/s) and passes none. A cross-entropy
+  search over the same actions does no better (1.15M rollouts): perturbing the line's own view
+  and keys from 1-4 s out, its closest approach is inside the slit's width but 130-170 u too
+  high, or at shelf height but 180-270 u beside the slit and 250-320 u/s short; from 5 s out an
+  open-loop search loses the line. The entry is set up more than ~4 s upstream.
+* Generic reading (CLAUDE.md 0b): a uniform explore step rooted on the policy's own line is a
+  LOCAL search. It clears walls the potential field shows - the line gets within seconds of the
+  answer and random bursts finish it - and it cannot clear a hidden gate whose entry must be
+  changed seconds upstream and held as a conjunction (position x height x speed). Its constants
+  (repeat, root window, cell key) do not change that; what would has to search over the
+  approach itself (longer-horizon or macro actions, the planner's commitment, an objective that
+  scores the conjunction), with constants set once for every map.
+
+* A diagnostic of the long stuck stretch: PPO approx_kl, ~0.02 up to 2.5B, grew smoothly to
+  medians 0.5-5.7 per 1B block after 6B (max 63; the 23:40 entry), while the pitch sigma (no
+  physics effect, no entropy term) walked to its 0.5 cap; explained variance 0.99+ and the greedy
+  line unchanged. Per optimizer step the Gaussian view heads carry >= 99% of the joint KL (yaw 99%
+  at 6.0B; pitch 58% + yaw 41% at 14.09B), the four key heads 1% (a stored-Adam-step proxy on the
+  policy's own greedy observations, the 10:46 entry; it does not reproduce the growth itself), so
+  PPO's clip is decided by the view heads.
+
+**Numbers worth keeping:** throughput 178,980 steps/s (RTX 5060 Ti, 64 threads) with the search
+beside the training; box 59665725 ran 28.1 h at $0.177/h; v2 harvested md5-checked
+(`ckpt_latest.pt` 14.09B, `ckpt_5001707520.pt`, `ckpt_final.pt` 6.0B, 188 evals, the search
+records); analysis benches in `autoresearch/analysis/unr1b1_*.py`.

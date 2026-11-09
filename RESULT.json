@@ -1,0 +1,134 @@
+{
+ "agent": "unr1b1",
+ "round": 1,
+ "final": true,
+ "slot": 1,
+ "best": {
+  "score": 32.476,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b1/unr1b1_v2/traj_6302990336.jsonl",
+  "run": "unr1b1_v2",
+  "step": 6302990336,
+  "ckpt": "/home/steam/ar_uni/runs/unr1b1/unr1b1_v2/ckpt_latest.pt",
+  "recipe": [
+   "<config.incumbent_recipe>",
+   "--ge-line",
+   "0.2",
+   "--ge-line-minutes",
+   "8",
+   "--ge-line-threads",
+   "12",
+   "--ge-line-retire",
+   "--ge-line-match-band",
+   "--ge-line-front-temp",
+   "1",
+   "--keys-hold-spawn-duck"
+  ],
+  "commit": "173fb6af",
+  "one_recipe": true,
+  "from_scratch_step0": true,
+  "resume_from": null
+ },
+ "ladder": {
+  "first ramp": 227016704,
+  "window (CP1)": 453509120,
+  "pit dive": 906493952,
+  "cavity (CP2)": 2340945920,
+  "post-CP2 block": null,
+  "verdict": "unr1b1_v2 FAILED the post-CP2 block (33%; deadline 13.93B = 2x October 6.97B): last eval before it 13.93B 32.463, first past it 14.00B 32.434 (CP2, 0/9 finishes); stopped per operator rule 2 at 2026-11-09 08:48:53 UTC (last progress 14.10B; ckpt_latest 14.09B, pulled md5-checked with the 5.0B snapshot); first ramp 227M, window (CP1) 453.5M, pit dive 906.5M, cavity (CP2) 2.341B (October 4.14B), all ON TIME; best 32.476 at 6.30B; 94 searches, the last line from search 15 at 2.20B; box released 08:51:37 UTC; no new recipe (about 1.9B steps were left before wrap-up, v2 needed 2.34B to reach CP2)"
+ },
+ "summary": "Slot 1 (Nature Go-Explore random explore step). Explorer alone (6-14 min from October policies' stalled lines and the spawn) passed none of walls 1-3.\nLoop --ge-line: after every greedy eval the best episode goes to auto_spine --line (uniform Go-Explore, 8 min beside training); a chain beating the best greedy by 200 u becomes a backward curriculum on 20% of the pool. Control (same recipe, no search): FAILED the first ramp (1.7% past 1.0B).\nv1 unr1b1_gel: first ramp 227M, window 378M, pit 2.114B, stuck at 27.0% (stopped 3.5B).\nv2 unr1b1_v2 (+ spawn-duck, line retire, band match, band temperature): first ramp 227M, window (CP1) 453.5M, pit dive 906.5M, cavity (CP2) 2.341B (October 4.14B), all ON TIME; best 32.476 at 6.30B.\nv2 FAILED the post-CP2 block (deadline 13.93B; 32.463 / 32.434 at 13.93B / 14.00B): stopped 2026-11-09 08:48 UTC at 14.10B, harvested, box released.\n94 searches; the last line came from search 15 at 2.20B, the 79 after it found none. The explorer alone at the slot (16 s roots; a 3 h archive, 80M runs; repeat 0.90; 8 heading sectors) saturates on one envelope.\nWhy (simulator, measurement only): the slot is a precision gate - only a skim through the shelf's ~80 u slit at shelf height with >= ~1,000 u/s toward it passes (45/9,600 bench flights; 0/132,840 from the line's own positions at 0.6-2.5x its speed); the explore step itself from the line's last 2.5 s puts 1 of 90,000 bursts in the slit at shelf height (at 189 u/s) and passes none; a cross-entropy search over the same actions (1.15M rollouts) from the line's last 4 s never reaches it either.\nLesson: a uniform explore step rooted on the policy's own line clears the walls the potential field shows (4 ON TIME, CP2 1.8x ahead of October) but not a hidden precision gate whose entry has to change seconds upstream.\nNext (generic, untested): search over the approach itself (macro actions, the planner's commitment, an objective that scores the conjunction); and the PPO ratio is decided by the Gaussian view heads (>= 99% of the per-step KL; approx_kl median 4.0 at 14B).",
+ "run": {
+  "name": "unr1b1_v2",
+  "box": 59665725,
+  "commit": "173fb6af",
+  "extra_flags": [
+   "--ge-line",
+   "0.2",
+   "--ge-line-minutes",
+   "8",
+   "--ge-line-threads",
+   "12",
+   "--ge-line-retire",
+   "--ge-line-match-band",
+   "--ge-line-front-temp",
+   "1",
+   "--keys-hold-spawn-duck"
+  ],
+  "one_recipe": true,
+  "from_scratch_step0": true,
+  "status": "stopped 2026-11-09 08:48:53 UTC at 14.10B (FAILED the post-CP2 block); box 59665725 released 08:51:37 UTC; nothing runs"
+ },
+ "runs": {
+  "unr1b1_gel": {
+   "commit": "2450a18a",
+   "extra_flags": [
+    "--ge-line",
+    "0.2",
+    "--ge-line-minutes",
+    "8",
+    "--ge-line-threads",
+    "12"
+   ],
+   "from_scratch_step0": true,
+   "one_recipe": true,
+   "stopped_at": 3499098112,
+   "ladder": {
+    "first ramp": 227016704,
+    "window (CP1)": 378011648,
+    "pit dive": 2114453504
+   },
+   "best_score": 27.574
+  },
+  "unr1b1_v2": {
+   "commit": "173fb6af",
+   "extra_flags": [
+    "--ge-line",
+    "0.2",
+    "--ge-line-minutes",
+    "8",
+    "--ge-line-threads",
+    "12",
+    "--ge-line-retire",
+    "--ge-line-match-band",
+    "--ge-line-front-temp",
+    "1",
+    "--keys-hold-spawn-duck"
+   ],
+   "from_scratch_step0": true,
+   "one_recipe": true,
+   "launched": "2026-11-08 10:48 UTC",
+   "ladder": {
+    "first ramp": 227016704,
+    "window (CP1)": 453509120,
+    "pit dive": 906493952,
+    "cavity (CP2)": 2340945920,
+    "post-CP2 block": "FAILED (deadline 13931380736)"
+   },
+   "best_score": 32.476,
+   "segments": [
+    {
+     "from_step": 0,
+     "to_step": 6000476160,
+     "started": "2026-11-08 10:48 UTC",
+     "ended": "2026-11-08 20:13 UTC (done: at its 6e9 cap)"
+    },
+    {
+     "from_step": 6000476160,
+     "cap": 60000000000,
+     "started": "2026-11-08 20:14 UTC",
+     "how": "resumed from its own ckpt_final.pt, same flags, config identical but steps (283/284 keys); both record gates passed",
+     "to_step": 14099152896,
+     "ended": "2026-11-09 08:48:53 UTC (stopped per operator rule 2: FAILED the post-CP2 block, deadline 13,931,380,736; last progress row 14,099,152,896)"
+    }
+   ],
+   "stopped_at": 14099152896,
+   "harvest": "md5-checked: ckpt_latest.pt (14,093,385,728), ckpt_5001707520.pt (the snapshot at/before the best eval 6.30B), ckpt_final.pt (6.0B), 188 evals, progress.csv, run.json, search records"
+  }
+ },
+ "wrapup": {
+  "at": "2026-11-09 11:59 UTC",
+  "score": "score.py --best: traj_6302990336.jsonl 32.476 (32.48%, CP2, 0/9 finishes); 188 evals, 188 valid, 0 rejected",
+  "ladder": "ladder.py: first ramp 227,016,704 / window (CP1) 453,509,120 / pit dive 906,493,952 / cavity (CP2) 2,340,945,920 ON TIME; post-CP2 block FAILED (deadline 13,931,380,736); STOP: a wall was missed",
+  "pulled": "before the box release (2026-11-09 08:5x UTC), md5-checked against the box: ckpt_latest.pt 14,093,385,728 (4cca3059230cfb3328eecd7cdf2a9941), ckpt_5001707520.pt = the snapshot at/before the best eval (fe8116f1dc74c313a9967fd3be470aef), ckpt_final.pt 6.0B (166c386574f325998b442a266140801e), 188 evals; re-verified locally at wrap-up"
+ }
+}
