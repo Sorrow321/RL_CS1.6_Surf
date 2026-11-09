@@ -1098,3 +1098,40 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   --hours 12: watchdog deadline 2026-11-10 09:22 UTC - to be extended before then (round end 22:40).
 * Deployed ar/azr1b4 at 153e08d7. Smoke test started: `tools/az_launch.sh azr1b4_smoke --mcts-minutes 1
   --az-steps 100 --az-rounds 2` (the step-0 network from train_fast --steps 0, then 2 short rounds).
+
+### azr1b4 - 2026-11-09 21:31 UTC: smoke test passed; **run azr1b4_tree1 launched from scratch (21:31 UTC)**
+* Smoke (`azr1b4_smoke`, 1-min searches, 100 distil steps, 2 rounds + a resume to round 3), all on the box:
+  step-0 network: train_fast `--steps 0` -> "done: 0 steps", ckpt_final.pt (md5 86496c2f...).
+  Round 0: greedy died at 9.4 s; 20 roots over 0-9.1 s; restore check 235/235 decisions exact; 222 waves,
+  455k nodes, 937 cells at **~380k ticks/s** (run 5's searches: 262k beside PPO), best 1.77% banked
+  (the same point run 5's search 1 found); 5,106 node rows (of 28,308 expanded nodes) + 120 line rows;
+  the open-loop replay of the line ends at d 97,906 (search 97,914; it runs 2 ticks past the bank).
+  Distil 100 steps in 1.4 s. Eval 8 s: best 0.96%. Round 1: greedy stalls at 36.7 s, best 2.12%,
+  replay exact (97,562 = 97,562); restore check 153/180 (the documented 1-env vs 2048-env float
+  flips of near-tie argmaxes on a barely trained network; lines are replayed open loop, exact).
+  Ticks per round ~22M (search 21.8M + replay 960 + eval 70k). Resume: the relaunch printed
+  "RESUMED ... at round 2, 45,817,501 ticks, buffer rounds [0, 1]". score.py accepts the evals;
+  `ladder.py --total-is-step` reads them. record_gate.py on an az checkpoint: PASSED (greedy, stoch,
+  mixed, POV) in 30 s.
+* **Search budget 3 min per round, not run 5's 6 min** (a second change against run 5, stated here):
+  in the tree-only loop every simulator tick is search, and run 5's own searches saturate early -
+  45 of its 51 searches had already found their final best line in the first half of their waves
+  (auto_bundle best_by_wave). Exceptions with late finds: k08 (42.3% at ~205 s), k16, k20 (the
+  FINISH, found at 207 s), k33, k42, k11. With 3 min the loop distils twice as often per tick; a
+  late find moves to the next round's search, rooted on the improved greedy line.
+* **The run** (`azr1b4_tree1`, commit 153e08d7 = branch code, box 59957469), launched 21:31 UTC with
+  `bash tools/az_launch.sh azr1b4_tree1 --mcts-minutes 3`, i.e.:
+  1. init: `python3 -u python/train_fast.py` + run_arm.sh's SCRATCH preset + config.incumbent_recipe +
+     `--steps 0 --run azr1b4_tree1_init` (full line: runs/azr1b4_tree1_init_launch.txt);
+  2. loop: `python3 -u tools/beam_tas.py runs/azr1b4_tree1_init/ckpt_final.pt --map
+     maps/surf_src_sidistic.bsp --envs 2048 --resample-every 25 --score d --greedy-envs 32
+     --allow-nonfinisher --skip-gate --route-file none --max-ticks 30000 --torch-seed 0 --log-every 5
+     --mcts-log-every 50 --out-dir runs/azr1b4_tree1 --mcts --mcts-minutes 6 --mcts-random-frac 1.0
+     --mcts-perturb-frac 0 --az-loop --az-run azr1b4_tree1 --mcts-minutes 3` (the later
+     --mcts-minutes wins: 3) with every --az-* default: 1000 distil steps of 1024 rows per round,
+     lr 3e-4 (the checkpoint's), last 4 trees at recency 0.5, batches 50% node / 25% searched line /
+     25% prefix rows, value coef 0.25, view z clipped at 3, pitch weight 0, eval 9 greedy episodes
+     with 30 s patience, a kept checkpoint every 5 rounds and at every new best.
+  The MCTS flags are run 5's (beam_tas --mcts defaults of this branch = run 5's commit's + the knob
+  string); search budget 3 min (above). Provenance of every label: this run's own trees on its own
+  weights from the true start; no demo, no file passed by hand. Nothing changes after launch.
