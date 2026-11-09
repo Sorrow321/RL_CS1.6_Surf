@@ -1205,3 +1205,19 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
 * Box load with three runs: CPU quota 30.7 cores (cfs), each run ~7-8 cores; GPU ~47% with two runs,
   3.6 of 32 GB; RAM 162 GB free. v1's search budget is wall-clock (3 min), so its ticks per round
   fall a little while it shares the box; v2/v3 count waves (700 = ~69M ticks a round, fixed).
+
+### azr1b4 - 2026-11-09 22:58 UTC: the trees train ONE spawn, the eval flies nine (spawn yaw jitter); v4 prepared
+* 22:55: v1 round 24 (1.50B), v2 round 11 (0.81B, best 2.27%), v3 round 4 (0.34B). All three at ~2%;
+  v3's fitted yaw sigma stays at its 0.3 cap (the network's steer is ~0.3 in z from the tree's
+  preferred steers, so the likelihood wants a sigma >= 0.3) - the fit is inert at this stage.
+* **Found:** the 9 eval episodes start at the same point with different YAWS, 346-355 deg (the core's
+  spawn jitter, yaw_jitter_deg 5, drawn by reset(seed); run 5's evals show the same spread). My
+  loop roots every tree on the greedy line of ONE spawn (beam_tas's --skip-gate capture: reset
+  seed 0, env 0), so the network is taught one heading's landing while the eval tests nine. The
+  landings need precision; nine headings diverge before them. Run 5's PPO trained on jittered
+  starts all along (its training cores used --yaw-jitter 8).
+* **v4 (commit 7fcfb706) = v3 + --az-spawn-rotate 1**: every round's search starts from a new spawn
+  drawn by the core's own reset with a per-round seed (the pool and jitter the evals use); the
+  round's greedy pass, roots, line replay and 2048-copy restore all use it (ctx row0 / obs_start /
+  gate_seed). One change against v3. To launch in v1's place when v1 reaches its first-ramp
+  deadline (2.0B total ticks, ~23:25 UTC).
