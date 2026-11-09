@@ -175,6 +175,10 @@ class MixRule:
         self.warm = int(warm)
         self.pf, self.rf = float(perturb_frac), float(random_frac)
         self.share = np.full(3, 1.0 / 3.0)            # (P, E, R)
+        if mode == "log":
+            # the fixed knob's own shares (the legacy draw: R first, then E of the rest)
+            self.share = np.array([(1.0 - self.rf) * (1.0 - self.pf),
+                                   (1.0 - self.rf) * self.pf, self.rf])
         self.w = np.zeros(3)                          # decayed points
         self.c = np.zeros(3)                          # decayed children
         self.waves = 0

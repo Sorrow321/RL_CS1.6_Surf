@@ -47,11 +47,16 @@ def test_log_mode_draws_the_legacy_knob():
     assert (k == kinds_from_masks(rank, e, n)).all()
     assert (k[rank == 0] == MODE_GREEDY).all() and (k[rank > 0] == MODE_RANDOM).all()
     assert np.array_equal(r1.random(4), r2.random(4))
-    # 'log' never moves the shares (the knob stays fixed); it only keeps the books
+    # 'log' never moves the shares (the knob stays fixed at its own shares); it keeps the books
+    assert np.allclose(mr.share, [0, 0, 1])
+    mr.update(k, np.where(k == MODE_POLICY, 1.0, 0.0), np.ones(len(k), np.int8),
+              np.ones(len(k), bool), np.zeros(len(k)))
+    assert np.allclose(mr.share, [0, 0, 1])
     mr.update(k, np.where(k == MODE_RANDOM, 1.0, 0.0), np.ones(len(k), np.int8),
               np.ones(len(k), bool), np.zeros(len(k)))
-    assert np.allclose(mr.share, 1 / 3)
     assert mr.tot_wins[MODE_RANDOM] > 0
+    assert np.allclose(MixRule("log", perturb_frac=0.5, random_frac=0.5).share,
+                       [0.25, 0.25, 0.5])
 
 
 def test_off_path_in_run_mcts_is_the_legacy_call():

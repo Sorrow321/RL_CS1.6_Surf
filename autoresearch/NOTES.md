@@ -1018,3 +1018,51 @@ Also pulled before the release (md5 166391c47a867e6c8efa23d33e3c9110 verified):
 beam/summary.json and greedy_baseline.jsonl, plus the keeper's log and state. Not in it: the
 spines' spine.keys.npy / spine.json and the per-search ckpt copies (5.6 GB), lost with the box.
 `box.py status --agent unr1b3`: no box (12:32 UTC).
+
+## azr1b2 (slot 2: a balanced tree) - 2026-11-09 20:56 UTC
+
+**What this slot changes in run 5: part 2 only, the tree's child mix.** Run 5 fixed it at the
+random end: of each expansion's 16 children, child 0 plays the policy's best action and children
+1-15 are random-held (`--mcts-random-frac 1.0 --mcts-perturb-frac 0`). Run 4 (fixed 0.5 random /
+0.25 perturbed / 0.25 policy samples) failed the post-CP2 block that run 5 passed. Here ONE rule
+sets the shares of the three kinds of sampled child from the search's own results, inside every
+search, from equal shares at its start.
+
+**The rule (`--mcts-mix-rule sib`, tools/mcts_search.py "THE CHILD MIX", commit 96f81053).**
+* Three kinds of sampled child: **P** = a plain policy sample (temperature 1), **E** = a
+  perturbed policy sample (keys temperature 1.5 + a held steer, log-uniform 2-20 deg), **R** =
+  random-held (first decision at temperature 5 on every head, held for the 12-decision macro).
+  Child 0 (**G**, the policy's mode) stays as it is in every expansion.
+* **What the yield counts: the child that beat all its siblings.** After every wave, in each
+  expansion the best child earns its kind one point: best on the tree's OWN value (the
+  backed-up banked-progress score, the number the tree selects on) when some child improved on
+  its parent's value; when nobody went deeper (a wall), best on the new archive cells a LIVE
+  child opened (the tree's own novelty measure; a child that died cannot be continued, so its
+  cells do not count). Ties split the point; a win by child 0 is nobody's point (a sampled
+  kind earns credit only by doing better than the policy's own move AND the other samples).
+  Why this and not new cells alone: the tree's job is depth (the line it hands on is judged on
+  banked progress) and new cells in this tree include cells a falling child opens on its way
+  to dying; new cells decide only where depth cannot (at a wall nobody banks deeper).
+* **The shares**: probability matching on each kind's points PER CHILD, decayed over 16 waves
+  (`--mcts-mix-horizon 16`; a 6-min search runs ~1,400 waves, ~128 expansions each), with a
+  floor of 5% per kind (`--mcts-mix-floor 0.05`, so a dominant kind can reach 90%), 2 warm
+  waves at equal shares (`--mcts-mix-warm 2`). share_k = 0.05 + 0.85 x y_k / sum(y).
+* Every constant is a search budget (waves, a floor): nothing names the map, a place, a speed
+  or a progress value. Per search, not per run (each search starts at equal shares; the last
+  program's slot 4 found a run-long archive a null).
+* `--mcts-mix-rule log` = the fixed knob draw for draw with the rule's bookkeeping beside it
+  (which kind wins, cells per kind, survival) - the bench's run-5 arm uses it.
+* Off (the default) = the legacy draw: `legacy_child_kinds` is the old two-draw code verbatim;
+  tests/python/test_mcts_mix.py checks it consumes the same random stream (and 22 other
+  checks: shares, floor, tournament, ties, the tree's per-node kind). No trainer flag: the rule
+  reaches the search through run 5's `--auto-spine-mcts-args` string, so record_ckpt is
+  untouched.
+
+**The run, as planned before launch:** run 5's recipe (`config.incumbent_recipe`, 126
+elements) with ONE value replaced: `--auto-spine-mcts-args "--mcts-mix-rule sib
+--mcts-mix-floor 0.05 --mcts-mix-horizon 16 --mcts-mix-warm 2"` (it replaces run 5's
+`"--mcts-random-frac 1.0 --mcts-perturb-frac 0"`, which the rule makes moot). Search cadence,
+budget (6 min, 2,048 copies), roots, macro, c_puct, novelty, energy value, curriculum and both
+spawn pools exactly as run 5. `--steps 60e9`. From step 0.
+
+**Box** 59951396 (RTX 5080, 32 threads, $0.42/h, Ohio), rented 20:53 UTC, deadline 12 h.
