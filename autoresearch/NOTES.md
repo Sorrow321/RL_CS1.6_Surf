@@ -653,3 +653,29 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   the policy's own line, rooted up to 19 s upstream, do not find the higher approach in 6 min.
   The curriculum's success line (d <= 15,137) is met by 84-93% of the last-decile spawns, so the
   loop is not stuck on the line it has - it has no line past the gap.
+
+### 02:00 UTC: run 5 clears CP6 at 6.116B (nine walls ON TIME); best 91.524 at 6.493B - the search's loop taught it
+* Ladder run 5: ... CP5 3.851B, **CP6 6.116B** (October 14.26B, deadline 28.52B). Evals: the creep
+  held 84.08-84.35% from 4.23B to 5.96B (19 evals), then 85.00% (6.040B), **89.937 (6.116B, sgcp_6,
+  median 89.8%)**, 90.91, 91.14, 91.06 (median 22.3%: early deaths), 91.22, **91.524 (6.493B,
+  median 91.3%, exact checkpoint)**. Pulled, md5 verified: ckpt_6493306880.pt (the hand-on one)
+  and ckpt_6115819520.pt (first CP6 eval).
+* **How the gap was passed (measurement only).** Searches 13 and 14 (4.86B, 5.32B) ended at
+  the gap's mouth ((-2,736, 98, 4,158) and (-2,890, 105, 4,068)) with no eastward speed. Search 15
+  (5.77B; 42 roots over 77-97 s, 2.90M nodes, 41,941 cells) went further. Its line takes the
+  first approach, falls to z ~3,100-3,400, turns BACK WEST
+  (vx -1,980), circles at x -5,700 .. -5,830, comes east again climbing on a surface (vz +1,033 at
+  (-4,274, -37, 3,886)), peaks at (-3,370, 100, 4,548) and enters the gap at (-2,795, 114, 4,291)
+  moving east at 938 u/s (end d 14,827 = 85.1%). Its success line (d <= 14,939) was the first
+  one inside the gap. 0.35B steps of curriculum later the policy's greedy flies the same loop:
+  eval 6.493B ep0: first approach to (-3,565, 262, 4,033), back west to (-4,774, -689, 3,130) and
+  (-5,656, 460, 3,330), east climbing (-3,935, 342, 3,273; vz +1,154), (-3,101, -537, 4,161),
+  through the gap at (-2,272, 251, 4,256), past sgcp_6 (x ~ -200), down to 91.44% at
+  (-1,136, 159, 2,807). That is the explore step doing its job: a recovery loop AWAY from the
+  goal that the field's descent would not suggest, found by random-held macros, then learned.
+* Search 16 (6.116B) returned NO line, and the reason is a failure mode of the loop: the search
+  tool's own greedy replay of the checkpoint died at 12.2 s (d 97,924) while the trainer's eval
+  of the same weights reached d 10,242, so its 26 roots sat in the first 12 s (best 15.35%). The
+  trainer keeps search 15's line (5-7 of 9 greedy episodes past its success line) and retries
+  after --auto-spine-retry 3e8 steps. A run whose greedy has early-death modes (the 6.342B eval:
+  median 22.3%) can lose a search to one unlucky replay.
