@@ -32,3 +32,7 @@ box needed for the benches). Map coordinates are measurement boxes only, never a
 * `unr1b1_slot_bench2.py` - hands-off ducked flights from the policy's OWN approach positions
   (eval rows) with the velocity scaled (K), turned (TH) and tilted (DVZ): does any pass the ledge?
 * `unr1b1_slot_bench3.py` - the same from a grid of synthetic states over / in the shelf's slit.
+* `unr1b1_slot_reach.py [traj.jsonl] [bursts]` - the Go-Explore explore step itself (uniform
+  random actions, repeat 0.95 per 4-tick decision, view held at an offset from the velocity
+  heading: explore_phase1's draw) from the policy's OWN approach states 0.15-2.5 s before the end
+  wall: does any 4 s burst pass, enter the slit at shelf height, or bring >= 1,000 u/s there?

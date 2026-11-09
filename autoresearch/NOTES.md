@@ -718,3 +718,30 @@ hull, `autoresearch/analysis/unr1b1_slot_*.py`; MEASUREMENT only, CLAUDE.md 0b):
   window (0.5% of a box already centred on it), invisible to the potential field, which only
   says "go down here". That a uniform explore step from the line's last 4-16 s never finds it
   (x16, x4L, xR90, xH8) fits a needle of this size; the 06:46 "speed gate" sentence is withdrawn.
+
+### 2026-11-09 08:06 UTC - the explore step from the line's own states never brings the conjunction (slot_reach); v2 at 13.57B
+
+* v2: 13.57B at 07:59 UTC (178,980 steps/s); 181 evals, newest 13.55B at 32.45-32.47 (best
+  32.476 at 6.30B); search 50 nothing (deepest chain end d 67,335), search 51 running: 75 searches
+  since search 15's line, 90 in all. Post-CP2 deadline 13.93B: its last eval before (13.93B) lands
+  ~08:33 UTC, the first eval past it (14.00B) ~08:40 UTC.
+* `autoresearch/analysis/unr1b1_slot_reach.py` (local core, MEASUREMENT only, CLAUDE.md 0b): the
+  explore step exactly as explore_phase1 draws it with v2's search flags (uniform over the whole
+  action set incl. jump and duck, repeat 0.95 per 4-tick decision, view held at an offset of
+  -90..90 deg from the velocity heading), 4 s bursts from 30 of v2's own greedy states (3 eval
+  episodes of traj_13550747648, 0.15-2.5 s before the end wall), 3,000 bursts each = 90,000:
+  0 pass the ledge. 17,919 cross x -560 (the slit's near half); the fastest of them at 988 u/s
+  toward -x. 596 cross inside the slit's width (|y| < 48): from the starts 0.25-2.5 s out all at
+  z >= 10,790 (over the canopy, ~200 u above the shelf); from the 0.15 s starts (already beside
+  the slit) a few fall back across it under the shelf. 540 cross at z <= 10,700, all beside the
+  slit. Exactly 1 of 90,000 is in the slit at shelf height (z 10,560-10,640) - at 189 u/s.
+  88,575 bursts die within the 4 s (teleport floor, falls).
+* Reading: the passing envelope is a conjunction - inside the slit's ~80 u width, at shelf
+  height, >= ~1,000 u/s toward -x - and a random burst from the line reaches each coordinate on
+  its own, never two of them with the third. From 2-2.5 s out the bursts mostly lose the
+  approach altogether (0-545 of 3,000 even reach the slit's x). That fits 80M explorer runs and
+  90 searches saturating on one envelope: the cells that would lead in are never generated, so a
+  count- or energy-based selection has nothing to pick, whatever its constants (repeat 0.90 /
+  0.95, 4 s / 16 s roots, heading key). What it says for a generic recipe: at a precision gate
+  the search has to change the approach seconds upstream and keep the conjunction together; a
+  uniform explore step bolted to the policy's own line does not.
