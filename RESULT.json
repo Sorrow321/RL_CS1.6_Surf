@@ -4,10 +4,10 @@
  "final": false,
  "slot": 1,
  "best": {
-  "score": 31.756,
-  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_2340945920.jsonl",
+  "score": 56.116,
+  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_3624402944.jsonl",
   "run": "azr1b1_pool1",
-  "step": 2340945920,
+  "step": 3624402944,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -108,20 +108,26 @@
   "window (CP1)": 1057488896,
   "pit dive": 1359478784,
   "cavity (CP2)": 2340945920,
-  "verdict": "alive: walls 1-4 ON TIME (0.75-1.55x run 5); post-CP2 block due by 4.682B",
+  "verdict": "alive: walls 1-7 ON TIME (0.75-1.55x run 5; 0.98-1.06x since the post-CP2 block); CP5 due by 7.702B",
   "total": {
    "first ramp": 1035242155,
    "window (CP1)": 1412729515,
    "pit dive": 1855774890,
-   "cavity (CP2)": 3249822036
-  }
+   "cavity (CP2)": 3254837939,
+   "post-CP2 block": 3538059256,
+   "CP3": 3689054200,
+   "CP4": 4804129179
+  },
+  "post-CP2 block": 2491940864,
+  "CP3": 2642935808,
+  "CP4": 3548905472
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~356k steps/s): first ramp 0.680B steps (run 5 0.529B), CP1 1.057B (0.680B), pit dive 1.359B (1.812B), CP2 2.341B (2.114B): walls 1-4 ON TIME in steps and in total ticks. Best eval 31.76% (CP2) at 2.341B. Early lag was a curriculum freeze on the first search line (run 5 had it too), made up by the pit dive. Twice the policy flew well past the line's end by itself. Next: the post-CP2 block (>33%), due by 4.682B steps.",
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~356k steps/s): first ramp 0.680B steps (run 5 0.529B), CP1 1.057B (0.680B), pit dive 1.359B (1.812B), CP2 2.341B (2.114B), post-CP2 block 2.492B (2.341B), CP3 2.643B (2.643B), CP4 3.549B (3.624B): walls 1-7 ON TIME in steps and in total ticks. Best eval 56.12% (CP4) at 3.624B. Early lag was a curriculum freeze on the first search line (run 5 had it too), made up by the pit dive. Three times the policy flew well past the line's end by itself; one 0.6B plateau (2.87-3.47B) waited on a search that fell behind the greedy policy and its 0.3B retry. Next: CP5, due by 7.702B steps.",
  "box": {
   "id": 59950838,
   "gpu": "RTX_4080",
   "cpu": "AMD Ryzen 9 9950X (32 threads)",
   "dph": 0.417,
-  "steps_per_s": "~290-320k instantaneous with search 1 running beside (20:49 UTC)"
+  "steps_per_s": "~356k (23:36 UTC)"
  }
 }

@@ -1199,3 +1199,39 @@ this run is on time or faster (the line gets 3.6x the starts).
 * The curriculum on line 6 had reached tau 28 of 2,929 by 2.37B (the whole line, from the start).
 * Next: the post-CP2 block (>33%), due by 4.682B steps (~1.8 h). Run 4 failed this block;
   run 5's policy opened it itself, with October's sources still on.
+
+### azr1b1 - 2026-11-09 23:42 UTC: 3.70B steps, walls 1-7 ON TIME, best 56.12% (CP4)
+
+| wall | this run, steps | run 5, steps | deadline | this run, total | run 5, total | deadline |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 1.035B | 0.763B | 2.000B |
+| window (CP1) | 1.057B | 0.680B | 1.600B | 1.413B | 0.914B | 2.000B |
+| pit dive | 1.359B | 1.812B | 3.625B | 1.856B | 2.448B | 4.897B |
+| cavity (CP2) | 2.341B | 2.114B | 4.229B | 3.255B | 2.887B | 5.774B |
+| post-CP2 block | 2.492B | 2.341B | 4.682B | 3.538B | 3.252B | 6.504B |
+| CP3 | 2.643B | 2.643B | 5.286B | 3.689B | 3.554B | 7.108B |
+| CP4 | 3.549B | 3.624B | 7.249B | 4.804B | 4.928B | 9.855B |
+| CP5 | - | 3.851B | 7.702B | - | 5.293B | 10.586B |
+
+* **The one pool is level with run 5 from the post-CP2 block on** (steps 1.06x / 1.00x / 0.98x;
+  total 1.09x / 1.04x / 0.97x). The block run 4 never opened fell one eval after CP2.
+* **Third time the policy flew past the line by itself.** Line 7 (search 7, adopted 2.444B) ends
+  at d 69,000. The greedy went 66.6k (2.64B, CP3) -> 55.5k -> 47.9k (2.87B, 53.3%) with no new
+  line: about 20,000 u of course past the end of every start the pool could give it.
+* **Then a 0.6B plateau, and part of it was the search.** From 2.87B to 3.47B the greedy sat at
+  53.8-54.0% (median deepest d ~47.5k). Search 8 (2.60B) was STALE (66,545 vs greedy 66,638).
+  Search 9 (quorum, 2.945B) returned NO line: its beam from the map start reached only d 68,775
+  (tick 3,372) while the greedy policy was at 47,520, i.e. the search with this checkpoint fell
+  behind the policy's own greedy flight. That put the next try 0.3B later (retry 3e8): search 10
+  started 3.398B and its line (8,880 rows, end d 43,883, 3.5k past the greedy) was adopted at
+  3.513B; the next eval (3.549B) cleared CP4. With one pool, all 90% curriculum starts sat on
+  line 7 (behind d 69k) for the whole plateau, 20k u behind where the policy was failing.
+* **Line 10's curriculum is at a hard spot, not a freeze bug.** tau bounces between rows 8264 and
+  8269 of 8,880 (band success ~40% from 8269, 1-2% from 8264), so starts cover only the line's
+  last ~615 rows (6 s). Line 10 has 4 repeated origins (rows 6237-6243), none near the band; rows
+  8250-8290 are a slow climb (horizontal speed 430 -> 234 u/s, vz -73 -> +261). This is the
+  curriculum doing its job at the frontier.
+* Search ticks: 10 searches, 1.255B ticks (search_ticks.json saved). Evals 3.62B / 3.70B: 56.1% /
+  55.9%, CP4, greedy median deepest d ~47.0k (0/9 past line 10's mark).
+* Box extended to 2026-11-10 11:36 UTC. Fleet credit 40.2 $, 19.1 h to the reserve (~18:40 UTC).
+* Next: CP5, due by 7.702B steps (run 5 cleared it 0.23B after CP4), ~3 h from now.
