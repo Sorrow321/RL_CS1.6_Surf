@@ -1018,3 +1018,73 @@ Also pulled before the release (md5 166391c47a867e6c8efa23d33e3c9110 verified):
 beam/summary.json and greedy_baseline.jsonl, plus the keeper's log and state. Not in it: the
 spines' spine.keys.npy / spine.json and the per-search ckpt copies (5.6 GB), lost with the box.
 `box.py status --agent unr1b3`: no box (12:32 UTC).
+
+## azr1b1 (slot 1, ONE POOL) - 2026-11-09 20:45 UTC: the plan, written before launch
+
+**What this slot changes in run 5: part 4 only, the spawn pools.** October's spawn sources
+are switched off, so every training start that is not the map start comes from the search's
+backward curriculum. PPO, the reward, the observation, the temperature rules and the search
+(MCTS, all-random sampled children, 6 min on 2,048 copies, banked adoption, recheck) are run 5's.
+
+**The flag list.** `box.py launch --no-recipe` (run_arm.sh's SCRATCH preset, which carries
+`--respawn-frac 0.9 --respawn-margin 10 --respawn-reservoir 100000` and the rest) plus run 5's
+126-element list WITHOUT these 41 elements:
+
+    --respawn-novel  --respawn-novel-band 0.15  --respawn-novel-frac 0.2
+    --respawn-novel-radius 256 3072  --respawn-novel-shell 0.9  --respawn-novel-shell-width 0.05
+    --respawn-novel-tries 64  --respawn-novel-turn 90
+    --respawn-greedy 0.25  --respawn-greedy-window 0.25 2.0  --respawn-greedy-stuck 200
+    --respawn-front-perturb 0.25  --respawn-front-perturb-band 0.005
+    --respawn-front-perturb-speed 1.0 1.3  --respawn-front-perturb-turn 90
+    --respawn-backward-mix 0.1  --respawn-backward-elev -60 60
+    --demo-share 0.25
+    --int-real-only 1      <- not in PROTOCOL's list: forced. train_fast.py:14214 refuses it
+                              without --respawn-novel; all it does is keep NOVEL-row episodes
+                              out of the novelty counts, and there are no novel rows any more.
+
+What is passed (85 elements, in this order):
+
+    --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --unstuck --unstuck-reach eval
+    --respawn-margin 2 --unstuck-max 0.2 --unstuck-temp-heads keys --obs-surf 1 --surf-bonus 0
+    --obs-compass 1 --obs-pot-rate 1 --race-ratchet --race-no-corner-cut 1 --time-pen 0.001
+    --stall-eps 5 --pitch-sigma-min 0.05 --eval-patience 30 --eval-parallel 1 --front-temp 1
+    --front-band 0.01 --energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1
+    --maxvel 4000 --auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck
+    --auto-spine-banked --auto-spine-explorer mcts --auto-spine-mcts-minutes 6
+    --auto-spine-envs 2048 --auto-spine-ge-minutes 0 --auto-spine-patience 3e8
+    --auto-spine-retry 3e8 --demo-success-d 100 --demo-window 5 --demo-grow 5
+    --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.5
+    --auto-spine-mcts-args '--mcts-random-frac 1.0 --mcts-perturb-frac 0'
+
+**The pool, read off the code (train_fast.py ~19510, respawn.py DemoCurriculum.build_pool).**
+Without `--demo-share` the trainer takes the `demo is not None and DEMO_SHARE is None` branch
+every iteration: `demo.build_pool(map_start_pool, fresh_frac = 1 - 0.9)` = 410 of 4,096 rows
+(10%) map starts, 3,686 (90%) curriculum rows, half of them on the frontier band [tau, tau+4]
+(`--demo-front-frac 0.5`) and half uniform over [tau, end]. The greedy / front-perturb mixing
+inside that branch is off (no `--respawn-greedy`, no `--respawn-front-perturb`). Run 5's pool
+for comparison: ~7.5% map starts, 25% curriculum (12.5% on the band), ~67.5% October's sources.
+The reservoir is still harvested (`--respawn-frac 0.9 > 0` creates it), but nothing spawns
+from it: it only sets the "frontier band" that `--front-temp` and `--energy-pot-front` read, as
+in run 5. To confirm in the launch log: "demo replaces the reservoir share of the pool", and no
+NOVEL / GREEDY / FRONT-PERTURB / BACKWARD-MIX lines.
+
+**Two things written down before launch (PROTOCOL slot 1).**
+1. Until the first search line is adopted, the curriculum's "line" is `auto/spine0.npy` = the
+   map's spawn state (2 rows), so ALL starts are at the map start (or copies of it). In run 5
+   the first search fired at step 524,288 (the quorum: 9/9 greedy episodes past a line 100 u
+   from the spawn) and its line was adopted at 116M steps; expect the same here.
+2. **The search cadence is run 5's, unchanged**: quorum 5 greedy episodes past the line,
+   `--auto-spine-patience 3e8`, `--auto-spine-retry 3e8`, 6 min, 2,048 copies. This is the
+   plain one-change version. Note that the cadence RULE is the same but its effect may not be:
+   with 90% of starts on the line instead of 25%, the policy may pass the quorum sooner, and
+   searches then fire more often. That is part of what this slot measures, not a second change.
+
+**What I expect to learn, and the risk.** Run 5's October sources restart the policy from its
+own death states (greedy), from cells it has never entered (novel) and from its frontier with
+the heading turned (front-perturb). In run 5 the policy found 8 of 12 walls itself; if those
+sources are what found them, this run stalls between search lines (the patience is 0.3B steps
+per retry) and fails a wall the policy opened in run 5. If the curriculum is what mattered,
+this run is on time or faster (the line gets 3.6x the starts).
+
+**Box: none yet.** `box.py rent` was refused twice by the session's permission classifier
+(20:41-20:42 UTC); asked the user. No box rented, no money spent.
