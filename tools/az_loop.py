@@ -88,6 +88,12 @@ def add_args(ap) -> None:
                          "the search's random children (drawn at a multiple of it) narrow as the "
                          "policy learns - in run 5 PPO narrowed it (0.30 -> 0.07 by 0.57B steps). "
                          "0 = sigma frozen at the init (the trainer's BC convention; as before)")
+    ap.add_argument("--az-spawn-rotate", type=int, default=0, choices=(0, 1),
+                    help="--az-loop: 1 = every round's search starts from a NEW spawn of the map "
+                         "start, drawn by the core's own reset with a per-round seed (the start's "
+                         "yaw jitter, as every eval episode has), instead of the one spawn the "
+                         "first reset gave: the trees then teach the start's real variation, not "
+                         "one heading of it. 0 = the same spawn every round (as before)")
     ap.add_argument("--az-line-frac", type=float, default=0.25,
                     help="--az-loop: share of each batch drawn from the best lines' SEARCHED rows "
                          "(the tree's choices, decision by decision)")
@@ -431,6 +437,17 @@ def run_az(B: dict, a) -> None:
         t_r = time.time()
         a.torch_seed = seed0 + rnd
         torch.manual_seed(seed0 + rnd)
+        if int(a.az_spawn_rotate):
+            # the round's spawn: the map start as the core's reset draws it for this seed (the
+            # same pool and jitter as the evals'), env 0 of a 1-env core
+            c1 = B["spawn_core"]
+            sp_seed = seed0 * 7919 + 1000003 + rnd
+            o1 = np.array(c1.reset(int(sp_seed)))
+            B["ctx"]["row0"] = c1.get_states()[0:1].copy()
+            B["ctx"]["obs_start"] = o1[0].copy()
+            B["ctx"]["gate_seed"] = int(sp_seed)
+            print(f"az round {rnd}: spawn seed {sp_seed}, yaw "
+                  f"{float(B['ctx']['row0']['yaw'][0]):.2f}", flush=True)
         # ---- 1. search + labels ------------------------------------------------------------
         t0 = time.time()
         res = run_mcts(B["ctx"], a)

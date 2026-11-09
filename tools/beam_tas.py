@@ -2822,10 +2822,14 @@ def main():
             from az_loop import run_az
             ev_core = build_sim(cfg, map_path, int(args.az_eval_eps), ep_cap, tick=TICK)
             arm(ev_core)
+            sp_core = None
+            if int(args.az_spawn_rotate):
+                sp_core = build_sim(cfg, map_path, 1, ep_cap, tick=TICK)
+                arm(sp_core)
             run_az(dict(ctx=ctx, ck=ck, cfg=cfg, policy=policy, packer=packer, device=device,
                         lidar=lidar, K=K, stack=stack, KEYS=KEYS, SPAWN_DUCK=SPAWN_DUCK,
                         mk_feed=mk_feed, XF=XF, cc_fnN=None, TICK=TICK, gf=ogf, ep_cap=ep_cap,
-                        eval_core=ev_core), args)
+                        eval_core=ev_core, spawn_core=sp_core), args)
             return
         res = run_mcts(ctx, args)
         fr = res["frontier"]
