@@ -59,8 +59,9 @@ than all its siblings (child 0 included) earns its kind one point - "better" on 
 value (the backed-up banked score) when some child improved on its parent's value, else (nobody
 went deeper) on the new archive cells a LIVE child opened; ties split the point; a win of child 0
 is credited to no kind. Each kind's share of the next wave's sampled children is probability
-matching on its points per child (decayed over --mcts-mix-horizon waves), with a floor
-(--mcts-mix-floor) so that no kind dies out. Off (the default) draws the kinds exactly as before.
+matching on its points per child (the memory counted in wins: the last ~--mcts-mix-horizon wins
+decide), with a floor (--mcts-mix-floor) so that no kind dies out. Off (the default) draws the
+kinds exactly as before.
 """
 from __future__ import annotations
 
@@ -158,11 +159,18 @@ class MixRule:
     ``mode`` 'sib' = the rule (draw from the shares, update them every wave); 'log' = the legacy
     fixed knob (``legacy_child_kinds``, the same random stream as 'off') with the rule's
     bookkeeping beside it, so a run at the fixed knob reports which kinds won (a diagnostic).
-    ``floor``: the least share of each kind; ``horizon``: waves over which old evidence decays by
-    1/e; ``warm``: waves at equal shares before the rule speaks. Every constant is a search
-    budget: nothing here reads a map, a place or a progress value."""
+    ``floor``: the least share of each kind; ``horizon``: the memory, counted in WINS (expansions
+    that had a winner, child 0's included): each win decays the old evidence (points AND
+    children) by exp(-1 / horizon), so the shares follow the last ~horizon wins - fast while the
+    tree is finding things (tens of wins per wave), steady through the long tail where wins are
+    rare (a memory counted in waves let a handful of tail wins swing the shares: bench cp6,
+    2026-11-09 21:10, P 0.2 -> 0.88 -> 0.2 within 100 waves; run 5's wall-opening lines were
+    found in that tail, search 15 at wave ~392, search 20 at ~832). A wave without a win changes
+    nothing: children drawn in proportion to the shares leave the ratios where they are.
+    ``warm``: waves at equal shares before the rule speaks. Every constant is a search budget or
+    a sample size: nothing here reads a map, a place or a progress value."""
 
-    def __init__(self, mode: str = "sib", floor: float = 0.05, horizon: float = 16.0,
+    def __init__(self, mode: str = "sib", floor: float = 0.05, horizon: float = 256.0,
                  warm: int = 2, perturb_frac: float = 0.5, random_frac: float = 0.5):
         if mode not in ("sib", "log"):
             raise ValueError(f"MixRule mode {mode!r}")
@@ -170,8 +178,7 @@ class MixRule:
             raise ValueError("--mcts-mix-floor must be in [0, 1/3)")
         self.mode = mode
         self.floor = float(floor)
-        self.horizon = float(horizon)
-        self.decay = math.exp(-1.0 / max(1.0, float(horizon)))
+        self.horizon = max(1.0, float(horizon))
         self.warm = int(warm)
         self.pf, self.rf = float(perturb_frac), float(random_frac)
         self.share = np.full(3, 1.0 / 3.0)            # (P, E, R)
@@ -222,8 +229,11 @@ class MixRule:
         self.tot_wins += wins
         ch = np.array([(kinds == k).sum() for k in (1, 2, 3)], np.float64)
         self.tot_children += ch.astype(np.int64)
-        self.w = self.w * self.decay + wins[1:]
-        self.c = self.c * self.decay + ch
+        # the memory is counted in WINS: this wave's wins (every kind's, child 0's included)
+        # decay the old points and children alike, then this wave's evidence enters in full
+        f = math.exp(-float(wins.sum()) / self.horizon)
+        self.w = self.w * f + wins[1:]
+        self.c = self.c * f + ch
         self.waves += 1
         if self.mode == "sib" and self.waves >= self.warm:
             self.share = mix_shares(self.w, self.c, self.floor, prev=self.share)
@@ -869,7 +879,7 @@ def run_mcts(ctx: dict, a) -> dict:
         mix = MixRule(_mr, floor=float(a.mcts_mix_floor), horizon=float(a.mcts_mix_horizon),
                       warm=int(a.mcts_mix_warm), perturb_frac=float(a.mcts_perturb_frac),
                       random_frac=float(a.mcts_random_frac))
-        print(f"mcts: child mix rule {_mr} (floor {mix.floor:g}, horizon {mix.horizon:g} waves, "
+        print(f"mcts: child mix rule {_mr} (floor {mix.floor:g}, horizon {mix.horizon:g} wins, "
               f"warm {mix.warm}); " + ("--mcts-perturb-frac / --mcts-random-frac are the rule's "
                                        "to set" if _mr == "sib" else "the fixed knob draws"),
               flush=True)
