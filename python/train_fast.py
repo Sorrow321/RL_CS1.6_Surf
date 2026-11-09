@@ -5261,10 +5261,12 @@ def main() -> None:
     ap.add_argument("--tree-labels", type=float, default=None,   # None = off (today)
                     help="--auto-spine-explorer mcts: EVERY search tree also teaches the network. "
                          "The search writes labels for every expanded node (beam_tas "
-                         "--mcts-labels; surfgym/treelabels.py): the children that beat their "
-                         "siblings on the tree's backed-up score as the POLICY target (rank "
-                         "weights; key / jump / duck bins scored by the engine action they yield, "
-                         "the executed yaw target in u), the node's own score as its percentile "
+                         "--mcts-labels; surfgym/treelabels.py): the children that beat the "
+                         "policy's own (greedy) child on the tree's backed-up score as the POLICY "
+                         "target (sibling-rank weights; key / jump / duck bins scored by the "
+                         "engine action they yield, the executed yaw target in u; a node where "
+                         "nothing beats the policy teaches no policy row), the node's own score "
+                         "as its percentile "
                          "rank in the tree as the VALUE target of a separate head on the actor "
                          "tower (PPO's critic is never touched). The trainer loads them when the "
                          "search ends and adds COEF x the label loss to every PPO minibatch step. "
@@ -19246,7 +19248,9 @@ def main() -> None:
         TL_KC = int(KEYS0) if N_KEYS else None
         tl_lidar, tl_dtype = slots[0].lidar, b_img.dtype
 
-        def tl_loss_fn(scal, img, act, u, vt):
+        def tl_loss_fn(scal, img, act, u, vt, pm):
+            # pm: 1 where the drawn node carries a policy row (some child beat the policy's own),
+            # 0 where it teaches only the value
             with amp:
                 logits, t_pi = policy.actor_out(scal, img)
             tv = tree_vhead(t_pi.float()).squeeze(-1)
@@ -19258,17 +19262,20 @@ def main() -> None:
                 held = keys_held_from_features(scal[:, TL_KC:TL_KC + keyshold.N_FEATURES])
                 lsm = keys_engine_logp(lsm, held)
             nll_c = -lsm[:, N_VIEW:].gather(-1, act[:, N_VIEW:].unsqueeze(-1)).squeeze(-1).sum(-1)
-            yaw = 0.5 * ((torch.tanh(mu[:, 0]) - u) / BC_VIEW_SIGMA).pow(2)
+            du = torch.tanh(mu[:, 0]) - u
+            yaw = 0.5 * (du / BC_VIEW_SIGMA).pow(2)
+            pms = pm.sum().clamp_min(1.0)
+            pol = ((nll_c + yaw) * pm).sum() / pms
             v_mse = (tv - vt).pow(2).mean()
-            loss = (nll_c + yaw).mean() + TL_VC * 0.5 * v_mse
+            loss = pol + TL_VC * 0.5 * v_mse
             with torch.no_grad():
                 _am, _tg = padded.argmax(-1), act
                 if held is not None:
                     _am, _tg = keys_engine_bins(_am, held), keys_engine_bins(act, held)
-                agree = (_am[:, N_VIEW:] == _tg[:, N_VIEW:]).all(-1).float().mean()
-                stats = torch.stack([loss.detach(), nll_c.mean().detach(), yaw.mean().detach(),
-                                     v_mse.detach(), agree,
-                                     (torch.tanh(mu[:, 0]) - u).abs().mean().detach()])
+                agree = ((_am[:, N_VIEW:] == _tg[:, N_VIEW:]).all(-1).float() * pm).sum() / pms
+                stats = torch.stack([loss.detach(), (nll_c * pm).sum().detach() / pms,
+                                     (yaw * pm).sum().detach() / pms, v_mse.detach(), agree,
+                                     (du.abs() * pm).sum().detach() / pms, pm.mean()])
             return loss, stats
 
         tl_step = tl_loss_fn
@@ -19282,8 +19289,8 @@ def main() -> None:
             tl_log = open(out / "tree_labels.csv", "a", newline="", encoding="utf-8")
             if tl_log.tell() == 0:
                 tl_log.write("time/total_timesteps,tree/coef,tree/loss,tree/nll_keys,tree/yaw,"
-                             "tree/value_mse,tree/joint_acc,tree/yaw_abs_err,tree/nodes,"
-                             "tree/rows,tree/trees\n")
+                             "tree/value_mse,tree/joint_acc,tree/yaw_abs_err,tree/policy_frac,"
+                             "tree/nodes,tree/taught,tree/rows,tree/trees\n")
         print(f"--tree-labels {TL_COEF:g}: every search tree's labels join the PPO step "
               f"({int(args.tree_labels_batch)} rows per minibatch step, the last "
               f"{int(args.tree_labels_keep)} trees kept, tree-value coef {TL_VC:g} on its own "
@@ -21481,13 +21488,13 @@ def main() -> None:
                     loss = loss + bc_coef_t * _lb
                     bc_last = _st
                 _tl_used = False
-                if TL is not None and TL.n_rows > 0 and TL_COEF > 0.0 and not warming:
+                if TL is not None and TL.n_nodes > 0 and TL_COEF > 0.0 and not warming:
                     # --tree-labels: one label batch per PPO minibatch, summed in before the one
                     # backward (the tree-value head steps with its own Adam below)
-                    _ts, _tp, _ta, _tu, _tv = TL.sample(int(args.tree_labels_batch))
+                    _ts, _tp, _ta, _tu, _tv, _tm = TL.sample(int(args.tree_labels_batch))
                     try:
                         _lt, _tst = tl_step(_ts, TL.render(tl_lidar, _tp, tl_dtype), _ta, _tu,
-                                            _tv)
+                                            _tv, _tm)
                     except Exception as exc:        # pragma: no cover
                         if tl_step is tl_loss_fn:
                             raise
@@ -21495,7 +21502,7 @@ def main() -> None:
                               f"({exc!r}) - eager")
                         tl_step = tl_loss_fn
                         _lt, _tst = tl_step(_ts, TL.render(tl_lidar, _tp, tl_dtype), _ta,
-                                            _tu, _tv)
+                                            _tu, _tv, _tm)
                     loss = loss + TL_COEF * _lt
                     tl_last = _tst
                     _tl_used = True
@@ -21643,11 +21650,13 @@ def main() -> None:
             if it_no % 25 == 0:
                 print(f"tree labels: coef {TL_COEF:g}  loss {_tls[0]:.4f}  keys-nll "
                       f"{_tls[1]:.4f}  yaw {_tls[2]:.4f}  v-mse {_tls[3]:.4f}  joint-acc "
-                      f"{_tls[4]:.3f}  |du| {_tls[5]:.3f}  ({TL.describe()})")
+                      f"{_tls[4]:.3f}  |du| {_tls[5]:.3f}  policy rows {_tls[6]:.2f}  "
+                      f"({TL.describe()})")
             if tl_log is not None:
                 tl_log.write(f"{global_step},{TL_COEF:g},{_tls[0]:.5f},{_tls[1]:.5f},"
                              f"{_tls[2]:.5f},{_tls[3]:.6f},{_tls[4]:.5f},{_tls[5]:.5f},"
-                             f"{TL.n_nodes},{TL.n_rows},{len(TL.trees)}\n")
+                             f"{_tls[6]:.4f},{TL.n_nodes},{TL.n_taught},{TL.n_rows},"
+                             f"{len(TL.trees)}\n")
                 tl_log.flush()
         if LPLAN or PLPLAN:
             # --goal-planner learned / primlearn: the PLANNER's own PPO, over every plan

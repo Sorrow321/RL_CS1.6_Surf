@@ -1,0 +1,4 @@
+{"agent": "azr1b3", "round": 1, "final": false, "slot": 3,
+ "best": null,
+ "ladder": {"unit": "steps", "verdict": "not launched yet", "total": {}},
+ "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's. Built (commit 99a73b50): the search writes, for every expanded node, its children ranked among their siblings by the tree's backed-up score (policy target: the better half, rank-weighted) and the node's score as its percentile rank in the tree (value target, on a separate head on the actor tower; PPO's critic untouched). Box 59952494 (RTX 5080) rented 20:58 UTC; smoke tests running, launch next."}

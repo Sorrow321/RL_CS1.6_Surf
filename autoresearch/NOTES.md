@@ -1018,3 +1018,50 @@ Also pulled before the release (md5 166391c47a867e6c8efa23d33e3c9110 verified):
 beam/summary.json and greedy_baseline.jsonl, plus the keeper's log and state. Not in it: the
 spines' spine.keys.npy / spine.json and the per-search ckpt copies (5.6 GB), lost with the box.
 `box.py status --agent unr1b3`: no box (12:32 UTC).
+
+## azr1b3 (the one-search series, slot 3: the tree teaches, beside PPO) - 2026-11-09
+
+### 21:02 UTC: what was built (commit 99a73b50 on ar/azr1b3)
+
+**The change to run 5 (part 5 only).** Run 5's MCTS keeps doing exactly what it did (same
+search, same knob, same line -> curriculum). In addition, EVERY tree now teaches the network
+directly, as an extra loss summed into every PPO minibatch step. Nothing else changes.
+
+* **The labels** (`python/surfgym/treelabels.py`, written by the search itself:
+  `beam_tas --mcts-labels` -> `auto/kNN/beam/labels.npz`; the trainer adds the flag to the
+  search command when `--tree-labels` is on, so nobody passes a label file by hand). For every
+  EXPANDED node of the tree (not only the best line):
+  * policy target: the node's children ranked among their siblings by the tree's own backed-up
+    score Q (best banked progress anywhere in the child's subtree; at equal Q a child that
+    survived its macro ranks above one that died; ties share their average rank), rank scaled
+    to r in [0, 1]; weight w = max(0, r - 1/2), normalised to sum 1 per node. The better half of
+    the siblings pulls, the best hardest; a node whose children all tie teaches nothing. The
+    label is the child's FIRST decision (the node's state is where it was taken): its
+    policy-space key / jump / duck bins and its EXECUTED yaw target as u = off_warp_inv(offset).
+    Pitch is not labelled (it only aims the camera).
+  * value target: the node's own Q as its percentile rank among the tree's expanded nodes
+    (0 = the tree's worst node, 1 = its best).
+  * Both are ranks inside one tree: no number comes from the map.
+  * The input row is the policy's own: the scalar half of the row the search's policy wrapper
+    built at the node (captured at the node's expansion) plus the pose; the trainer re-renders
+    the image from the pose with its own lidar (as `--bc-file` does).
+* **The loss** (`train_fast.py --tree-labels COEF`): per PPO minibatch step one batch of
+  `--tree-labels-batch` 1024 label rows, drawn in proportion to their weight (every labelled
+  node carries mass 1, so the nodes of the kept trees come out uniformly). Policy term: NLL of
+  the child's key / jump / duck bins, the held keys scored by the ENGINE action they yield
+  (`keys_engine_logp`: KEEP and an explicit press of the held key are one action), plus the yaw
+  as 0.5 ((tanh mu - u) / 0.3)^2 (the BC reference sigma, in u so a random child's far-out z
+  cannot blow the term up). Value term: `--tree-value-coef` 0.25 x 0.5 (v - target)^2 on a
+  SEPARATE head (a Linear on the actor tower's output, its own Adam; saved beside the policy as
+  ckpt key `tree_vhead`): PPO's critic, its baseline and its loss are never touched (PPG's
+  auxiliary value head, Cobbe et al. 2021). The labels of the last `--tree-labels-keep` 4 trees
+  are kept; a crash-resume of the same run reloads them from `auto/k*/beam/labels.npz`.
+* Flags default off; `--tree-labels*` are TRAIN_ONLY in record_ckpt (the policy's state_dict is
+  unchanged, so the search, record_ckpt and every tool load "policy" as before). Unit tests:
+  `tests/python/test_tree_labels.py` (10: the ranking, ties, groups, the value ranks, labels on a
+  small tree, the file, the buffer and its sampling, `Policy.actor_out` == forward_split's
+  logits, the defaults, TRAIN_ONLY).
+* **Search ticks:** the labels cost no simulator ticks (they are read off the tree the search
+  already built), so `search_ticks.py` counts this run exactly as it counts run 5.
+
+**Box** 59952494 (RTX 5080, 96 threads, Quebec, $0.337/h), rented 20:58 UTC, deadline 12 h.
