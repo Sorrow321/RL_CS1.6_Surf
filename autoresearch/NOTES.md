@@ -738,3 +738,8 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   does charging back a fatal fall's last 2 s of ratchet pay shorten the fatal-dive plateaus (v3:
   window 1,284M -> pit dive 3,165M; the 30.8% dive 4.7-7.3B)? It has ~6.5B steps to 11:55 UTC;
   matched-step comparison against v3's ladder.
+* **04:35 UTC - v6 (`unr1b4_dc6`) at 0.42B: 5.75% from 151M on** (evals 151 / 227 / 303 / 378M:
+  5.75 / 5.76 / 5.76 / 5.75, 9/9 alike) against v3 at the same steps 1.70 / 1.72 / 1.71 / 1.62 (v3
+  left the platform at 454M, 6.28). First ramp (> 8%) pending, deadline 1.00B (v3 604M). Search 1
+  (from 0.30B) found no new spine (21,818 cells, 0.98M runs, lambda 0.68). 207k steps/s (v3
+  ~225k).
