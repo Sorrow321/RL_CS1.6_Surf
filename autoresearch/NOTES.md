@@ -624,3 +624,16 @@ the base recipe's own frontier spawns would have done in the same steps (they ha
   greedy 86.4% in that eval). ckpt_15005122560.pt pulled (md5 78aafe3a..., 19M steps before
   the best eval) and set as best.ckpt. ON TIME (chamber entry deadline 38.7B): keeps training;
   the walls already cleared stand on the ladder.
+
+### 07:57 UTC: geb6's greedy still stuck at the pit (26.4-29.5%) for 1.2B steps
+
+Evals 16.08-16.84B (11): every one 26.4-29.5% (CP1; medians 22-29%), 0 finishes - the greedy
+no longer crosses CP2 from the start, 1.2B steps after its last deep eval (96.5% at 15.55B).
+Training: crash 50%, kl 0.13, ent 0.015, win 9.6% @ 2.3 s (harvest next to the goal, reservoir
+min-depth 1.70%), the frontier tracker "stuck 2,069.9M" at 95,625 u. The recipe resets 90% of
+episodes from its spawn sources (respawn_frac 0.9) - reservoir, frontier, novel band, the
+greedy window (0.25, along the greedy's own eval line, which now ends at the pit) - and the
+curriculum (line 148, 98.09%, success 2.7-3.2%). The explorer is at 98.40% (0 finishes) and
+cannot be adopted (line 150 beats line 148 by 219 u < the 300 u gain). ON TIME (chamber
+entry deadline 38.7B); the frozen recipe keeps training, CP6/CP7 stand on the ladder, and the
+best eval's checkpoint (15.0B) is local.
