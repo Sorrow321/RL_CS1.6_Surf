@@ -686,3 +686,16 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   relapsed eval line) reached d 69,193 - kept out by the gain rule; search 15 (10,526M) running.
   The walls stay cleared, so the run is ON TIME: post-CP2 due 13.93B (~03:45 UTC). Best stays
   32.447 (9,695M; 32.446 at 9,997M).
+* **00:30 UTC - v3 recovered again (32.482 at 10,752M, new best; 10,601-11,054M 31.9-32.48, median
+  32.4% from 10,752M) and search 16 handed on a line PAST the post-CP2 line: NEW SPINE at 11,087M,
+  end d 66,539 = 33.25% (the wall needs d < 66,782).** Hand-on unr1b4_knob3d/ckpt_10510925824.pt
+  pulled (md5 5dda60e8...). Search 16 (10,979M): rooted on the eval line (4,632 ticks, best d
+  67,370 at tick 4,234; 101 roots over ticks 3,758-4,158), 90 root cells; 12,614 cells, 1.26M
+  runs, lambda 0.50-0.77 (0.77 at the end); yield ~0 per decision from 150 s, then the deepest
+  cell at ~470 s (best d 67,409 -> 66,542) - search 6's shape again (a find late in a flat
+  search). Chain 12 links from root tick 3,774, modes [0,0,0,1,1,1,0,1,1,0,1,0] (6 + 6), exact
+  replay (0 u). Its path: where the greedy falls from x ~-700 (z ~10,200, vz ~-1,050) to the
+  lower floor at z ~9,715, the line is still CLIMBING at (-477, -185, 10,256) (vz +422), lands
+  on a floor further west at (-1,375, -214, 9,911) and crawls west along it to (-1,452, -42,
+  9,958) at the end. The curriculum restarts at its end; the wall is due 13.93B (~2.8B steps, ~3.4
+  h); search 6's line took ~0.8B steps to reach the greedy.
