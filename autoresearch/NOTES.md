@@ -648,3 +648,17 @@ min-depth 1.71%), fronttemp 25-34% past 97.3%; curriculum line 148 (98.09%) succ
 Explorer 98.40% (viable 98.35%, line 150 at 98.31% not adoptable, 0 finishes; 30.3M runs, 2.1M
 cells). ON TIME (chamber entry deadline 38.7B) - keeps training to the round end (~21B at
 11:55). Budget: credit $22.25, burn 0.91 $/h, reserve $10.
+
+### 10:10 UTC: geb6 at 19.2B - greedy 26-32%; the PPO update size has grown ~8x since the regression
+
+Evals 18.04-19.10B (15): 26.1-32.1%, 0 finishes; 8 cross CP2 (31.1-32.1%), 7 stop at CP1
+(26.1-28.0%). Best stays 97.96 (15.02B); the trainer's frontier tracker has not moved its best
+(95,625 u) since 14.87B ("stuck 4,230M"). **approx_kl, median per 0.25B of steps** (lr 3e-4
+constant, 4 epochs x 16 minibatches, clip 0.2): 0.054-0.081 from 12.75B to 15.25B, then 0.101
+(15.5B - the greedy regressed at 15.63B), 0.121 (16.0B), 0.143 (16.5B), 0.150 (17.5B), 0.202
+(18.0B), 0.288 (18.5B), 0.411 (19.0B, p90 0.76). The policy now moves several times further per
+update than it did while it was clearing CP6/CP7; the measured entropy sits at its 0.015 floor
+throughout. Training: crash 49-57%, harvest wins 6.3-9.9% @ 2.4 s (reservoir min-depth 1.69%).
+Explorer 98.44% (viable 98.37%, 0 finishes; 32.1M runs, 2.17M cells); line 150 (98.31%) still
+not adoptable. ON TIME (chamber entry deadline 38.7B) - the frozen recipe keeps training.
+Budget: credit $21.38, burn 0.91 $/h.
