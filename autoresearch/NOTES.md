@@ -672,3 +672,74 @@ the greedy's best d in the latest eval 69,706 (30.1%); success on its band 1.6%.
 19B at ~6-8x the CP6/CP7 period's 0.05-0.08; crash share 52-56%. Explorer 98.45% (viable
 98.42%, 0 finishes, 33.7M runs, 2.22M cells). ON TIME (chamber entry deadline 38.7B). Budget:
 credit $20.49, burn 0.91 $/h. Next: the wrap-up at 11:55.
+
+### unr1b2 round-1 lesson (slot 2: a policy-guided beam as Go-Explore's explore step)
+
+**Result.** unr1b2_geb6 (commit 8955493b; incumbent recipe + `--ge-beam ...` + `--unstuck-max 2`,
+from scratch, one seed, RTX 4080, ~1.02B steps/h): first ramp 302.5M, window 453.5M, pit dive
+1,208.5M, CP2 1,661.5M, post-CP2 block 2,039.0M, CP3 2,265.4M, CP4 3,020.4M, CP5 3,397.9M, CP6
+14,496.0M, CP7 14,873.5M; chamber entry and finish not reached (October: pit dive 1.94B, CP2 4.14B, CP3 7.32B, CP4 9.39B,
+CP5 11.78B, CP6 14.26B, CP7 15.23B, chamber entry 19.35B, finish 25.45B). Best 97.96 (CP7, 0.5% short of the chamber entry) at
+15,024.5M; stopped by the round clock at 20.94B (ckpt_latest 20,944,781,312, pulled, md5 f990ffc4...;
+the best eval's snapshot ckpt_15005122560.pt, md5 78aafe3a..., is RESULT.json's best.ckpt). Five earlier explorer runs (geb..geb5,
+cap 0.2) stopped at the CP2 wall (26.9-27.1%).
+
+**What was built** (`tools/ge_beam.py`, `train_fast --ge-beam*`, `tests/python/test_ge_beam.py`):
+an archive of exact states restored through the core's own reset (chains replay bit-exactly), a
+policy beam from each selected cell keeping every new cell a copy reaches, held random bursts on
+half the runs, the deepest viable line as the trainer's backward curriculum (20% of starts), and
+the generic fixes the round forced: doomed-cell skipping, chain roots (branch from the best
+line's last seconds), level/falling cell keys, trace steps (return with the current policy from
+the true start), frontier spawns (the explorer's frontier cells as 15% of starts). The explorer
+runs beside the trainer on the same GPU (network + depth render on cuda, physics on 8 CPU
+threads); states go explorer -> trainer, weights trainer -> explorer every 120 s.
+
+**What worked (attribution, one seed each)**
+* 0-27% (first ramp, window): the explorer's lines LED the greedy (adopted at 3.3-24.4%, the
+  greedy following within ~40M steps); 6 of 6 explorer runs cleared the ramp by 0.45B, the
+  same recipe without it (unop_ctl) never did in 7.6B (one control seed; October cleared the
+  ramp at the same 302.5M with no explorer).
+* 27-31% (pit dive, CP2): the plateau-temperature cap. Five runs at cap 0.2 sat at 27.1% for up
+  to 3.4B steps; geb6 left ~80M steps after T reached 2 (October's from-scratch r1b1 ratnovx
+  crossed CP2 at 1.63B at cap 2 with no explorer; geb6 at 1.66B - the explorer's share of the
+  CP2 crossing is not shown).
+* 31-82% (CP3-CP5): the base recipe with cap 2 alone; the explorer sat at 31.48% (2.16-6.7B).
+* 82-98% (two plateau exits, CP6, CP7): the explorer again. The 80-82.5% plateau (4.0-11.9B)
+  ended 0.3B steps after line 97 (54.5%) replaced line 53 (0-30%) as the curriculum; the 84-86%
+  creep ended 0.5B steps after line 123 (84.45% = the frontier) was adopted; from 14.48B the
+  explorer's lines (89.7, 92.3, 96.7%) were adopted 1-2% ahead of the greedy, which passed each
+  within one eval: CP6 at 14.50B, CP7 at 14.87B. Line 97 and line 123 were adopted only because
+  an eval had collapsed (29.6%, 10.4%): the trainer compares a line with the LATEST eval's best.
+
+* "Ahead of October" on CP2-CP5 is not explorer credit: October's lineage acquired its flags
+  wall by wall (warm resumes), geb6 had the final recipe from step 0; on CP6/CP7 geb6 was 0.2B
+  behind and 0.4B ahead of October.
+
+**What did not**
+* With fixed noise (keys T 1.5, yaw sigma, a held offset on every copy) and 60 s traces the
+  explorer could not hold lines the deterministic greedy flew: its archive sat at 31.48% for
+  4.6B steps and at 54-56% for another ~7B, while the greedy was at 82%. It caught up only when
+  the policy became robust to its noise (55.7% -> 83.7% in 3 minutes at weights 13.2B).
+* The curriculum sat on line 53 (0-30%, 30-50% behind the greedy) for ~10B steps: a new line
+  is adopted only when it is past the latest eval's best, so the explorer's deeper-but-behind
+  lines (54%, 84%) got in only through eval collapses.
+* From 15.63B the greedy fell back to the old CP2 pit and stayed there: after one 79.3% at
+  15.70B, every eval from 15.78B to 20.91B scored 26-32% (about half crossed CP2 to 31-32%; line 151,
+  98.41%, adopted on patience at 19.62B, did not change that),
+  while a third of the training envs sat past 97.3% (curriculum line 148 at 98.09%, success
+  ~3%; the explorer's frontier cells; the recipe's frontier spawns) and harvest wins next to the
+  goal were 6-10% @ 2.3 s. Crash share 40% -> 50-57%; approx_kl (median per 0.25B, lr 3e-4
+  constant) 0.05-0.08 to 15.25B, then rising from 15.5B to 0.42-0.52
+  from 19B on. Likely (not shown):
+  the start distribution had moved to the end of the map and the early route was forgotten;
+  the greedy window re-trains only the last 2 s of the greedy's line (now the pit), not the
+  route up to it.
+
+**For the next program** (the user's design, 2026-11-08): ONE stream - the explorer searches,
+PPO trains on its backward curriculum - with each explorer copy's temperature drawn from a
+ladder that INCLUDES near-greedy (Ape-X per-actor eps_i = 0.4^(1 + 7 i/(N-1))) up to Nature's
+random rollouts, traces as long as the greedy line, a first check that a zero-noise copy
+reproduces the greedy eval line, and a curriculum that always starts at the frontier: when no
+explorer line is past the greedy, a stale line (line 53, 0-30%, for 10B steps) is replaced by
+the deepest line available instead of waiting for an eval to collapse. The control that would
+settle the explorer's share: the incumbent recipe + `--unstuck-max 2`, no explorer.
