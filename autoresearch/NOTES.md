@@ -793,3 +793,13 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   119.12 s; 116.011 at 15.251B, 119.67 s), both slower than the best, so 116.035 (14.572B) stands.
 - Searches: 38 a finishing line (22 s); 39 STALE (its root replay died early, end d 72,068); 40 no
   line. Trainer and keeper alive, ~372k steps/s, disk 22G/60G.
+
+### 09:55 UTC: run 5 best 116.052 at 16.459B - 9/9 finishes, 118.45 s
+
+- New best 116.052 (local score.py agrees): 9/9 finishes, best 118.45 s, mean 119.33 s. Hand-on
+  checkpoint ckpt_16454254592.pt (ckpt_latest 4,718,592 steps = ~13 s before the eval), kept by
+  the keeper, pulled, md5 fd2cd41d51f79189ec6cfd9d98ec1aee verified; RESULT.json best points at it.
+- 19 evals 16.01-17.36B: finishes 6,6,7,4,4,8,9,5,3,5,7,7,8,1,2,9,7,5,7 of 9 (110/171 = 64%), so
+  the share did NOT keep rising (58, 60, 67, 71, now 64%): it fluctuates around 60-70% with
+  single bad evals (1/9 at 16.987B, 2/9 at 17.063B). 9/9 twice (16.459B, 17.138B). Fastest single
+  finish 118.12 s (17.365B, 7/9). Searches 41 and 43 returned finishing lines, 42 nothing.
