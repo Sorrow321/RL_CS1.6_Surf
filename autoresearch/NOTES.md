@@ -1122,3 +1122,37 @@ this run is on time or faster (the line gets 3.6x the starts).
 * **Speed:** 290-320k steps/s instantaneous (from successive cumulative-fps readings) while
   search 1 runs beside the training; the cumulative figure starts low because the record gate
   shares the first minute. Between 5080 (~365k) and 3090 (~215k) speed: fine.
+
+### azr1b1 - 2026-11-09 21:25 UTC: 0.63B steps; a curriculum freeze that run 5 had too
+
+* **Where it stands.** Greedy evals: 1.6-1.8% from 76M to 529M (frontier 1,636-1,767 u), 2.5% at
+  604M. Run 5 at the same steps: 1.6-1.7% to 378M, then 4.6% at 453M and 14.1% at 529M (first
+  ramp). Ladder: no wall yet; first ramp and window (CP1) are due by 1.6B steps (~22:10 UTC at
+  345k steps/s). Speed 345-348k steps/s cumulative.
+* **Searches.** Search 1 (quorum at 0.5M) gave a 1,291-row line ending at d 97,915 (~1.8%),
+  adopted at 120.6M (run 5: 1,454 rows, d 97,913, at 116.4M). The greedy then never reached that
+  line's success mark (d <= 98,015; median deepest d 98,111-98,255), so no quorum, and search 2
+  waited for the patience: fired at 453.5M, adopted at 559.4M, 1,095 rows ending at d 94,719
+  (~5%). Run 5's search 2 came out STALE because its policy had already broken out by then.
+* **The breakout in run 5 came from training episodes, before the greedy.** Run 5's reservoir
+  min depth (the deepest state a training episode reached) fell 98.3% -> 95.2% (414M) -> 90.6%
+  (477M) -> 84.7% (572M), ahead of its greedy. In this run it sat at 98.27% from 100M to 559M:
+  no training episode got past the platform edge in 450M steps. The view sigma also collapsed
+  harder here (yaw/pitch 0.047/0.050 at 525M against run 5's 0.079/0.140 at 541M).
+* **A curriculum freeze, in BOTH runs.** Line 1 has the player standing still for 20 ticks (rows
+  700-720, one origin, v ~ 0: a pause in the policy's own greedy flight that the line starts
+  with). `DemoCurriculum.match` keys spawns by rounded origin and keeps only the LAST row of a
+  repeat, so spawns on the frontier band [705,709] were credited to row 720, the band logged
+  "success 0.0% over 0 eps" and tau never moved again: frozen from ~250M until line 2 replaced it
+  at 559M. With one pool that put 45% of ALL starts on one standing state for ~300M steps. Run 5
+  had the identical freeze on its line 1 ([698,702], 0 eps, ~200M to ~1.0B, 800M steps); there it
+  cost 12.5% of the starts and October's sources carried the breakout. The fix exists, default
+  off: `--demo-match-band` (pbr6b4, 2026-10-26: "a spine that stood still repeats one origin over
+  several rows ... the curriculum never moves again"). Line 2 has no repeated origins and its
+  curriculum is moving (oscillating around rows 884-899 of 1,095 at 0.2-90% band success).
+* **Why it matters for the user's question.** One pool makes every start depend on the
+  curriculum machinery and on the search's cadence. Both have failure modes run 5 survived only
+  because 75% of its starts came from elsewhere: a frozen curriculum, and a 0.3B-step patience
+  when the policy cannot reach the line's end. If this run misses the 1.6B deadline, the next
+  recipe keeps one pool and fixes those two (`--demo-match-band`, a shorter patience/retry),
+  each stated as a change.
