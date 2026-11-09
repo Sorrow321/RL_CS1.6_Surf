@@ -540,3 +540,10 @@ Evals 8.68-9.66B (14): best-of-9 80.7-82.5% in 13, **82.515 at 8,909.2M** (new b
 over 7.47B - the same plateau, not a new wall), one dip 71.0% at 8.76B; medians 14.6-81.2%.
 Explorer still 54.24% (step 6,821, 572 min). Box extended 12 h to 12:57:51 UTC (covers the
 wrap-up at 11:55 and the round end at 12:35). ON TIME; keeps training.
+
+### 01:54 UTC: geb6 81-82.5% at 10.72B (best still 82.52 at 8.91B)
+
+Evals 9.74-10.72B (14): best-of-9 81.0-82.5% in 13 (82.468 at 10.27B), one CP4 dip (60.0% at
+10.65B); medians 20.3-81.6%. Explorer still 54.24% (step 7,545, 633 min). For the wrap-up: the
+milestone snapshot at or before the best eval, ckpt_8002732032.pt, is pulled (80 MB, md5
+c08c41fc..., 70 s); snapshots are every ~1.0B (ckpt_1000341504 .. ckpt_10003415040). ON TIME.
