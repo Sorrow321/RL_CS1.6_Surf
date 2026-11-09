@@ -4,10 +4,10 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 15.476,
-  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_0906493952.jsonl",
+  "score": 26.855,
+  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_1661468672.jsonl",
   "run": "azr1b3_tl1",
-  "step": 906493952,
+  "step": 1661468672,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -147,11 +147,13 @@
  "ladder": {
   "unit": "steps",
   "first ramp": 680001536,
-  "window (CP1)": null,
-  "verdict": "alive: first ramp ON TIME (680M vs run 5 529M; deadline 1.6B); window PENDING",
+  "window (CP1)": 1283981312,
+  "pit dive": null,
+  "verdict": "alive: 2 walls ON TIME (first ramp 0.680B vs run 5 0.529B; window 1.284B vs 0.680B); pit dive PENDING (deadline 3.625B)",
   "total": {
-   "first ramp": 977379793
+   "first ramp": 977379793,
+   "window (CP1)": 1667960905
   }
  },
- "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): at every expanded node the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~255k steps/s - the label step costs ~25-35% of wall clock): first ramp ON TIME at 680M steps / 977M total (run 5: 529M / 763M); since 755M on the 15.3-15.5% shelf before the window (run 5 sat at 15.8% at 604M and passed at 680M); best 15.476 at 906M. Next: the window deadline 1.6B (~23:00 UTC)."
+ "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~245k steps/s): first ramp ON TIME 0.680B steps / 0.977B total (run 5 0.529B / 0.763B), window ON TIME 1.284B / 1.668B (run 5 0.680B / 0.914B) - 1.3x and 1.9x run 5, slower but inside 2x; best 26.855 at 1.661B, just under the pit dive (27.5%, deadline 3.625B). Seen so far: as the policy improves the trees teach less (nodes where a child beats the policy's own: 24%, 41%, 16%, 16%, 6%; 90% of search 5's nodes have all children tied on banked progress)."
 }

@@ -1167,3 +1167,34 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
 * Label fit (iterations around 1,700-1,780, trees k01-k03): keys NLL 2.55-2.71, yaw 1.34-1.51
   (|tanh mu - u| 0.39-0.42), value MSE 0.040-0.044, agreement 0.24-0.25 (the new tree's rows are
   new targets).
+
+### 23:08 UTC: window (CP1) ON TIME (1.284B steps / 1.668B total; run 5 0.680B / 0.914B)
+
+| wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 0.977B | 0.763B | 2.000B |
+| window (CP1) | 1.284B | 0.680B | 1.600B | 1.668B | 0.914B | 2.000B |
+
+* The window took 1.9x run 5's steps: on time, but near the edge. Shelf 15.3-15.5% from 755M to
+  ~1.2B, then search 4's line (1.133B -> 1.219B, NEW SPINE end d 75,268 vs frontier 79,616) and
+  the window at 1.284B. Best 26.855 (26.86%, CP1) at 1.661B, just under the pit dive (27.5%).
+* Search 5 (1.586B -> 1.671B, patience): NEW SPINE 2,977 states, end d 72,504 vs frontier 76,177.
+* **What the trees teach, by search** (nodes where some child beat the policy's own greedy child
+  / all children tied, of the expanded nodes):
+
+  | search | at step | expanded | beaten | all tied | rows |
+  |---|---|---|---|---|---|
+  | 1 | 0.5M | 116,500 | 23.8% | 66.6% | 166,815 |
+  | 2 | 453M (spawn trap) | 145,159 | 41.3% | 42.0% | 535,751 |
+  | 3 | 680M | 125,203 | 16.1% | 67.7% | 115,407 |
+  | 4 | 1.133B | 112,673 | 15.7% | 61.6% | 113,081 |
+  | 5 | 1.586B | 115,617 | 5.6% | 90.0% | 42,451 |
+
+  As the policy improves the tree beats its own action less often, and on a shelf most expanded
+  nodes have children that all tie on the tree's value (no child banks deeper than the parent
+  within its subtree) - those teach no policy row and give the value head coarse ranks. The
+  tree's value (best BANKED progress) is sparse: a teacher built on it goes quiet exactly where
+  the policy is stuck. The searches' LINES keep finding progress (every search since 2 adopted).
+* Label fit now (iteration ~3,200, trees k02-k05): keys NLL 2.57, yaw 1.06 (|tanh mu - u| 0.35),
+  value MSE 0.049, agreement 0.29.
+* Search ticks 0.473B over 5 searches; throughput ~243k steps/s cumulative.
