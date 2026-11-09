@@ -168,5 +168,8 @@ def test_label_buffer_keeps_the_last_trees_and_mixes_kinds():
     assert b["scal"].shape == (40, 3)
     assert int((b["kind"] == 1).sum()) == 20
     assert set(np.unique(b["value"].numpy())) <= {1.0, 2.0}
+    # recency 0: only the newest tree is drawn (its weight 0**0 = 1, older ones 0)
+    draw0, _nl, _nn = buf.sampler(40, 0.5, torch.Generator().manual_seed(0), recency=0.0)
+    assert set(np.unique(draw0()["value"].numpy())) == {2.0}
     buf.add(3, None)                          # an empty tree is skipped
     assert buf.rounds() == [1, 2]

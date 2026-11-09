@@ -67,6 +67,9 @@ def add_args(ap) -> None:
     ap.add_argument("--az-batch", type=int, default=1024, help="--az-loop: rows per step")
     ap.add_argument("--az-buffer", type=int, default=4,
                     help="--az-loop: the last N trees' labels are trained on")
+    ap.add_argument("--az-recency", type=float, default=0.5,
+                    help="--az-loop: a label row of a tree N rounds older than the newest is drawn "
+                         "with weight RECENCY**N (1 = every buffered tree alike)")
     ap.add_argument("--az-line-frac", type=float, default=0.5,
                     help="--az-loop: share of each batch drawn from the best lines' rows (the rest "
                          "from the expanded nodes' rows; all from one kind when the other is empty)")
@@ -168,12 +171,18 @@ class LabelBuffer:
     def _cat(self):
         return {k: torch.cat([t[k] for _, t in self.sets]) for k in LABEL_KEYS}
 
-    def sampler(self, batch: int, line_frac: float, gen: torch.Generator):
-        """-> f() returning one batch dict; rows of each kind drawn uniformly with replacement."""
+    def sampler(self, batch: int, line_frac: float, gen: torch.Generator, recency: float = 1.0):
+        """-> f() returning one batch dict; rows of each kind drawn with replacement, a row of
+        the tree ``age`` rounds older than the newest weighted ``recency ** age`` (1 = uniform):
+        where the policy has moved on, the newer tree's labels win the disagreement."""
         allr = self._cat()
         kind = allr["kind"]
+        newest = max(r for r, _ in self.sets)
+        rw = torch.cat([torch.full((len(t["kind"]),), float(recency) ** (newest - r),
+                                   device=self.device) for r, t in self.sets])
         idx_line = torch.nonzero(kind == 1).reshape(-1)
         idx_node = torch.nonzero(kind == 0).reshape(-1)
+        w_line, w_node = rw[idx_line], rw[idx_node]
         if len(idx_line) and len(idx_node):
             n_line = int(round(batch * float(line_frac)))
             n_line = min(max(n_line, 1), batch - 1)
@@ -186,11 +195,11 @@ class LabelBuffer:
         def draw():
             parts = []
             if n_line:
-                parts.append(idx_line[torch.randint(len(idx_line), (n_line,), generator=gen,
-                                                    device=gen.device)])
+                parts.append(idx_line[torch.multinomial(w_line, n_line, replacement=True,
+                                                        generator=gen)])
             if n_node:
-                parts.append(idx_node[torch.randint(len(idx_node), (n_node,), generator=gen,
-                                                    device=gen.device)])
+                parts.append(idx_node[torch.multinomial(w_node, n_node, replacement=True,
+                                                        generator=gen)])
             ix = torch.cat(parts)
             return {k: v[ix] for k, v in allr.items()}
         return draw, int(len(idx_line)), int(len(idx_node))
@@ -211,7 +220,8 @@ def distil(policy, packer, lidar, opt, buf: LabelBuffer, a, gen, view_w) -> dict
     import train_fast as _tf
     if buf.rows() == 0:
         return {"steps": 0}
-    draw, n_line, n_node = buf.sampler(int(a.az_batch), float(a.az_line_frac), gen)
+    draw, n_line, n_node = buf.sampler(int(a.az_batch), float(a.az_line_frac), gen,
+                                       float(a.az_recency))
     policy.train()
     acc = None
     t0 = time.time()
@@ -300,6 +310,9 @@ def run_az(B: dict, a) -> None:
     policy, device = B["policy"], B["device"]
     cfg = B["cfg"]
     run_name = a.az_run or out.name
+    if getattr(B["lidar"], "uses_velocity", False) or int(B["stack"]) > 1:
+        raise SystemExit("--az-loop: a label row stores the image POSE only - not with --obs-ttc "
+                         "(velocity channel) or a frame stack")
     a.mcts_labels = 1
     lr = float(a.az_lr if a.az_lr is not None else cfg.get("lr") or 3e-4)
     opt = torch.optim.Adam(policy.parameters(), lr=lr, eps=1e-5)
