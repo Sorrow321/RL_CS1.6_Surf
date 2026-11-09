@@ -547,3 +547,9 @@ Evals 9.74-10.72B (14): best-of-9 81.0-82.5% in 13 (82.468 at 10.27B), one CP4 d
 10.65B); medians 20.3-81.6%. Explorer still 54.24% (step 7,545, 633 min). For the wrap-up: the
 milestone snapshot at or before the best eval, ckpt_8002732032.pt, is pulled (80 MB, md5
 c08c41fc..., 70 s); snapshots are every ~1.0B (ckpt_1000341504 .. ckpt_10003415040). ON TIME.
+
+### 02:57 UTC: geb6 81.0-82.4% at 11.78B (best still 82.52 at 8.91B)
+
+Evals 10.80-11.78B (14): all CP5, best-of-9 81.0-82.4% (no CP4 dip this hour), medians 32-81%.
+The explorer inched to 54.71% (viable 54.54%, line 97; 75% of its 100 deepest cells now come
+from burst copies). ON TIME; keeps training.
