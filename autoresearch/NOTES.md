@@ -616,10 +616,10 @@ the base recipe's own frontier spawns would have done in the same steps (they ha
   recovered at the next eval; this one has not, for 0.4B steps so far.
 * Training at 15.7-16.0B: crash share 47-55% (40% at 8.7B), kl 0.06-0.25 (0.05 before), ent at
   its 0.015 floor, T 2.0. "win 6-10% @ 2.2-2.5 s" with reservoir min-depth 1.69%: harvest wins
-  from starts next to the goal, not policy finishes (evals 0/9 finishes throughout). About a
-  third of the starts sit past 97% (curriculum line 148 at 98.09% with success 3.6-3.9%, the
-  explorer's frontier cells, the recipe's frontier spawns), so the early route gets fewer
-  episodes - the likely cause of the regression at the pit (not shown).
+  from starts next to the goal, not policy finishes (evals 0/9 finishes throughout). A third
+  of the envs are past 97.3% at any decision (fronttemp 30-37%: curriculum line 148 at 98.09%
+  with success 3.6-3.9%, the explorer's frontier cells, the recipe's frontier spawns), so the
+  early route gets fewer episodes - the likely cause of the regression at the pit (not shown).
 * Explorer 98.36% (line 150, 98.31%; 0 finishes). Line 148 adopted at 15,251.0M (patience;
   greedy 86.4% in that eval). ckpt_15005122560.pt pulled (md5 78aafe3a..., 19M steps before
   the best eval) and set as best.ckpt. ON TIME (chamber entry deadline 38.7B): keeps training;
