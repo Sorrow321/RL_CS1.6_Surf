@@ -4,10 +4,10 @@
  "final": false,
  "slot": 2,
  "best": {
-  "score": 84.604,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb6/traj_12533104640.jsonl",
+  "score": 84.626,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b2/unr1b2_geb6/traj_13212581888.jsonl",
   "run": "unr1b2_geb6",
-  "step": 12533104640,
+  "step": 13212581888,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -313,7 +313,7 @@
   "CP6": null,
   "verdict": "geb6 ON TIME through CP5 (October: pit dive 1.94B, CP2 4.14B, CP3 7.32B, CP4 9.39B, CP5 11.78B); training on"
  },
- "summary": "Slot 2: Go-Explore whose explore step is a policy-guided beam (tools/ge_beam.py, train_fast --ge-beam: exact-state archive, policy beam + held bursts on half the runs, chain roots, level/falling cells, trace steps from the true start, the deepest viable line as a backward curriculum, and the explorer's frontier cells as 15% of the spawn pool). With the recipe's plateau-temperature cap raised from 0.2 to 2 (geb6) the run cleared the first ramp 302.5M, window 453.5M, pit dive 1,208.5M, CP2 1,661.5M, the post-CP2 block 2,039.0M, CP3 2,265.4M, CP4 3,020.4M and CP5 3,397.9M - ahead of October at every wall (pit dive 1.94B, CP2 4.14B, CP3 7.32B, CP5 11.78B) - best 84.60 (CP5) at 12,533.1M (80-82.5% plateau 4.0-11.9B, 84.2-84.6% from 12.2B). Attribution (one seed each): the explorer's lines led the greedy over the first ramp and window (the same recipe without it, unop_ctl, never cleared the ramp in 7.6B); five explorer runs at cap 0.2 stopped at the CP2 wall (27.1%), so the cap of 2 broke it (October crossed CP2 at 1.63B with cap 2 and no explorer); CP3-CP5 were the base recipe with cap 2 alone - the explorer's archive stalled at 31.48% from 2.16B to 6.7B (then 54.2%, still behind).",
+ "summary": "Slot 2: Go-Explore whose explore step is a policy-guided beam (tools/ge_beam.py, train_fast --ge-beam: exact-state archive, policy beam + held bursts on half the runs, chain roots, level/falling cells, trace steps from the true start, the deepest viable line as a backward curriculum, and the explorer's frontier cells as 15% of the spawn pool). With the recipe's plateau-temperature cap raised from 0.2 to 2 (geb6) the run cleared the first ramp 302.5M, window 453.5M, pit dive 1,208.5M, CP2 1,661.5M, the post-CP2 block 2,039.0M, CP3 2,265.4M, CP4 3,020.4M and CP5 3,397.9M - ahead of October at every wall (pit dive 1.94B, CP2 4.14B, CP3 7.32B, CP5 11.78B) - best 84.63 (CP5) at 13,212.6M (80-82.5% plateau 4.0-11.9B, 84.2-84.6% from 12.2B). Attribution (one seed each): the explorer's lines led the greedy over the first ramp and window (the same recipe without it, unop_ctl, never cleared the ramp in 7.6B); five explorer runs at cap 0.2 stopped at the CP2 wall (27.1%), so the cap of 2 broke it (October crossed CP2 at 1.63B with cap 2 and no explorer); CP3-CP5 were the base recipe with cap 2 alone - the explorer's archive stalled at 31.48% from 2.16B to 6.7B (then 54.2%; it caught the greedy at 84.5% on 2026-11-09 04:23-04:55 UTC, weights 13.2B).",
  "previous_runs": [
   {
    "run": "unr1b2_geb",

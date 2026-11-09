@@ -570,3 +570,17 @@ from burst copies). ON TIME; keeps training.
   for 7.9B steps and October crept through the same 83-86% band without an explorer.
 * Explorer 55.62% (line 100, 55.55%). Snapshot ckpt_12004098048.pt pulled (md5 a14dc9f1...,
   81 s) - the newest milestone at or before the best eval. ON TIME; keeps training.
+
+### 05:02 UTC: the explorer catches the greedy - 55.7% -> 83.7% in 3 minutes; geb6 84.3-84.6%
+
+* Evals 12.99-13.82B (12): all 84.3-84.6% best-of-9 (**84.626 at 13,212.6M**, new best, +0.02:
+  the same 84% level), medians 27.8-84.4%. Still CP5 (October: "a creep 84-86%" before CP6).
+* The explorer's line went 55.74% (line 101, explorer step 9,339, 04:23 UTC) -> 83.73% (line
+  119, step 9,380, 04:26 UTC) in 41 explorer steps, every link from POLICY-mode copies (mode 0),
+  24 -> 32 links, 68 s -> 100 s; then 84.15-84.45% (lines 121-123, 104.9 s, 04:29-04:55 UTC);
+  deepest cell 84.56%. Weights at line 101: 13.18-13.21B, i.e. the policy that holds 84%. So
+  the explorer, at a fixed T 1.5 + yaw noise, follows the policy once the policy is robust
+  enough for its noise - it trails the greedy, it does not lead it (consistent with the
+  explorer-noise lesson above). Not adopted: line 123 does not beat the latest eval's best d
+  by the gain; the trainer's curriculum is still line 97 (54.5%), success 40.6%.
+* Snapshot ckpt_13004439552.pt pulled (md5 27c71a7c..., 90 s). RESULT.json best moved. ON TIME.
