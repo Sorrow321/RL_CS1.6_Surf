@@ -1178,3 +1178,24 @@ this run is on time or faster (the line gets 3.6x the starts).
   at the start of its own greedy flight).
 * Search ticks so far: 4 searches, 496M ticks (search_ticks.json saved beside the run).
 * Box deadline extended to 2026-11-10 09:17 UTC at 21:17; extend again every wakeup.
+
+### azr1b1 - 2026-11-09 22:42 UTC: 2.38B steps, walls 1-4 ON TIME
+
+| wall | this run, steps | run 5, steps | deadline | this run, total | run 5, total | deadline |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 1.035B | 0.763B | 2.000B |
+| window (CP1) | 1.057B | 0.680B | 1.600B | 1.413B | 0.914B | 2.000B |
+| pit dive | 1.359B | 1.812B | 3.625B | 1.856B | 2.448B | 4.897B |
+| cavity (CP2) | 2.341B | 2.114B | 4.229B | 3.250B | 2.887B | 5.774B |
+| post-CP2 block | - (best 31.76%) | 2.341B | 4.682B | - | 3.252B | 6.504B |
+
+* The pit dive came 0.45B EARLIER than in run 5 (0.75x), CP2 at 1.11x. The early lag (the frozen
+  first line) is made up.
+* Searches 4, 5 and 6 (1.24B, 1.69B, 2.14B) each moved the line end by only ~500 u (d 72,551 ->
+  72,043 -> 71,578, 27.2-28.2%); 5 and 6 fired on the patience (0/9 greedy episodes past the
+  previous mark). The greedy sat at 24-28% from 1.06B to 2.19B, then 29.2% (2.27B) and 31.6% /
+  CP2 (2.34B), past line 6's end: again the policy went further than the line. Search 7 started
+  at 2.34B on the quorum (8/9). Search ticks: 7 searches, 909M ticks so far.
+* The curriculum on line 6 had reached tau 28 of 2,929 by 2.37B (the whole line, from the start).
+* Next: the post-CP2 block (>33%), due by 4.682B steps (~1.8 h). Run 4 failed this block;
+  run 5's policy opened it itself, with October's sources still on.
