@@ -813,3 +813,84 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   and for the first time no eval below 4/9 (earlier stretches had 1/9 and 2/9 evals). Mean finish
   times are drifting down (118.45-119.3 s against 119-120 s at 10-12B). Searches 45-47 all
   returned finishing lines (21-23 s). Trainer and keeper alive; disk 24G/60G.
+
+## Round 1 FINAL lesson (unr1b3, slot 3) - run 5 finished sidistic from scratch at 8.23B steps
+
+This supersedes the run-4 lesson above (written before the extension). Run 4's notes there
+still hold for what decided the first walls; this section is the round's verdict.
+
+**The recipe (run 5, `unr1b3_mcts5`, commit 9eda7009 / code f5421ec9, from step 0 at
+2026-11-08 20:52 UTC on box 59668027 (RTX 5080), nothing changed after launch):** run 4's recipe
+(the incumbent flags + the auto-spine MCTS loop listed above) + ONE knob,
+`--auto-spine-mcts-args "--mcts-random-frac 1.0 --mcts-perturb-frac 0"`: of the 16 children per
+MCTS expansion, child 0 is the policy's greedy closed-loop macro and children 1-15 are
+random-held (first decision at temperature 5 on every head, held for the 12-decision macro,
+open loop). The full flag list is RESULT.json best.recipe.
+
+**The ladder (ladder.py on the pulled evals; every wall ON TIME):**
+
+| wall | run 5 | deadline | October |
+|---|---|---|---|
+| first ramp | 0.529B | 1.000B | 0.303B |
+| window (CP1) | 0.680B | 2.073B | 1.037B |
+| pit dive | 1.812B | 3.880B | 1.940B |
+| cavity (CP2) | 2.114B | 8.272B | 4.136B |
+| post-CP2 block | 2.341B | 13.931B | 6.966B |
+| CP3 | 2.643B | 14.636B | 7.318B |
+| CP4 | 3.624B | 18.785B | 9.393B |
+| CP5 | 3.851B | 23.567B | 11.783B |
+| CP6 | 6.116B | 28.523B | 14.262B |
+| CP7 | 6.720B | 30.468B | 15.234B |
+| chamber entry | 8.230B | 38.690B | 19.345B |
+| finish | 8.230B | 50.898B | 25.449B |
+
+First finish at 8.230B steps, ~6.3 h after launch (October's lineage, with recipe changes along
+the way: 25.45B). Run 4 (same recipe, knob at 0.5 random / 0.25 perturbed / 0.25 policy samples)
+cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% from 2.7B to 14.16B).
+
+**Best: 116.057 at 17.440B** (9/9 finishes, best 118.28 s); 9/9 in 9 evals from 10.344B on; fastest single finish 117.94 s (20.385B). Hand-on checkpoint ckpt_17420517376.pt (~54 s before
+the eval, md5 e71220cd95caa040f48a9e1137564b07); the run's final state ckpt_latest.pt (step 20,459,814,912,
+md5 3255478bc1e9b565a4474aa5f54c20fe) and the milestone ckpt_17005805568.pt were also pulled.
+
+**What decided it (in order of evidence):**
+1. **The explorer's children at the RANDOM end.** Runs 4 and 5 differ only in that knob and
+   agree to the first adopted line; run 5 cleared the post-CP2 block at 2.341B, where run 4 sat at
+   32.4-32.5% from 2.7B until it was stopped at 14.16B (deadline 13.93B). Policy samples and small perturbations of the policy near a wall repeat
+   the policy's own mistake; random-held macros leave the policy's manifold, and the tree (c_puct
+   0.25, max-backup, sibling-relative cell novelty) keeps the ones that bank progress. One pair,
+   one seed: a paired observation, not a statistic.
+2. **Two walls fell to search lines the policy then learned** through the backward curriculum
+   (25% of spawns on the line, window grown from the line's end): the gap before CP6 (search 15's
+   loop back west and the climb into the gap, learned in 0.35B after a 1.8B creep at 84-86%) and
+   the finish (search 20 found the rim and the shaft in 207 s; learned in 0.23B, first finish
+   8.230B). The other walls fell to the policy itself while the curriculum trained on the newest
+   line.
+3. **After the first finish the run kept improving without any change**: finishing share of greedy
+   episodes 58% (10.4-11.9B) -> 60% -> 67% -> 71% -> 64% -> 66% (17.4-19.0B) -> 66%
+   (19.0-20.4B), 9/9 evals from 10.34B on, best 9/9 time 119.68 s -> 118.28 s; fastest single finish
+   117.94 s (20.385B).
+
+**What did not work / recipe properties (observed, not fixed - the recipe is frozen):**
+- The search roots on ONE greedy replay. When that replay dies early, the search finds nothing
+  or a STALE line (searches 16, 18, 19, 24-26, 32, 33, 35, 39, 40, 42). Rooting on several evals'
+  episodes (or the deepest one) would remove this.
+- Search 22 adopted a 27.7% line (a regression of ~42M steps) because the frontier it was checked
+  against came from one bad eval's median.
+- The trainer's success counter does not count FINISHED episodes (they end at d ~2,200 before the
+  d <= 100 line), so after the first finish a patience search fires every ~0.38-0.45B steps and
+  re-adopts a finishing line (searches 27-47, 21-23 s each), restarting the backward curriculum
+  each time. It cost ~6 min at ~80% throughput per search and did not stop the improvement.
+- Non-finishers after the finish are control slips, not a missing skill: of 141 failed episodes in
+  10.4-13.2B, 45% stop at 20-35% (pit dive, cavity) and none past 90%.
+- Training win rate (60-73% at 16-27 s) measures the curriculum/reservoir harvest near the goal
+  (reservoir min depth 1.16%), never the policy; only the greedy evals from the start do.
+
+**Caveats:** one seed, one map. CLAUDE.md 0b calls a winner only when the SAME recipe repeats on
+a second map with no constant changed; this recipe has not been run anywhere else. The MCTS
+constants are generic (no map geometry, no record) but were chosen from explorer-alone tests on
+this map's early walls in runs 1-4. Box: RTX 5080, ~364-372k steps/s while training.
+
+**Wrap-up (12:00 UTC):** the first `box.py pull --ckpt` failed its md5 (ckpt_latest.pt is rewritten every
+~60 s and the 80 MB scp took longer), so the trainer was paused (SIGSTOP by pid) 6 s after a save and
+the pull repeated: ckpt_latest.pt at 20,459,814,912 verified. 271 evals pulled; score.py --best and
+ladder.py on them give the table and the best above. Box 59668027 released.
