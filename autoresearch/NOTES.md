@@ -784,3 +784,12 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
 - 19 evals 13.29-14.65B: finishes 7,7,5,5,2,4,7,5,8,8,5,6,7,2,8,7,4,9,8 of 9 (114/171 = 67%),
   up from 58% (10.42-11.85B) and 60% (11.93-13.21B). Searches 34 and 36 returned finishing lines
   (21-22 s), 35 nothing (root died early). Still ~371k steps/s, entropy 0.006.
+
+### 08:54 UTC: run 5 at 16.0B - finish share keeps rising (71%), best still 116.035
+
+- 17 evals 14.72-15.93B: finishes 7,7,8,5,9,7,7,9,5,1,7,5,4,7,7,7,6 of 9 (108/153 = 71%). The
+  share of greedy episodes that finish has risen every stretch: 58% (10.42-11.85B), 60%
+  (11.93-13.21B), 67% (13.29-14.65B), 71% (14.72-15.93B). Two more 9/9 evals (116.029 at 15.025B,
+  119.12 s; 116.011 at 15.251B, 119.67 s), both slower than the best, so 116.035 (14.572B) stands.
+- Searches: 38 a finishing line (22 s); 39 STALE (its root replay died early, end d 72,068); 40 no
+  line. Trainer and keeper alive, ~372k steps/s, disk 22G/60G.
