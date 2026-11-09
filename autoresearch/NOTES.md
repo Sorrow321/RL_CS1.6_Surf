@@ -632,8 +632,8 @@ no longer crosses CP2 from the start, 1.2B steps after its last deep eval (96.5%
 Training: crash 50%, kl 0.13, ent 0.015, win 9.6% @ 2.3 s (harvest next to the goal, reservoir
 min-depth 1.70%), the frontier tracker "stuck 2,069.9M" at 95,625 u. The recipe resets 90% of
 episodes from its spawn sources (respawn_frac 0.9) - reservoir, frontier, novel band, the
-greedy window (0.25, along the greedy's own eval line, which now ends at the pit) - and the
-curriculum (line 148, 98.09%, success 2.7-3.2%). The explorer is at 98.40% (0 finishes) and
+greedy window (0.25: the last 0.25-2 s of the greedy's eval line, which now ends at the pit) -
+and the curriculum (line 148, 98.09%, success 2.7-3.2%). The explorer is at 98.40% (0 finishes) and
 cannot be adopted (line 150 beats line 148 by 219 u < the 300 u gain). ON TIME (chamber
 entry deadline 38.7B); the frozen recipe keeps training, CP6/CP7 stand on the ladder, and the
 best eval's checkpoint (15.0B) is local.
