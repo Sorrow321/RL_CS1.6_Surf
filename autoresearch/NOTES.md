@@ -792,3 +792,9 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   Unlike v3's search-16 line it has no crawl tail (hspd >= 320 throughout), so the curriculum will
   not sit on states where yaw is irrelevant. The curriculum restarts at its end; v6 is healthy
   (kl 0.025, yaw sigma 0.066). ~1.9-2.2B steps remain to the 11:55 wrap-up.
+* **09:40 UTC - v6 at 4.34B: search 11 (4,312M) replaced search 10's spine with a deeper one, end d
+  63,075 = 36.7%** (the deeper-only rule: 1,701 u past 64,776). Greedy still on the 31.4-32.4%
+  plateau (evals 3,700-4,304M 31.35-32.36, median 31.3-31.5%; frontier 68,314). The curriculum
+  walks back fast on the new spine: starts 4,596 -> 4,576 -> 4,536 -> 4,496 (success 71.5-83.0%,
+  step 40). Healthy: kl 0.035, yaw sigma 0.065, reward 39.7. ~1.8B steps to the 11:55 wrap-up
+  (v3 needed ~0.72B from search 6's spine to the greedy flying it).
