@@ -637,3 +637,14 @@ and the curriculum (line 148, 98.09%, success 2.7-3.2%). The explorer is at 98.4
 cannot be adopted (line 150 beats line 148 by 219 u < the 300 u gain). ON TIME (chamber
 entry deadline 38.7B); the frozen recipe keeps training, CP6/CP7 stand on the ladder, and the
 best eval's checkpoint (15.0B) is local.
+
+### 09:05 UTC: geb6 at 18.1B - the greedy crosses CP2 again in 4 of 15 evals, no deeper
+
+Evals 16.91-17.97B (15): 26.1-32.2%, 0 finishes; four cross CP2 (30.9% at 17.36B, 32.2% at
+17.52B, 31.5% at 17.67B, 31.2% at 17.82B), the other eleven stop at CP1 (26.1-30.2%). Best
+stays 97.96 (15.02B). Training at 17.97-18.12B: crash 50-57%, kl 0.10-0.33 with one 0.81
+(0.13 at 16.9B, ~0.05 before 15B), ent 0.015, harvest wins 6.4-10.1% @ 2.2-2.6 s (reservoir
+min-depth 1.71%), fronttemp 25-34% past 97.3%; curriculum line 148 (98.09%) success 3.1-3.6%.
+Explorer 98.40% (viable 98.35%, line 150 at 98.31% not adoptable, 0 finishes; 30.3M runs, 2.1M
+cells). ON TIME (chamber entry deadline 38.7B) - keeps training to the round end (~21B at
+11:55). Budget: credit $22.25, burn 0.91 $/h, reserve $10.
