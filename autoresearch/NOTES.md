@@ -755,3 +755,14 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   s, same place). One difference in how they die: v6's last ticks fall at vz -200..-1,030 (v3
   -1,460..-1,500). Search 3 (1,313M) adopted a spine to d 75,275 (24.5%); the greedy passed it.
   Pit dive (> 27.5%) due 3.88B (v3 3,165M) - the death charge's test.
+* **07:15 UTC - v6 PIT DIVE at 1,888M (27.98), ON TIME - 1.28B steps before v3 (3,165M), and
+  ahead of October (1.94B).** Evals 1,888-2,416M 26.69-28.19 (median 26.0-27.9; 9/9 at 27.8-27.9%
+  from 2,265M). It came from the policy, not a spine: search 3's spine ended at 24.5% and the greedy
+  was already past it; between the 1,812M and 1,888M evals the greedy frontier moved d 73,429 ->
+  72,109 with no new spine (search 5 from 1,888M found none, 40,399 cells). v3 sat at this same
+  fatal dive (best d on the death tick at x ~3,300, z ~11,100) from the window (1,284M) to 3,165M =
+  1.88B steps; v6 from 1,435M to 1,888M = 0.45B. One seed and a gate-like wall, so read it as a
+  large lead at the wall the charge was built for, not a measured effect size. Search 6 (2,341M)
+  adopted a spine to d 70,513 (29.3%); its curriculum starts at rows 3,313-3,388 (success 97.9%),
+  then 3,073 (33.7%). Training healthy: kl 0.011, yaw sigma 0.073, 217k steps/s. Next: the cavity
+  (CP2), due 8.27B (v3 4,712M) - at 217k steps/s v6 reaches ~6.4B by the 11:55 wrap-up.
