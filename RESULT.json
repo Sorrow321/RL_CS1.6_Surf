@@ -4,13 +4,13 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 113.759,
-  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/traj_8531738624.jsonl",
+  "score": 116.011,
+  "eval_file": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/traj_10343677952.jsonl",
   "run": "unr1b3_mcts5",
-  "step": 8531738624,
-  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/ckpt_8506572800.pt",
-  "ckpt_step": 8506572800,
-  "ckpt_note": "newest checkpoint AT OR BEFORE the best eval (7/9 finishes, best 120.57 s): the run's own ckpt_latest saved 25,165,824 steps (~70 s) before it, kept by the on-box keeper (md5 3aef0257482405f29ce555cf46226570). Also pulled, md5 verified: ckpt_8305246208.pt (exact step of the 111.524 eval, 5/9 finishes; md5 0342c29d253f100431c40daee7250407) and ckpt_8217690112.pt (12,058,624 before the first finishing eval 108.182; md5 a701791d45fd36042a8c49d9a5c38f5f).",
+  "step": 10343677952,
+  "ckpt": "/home/steam/ar_uni/runs/unr1b3/unr1b3_mcts5/ckpt_10321657856.pt",
+  "ckpt_step": 10321657856,
+  "ckpt_note": "newest checkpoint AT OR BEFORE the best eval (9/9 finishes, best 119.68 s): the run's own ckpt_latest saved 22,020,096 steps (~60 s) before it, kept by the on-box keeper (md5 b4e9d8f1ecbfd2a03e4335610a7055fe). Earlier finishing checkpoints also pulled, md5 verified: ckpt_8506572800.pt (hand-on for 113.759, 7/9), ckpt_8305246208.pt (exact, 111.524, 5/9), ckpt_8217690112.pt (before the first finishing eval).",
   "recipe": [
    "--envs",
    "1024",
@@ -337,7 +337,7 @@
    "cavity (CP2)": 2718433280,
    "post-CP2 block": "FAILED (deadline 13,931,380,736; best 32.499 at 12.458B; stopped at 14.16B)"
   },
-  "verdict": "run 5 (MCTS knob at the RANDOM end, from scratch 20:52 UTC, one recipe) cleared ALL 12 walls ON TIME and FINISHED at 8.230B steps (~6.3 h after launch): first ramp 0.529B, window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B, CP4 3.624B, CP5 3.851B, CP6 6.116B, CP7 6.720B, chamber entry 8.230B, finish 8.230B (October lineage with recipe changes: 0.30/1.04/1.94/4.14/6.97/7.32/9.39/11.78/14.26/15.23/19.35/25.45B). Every eval since finishes 2-7 of 9 (best 113.759 at 8.532B: 7/9, 120.57 s; fastest 119.51 s at 9.06B). Run 4 (0.5 mix) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% to 14.16B)",
+  "verdict": "run 5 (MCTS knob at the RANDOM end, from scratch 20:52 UTC, one recipe) cleared ALL 12 walls ON TIME and FINISHED at 8.230B steps (~6.3 h after launch): first ramp 0.529B, window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B, CP4 3.624B, CP5 3.851B, CP6 6.116B, CP7 6.720B, chamber entry 8.230B, finish 8.230B (October lineage with recipe changes: 0.30/1.04/1.94/4.14/6.97/7.32/9.39/11.78/14.26/15.23/19.35/25.45B). Every eval since finishes (0-9 of 9; one 0/9 at 9.287B); best 116.011 at 10.344B: 9/9 finishes, 119.68 s; fastest single finish 118.87 s (10.042B). Run 4 (0.5 mix) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% to 14.16B)",
   "run5": {
    "first ramp": 529006592,
    "window (CP1)": 680001536,
@@ -353,5 +353,5 @@
    "finish": 8229748736
   }
  },
- "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search -> backward curriculum loop from step 0 (--auto-spine --auto-spine-explorer mcts --auto-spine-banked, scratch spine, 25% demo share of the policy's OWN search lines). Run 4 (knob 0.5: half random-held, quarter perturbed, quarter policy samples) FAILED the post-CP2 block (32.5% for 9.5B steps). Run 5 (knob at the random end, --auto-spine-mcts-args '--mcts-random-frac 1.0 --mcts-perturb-frac 0', identical to run 4 until the first adopted line) cleared every wall ON TIME and FINISHED sidistic from scratch at 8.230B steps (October's lineage: 25.45B with recipe changes); best 113.759 at 8.532B (7/9 finishes, 120.57 s). Two walls fell to search lines the policy then learned: the gap before CP6 (search 15's loop back west, learned in 0.35B) and the finish (search 20 found the rim and the shaft in 207 s, learned in 0.23B)."
+ "summary": "Slot 3: policy-prior MCTS over macro-actions as the explore step of the trainer's own search -> backward curriculum loop from step 0 (--auto-spine --auto-spine-explorer mcts --auto-spine-banked, scratch spine, 25% demo share of the policy's OWN search lines). Run 4 (knob 0.5: half random-held, quarter perturbed, quarter policy samples) FAILED the post-CP2 block (32.5% for 9.5B steps). Run 5 (knob at the random end, --auto-spine-mcts-args '--mcts-random-frac 1.0 --mcts-perturb-frac 0', identical to run 4 until the first adopted line) cleared every wall ON TIME and FINISHED sidistic from scratch at 8.230B steps (October's lineage: 25.45B with recipe changes); best 116.011 at 10.344B (9/9 finishes, 119.68 s). Two walls fell to search lines the policy then learned: the gap before CP6 (search 15's loop back west, learned in 0.35B) and the finish (search 20 found the rim and the shaft in 207 s, learned in 0.23B)."
 }

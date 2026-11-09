@@ -735,3 +735,15 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   count a finished episode), so patience keeps launching searches beside the training.
 * The early-death modes persist (medians 1.8-29% on some evals: the start, the pit at 27.8%).
   More finishes per eval is where the score still grows (10 points for 9/9), plus ~0.03 per second.
+
+### 04:53 UTC: run 5 best 116.011 at 10.344B - 9/9 greedy finishes (119.68 s)
+* Evals since 9.2B (score.py; box_only 0): finishes per eval 4, 0 (9.287B, 79.04), 6, 7, 2, 2, 4,
+  7, 3, 4, 7, 5 (118.87 s, the fastest single finish so far, 10.042B), 4, 2, 5, **9/9 at 10.344B
+  (116.011, best 119.68 s, median 100%)**, 5. Reliability is still the spread: 2-9 of 9.
+* Hand-on checkpoint: ckpt_10321657856.pt (-22,020,096 steps before the eval; the keeper's ring
+  had nothing closer), md5 b4e9d8f1..., pulled and verified.
+* Searches 24-26 (9.32B, 9.77B, 10.23B) all came back with NO line: the trainer counts no
+  finished episode as past the success line, so patience fires a search every ~0.45B steps, and
+  each one replayed a greedy run that died early (frontiers 42,651 / 76,072 / 50,833) and rooted
+  there. Cost: ~6 min at ~80% PPO throughput each; no regression, the curriculum keeps search
+  23's finishing line.
