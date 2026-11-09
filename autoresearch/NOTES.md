@@ -632,3 +632,31 @@ harvest of this box would fail the same way: pull before every deadline.
   its ckpt_latest.pt (copied aside, md5) and the gel records, and release the box: a new recipe
   launched at ~08:40 has ~3.2 h (~2.1B steps) before the wrap-up, where v2 itself took 2.8B to
   reach this wall, so it could not change the ladder's verdict.
+
+### 2026-11-09 05:40 UTC - the explore step's repeat constant is not the barrier (xR90); v2 at 12.07B
+
+* unr1b1_v2: evals 11.36-11.97B best 32.45-32.47%, median 32.4-32.5%; the best score is still
+  32.476 (traj_6302990336). Searches 20-40 of the second segment: nothing (32-40: deepest chain
+  ends d 67,289-67,329 against greedy bests 67,317-67,327). 65 searches since the last line
+  (first segment's search 15, 2.20B), 80 in all. ON TIME; post-CP2 deadline 13.93B, first eval
+  past it ~14.00B, ~08:40 UTC.
+* Test xR90 (analysis only, nothing changed in the run): x4L's explorer
+  (`tools/explore_phase1.py`, the flags a v2 search runs: 64 u x 32 u energy x rising/not cells,
+  --select-energy 1, view-follow -90..90, 100-decision bursts, exact chains, the same 47 roots
+  from v2's own greedy line, seed 1017, 4 threads, nice 19) with ONE constant changed:
+  `--repeat-p 0.90` (x4L: the default 0.95; the Nature paper's robotics value). 60 min
+  (04:33-05:34 UTC): 2,634 iterations, 27.1M runs, 825,763 cells; best (its goal_32 field)
+  65,640 u at minute 4, 65,596 u from minute 44 (x4L 65,624 u). Replayed on the grader's field:
+  chain end d 67,281 (5 cells, 136 states) vs the greedy's 67,311 and x4L's 67,287.
+* Envelope at the slot (arch_slot.py; geometry as in the 23:40 entry, MEASUREMENT only): no cell
+  past x -904 (x4L: -904); at the ledge face (x -884..-916) the highest cell z 10,256 (x4L
+  10,257), 84 u under the ledge top; cells at z >= 10,340 end at x -852 (the most -x one, x -832
+  z 10,362, moves (-408, 155, -652) u/s); max z per 32 u of x drops from 10,910 (x -756..-788) to
+  10,388 (x -788..-820) at the end wall, as in x4L. Peak RSS 1.34 GB; trainer fps 178,975-178,981.
+* Reading: a 2x shorter mean hold (20 decisions -> 10) moves the envelope by 1 u, so the repeat
+  constant is not what keeps the uniform step out of the slot.
+* Next (running, analysis only): xH8 = x4L's explorer with `--cell-heading 8` instead of 1 (8
+  sectors of the horizontal VELOCITY heading x rising/not, an existing generic option of the
+  explorer). With --exact-chains a cell keeps the FIRST state that keys into it, so a 64 u x
+  energy x rising/not key keeps whichever heading arrived first, and a fast -x approach to the
+  hole may never get a cell to return to. 60 min from 05:40 UTC, guard 10 GB, max-cells 6M.
