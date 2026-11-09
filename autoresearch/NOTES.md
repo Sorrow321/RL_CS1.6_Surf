@@ -1068,7 +1068,7 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   released. A background retry (every 2 min, the plain `box.py rent` form) rents and deploys as
   soon as one fits.
 
-### azr1b4 - 2026-11-09 21:16 UTC: label refinements before any run (commit 7c6c5b8f)
+### azr1b4 - 2026-11-09 21:15 UTC: label refinements before any run (commit 7c6c5b8f)
 * Node targets PREFER THE POLICY'S OWN CHILD at a tie: when child 0 (the greedy macro) is among
   the children with the best backed-up Q, the target is child 0 alone. Slot 3 measured on run 5's
   4.53B checkpoint that the greedy child is the best at ~70% of the nodes whose children differ;
