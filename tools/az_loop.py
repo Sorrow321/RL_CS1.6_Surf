@@ -81,6 +81,13 @@ def add_args(ap) -> None:
                          "the tree's Q range; mcts_search.node_targets): a node where the named "
                          "move beat its siblings by much teaches more than one where a random "
                          "child won by a hair. 0 = every node row alike (as before)")
+    ap.add_argument("--az-sigma-fit", type=int, default=0, choices=(0, 1),
+                    help="--az-loop: 1 = the YAW head's log sigma is fitted to the tree's targets "
+                         "(maximum likelihood, mu detached, never above its init 0.3): sigma becomes "
+                         "the spread of the tree's preferred steers around the policy's own, and "
+                         "the search's random children (drawn at a multiple of it) narrow as the "
+                         "policy learns - in run 5 PPO narrowed it (0.30 -> 0.07 by 0.57B steps). "
+                         "0 = sigma frozen at the init (the trainer's BC convention; as before)")
     ap.add_argument("--az-line-frac", type=float, default=0.25,
                     help="--az-loop: share of each batch drawn from the best lines' SEARCHED rows "
                          "(the tree's choices, decision by decision)")
@@ -126,13 +133,17 @@ def _git_head() -> str:
 # the supervised loss (train_fast.bc_loss_fn's form for --view-continuous + --bc-target dist)
 # --------------------------------------------------------------------------------------------
 def distil_loss(policy, packer, scal, img, probs, vmu, vsd, value_t, w, view_w,
-                value_coef: float, view_sigma: float):
+                value_coef: float, view_sigma: float, sigma_fit: bool = False):
     """-> (loss, stats dict of floats). ``probs`` (B, NACT, NPAD): the categorical targets on
     heads N_VIEW.. (view columns ignored); ``vmu`` / ``vsd`` (B, n_z): the view target moments in
     pre-tanh z; ``value_t`` (B,): the tree's Q; ``w`` (B,) row weights; ``view_w`` (n_z,) the
     per-view-head weights (pitch last). The view term is the Gaussian cross-entropy to
     N(vmu, vsd) at the FIXED sigma ``view_sigma`` (train_fast.BC_VIEW_SIGMA: the live sigma made
-    the term a 1/sigma^2 drag on mu), exactly the trainer's nll_mm."""
+    the term a 1/sigma^2 drag on mu), exactly the trainer's nll_mm. ``sigma_fit`` (--az-sigma-fit)
+    adds the maximum-likelihood term of the YAW head's own log sigma on the same targets with mu
+    detached - log s + ((vmu - mu)^2 + vsd^2) / (2 s^2), minimised at s^2 = the mean squared gap
+    between the policy's steer and the tree's preferred steer - so sigma only measures, and the
+    fixed-sigma term above stays the one that moves mu."""
     import train_fast as _tf
     logits, value = policy.forward_split(scal, img)
     cat, mu = _tf.split_view(logits.float())
@@ -148,15 +159,21 @@ def distil_loss(policy, packer, scal, img, probs, vmu, vsd, value_t, w, view_w,
     v = value.float().reshape(-1)
     v_mse = ((v - value_t).pow(2) * w).sum() / wsum
     loss = loss_pi + float(value_coef) * 0.5 * v_mse
+    ls_y = policy.log_std()[0]
+    if sigma_fit:
+        gap2 = (vmu[:, 0] - mu[:, 0].detach()).pow(2) + vsd[:, 0].pow(2)
+        sig_nll = ls_y + gap2 * torch.exp(-2.0 * ls_y) * 0.5
+        loss = loss + (sig_nll * w).sum() / wsum
     with torch.no_grad():
         agree = (padded[:, nv:].argmax(-1) == probs[:, nv:].argmax(-1)).float()
         stats = torch.stack([loss.detach(), (ce_cat * w).sum() / wsum, agree.mean(),
                              agree.all(-1).float().mean(),
-                             ((vmu[:, 0] - mu[:, 0]).pow(2) * w).sum() / wsum, v_mse.detach()])
+                             ((vmu[:, 0] - mu[:, 0]).pow(2) * w).sum() / wsum, v_mse.detach(),
+                             ls_y.detach().exp()])
     return loss, stats
 
 
-STAT_NAMES = ("loss", "ce", "acc", "joint_acc", "yaw_mse", "value_mse")
+STAT_NAMES = ("loss", "ce", "acc", "joint_acc", "yaw_mse", "value_mse", "yaw_sigma")
 
 
 class LabelBuffer:
@@ -255,16 +272,24 @@ def distil(policy, packer, lidar, opt, buf: LabelBuffer, a, gen, view_w) -> dict
     policy.train()
     acc = None
     t0 = time.time()
+    from surfgym.view import LOG_STD_INIT
+    sigma_cap = LOG_STD_INIT
     for _s in range(int(a.az_steps)):
         b = draw()
         img = render_img(lidar, b["pose"])
         loss, st = distil_loss(policy, packer, b["scal"], img, b["probs"], b["vmu"], b["vsd"],
                                b["value"], b["w"], view_w, float(a.az_value_coef),
-                               float(_tf.BC_VIEW_SIGMA))
+                               float(_tf.BC_VIEW_SIGMA), sigma_fit=bool(int(a.az_sigma_fit)))
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
         opt.step()
+        if int(a.az_sigma_fit):
+            # the yaw sigma may only NARROW from the init (its widest, before any tree): the
+            # search's random children draw at a multiple of it, so a sigma that grew would make
+            # the next tree wilder because this one was hard to fit
+            with torch.no_grad():
+                policy.view_std.log_std[0].clamp_(max=float(sigma_cap))
         acc = st if acc is None else acc + st
     policy.eval()
     s = (acc / max(1, int(a.az_steps))).tolist()
@@ -327,8 +352,8 @@ def score_eval(path: Path) -> dict:
 CSV_COLS = ("time/total_timesteps", "round", "wall_s", "search_s", "distil_s", "eval_s",
             "ticks_search", "ticks_line", "ticks_eval", "mcts_waves", "mcts_nodes", "mcts_cells",
             "mcts_roots", "mcts_best_pct", "mcts_greedy_pct", "mcts_raw_best_pct", "mcts_finished",
-            "labels_node", "labels_line", "labels_prefix", "buf_rows", "loss", "ce", "acc", "joint_acc", "yaw_mse",
-            "value_mse", "eval_score", "eval_best_pct", "eval_median_pct", "eval_cp",
+            "labels_node", "labels_line", "labels_prefix", "buf_rows", "loss", "ce", "acc",
+            "joint_acc", "yaw_mse", "value_mse", "yaw_sigma", "eval_score", "eval_best_pct", "eval_median_pct", "eval_cp",
             "eval_finishes")
 
 
@@ -475,7 +500,8 @@ def run_az(B: dict, a) -> None:
               f"node/line/prefix, distil "
               f"{t_distil:.0f}s (loss {ds.get('loss', float('nan')):.3f}, acc "
               f"{ds.get('acc', float('nan')):.3f}, value mse "
-              f"{ds.get('value_mse', float('nan')):.4f}), eval {t_eval:.0f}s: score "
+              f"{ds.get('value_mse', float('nan')):.4f}, yaw sigma "
+              f"{ds.get('yaw_sigma', float('nan')):.3f}), eval {t_eval:.0f}s: score "
               f"{sc.get('score')} best {sc.get('best_progress_pct')}% CP{sc.get('max_cp')} "
               f"fin {sc.get('finishes')}" + ("  NEW BEST" if best else ""), flush=True)
     fcsv.close()

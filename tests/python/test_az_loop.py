@@ -232,3 +232,51 @@ def test_label_buffer_draws_node_rows_by_advantage():
     draw2, _nk2 = buf2.sampler(256, {0: 0.5, 1: 0.5}, torch.Generator().manual_seed(0))
     nodes2 = draw2()["scal"].reshape(-1).numpy()
     assert {0.0, 1.0, 2.0, 3.0} <= set(nodes2.tolist())
+
+
+def test_sigma_fit_narrows_the_yaw_sigma_to_the_targets_spread_and_never_widens(keys_hold):
+    import az_loop
+    from surfgym.view import LOG_STD_INIT
+    W, H, extra = 8, 4, 11
+    pol = _policy(W, H, extra)
+    packer = tf.HeadPacker(torch.device("cpu"))
+    n = 256
+    g = torch.Generator().manual_seed(3)
+    scal = torch.randn(n, tf.N_SCALAR + extra, generator=g)
+    img = torch.rand(n, W * H * 2, generator=g)
+    probs = torch.as_tensor(onehot_rows(np.tile([[7, 3, 1, 1, 0, 0]], (n, 1)), tf.NVEC, tf.NPAD))
+    # targets: a constant steer plus noise of std 0.1 that no state explains
+    vmu = torch.zeros(n, 2)
+    vmu[:, 0] = 0.5 + 0.1 * torch.randn(n, generator=g)
+    vsd = torch.zeros(n, 2)
+    val, w, vw = torch.zeros(n), torch.ones(n), torch.tensor([1.0, 0.0])
+    opt = torch.optim.Adam(pol.parameters(), lr=3e-3)
+    for _ in range(400):
+        loss, st = az_loop.distil_loss(pol, packer, scal, img, probs, vmu, vsd, val, w, vw,
+                                       0.25, tf.BC_VIEW_SIGMA, sigma_fit=True)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        with torch.no_grad():
+            pol.view_std.log_std[0].clamp_(max=LOG_STD_INIT)
+    sig = float(pol.log_std()[0].detach().exp())
+    assert 0.05 < sig < 0.2                   # from 0.3 toward the unexplained spread ~0.1
+    assert float(st[-1]) == pytest.approx(sig, rel=2e-2)   # logged before the last step
+    # targets far wider than the init: sigma stays capped at its init
+    vmu[:, 0] = 3.0 * torch.randn(n, generator=g)
+    for _ in range(200):
+        loss, st = az_loop.distil_loss(pol, packer, scal, img, probs, vmu, vsd, val, w, vw,
+                                       0.25, tf.BC_VIEW_SIGMA, sigma_fit=True)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        with torch.no_grad():
+            pol.view_std.log_std[0].clamp_(max=LOG_STD_INIT)
+    assert float(pol.view_std.log_std[0]) <= LOG_STD_INIT + 1e-6
+    # off: the yaw log sigma gets no gradient at all
+    pol2 = _policy(W, H, extra)
+    l2, _ = az_loop.distil_loss(pol2, packer, scal, img, probs, vmu, vsd, val, w, vw, 0.25,
+                                tf.BC_VIEW_SIGMA)
+    l2.backward()
+    gr = pol2.view_std.log_std.grad
+    assert gr is None or float(gr.abs().sum()) == 0.0
