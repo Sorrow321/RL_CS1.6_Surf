@@ -654,7 +654,7 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   The curriculum's success line (d <= 15,137) is met by 84-93% of the last-decile spawns, so the
   loop is not stuck on the line it has - it has no line past the gap.
 
-### 02:00 UTC: run 5 clears CP6 at 6.116B (nine walls ON TIME); best 91.524 at 6.493B - the search's loop taught it
+### 01:54 UTC: run 5 clears CP6 at 6.116B (nine walls ON TIME); best 91.524 at 6.493B - the search's loop taught it
 * Ladder run 5: ... CP5 3.851B, **CP6 6.116B** (October 14.26B, deadline 28.52B). Evals: the creep
   held 84.08-84.35% from 4.23B to 5.96B (19 evals), then 85.00% (6.040B), **89.937 (6.116B, sgcp_6,
   median 89.8%)**, 90.91, 91.14, 91.06 (median 22.3%: early deaths), 91.22, **91.524 (6.493B,
