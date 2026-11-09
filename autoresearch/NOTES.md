@@ -660,3 +660,35 @@ harvest of this box would fail the same way: pull before every deadline.
   explorer). With --exact-chains a cell keeps the FIRST state that keys into it, so a 64 u x
   energy x rising/not key keeps whichever heading arrived first, and a fast -x approach to the
   hole may never get a cell to return to. 60 min from 05:40 UTC, guard 10 GB, max-cells 6M.
+
+### 2026-11-09 06:46 UTC - a direction-aware cell key does not get in either (xH8); the slot is a speed gate
+
+* unr1b1_v2 at 12.74B: searches 41-45 nothing (42-45: deepest chain ends d 67,302-67,324); 70
+  searches since the last line, 85 in all. ON TIME; fps 178,956.
+* Test xH8 (analysis only): x4L's explorer with `--cell-heading 8` (8 sectors of the horizontal
+  velocity heading x rising/not) instead of 1, repeat-p back at 0.95, the same 47 roots, seed 1017,
+  60 min (05:40-06:40 UTC). The key space is 8x larger and the archive grows ~6x: 5,117,476 cells
+  (under the 6M cap; peak RSS 4.93 GB), 1,277 iterations at 0.29M ticks/s (half xR90's rate:
+  each iteration is slower with the larger archive), 13.2M runs. Best (goal_32) 65,651 u (xR90
+  65,596, x4L 65,624); replayed chain end d 67,323, NOT past the greedy's 67,311. Envelope: no cell
+  past x -904; the highest cell at the ledge face (x -884..-916) z 10,217 (x4L 10,257); cells at z
+  >= 10,340 end at x -785. Null: the direction-blind key is not what keeps the step out.
+* Why (v2's own greedy evals, MEASUREMENT only - never a recipe input, CLAUDE.md 0b; 193 episodes
+  of 25 evals from 2.8B to 11.97B, `slot_approach.py`): the line leaves the kicker at |v_h|
+  850-1,078 u/s (median 928) heading -x, peaks at z 10,911-11,006 (median 10,984) at x ~-228,
+  weaves (S-turns, yaw 90-250 deg, |v_h| constant) over the shelf, reaches the hole at its FAR end,
+  hits the end wall (x ~-704, z ~10,620: vx -> 0), slides down into the tunnel at vz -790..-860,
+  then heads for the ledge at 500-700 u/s falling ~1,000 u/s and is down at z 10,100-10,300 by x
+  -830..-900, short of or against the ledge face (40-240 u under its top). A ballistic estimate on the field's geometry (hole x ~-440..-720 in a 64 u
+  shelf 10,528-10,592; ledge top 10,340 at x -912..-944; ducked hull): getting under the shelf
+  before the end wall AND over the ledge in one flight needs >= ~1,150-1,200 u/s of -x speed
+  (window vz -400..-430 there), ~1,450-1,700 u/s for a usable window (vz -520..-730, an apex
+  ~170-330 u above the shelf ~0.7-0.9 s before the hole). The policy brings ~930 u/s from an apex
+  ~390 u above the shelf only ~230 u before the hole: too slow and too high, too late.
+* Reading: the post-CP2 block is a hidden SPEED gate - the potential field shows the hole and the
+  slot but not that they need ~1.3-1.8x the speed the line carries, gained upstream on the ramps
+  before the kicker. The uniform explore step from the line's last 4-16 s cannot add that speed
+  (air strafing at ~930 u/s gains little; the speed comes from the surf ramps many seconds back),
+  and neither repeat-p 0.90 nor a direction-aware key changes it. This is the CLAUDE.md 0b case
+  ("speedup on ramps that are not shown by reward vector field"): the recipe's exploration has to
+  value speed/energy itself well upstream of a wall, not only explore at it.
