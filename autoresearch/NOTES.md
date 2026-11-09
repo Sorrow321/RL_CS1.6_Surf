@@ -782,3 +782,13 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   32.4% episodes. The curriculum is at the END of search 8's spine (rows 3,426-4,071 of 4,072,
   success 19-64%) - it has not walked back yet; search 9 (3,408M) reached 67,378, kept out by the
   gain rule. Healthy: kl 0.022, yaw sigma 0.063, reward 47.7, 216k steps/s. ~6.2B by 11:55.
+* **09:05 UTC - v6 search 10 (from ~3.7B) handed on a spine PAST the post-CP2 line: end d 64,776 =
+  35.0% at 3,869M** (the wall needs d < 66,782; v3's deepest line ever was 66,539 at 11.09B).
+  Rooted at eval-line tick 3,300; chain 16 links (modes [1,1,0,0,0,0,1,0,0,0,0,1,1,0,0,0], 5 + 11),
+  exact replay (0 u); best d 66,540 at 480-540 s, then 64,776 by 600 s - a late find again. Path:
+  (2,422, -531, 10,363) falling -> a lower level (1,176, 499, 9,723) at 1,600 u/s -> climbing at
+  (-505, -101, 10,245) (vz +454) -> west (-929, -38, 10,374), (-1,383, 289, 9,972), (-1,678, -343,
+  10,068), (-1,969, -40, 9,852) -> ends mid-fall at (-1,616, -303, 9,015) (vz -358, hspd 1,002).
+  Unlike v3's search-16 line it has no crawl tail (hspd >= 320 throughout), so the curriculum will
+  not sit on states where yaw is irrelevant. The curriculum restarts at its end; v6 is healthy
+  (kl 0.025, yaw sigma 0.066). ~1.9-2.2B steps remain to the 11:55 wrap-up.
