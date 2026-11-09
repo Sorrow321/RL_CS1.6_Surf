@@ -606,3 +606,21 @@ steps after an adoption that put a fifth of the starts at or near the frontier. 
 the base recipe's own frontier spawns would have done in the same steps (they had 8B steps at
 82% and did not). Snapshot ckpt_14004781056.pt pulled (md5 fe9bbd20..., 96 s). ON TIME; at
 ~1.02B steps/h the round clock ends the run at ~20.9B (October: chamber entry 19.35B).
+
+### 07:02 UTC: geb6 best 97.96 (CP7) at 15.02B, then the greedy falls back to the pit (26-28%)
+
+* Evals 15.02-15.40B: 97.96 (**best, 15,024.5M**, 0.5% short of the chamber entry at 98.5%),
+  97.9, 97.9, 86.4, 97.9, 97.9; 15.48-15.55B 96.5, 96.5; then **26.1 (15.63B), 79.3, 28.2,
+  27.8, 26.4, 26.1 (16.01B)**: 5 of the last 6 evals die at the old CP2 pit (26-28%), all nine
+  episodes alike. The two earlier one-eval collapses (29.6% at 11.93B, 10.4% at 13.89B)
+  recovered at the next eval; this one has not, for 0.4B steps so far.
+* Training at 15.7-16.0B: crash share 47-55% (40% at 8.7B), kl 0.06-0.25 (0.05 before), ent at
+  its 0.015 floor, T 2.0. "win 6-10% @ 2.2-2.5 s" with reservoir min-depth 1.69%: harvest wins
+  from starts next to the goal, not policy finishes (evals 0/9 finishes throughout). About a
+  third of the starts sit past 97% (curriculum line 148 at 98.09% with success 3.6-3.9%, the
+  explorer's frontier cells, the recipe's frontier spawns), so the early route gets fewer
+  episodes - the likely cause of the regression at the pit (not shown).
+* Explorer 98.36% (line 150, 98.31%; 0 finishes). Line 148 adopted at 15,251.0M (patience;
+  greedy 86.4% in that eval). ckpt_15005122560.pt pulled (md5 78aafe3a..., 19M steps before
+  the best eval) and set as best.ckpt. ON TIME (chamber entry deadline 38.7B): keeps training;
+  the walls already cleared stand on the ladder.
