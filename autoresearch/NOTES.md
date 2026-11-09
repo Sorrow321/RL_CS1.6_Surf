@@ -1123,3 +1123,28 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   diluted by the startup compile and the search beside the training).
 * Flag-off identity re-proved on 2a4f8edd itself (same CPU test vs the base commit): progress,
   the step-1024 eval trajectory and every policy tensor identical. Test runs deleted.
+
+### 21:52 UTC: azr1b3_tl1 at 538M - still at the spawn trap, search 2's line adopted
+
+* Evals 0.52M-453M: best 1.74% (CP0); every greedy episode dies at ~3 s off the spawn platform
+  (the trap run 1 and the control sat in). Ladder: all walls PENDING (first ramp deadline 1.6B).
+* **Search 1 was stale by 7 u, before any label could act.** Its line ended at d 97,920 (run 5's
+  search 1: 97,913, adopted against a frontier of 99,207); here the policy's own eval had already
+  reached 98,113 when the search ended (gain needed 200 u). That eval came BEFORE the first
+  labels were loaded (91.75M), so this divergence from run 5 is seed / box noise, not the
+  treatment. Consequence: until 538M the curriculum stayed at the spawn state and search 1's
+  knowledge reached the policy ONLY through its labels.
+* **Search 2** (453.5M -> 538.4M, greedy pass dies at 2.99 s, 7 roots, 2.27M nodes, 2,790 cells):
+  NEW SPINE adopted, 530 states, end d 95,956 (3.73%) vs greedy frontier 98,137. Its labels:
+  145,159 expanded nodes, at **41%** of them a child beat the policy's own (search 1: 24%),
+  535,751 rows; buffer 261,659 nodes from 2 trees.
+* Label fit on tree 1 (iterations ~180 -> ~980): keys NLL 3.21 -> 2.1-2.3, joint agreement
+  0.12 -> 0.31-0.36, yaw term 2.77 -> 1.9-2.2: the policy does learn the labels.
+* **Throughput with labels on: ~255k steps/s** (130-389M, no search beside it) vs slot 1's run 5
+  recipe without labels ~350k (RTX 4080) and run 5 itself ~400k at this stage (its 5080 box):
+  the label step (1024 renders + an actor forward/backward per minibatch step, 64 per
+  iteration) costs roughly 25-35% of wall-clock. Steps are the deciding unit, so the ladder is
+  unaffected; at this rate 16.46B steps (the finish deadline) is reached ~18 h after launch,
+  ~15:00 UTC 2026-11-10, before the budget's ~19:00 UTC end.
+* Operator note 2 (21:25): credit lasts to ~19:00 UTC 2026-11-10 with four boxes; extend in small
+  steps, pull early. Box 59952494 deadline 08:58 UTC (12 h from rent).
