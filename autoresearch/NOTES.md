@@ -1067,3 +1067,17 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   pacer's room reaches 0.33-0.36 $/h in ~4.5-7 h unless an offer gets cheaper or a box is
   released. A background retry (every 2 min, the plain `box.py rent` form) rents and deploys as
   soon as one fits.
+
+### azr1b4 - 2026-11-09 21:16 UTC: label refinements before any run (commit 7c6c5b8f)
+* Node targets PREFER THE POLICY'S OWN CHILD at a tie: when child 0 (the greedy macro) is among
+  the children with the best backed-up Q, the target is child 0 alone. Slot 3 measured on run 5's
+  4.53B checkpoint that the greedy child is the best at ~70% of the nodes whose children differ;
+  spreading the target over tied random-held children would pull the policy toward randomness.
+  Where a random child is strictly better, the target is the strictly better set.
+* View targets clipped at |z| <= 3 (tanh 3 = 0.995): the random children draw z at 5x the
+  policy's sigma (0.3 -> 1.5 spread); past saturation the executed steer barely moves while the
+  z-space Gaussian term would charge the full squared error.
+* Best-line rows split into the SEARCHED part (kind 1: the tree's choices, decision by decision)
+  and the greedy PREFIX up to the root (kind 2: the policy's own moves, an anchor against drift),
+  so a long prefix cannot crowd out the new part. Batches: 50% node rows, 25% searched-line
+  rows, 25% prefix rows; an empty pool's share goes to the others.
