@@ -647,6 +647,19 @@ def run_mcts(ctx: dict, a) -> dict:
     # edge storage: per node M decisions of engine rows + views
     E_acts = np.zeros((tree._cap, M, 6), np.int8)
     E_view = np.zeros((tree._cap, M, 2), np.float32)
+    # --mcts-labels (azr1b3, surfgym/treelabels.py): every expanded node's input row (the scalar
+    # half the network read at its first decision, and the pose its image is rendered from) and
+    # every child's FIRST decision (policy-space bins, executed yaw target in u). Off: nothing
+    LABELS = bool(getattr(a, "mcts_labels", False))
+    if LABELS:
+        if VIEW_ABS != "velocity":
+            raise SystemExit("--mcts-labels labels the yaw as a velocity-frame offset: it needs "
+                             "a --view-absolute velocity checkpoint")
+        from surfgym.view import off_warp_inv
+        E_pact = np.zeros((tree._cap, 6), np.int8)
+        E_u = np.zeros(tree._cap, np.float32)
+        L_node, L_scal, L_pose = [], [], []
+        polN.record_policy_act = True
 
     Kc = max(2, int(a.mcts_k))
     sigma = float(a.mcts_yaw_sigma)
@@ -716,7 +729,20 @@ def run_mcts(ctx: dict, a) -> dict:
         tt = 0
         for m in range(M):
             polN.hold_store = m == 0
+            if LABELS and m == 0:
+                # the leaf's own state, before the macro's first step: its input row and pose
+                polN.capture_scal = True
+                _sv = coreN.states_view
+                pose0 = np.zeros((N, 6), np.float32)
+                pose0[:, 0:3] = _sv["origin"]
+                pose0[:, 3] = _sv["yaw"]
+                pose0[:, 4] = _sv["pitch"]
+                pose0[:, 5] = _sv["ducked"]
             act = polN.act(obsN)
+            if LABELS and m == 0:
+                polN.capture_scal = False
+                scal0 = polN.last_scal
+                pact0 = np.asarray(polN.policy_act, np.int8).copy()
             view = np.array(polN.view, np.float32)
             if sigma > 0:
                 if VIEW_ABS:
@@ -727,6 +753,9 @@ def run_mcts(ctx: dict, a) -> dict:
             view = np.ascontiguousarray(view, np.float32)
             acts_w[m] = act
             view_w[m] = view
+            if LABELS and m == 0:
+                # the EXECUTED yaw target (held offset included) as u, the label's yaw
+                u0 = off_warp_inv(view[:, 0]).astype(np.float32)
             for _k in range(K):
                 if _k:
                     polN.act(obsN)       # advances the wrapper's tick (held decision)
@@ -805,6 +834,7 @@ def run_mcts(ctx: dict, a) -> dict:
         sc = np.where(fin, 2.0, prog(c_bank_d) + e_score(c_h_bank))
         ntick = tree.tick[own] + np.where(fin, fin_t, M * K)
         n_before = tree.n
+        _l_leaf, _l_env = [], []
         for l, leaf in enumerate(leaves):
             ch = np.flatnonzero(own == leaf)
             ch = ch[np.argsort(rank[ch])]
@@ -824,6 +854,21 @@ def run_mcts(ctx: dict, a) -> dict:
                                                           np.float32)])
             E_acts[ids] = np.transpose(acts_w[:, ch], (1, 0, 2))
             E_view[ids] = np.transpose(view_w[:, ch], (1, 0, 2))
+            if LABELS:
+                if tree._cap > len(E_pact):
+                    E_pact = np.concatenate([E_pact, np.zeros((tree._cap - len(E_pact), 6),
+                                                              np.int8)])
+                    E_u = np.concatenate([E_u, np.zeros(tree._cap - len(E_u), np.float32)])
+                E_pact[ids] = pact0[ch]
+                E_u[ids] = u0[ch]
+                # every env of this leaf restored the same state: its rank-0 env's row is the
+                # leaf's input row
+                _l_leaf.append(int(leaf))
+                _l_env.append(int(ch[0]))
+        if LABELS and _l_leaf:
+            L_node.append(np.asarray(_l_leaf, np.int64))
+            L_scal.append(np.asarray(scal0, np.float32)[_l_env])
+            L_pose.append(pose0[_l_env])
         tree.end_wave()
         b = tree.best_node()
         best_hist.append(float(prog(tree.bank_d[b])) if b > 0 else float("nan"))
@@ -890,10 +935,27 @@ def run_mcts(ctx: dict, a) -> dict:
                "env_steps_per_s": round(sim_ticks * N / max(dt, 1e-9)),
                "best_by_wave": [round(100 * x, 3) for x in best_hist[::max(1, len(best_hist)
                                                                           // 50)]]}
+    labels = None
+    if LABELS:
+        # --mcts-labels: every expanded node of the tree -> its labels (surfgym/treelabels.py:
+        # children ranked among their siblings by their backed-up score, the node's own score as
+        # its percentile rank in the tree)
+        from surfgym.treelabels import build_labels
+        _t_lab = time.time()
+        _n = tree.n
+        if L_node:
+            labels = build_labels(tree.parent[:_n], tree.ncld[:_n], tree.cstart[:_n],
+                                  tree.q[:_n], tree.alive[:_n], tree.finished[:_n],
+                                  np.concatenate(L_node), np.concatenate(L_scal),
+                                  np.concatenate(L_pose), E_pact[:_n], E_u[:_n])
+        summary["labels"] = (dict(labels["stats"], secs=round(time.time() - _t_lab, 1))
+                             if labels is not None else None)
+        print(f"mcts labels: {summary['labels']}", flush=True)
     print(f"mcts: deepest RAW d any live tick reached {summary['raw_best_pct']}% (greedy raw "
           f"{100.0 * float(prog(gbest)):.2f}%)", flush=True)
     print(f"mcts: {wave} waves, {tree.n - 1:,} nodes, {arch.n:,} cells, best "
           f"{summary['best_pct']:.2f}% (greedy {summary['greedy_pct']:.2f}%) at tick {f_tick} "
           f"({ctx['secs'](f_tick):.2f}s), depth {int(tree.depth[b])}"
           + (" FINISHED" if finished else "") + f", {dt:.0f}s", flush=True)
-    return {"frontier": frontier, "summary": summary, "tree": tree, "archive": arch}
+    return {"frontier": frontier, "summary": summary, "tree": tree, "archive": arch,
+            "labels": labels}

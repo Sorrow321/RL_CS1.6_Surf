@@ -2319,6 +2319,14 @@ def main():
                     help="--mcts: |dvz - one gravity step| above this = the map pushed back")
     ap.add_argument("--mcts-log-every", type=int, default=10)
     ap.add_argument("--mcts-stop-on-finish", type=int, default=1)
+    # --mcts-labels (azr1b3, the one-search series slot 3): the tree's labels for the trainer
+    # (surfgym/treelabels.py). Off = the tool as it was
+    ap.add_argument("--mcts-labels", action="store_true",
+                    help="--mcts: also write <out-dir>/labels.npz - every expanded node's input "
+                         "row, its children ranked among their siblings by their backed-up "
+                         "score (the policy target) and its own score's percentile rank in the "
+                         "tree (the value target); train_fast.py --tree-labels reads it when the "
+                         "search ends")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -2822,6 +2830,13 @@ def main():
                             bank_d=tr.bank_d[:_n], end_d=tr.end_d[:_n], h=tr.h[:_n],
                             cell=tr.cell[:_n], wave=tr.wave[:_n], cell_seen=ar.seen[:ar.n],
                             ox=tr.ox[:_n], oy=tr.oy[:_n], oz=tr.oz[:_n], raw_d=tr.raw_d[:_n])
+        if args.mcts_labels and res.get("labels") is not None:
+            from surfgym.treelabels import save_labels
+            save_labels(out_dir / "labels.npz", res["labels"],
+                        {"ckpt": str(args.ckpt), "map": map_path, "act_every": int(K),
+                         "view_absolute": VIEW_ABS, "keys_hold": bool(KEYS),
+                         "scal_dim": int(res["labels"]["scal"].shape[1])})
+            print(f"mcts labels -> {out_dir / 'labels.npz'}", flush=True)
         if args.save_frontier and len(fr["acts"]):
             save_frontier_line(fr, cfg, map_path, ep_cap, TICK, arm, row0, obs_start,
                                gate_seed, K, out_dir, ogf, finished=bool(fr["finished"]))

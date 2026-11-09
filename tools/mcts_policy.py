@@ -29,6 +29,11 @@ class MctsPolicy(SampledTorchPolicy):
         self.greedy = None                      # (N,) bool: envs that take the mode
         self.hold = None                        # (N,) bool: envs that repeat their first draw
         self.hold_store = False                 # True on the macro's first decision
+        # --mcts-labels (azr1b3): when set, the next decision keeps the SCALAR half of the row
+        # the network reads (everything before the image: Policy.forward splits at scal_dim) as
+        # `last_scal`, (N, scal_dim) float32 - the input row of a tree label. Off: nothing kept
+        self.capture_scal = False
+        self.last_scal = None
         self._h_act = self._h_z = None
         self._kt = None if float(keys_temp) == 1.0 else float(keys_temp)
         self._vt = (None if float(view_temp) == 1.0 and self._kt is None
@@ -49,7 +54,10 @@ class MctsPolicy(SampledTorchPolicy):
 
     @torch.inference_mode()
     def _decide(self, obs):
-        logits, _ = self._net(self._obs(obs))
+        x = self._obs(obs)
+        if self.capture_scal:
+            self.last_scal = x[:, :int(self.policy.scal_dim)].float().cpu().numpy()
+        logits, _ = self._net(x)
         cat, mu = split_view(logits.float())
         padded = self._mask_padded(self.packer.pad(cat), obs)
         if self._vt is None:

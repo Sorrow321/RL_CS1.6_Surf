@@ -1076,6 +1076,23 @@ class Policy(nn.Module):
         return (self._pi_out(head, self.pi(f_pi)),
                 self._value(self.vf(f_vf), priv).squeeze(-1))
 
+    def actor_out(self, scal, img):
+        """--tree-labels: (logits, the pi tower's output) - the ACTOR half of forward_split for
+        the feed-forward single-trunk policy (no --rnn, no --split-trunk; the trainer refuses
+        the flag with either), op for op what heads() computes for the actor. The critic tower
+        is not run: a tree label never touches PPO's value function."""
+        f = self.features(scal, img)
+        f_pi = f
+        if self.route_dim and not self.route_critic_only:
+            f_pi = torch.cat([f, scal[:, N_SCALAR:]], dim=1)
+        head = self.action_head if self.code_head is None else self.code_head
+        if self.fp32_heads:
+            with torch.autocast(device_type="cuda", enabled=False):
+                t = self.pi(f_pi).float()
+                return self._pi_out(head, t), t
+        t = self.pi(f_pi)
+        return self._pi_out(head, t), t
+
     def _pi_out(self, head, t):
         """`head` over the pi tower output `t`; under --view-continuous the
         two view MEANS are appended after the categorical logits (split_view
@@ -5240,6 +5257,26 @@ def main() -> None:
                          "beam_tas's defaults, byte-identical; config only when set")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
+    # ---- --tree-labels (azr1b3, the one-search series slot 3: the tree teaches, beside PPO) --
+    ap.add_argument("--tree-labels", type=float, default=None,   # None = off (today)
+                    help="--auto-spine-explorer mcts: EVERY search tree also teaches the network. "
+                         "The search writes labels for every expanded node (beam_tas "
+                         "--mcts-labels; surfgym/treelabels.py): the children that beat their "
+                         "siblings on the tree's backed-up score as the POLICY target (rank "
+                         "weights; key / jump / duck bins scored by the engine action they yield, "
+                         "the executed yaw target in u), the node's own score as its percentile "
+                         "rank in the tree as the VALUE target of a separate head on the actor "
+                         "tower (PPO's critic is never touched). The trainer loads them when the "
+                         "search ends and adds COEF x the label loss to every PPO minibatch step. "
+                         "Config only when set")
+    ap.add_argument("--tree-labels-batch", type=int, default=1024,
+                    help="--tree-labels: label rows scored per PPO minibatch step")
+    ap.add_argument("--tree-labels-keep", type=int, default=4,
+                    help="--tree-labels: the labels of the last N trees are kept (older ones drop)")
+    ap.add_argument("--tree-value-coef", type=float, default=0.25,
+                    help="--tree-labels: weight of the tree-value term (0.5 x squared error of the "
+                         "separate head) inside the label loss (MuZero weighs value 0.25 against "
+                         "policy 1.0)")
     ap.add_argument("--auto-spine-async", action="store_true",
                     help="--auto-spine: run the search BESIDE the training instead of pausing "
                          "it - on a copy of ckpt_latest, its log in auto/kNN/auto_spine.log; the "
@@ -12328,6 +12365,14 @@ def main() -> None:
     if args.auto_spine_mcts_args and args.auto_spine_explorer != "mcts":
         raise SystemExit("--auto-spine-mcts-args passes flags to the MCTS explorer: give "
                          "--auto-spine-explorer mcts")
+    if args.tree_labels is not None:
+        if not (args.auto_spine and args.auto_spine_explorer == "mcts"):
+            raise SystemExit("--tree-labels reads the labels of --auto-spine's MCTS trees: give "
+                             "--auto-spine --auto-spine-explorer mcts")
+        if float(args.tree_labels) < 0.0 or float(args.tree_value_coef) < 0.0:
+            raise SystemExit("--tree-labels / --tree-value-coef must be >= 0")
+        if int(args.tree_labels_batch) < 1 or int(args.tree_labels_keep) < 1:
+            raise SystemExit("--tree-labels-batch / --tree-labels-keep must be >= 1")
     if args.auto_spine_banked and not args.auto_spine:
         raise SystemExit("--auto-spine-banked reads --auto-spine's greedy frontier: give it")
     if args.auto_spine_energy is not None and not args.auto_spine:
@@ -13955,6 +14000,21 @@ def main() -> None:
     else:
         opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                                fused=(device.type == "cuda"))
+    # --tree-labels (azr1b3): the TREE-VALUE head - its own Linear on the actor tower's output
+    # (PPG's auxiliary value head) and its own Adam, both OUTSIDE the policy: the policy's
+    # state_dict and optimizer are untouched (a recording, the search and every tool load
+    # "policy" exactly as before; this head is saved beside it as "tree_vhead"). Built under a
+    # forked CPU RNG so the run's own random stream is the flag-off run's.
+    TL_ON = args.tree_labels is not None
+    tree_vhead = tl_opt = None
+    if TL_ON:
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(int(args.seed) * 104729 + 7)
+            tree_vhead = nn.Linear(int(policy.action_head.in_features), 1)
+            nn.init.orthogonal_(tree_vhead.weight, 1.0)
+            nn.init.zeros_(tree_vhead.bias)
+        tree_vhead = tree_vhead.to(device)
+        tl_opt = torch.optim.Adam(tree_vhead.parameters(), lr=args.lr, eps=1e-5)
     DROP_GEN = None
     if float(args.dropout) > 0.0:
         print(f"consistent dropout {float(args.dropout):g} after every tower "
@@ -14639,6 +14699,14 @@ def main() -> None:
         if rnd is not None and ck.get("rnd") is not None:
             rnd.load_state_dict_all(ck["rnd"])
             print("restored RND state (target/predictor/normalizers)")
+        if tree_vhead is not None:
+            if ck.get("tree_vhead") is not None:
+                tree_vhead.load_state_dict(ck["tree_vhead"])
+                tl_opt.load_state_dict(ck["tree_vhead_opt"])
+                print("restored the --tree-labels tree-value head and its Adam")
+            else:
+                print("--tree-labels on a checkpoint trained WITHOUT it: the tree-value head "
+                      "starts fresh")
         if crl is not None:
             if ck.get("crl") is not None:
                 crl.load_state_dict_all(ck["crl"])
@@ -15493,6 +15561,11 @@ def main() -> None:
             meta["config"]["auto_spine_mcts_minutes"] = float(args.auto_spine_mcts_minutes)
         if args.auto_spine_mcts_args:
             meta["config"]["auto_spine_mcts_args"] = str(args.auto_spine_mcts_args)
+        if args.tree_labels is not None:
+            meta["config"].update({"tree_labels": float(args.tree_labels),
+                                   "tree_labels_batch": int(args.tree_labels_batch),
+                                   "tree_labels_keep": int(args.tree_labels_keep),
+                                   "tree_value_coef": float(args.tree_value_coef)})
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16728,8 +16801,12 @@ def main() -> None:
             # --auto-spine-explorer mcts: the search is beam_tas --mcts (no branched beams)
             cmd += ["--explorer", "mcts",
                     "--mcts-minutes", f"{float(args.auto_spine_mcts_minutes):g}"]
-            if args.auto_spine_mcts_args:
-                cmd += ["--mcts-extra", str(args.auto_spine_mcts_args)]
+            _mx = str(args.auto_spine_mcts_args or "")
+            if TL_ON:
+                # --tree-labels: the search also writes its labels (beam/labels.npz)
+                _mx = (_mx + " --mcts-labels").strip()
+            if _mx:
+                cmd += ["--mcts-extra", _mx]
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and
@@ -16765,6 +16842,7 @@ def main() -> None:
                     break
         except (_sp.TimeoutExpired, OSError, ValueError) as ex:
             print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
+        _tree_labels_load(kdir)
         _auto_spine_finish(res, time.time() - t0, med)
 
     def _auto_spine_poll():
@@ -16794,7 +16872,27 @@ def main() -> None:
             print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
         print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: ended beside the training "
               f"(exit {proc.returncode})", flush=True)
+        _tree_labels_load(kdir)
         _auto_spine_finish(res, time.time() - t0, med)
+
+    def _tree_labels_load(kdir):
+        """--tree-labels: the ended search's labels (its beam/labels.npz) join the buffer; the
+        oldest tree drops out past --tree-labels-keep. A search that wrote none (killed, or no
+        node taught anything) changes nothing."""
+        if TL is None:
+            return
+        _lp = Path(kdir) / "beam" / "labels.npz"
+        if not _lp.exists():
+            print(f"[{global_step:>13,d}] tree labels: search {AUTO['k']} wrote none ({_lp})",
+                  flush=True)
+            return
+        try:
+            _st = TL.add(_lp, tag=f"k{AUTO['k']:02d}")
+        except (ValueError, OSError, KeyError) as ex:
+            print(f"!! tree labels: {_lp} not loaded: {ex}", flush=True)
+            return
+        print(f"[{global_step:>13,d}] tree labels: search {AUTO['k']} -> {json.dumps(_st)}; "
+              f"{TL.describe()}", flush=True)
 
     def _auto_spine_kill():
         pr = AUTO.get("proc")
@@ -18369,6 +18467,10 @@ def main() -> None:
             # --crl: the critic, its Adam and its RNG (the history ring is
             # not saved: it refills in --crl-history / --n-steps iterations)
             state["crl"] = crl.state_dict_all()
+        if tree_vhead is not None:
+            # --tree-labels: the tree-value head and its Adam, beside (not in) the policy
+            state["tree_vhead"] = tree_vhead.state_dict()
+            state["tree_vhead_opt"] = tl_opt.state_dict()
         if respawn is not None:
             state["respawn"] = (      # keep the frontier
                 {s.name: s.respawn.state_dict() for s in slots} if MULTI
@@ -19110,6 +19212,92 @@ def main() -> None:
                              # --view-continuous APPENDS its column, so a
                              # discrete round's file is byte-identical
                              + (",bc/view_mse" if VIEWC else "") + "\n")
+
+    # ---- --tree-labels (azr1b3): the trees teach, beside PPO (surfgym/treelabels.py) ------------
+    # Every search tree's labels (written by the search, loaded when it ends) enter the SAME
+    # optimizer step as each PPO minibatch, like --bc-file's planner rows: one label batch per
+    # minibatch step, its loss summed in before the one backward / clip / step. The POLICY term
+    # is the negative log-likelihood of the better-than-siblings children's first decision
+    # (rows drawn in proportion to their rank weight): the key / jump / duck heads scored by the
+    # ENGINE action they yield (--bc-keys-engine's keys_engine_logp: KEEP and an explicit press
+    # of the held key are one action), the yaw as the executed target in u = tanh(z) at the BC
+    # reference sigma (BC_VIEW_SIGMA) - bounded, where a random child's pre-tanh z is not; the
+    # pitch only aims the camera and is not labelled. The VALUE term fits the node's percentile
+    # rank in its tree with the separate tree-value head; PPO's critic, its baseline and its
+    # loss are untouched. Off: nothing here or in the loop runs.
+    TL = None
+    tl_step = None
+    tl_last = None
+    TL_COEF = float(args.tree_labels or 0.0)
+    TL_VC = float(args.tree_value_coef)
+    TL_KC = None
+    tl_log = None
+    if TL_ON:
+        if (MULTI or route is not None or STACK > 1 or H > 0 or RNN or D.enabled
+                or args.bc_file or not VIEWC or VIEW_ABS != "velocity" or YCOND or MASKS.on
+                or bool(getattr(args, "split_trunk", 0))):
+            raise SystemExit("--tree-labels: single-map, single-GPU, flat (no --chunk), "
+                             "unstacked, feed-forward (no --rnn, no --split-trunk), fan-less, "
+                             "--view-continuous --view-absolute velocity policies without "
+                             "--yaw-cond, --mask-* or --bc-file")
+        from surfgym.treelabels import TreeLabelBuffer
+        TL = TreeLabelBuffer(device, scal_dim=int(policy.scal_dim),
+                             keep=int(args.tree_labels_keep), seed=int(args.seed))
+        TL_KC = int(KEYS0) if N_KEYS else None
+        tl_lidar, tl_dtype = slots[0].lidar, b_img.dtype
+
+        def tl_loss_fn(scal, img, act, u, vt):
+            with amp:
+                logits, t_pi = policy.actor_out(scal, img)
+            tv = tree_vhead(t_pi.float()).squeeze(-1)
+            cat, mu = split_view(logits.float())
+            padded = packer.pad(cat)
+            lsm = F.log_softmax(padded, dim=-1)
+            held = None
+            if TL_KC is not None:
+                held = keys_held_from_features(scal[:, TL_KC:TL_KC + keyshold.N_FEATURES])
+                lsm = keys_engine_logp(lsm, held)
+            nll_c = -lsm[:, N_VIEW:].gather(-1, act[:, N_VIEW:].unsqueeze(-1)).squeeze(-1).sum(-1)
+            yaw = 0.5 * ((torch.tanh(mu[:, 0]) - u) / BC_VIEW_SIGMA).pow(2)
+            v_mse = (tv - vt).pow(2).mean()
+            loss = (nll_c + yaw).mean() + TL_VC * 0.5 * v_mse
+            with torch.no_grad():
+                _am, _tg = padded.argmax(-1), act
+                if held is not None:
+                    _am, _tg = keys_engine_bins(_am, held), keys_engine_bins(act, held)
+                agree = (_am[:, N_VIEW:] == _tg[:, N_VIEW:]).all(-1).float().mean()
+                stats = torch.stack([loss.detach(), nll_c.mean().detach(), yaw.mean().detach(),
+                                     v_mse.detach(), agree,
+                                     (torch.tanh(mu[:, 0]) - u).abs().mean().detach()])
+            return loss, stats
+
+        tl_step = tl_loss_fn
+        if use_compile:
+            try:
+                tl_step = torch.compile(tl_loss_fn, mode="max-autotune-no-cudagraphs")
+            except Exception as exc:            # pragma: no cover
+                print(f"torch.compile (tree-label step) failed ({exc!r}) - eager")
+                tl_step = tl_loss_fn
+        if D.is_main:
+            tl_log = open(out / "tree_labels.csv", "a", newline="", encoding="utf-8")
+            if tl_log.tell() == 0:
+                tl_log.write("time/total_timesteps,tree/coef,tree/loss,tree/nll_keys,tree/yaw,"
+                             "tree/value_mse,tree/joint_acc,tree/yaw_abs_err,tree/nodes,"
+                             "tree/rows,tree/trees\n")
+        print(f"--tree-labels {TL_COEF:g}: every search tree's labels join the PPO step "
+              f"({int(args.tree_labels_batch)} rows per minibatch step, the last "
+              f"{int(args.tree_labels_keep)} trees kept, tree-value coef {TL_VC:g} on its own "
+              f"head); keys scored by their engine action: {TL_KC is not None}")
+        if global_step > 0:
+            # a resume of the SAME run: the labels of its last trees are on disk (auto/kNN/beam)
+            _lf = sorted((out / "auto").glob("k*/beam/labels.npz"),
+                         key=lambda q: q.stat().st_mtime)[-int(args.tree_labels_keep):]
+            for _q in _lf:
+                try:
+                    TL.add(_q, tag=_q.parent.parent.name)
+                except (ValueError, OSError, KeyError) as ex:
+                    print(f"!! tree labels: {_q} not reloaded: {ex}")
+            print(f"--tree-labels resume: {TL.describe()}")
 
     # ---- DDP gradient path (docs/ddp-plan.md steps 9 + 15) ------------------
     # Bucketed flat all-reduces; the views borrow each parameter's own
@@ -21292,6 +21480,25 @@ def main() -> None:
                                        _vz, _vmu, _vsd)
                     loss = loss + bc_coef_t * _lb
                     bc_last = _st
+                _tl_used = False
+                if TL is not None and TL.n_rows > 0 and TL_COEF > 0.0 and not warming:
+                    # --tree-labels: one label batch per PPO minibatch, summed in before the one
+                    # backward (the tree-value head steps with its own Adam below)
+                    _ts, _tp, _ta, _tu, _tv = TL.sample(int(args.tree_labels_batch))
+                    try:
+                        _lt, _tst = tl_step(_ts, TL.render(tl_lidar, _tp, tl_dtype), _ta, _tu,
+                                            _tv)
+                    except Exception as exc:        # pragma: no cover
+                        if tl_step is tl_loss_fn:
+                            raise
+                        print(f"torch.compile (tree-label step) failed at its first call "
+                              f"({exc!r}) - eager")
+                        tl_step = tl_loss_fn
+                        _lt, _tst = tl_step(_ts, TL.render(tl_lidar, _tp, tl_dtype), _ta,
+                                            _tu, _tv)
+                    loss = loss + TL_COEF * _lt
+                    tl_last = _tst
+                    _tl_used = True
                 if SIL is not None and not warming and k_mb < SIL_BATCHES and SIL.size > 0:
                     # --sil-coef: one prioritised buffer minibatch, its loss
                     # summed in before the one backward; the rows scored get
@@ -21317,6 +21524,8 @@ def main() -> None:
                         tkl_hit = (int(_ep), int(k_mb), _klv)
                         break
                 opt.zero_grad(set_to_none=True)
+                if tl_opt is not None:
+                    tl_opt.zero_grad(set_to_none=True)
                 loss.backward()
                 if warming:
                     # BEFORE the clip, so the grad norm the critic is
@@ -21329,6 +21538,10 @@ def main() -> None:
                 # local grads then averaging is a different algorithm
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
+                if tl_opt is not None and _tl_used:
+                    for _g in tl_opt.param_groups:
+                        _g["lr"] = opt.param_groups[0]["lr"]
+                    tl_opt.step()
                 if VIEW_ABS and not warming:
                     # keep the raw pitch log sigma under its cap so its
                     # gradient stays alive (Policy.project_log_std). Skipped
@@ -21423,6 +21636,19 @@ def main() -> None:
                              f"{_bvm:.3f}"
                              + (f",{_bvw:.6f}" if VIEWC else "") + "\n")
                 bc_log.flush()
+        if TL is not None and tl_last is not None:
+            # --tree-labels: the last minibatch's label diagnostics, ONE sync per iteration
+            _tls = [float(x) for x in tl_last]
+            tl_last = None
+            if it_no % 25 == 0:
+                print(f"tree labels: coef {TL_COEF:g}  loss {_tls[0]:.4f}  keys-nll "
+                      f"{_tls[1]:.4f}  yaw {_tls[2]:.4f}  v-mse {_tls[3]:.4f}  joint-acc "
+                      f"{_tls[4]:.3f}  |du| {_tls[5]:.3f}  ({TL.describe()})")
+            if tl_log is not None:
+                tl_log.write(f"{global_step},{TL_COEF:g},{_tls[0]:.5f},{_tls[1]:.5f},"
+                             f"{_tls[2]:.5f},{_tls[3]:.6f},{_tls[4]:.5f},{_tls[5]:.5f},"
+                             f"{TL.n_nodes},{TL.n_rows},{len(TL.trees)}\n")
+                tl_log.flush()
         if LPLAN or PLPLAN:
             # --goal-planner learned / primlearn: the PLANNER's own PPO, over every plan
             # closed since its last update once --plan-batch have closed

@@ -140,6 +140,10 @@ TRAIN_ONLY = frozenset({
     # of the TRAINING spawn pool. A recording spawns at the map start like the trainer's eval
     "auto_spine_scratch", "auto_spine_explorer", "auto_spine_mcts_minutes", "demo_share",
     "auto_spine_banked", "auto_spine_mcts_args",
+    # --tree-labels (azr1b3): an extra TRAINING loss on the search trees' labels, and its own
+    # tree-value head - stored OUTSIDE the policy's state_dict (ckpt key "tree_vhead"), so the
+    # policy a recording loads and the action it takes are exactly the policy's without it
+    "tree_labels", "tree_labels_batch", "tree_labels_keep", "tree_value_coef",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
