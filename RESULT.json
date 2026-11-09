@@ -4,10 +4,10 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": null,
-  "eval_file": null,
+  "score": 15.476,
+  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_0906493952.jsonl",
   "run": "azr1b3_tl1",
-  "step": null,
+  "step": 906493952,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -146,8 +146,12 @@
  },
  "ladder": {
   "unit": "steps",
-  "verdict": "alive (launched 2026-11-09 21:09 UTC)",
-  "total": {}
+  "first ramp": 680001536,
+  "window (CP1)": null,
+  "verdict": "alive: first ramp ON TIME (680M vs run 5 529M; deadline 1.6B); window PENDING",
+  "total": {
+   "first ramp": 977379793
+  }
  },
- "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd). Policy target: at every expanded node, the children that beat the policy's own greedy child on the tree's backed-up score (sibling-rank weights); value target: the node's score as its percentile rank in the tree, on a separate head (PPO's critic untouched). Run azr1b3_tl1 launched from step 0 at 21:09 UTC on an RTX 5080; no ladder reading yet."
+ "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): at every expanded node the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~255k steps/s - the label step costs ~25-35% of wall clock): first ramp ON TIME at 680M steps / 977M total (run 5: 529M / 763M); since 755M on the 15.3-15.5% shelf before the window (run 5 sat at 15.8% at 604M and passed at 680M); best 15.476 at 906M. Next: the window deadline 1.6B (~23:00 UTC)."
 }

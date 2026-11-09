@@ -1148,3 +1148,22 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   ~15:00 UTC 2026-11-10, before the budget's ~19:00 UTC end.
 * Operator note 2 (21:25): credit lasts to ~19:00 UTC 2026-11-10 with four boxes; extend in small
   steps, pull early. Box 59952494 deadline 08:58 UTC (12 h from rent).
+
+### 22:16 UTC: first ramp ON TIME (680M steps / 977M total; run 5 529M / 763M)
+
+| wall | azr1b3_tl1 steps | run 5 steps | deadline | tl1 total | run 5 total |
+|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 0.977B | 0.763B |
+
+* The greedy frontier left the spawn 142M steps after search 2's spawn-exit line was adopted
+  (538M -> 680M); in run 5 its adopted spawn-exit line (search 1, 116M) took 413M. One seed,
+  and the label buffer held search 1's and 2's trees (spawn-exit lines included) by then, so
+  this is a hint, not a measurement.
+* Search 3 (680M -> 766M): NEW SPINE (2,106 states, end d 84,864 = 14.9%) vs frontier 93,546.
+  Its labels: 125,203 expanded nodes, the policy's own child a best one at 96.9% of them, beaten
+  at 16.1% (20,145 nodes, 115,407 rows). The buffer: 386,862 nodes from 3 trees.
+* Evals 755M-906M: 15.29 / 15.31 / 15.48% (CP0) - the shelf before the window. Run 5 had
+  15.77% at 604M and 25.14% (CP1) at 680M. Window deadline 1.6B (last eval before it ~1.586B).
+* Label fit (iterations around 1,700-1,780, trees k01-k03): keys NLL 2.55-2.71, yaw 1.34-1.51
+  (|tanh mu - u| 0.39-0.42), value MSE 0.040-0.044, agreement 0.24-0.25 (the new tree's rows are
+  new targets).
