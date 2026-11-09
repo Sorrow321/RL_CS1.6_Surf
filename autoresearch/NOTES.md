@@ -775,3 +775,12 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   90%. So the late walls (CP6 gap, CP7 slit, chamber, finish) are solved; the misses are early
   and mid-route control slips, 45% of them in the 20-35% band around the pit dive and the
   cavity. Not a missing skill: the same checkpoint passes each of these places in most episodes.
+
+### 07:54 UTC: run 5 best 116.035 at 14.572B - 9/9 greedy finishes again (118.96 s)
+
+- New best 116.035 (local score.py agrees): 9/9 finishes, best 118.96 s, mean 119.28 s. Its
+  checkpoint is EXACT (ckpt_latest saved at the eval step, offset 0), kept by the keeper, pulled,
+  md5 ba314e7b86d4b069bd51598d07dea378 verified locally; RESULT.json best points at it.
+- 19 evals 13.29-14.65B: finishes 7,7,5,5,2,4,7,5,8,8,5,6,7,2,8,7,4,9,8 of 9 (114/171 = 67%),
+  up from 58% (10.42-11.85B) and 60% (11.93-13.21B). Searches 34 and 36 returned finishing lines
+  (21-22 s), 35 nothing (root died early). Still ~371k steps/s, entropy 0.006.
