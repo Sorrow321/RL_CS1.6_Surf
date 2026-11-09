@@ -775,3 +775,10 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   v3's 30.8% plateau region (v3 sat there 4.7-7.3B, until search 6's spine at 6.63B to 32.28%); 3/9
   fall earlier at 27.8% (x ~2,285, z 11,415). Post-CP2 (> 33%, d < 66,782) due 13.93B; v6 reaches
   ~6.1B by the wrap-up.
+* **08:50 UTC - v6 at 3.71B: 31.0-32.4%, best 32.363 at 3,247M** (32.351 / 32.360 at 3,473 / 3,549M;
+  median 30.7-31.7%) - v3 first reached 32.27 at 7,354M. v6's best is 0.12 under v3's 32.482. At
+  3,549M 8/9 episodes end `fail` at ~38 s falling (vz -310..-930) at 31.3-31.8%, x -460..+80, z
+  10,450-10,820; one reaches 32.36% at x -708 and lands on the lower floor (z 9,717) like v3's
+  32.4% episodes. The curriculum is at the END of search 8's spine (rows 3,426-4,071 of 4,072,
+  success 19-64%) - it has not walked back yet; search 9 (3,408M) reached 67,378, kept out by the
+  gain rule. Healthy: kl 0.022, yaw sigma 0.063, reward 47.7, 216k steps/s. ~6.2B by 11:55.
