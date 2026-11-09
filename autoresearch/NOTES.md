@@ -743,3 +743,12 @@ reproduces the greedy eval line, and a curriculum that always starts at the fron
 explorer line is past the greedy, a stale line (line 53, 0-30%, for 10B steps) is replaced by
 the deepest line available instead of waiting for an eval to collapse. The control that would
 settle the explorer's share: the incumbent recipe + `--unstuck-max 2`, no explorer.
+
+### 12:14 UTC: box 59667641 released
+
+Pulled before release: geb6's 278 eval trajectories, run.json, progress.csv, the launch log,
+ckpt_latest.pt (step 20,944,781,312, md5 f990ffc4...) and the best eval's snapshot
+ckpt_15005122560.pt (md5 78aafe3a...), all under $AR_HOME/runs/unr1b2/unr1b2_geb6/; the
+explorer's log (ge_beam_0.log), line.json/current.json/status.json and the adopted lines 53, 97,
+123, 126, 133, 144, 148, 150, 151 (11 MB) under .../unr1b2_geb6/ge_pulled/ge/. Not pulled: the
+explorer's 2.2 GB archive.npz. `box.py status`: "unr1b2: no box".
