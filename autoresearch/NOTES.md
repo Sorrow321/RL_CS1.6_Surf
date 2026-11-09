@@ -628,3 +628,28 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   beats every earlier one, keeps the ring copy at or before it (PROTOCOL's hand-on rule, the copy
   after it only if more than twice as near). Kept so far: ckpt_2718433280 (36.914, exact),
   ckpt_3787456512 (57.288 at 3,775,397,888, +12.1M), ckpt_3850895360 (70.676, exact).
+
+### 00:54 UTC: run 5 to 84.383 (4.908B), then the 84-86% creep before CP6; box extended to 12:47
+* Box 59668027 extended at 00:47 to 2026-11-09T12:47:36Z (covers the 12:35 round end). Run 5 at
+  5.13B, ~364k steps/s, all 8 walls ON TIME; CP6 deadline 28.52B is past the round's reach
+  (~19.6B by 11:55), so it trains to the end (operator rule 1).
+* Evals since CP5: 78.74 (3.93B), 79.64, 81.41, 82.53, **84.077 (4.228B)**, then a plateau:
+  83.66 / 83.74 / 83.93 / 84.374 (4.530B, exact ckpt) / 84.29 / ... / **84.383 (4.908B, median
+  84.3%)** / 84.18 / 84.21 (5.059B). Kept by the keeper and pulled (md5 verified):
+  ckpt_4900519936.pt (-7,340,032 steps before the best eval: the hand-on checkpoint) and
+  ckpt_4530372608.pt (exact, 84.374).
+* Where it stops (MEASUREMENT only, insight for the notes - nothing enters the run): the greedy
+  line flies EAST from x -9,600 (z 3,430), peaks at z ~4,770 near x -5,400, sinks ~1,000 u over
+  the next ~2,100 u of x and is at (-3,300, y ~90, z 3,780) at t ~92 s, sinking 1,250 u/s. The goal
+  field's route from there runs east through a gap in a solid block: at x -2,800 the passable cells
+  start at z 4,072 (x -2,400: z 3,624+; the field's descent passes (-2,500, 154, 4,004) and
+  (-1,700, 218, 3,748) on to sgcp_6 at x -200). The policy arrives ~300 u under the gap's floor,
+  hits the face and either dies there or bounces back west and falls to the z ~3,044 floor. This
+  is the October lineage's own stop ("stops at 72%, 83% and a creep 84-86%").
+* The search saturates there too: k12 (4.41B) and k13 (4.86B) both end at d ~15,000 (84.9%;
+  15,124 / 15,037). k13: 41 roots over ticks 7,296-9,216 (the last 19 s of the line), 1,371
+  waves, 2.81M nodes, 46,737 cells with ~0 new per 10 waves for its last ~1,300 waves; its deepest
+  raw d was 85.5% (inside the gap) but no line survived past 84.92%. So random-held macros from
+  the policy's own line, rooted up to 19 s upstream, do not find the higher approach in 6 min.
+  The curriculum's success line (d <= 15,137) is met by 84-93% of the last-decile spawns, so the
+  loop is not stuck on the line it has - it has no line past the gap.
