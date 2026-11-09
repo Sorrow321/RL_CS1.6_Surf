@@ -797,5 +797,6 @@ at shelf height (|y| < 48, z <= 10,640).
   is set up further upstream, where an open-loop search loses the line, so a search rooted in the
   last 4-16 s before the stall (the --ge-line roots) has nothing to find there. Generic consequence
   for the next recipe: the search must branch where the line still has the freedom (seconds
-  before the stall) and carry a closed-loop controller through the surf in between - the
-  explorer's cells only remember open-loop chains.
+  before the stall) and keep control through the surf in between - from 3-6 s out, uniform
+  random keys fall off the ramps (no uniform-start rollout got back to the slot), so a uniform
+  explore step rooted there rarely reaches the slot at all, let alone inside the envelope.
