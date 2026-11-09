@@ -1,89 +1,149 @@
 {
- "_doc": "The surf_src_sidistic walls in map order, for autoresearch/ladder.py and the 2x stop rule (PROTOCOL.md). october_step = the cumulative checkpoint step at which the October lineage's GREEDY eval from the true start first got past the wall (r2b2_sband scratch -> sbandx -> sdef -> sband2 -> r3b3 -> r4b3 -> r5b4 -> r6b2 -> r7b2). deadline_step = 2 x october_step (the user, 2026-11-08: 'if the algorithm doesn't beat the wall in twice time it was beaten before, then the algorithm doesn't work'), except the first wall (seed noise, see its note). A wall is cleared in an eval when its best episode passes progress_pct on config.field (goalc_32, start_d 99,675 u), or the eval entered checkpoint curtain sgcp_<cp> (score.py max_cp), or an episode finished. The lineage changed its recipe between walls (the notes say where), and from-scratch runs cleared walls 3-6 two to four times sooner (r3b2: CP3 at 1.9B, 54% at 2.49B), so the early deadlines are loose: compare at matched steps with the operator's control as well. Built 2026-11-08 from ~/ar/runs and ~/ar/archive (trainer greedy lines and evals re-scored with score.py). Each october_step can be late by one eval interval (75M early, 3-25M later).",
+ "_doc": "The surf_src_sidistic walls in map order, for autoresearch/ladder.py and the 2x stop rule (PROTOCOL.md), measured against RUN 5 of the unified-recipe program (unr1b3_mcts5, 2026-11-08/09: PPO beside an MCTS search whose lines feed a backward curriculum, one recipe from scratch, RTX 5080; it finished the map at 8.23B steps and is this program's incumbent recipe). TWO units. run5_step = the trainer's step counter (simulator ticks spent in PPO rollouts: 1024 envs x 10 ms ticks) at which run 5's GREEDY eval from the true start first got past the wall; deadline_step = 2 x that. run5_total = run5_step + run5_search_ticks, the simulator ticks of every search that had started by then (autoresearch/search_ticks.py: search_wall_s x env_steps_per_s per search); deadline_total = 2 x that. The user's rule, 2026-11-08: 'if the algorithm doesn't beat the wall in twice time it was beaten before, then the algorithm doesn't work.' The two early walls carry a floor (1.6B steps, 2.0B total ticks) instead of 2x, because the first ramp alone varied 0.18-1.51B between from-scratch runs of one recipe. october_step is the earlier reference (the October lineage, a recipe changed at nearly every wall), kept for the record only. One seed: run 5 is ONE run, so a wall cleared somewhat later than run 5 is not evidence against a recipe; a missed 2x deadline is.",
  "walls": [
   {
    "name": "first ramp",
    "progress_pct": 8.0,
+   "run5_step": 529006592,
+   "deadline_step": 1600000000,
+   "run5_searches": 2,
+   "run5_search_ticks": 234336538,
+   "run5_total": 763343130,
+   "deadline_total": 2000000000,
    "october_step": 302514176,
-   "deadline_step": 1000000000,
-   "note": "stall 4.6-7.1% (off the south edge, or the +y side branch); past at 12.0% (goalc) at 302.5M in the lineage root r2b2_sband; from-scratch runs 0.18-1.51B and 4 never - seed noise, so the deadline is raised from 2x (0.61B) to 1.0B"
+   "note": "the policy's own find in run 5 (the first search line gave the spawn exit); from-scratch seed noise on this wall is large (0.18-1.51B across earlier runs of one recipe), so the two early deadlines sit at the floor, not at 2x"
   },
   {
    "name": "window (CP1)",
    "cp": 1,
+   "run5_step": 680001536,
+   "deadline_step": 1600000000,
+   "run5_searches": 2,
+   "run5_search_ticks": 234336538,
+   "run5_total": 914338074,
+   "deadline_total": 2000000000,
    "october_step": 1036517376,
-   "deadline_step": 2073034752,
-   "note": "stall 20.7-21.0%; the window hole, the sgcp_1 curtain; lineage r2b2_sdef at 1,036.5M after a recipe change at 885M"
+   "note": "the window hole, the sgcp_1 curtain; the policy's own find in run 5"
   },
   {
    "name": "pit dive",
    "progress_pct": 27.5,
+   "run5_step": 1812463616,
+   "deadline_step": 3624927232,
+   "run5_searches": 5,
+   "run5_search_ticks": 635912530,
+   "run5_total": 2448376146,
+   "deadline_total": 4896752292,
    "october_step": 1939865600,
-   "deadline_step": 3879731200,
-   "note": "stall at the CP2 wall 26.9-27.1% (goalc); past 27.8% at 1,939.9M (r2b2_sband2), after a recipe change at 1,335M"
+   "note": "past the CP2 wall at 27.5%; in run 5 a search line gave the pit approach"
   },
   {
    "name": "cavity (CP2)",
    "cp": 2,
+   "run5_step": 2114453504,
+   "deadline_step": 4228907008,
+   "run5_searches": 6,
+   "run5_search_ticks": 772540565,
+   "run5_total": 2886994069,
+   "deadline_total": 5773988138,
    "october_step": 4136100000,
-   "deadline_step": 8272200000,
-   "note": "the field's route is closed, the human line dips under the pit slab; sgcp_2 at 4,136.1M (r3b3), after --respawn-greedy and --time-pen 0 were added"
+   "note": "the dip under the pit slab, sgcp_2; the policy's own find in run 5"
   },
   {
    "name": "post-CP2 block",
    "progress_pct": 33.0,
+   "run5_step": 2340945920,
+   "deadline_step": 4681891840,
+   "run5_searches": 7,
+   "run5_search_ticks": 910873436,
+   "run5_total": 3251819356,
+   "deadline_total": 6503638712,
    "october_step": 6965690368,
-   "deadline_step": 13931380736,
-   "note": "stall 32.3-32.5% (goalc); past 33.3% at 6,965.7M (r3b3_gwx) after --respawn-greedy 0.3"
+   "note": "the wall where run 4 (MCTS children half random, half perturbed), b1 and b4 v3 stalled at 32.4-32.5%; run 5's policy found the detour itself (15 min of search alone did not)"
   },
   {
    "name": "CP3",
    "cp": 3,
+   "run5_step": 2642935808,
+   "deadline_step": 5285871616,
+   "run5_searches": 7,
+   "run5_search_ticks": 910873436,
+   "run5_total": 3553809244,
+   "deadline_total": 7107618488,
    "october_step": 7318000000,
-   "deadline_step": 14636000000,
    "note": "sgcp_3, then a descent with short stops to 54%"
   },
   {
    "name": "CP4",
    "cp": 4,
+   "run5_step": 3624402944,
+   "deadline_step": 7248805888,
+   "run5_searches": 10,
+   "run5_search_ticks": 1303315398,
+   "run5_total": 4927718342,
+   "deadline_total": 9855436684,
    "october_step": 9392600000,
-   "deadline_step": 18785200000,
-   "note": "stall 54.0-54.8%; after --eval-patience 30, --unstuck-temp-heads keys, --stall-eps 5"
+   "note": "sgcp_4"
   },
   {
    "name": "CP5",
    "cp": 5,
+   "run5_step": 3850895360,
+   "deadline_step": 7701790720,
+   "run5_searches": 11,
+   "run5_search_ticks": 1442200983,
+   "run5_total": 5293096343,
+   "deadline_total": 10586192686,
    "october_step": 11783400000,
-   "deadline_step": 23566800000,
-   "note": "stall 60.4-60.6%; after --respawn-greedy-stuck 200 and --respawn-novel-band 0.15"
+   "note": "sgcp_5"
   },
   {
    "name": "CP6",
    "cp": 6,
+   "run5_step": 6115819520,
+   "deadline_step": 12231639040,
+   "run5_searches": 16,
+   "run5_search_ticks": 2104203045,
+   "run5_total": 8220022565,
+   "deadline_total": 16440045130,
    "october_step": 14261700000,
-   "deadline_step": 28523400000,
-   "note": "stops at 72%, 83% and a creep 84-86%"
+   "note": "in run 5 a search line gave the CP6 loop"
   },
   {
    "name": "CP7",
    "cp": 7,
+   "run5_step": 6719799296,
+   "deadline_step": 13439598592,
+   "run5_searches": 17,
+   "run5_search_ticks": 2246640500,
+   "run5_total": 8966439796,
+   "deadline_total": 17932879592,
    "october_step": 15234200000,
-   "deadline_step": 30468400000,
-   "note": "the slit 94.5-94.9%, the chimney, sgcp_7 above the basement"
+   "note": "the slit, the chimney, sgcp_7 above the basement"
   },
   {
    "name": "chamber entry",
    "progress_pct": 98.5,
+   "run5_step": 8229748736,
+   "deadline_step": 16459497472,
+   "run5_searches": 20,
+   "run5_search_ticks": 2571343638,
+   "run5_total": 10801092374,
+   "deadline_total": 21602184748,
    "october_step": 19345000000,
-   "deadline_step": 38690000000,
-   "note": "basement stall 98.0-98.3% (goalc); the first greedy chamber entry at ~19,345M (notes only; APPROXIMATE threshold: no curtain marks it)"
+   "note": "progress > 98.5% (approximate threshold: no curtain marks it); in run 5 the same eval as the first finish"
   },
   {
    "name": "finish",
    "finish": true,
+   "run5_step": 8229748736,
+   "deadline_step": 16459497472,
+   "run5_searches": 20,
+   "run5_search_ticks": 2571343638,
+   "run5_total": 10801092374,
+   "deadline_total": 21602184748,
    "october_step": 25448939520,
-   "deadline_step": 50897879040,
-   "note": "over the rim at 25,065M; first greedy finish 25,448.9M (r7b2_bel, 118.05 s from spawn)"
+   "note": "run 5's first greedy finish (a search line gave the finish); every eval after 9.29B finished, best 116.057 at 17.44B (9/9, 118.28 s)"
   }
  ]
 }

@@ -1,20 +1,43 @@
-# autoresearch: fork-and-flush on surf_src_sidistic - ONE recipe
+# autoresearch: the one-search series on surf_src_sidistic
 
-An unattended research loop on the agent host (the droplet, no GPU). It runs the method of
+**This checkout runs the harness's sixth program (started 2026-11-09).** The fifth program
+(below) ended with one recipe that finishes surf_src_sidistic from scratch: PPO beside a tree
+search whose lines feed a backward curriculum ("run 5", `unr1b3_mcts5`, first finish at 8.23B
+steps). The user's question now: would ONE thread do better, a search that also teaches the
+network, "the way alpha 0 was trained"? Four slot agents each change one part of run 5 and
+train it from scratch: (1) one pool of spawns, (2) a balanced mix of policy and random children
+in the tree, (3) the tree's labels as extra losses beside PPO, (4) the tree as the only
+teacher. PROTOCOL.md is the agents' brief; NOTES.md opens with the evidence they start from.
+
+What differs from the text below, which describes the harness as the fifth program ran it:
+
+* State lives in `~/ar_az`, the checkout is `~/RL_Surf_az` (branch `az/main`), the tmux session
+  is `ar_az`, agents and branches are `azr1b<k>` / `ar/azr1b<k>`.
+* ONE round of 26 h and no fork-and-flush: a frozen recipe cannot be steered after launch, so
+  the round is as long as a full run needs. The slots are a designed series, not a
+  competition; they may read each other's work and never edit it.
+* The ladder (`ladder.json`, `ladder.py`) is run 5's own wall times, deadline twice that, in two
+  units: trainer steps, and total simulator ticks (steps plus every search's ticks, counted by
+  `search_ticks.py`).
+* No operator control box: run 5 is the control, kept read-only in `~/ar_az/reference/run5/`.
+* `incumbent_recipe` in config.json is run 5's full flag list.
+
+---
+
+*The fifth program's description, kept for the harness mechanics (orchestrator, box.py,
+scoring, the watchdog):*
+
+An unattended research loop on the agent host (the droplet, no GPU), built on the method of
 Cai et al. 2026, "Fork-and-Flush: Escaping Idea Basins in Autoresearch Agents"
-(arXiv 2610.07447), toward a goal that differs from the earlier programs': **ONE training
-recipe, frozen at launch, that clears surf_src_sidistic's walls from scratch with no per-wall
-tuning** (user, 2026-11-08). Each wall must fall no later than twice the steps the October
-lineage needed (autoresearch/ladder.json, autoresearch/ladder.py). The question is the explore
-step of a Go-Explore -> backward-curriculum loop: the Nature paper's random bursts, a
+(arXiv 2610.07447). The fifth program's goal: **ONE training recipe, frozen at launch, that
+clears surf_src_sidistic's walls from scratch with no per-wall tuning** (user, 2026-11-08),
+each wall no later than twice the steps the October lineage needed. Its question was the
+explore step of a Go-Explore -> backward-curriculum loop: the Nature paper's random bursts, a
 policy-guided beam, or policy-prior MCTS, and where on one continuous knob between random and
-policy-guided it should sit; in round 1 each slot builds one of them (PROTOCOL.md "Your slot").
-This is the harness's fifth program. sidistic itself was first finished by the first program
-(2026-10-20..23, ~/ar), one wall at a time; then princessburglar (~/ar_pb), unitfarmer2
-(~/ar_uf2) and za_loop (~/ar_loop). State lives in ~/ar_uni, the checkout is ~/RL_Surf_uni
-(branch uni/main), the tmux session is `ar_uni`, and agents and branches are named
-unr<round>b<k> / ar/unr<round>b<k>. The operator runs a control on its own box (`unop_ctl`, the
-recipe with no search), mirrored to ~/ar_uni/control/.
+policy-guided it should sit. Earlier programs: sidistic one wall at a time (2026-10-20..23,
+~/ar), princessburglar (~/ar_pb), unitfarmer2 (~/ar_uf2), za_loop (~/ar_loop). The fifth
+program's state is in ~/ar_uni, its checkout ~/RL_Surf_uni (branch uni/main), tmux `ar_uni`,
+agents unr<round>b<k>.
 
 ## How it works
 

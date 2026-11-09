@@ -43,8 +43,8 @@ TMUX = os.environ.get("AR_TMUX", "ar")
 CLAUDE = os.environ.get("AR_CLAUDE") or shutil.which("claude") or str(
     Path.home() / ".local" / "bin" / "claude")
 POLL_S = 60
-TRAILERS = ("\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n"
-            "Claude-Session: https://claude.ai/code/session_01LCSvrZRGWfECSRc6zpr4x7")
+TRAILERS = ("\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n"
+            "Claude-Session: https://claude.ai/code/session_01PK1rMSYUeD26WNfecHk189")
 # untracked files every slot needs from the main checkout (maps and caches are gitignored, the
 # C core is built once): symlinked, so the bsp's st_mtime_ns - which every cache keys on - is
 # the main checkout's and nothing re-bakes in a worktree (CLAUDE.md)
@@ -137,16 +137,17 @@ def prepare_slot(st, k: int, base: str) -> dict:
             "restarts": 0, "wrapup_sent": False}
 
 
-PROMPT = ("/loop You are fork-and-flush branch agent {agent} (round {round} of {rounds}) on "
-          f"{Path(CFG['map']).stem}. Your identity, deadlines and the incumbent are in AR_BRANCH.json. "
+PROMPT = ("/loop You are slot agent {agent} of the one-search series (round {round} of {rounds}) on "
+          f"{Path(CFG['map']).stem}. Your identity, your SLOT and the deadlines are in AR_BRANCH.json. "
           "On EVERY wakeup: re-read AR_BRANCH.json (if now >= wrapup_at, do only the Wrap-up; "
           "before wrapup_at never wrap up or stop this loop: stopping a run does not end the "
-          "round, so if RESULT.json says final, set it back to false and start your next idea), "
+          "round, so if RESULT.json says final, set it back to false and start your next recipe), "
           "follow autoresearch/PROTOCOL.md exactly (read it and CLAUDE.md now if this is your "
-          "first wakeup, then autoresearch/NOTES.md), keep RESULT.json and autoresearch/NOTES.md "
-          "current, and schedule the next wakeup (20-30 min while a run trains).")
-RESUME = ("/loop Your session was restarted. Continue as fork-and-flush branch agent {agent}: "
-          "re-read AR_BRANCH.json, autoresearch/PROTOCOL.md, RESULT.json and the end of "
+          "first wakeup, then the operator's section at the top of autoresearch/NOTES.md), keep "
+          "RESULT.json and autoresearch/NOTES.md current, and schedule the next wakeup (20-30 min "
+          "while you build or a run is in its first hour, 45-60 min while a run just trains).")
+RESUME = ("/loop Your session was restarted. Continue as slot agent {agent} of the one-search "
+          "series: re-read AR_BRANCH.json, autoresearch/PROTOCOL.md, RESULT.json and the end of "
           "autoresearch/NOTES.md, check your box with box.py status, then carry on.")
 
 

@@ -69,7 +69,7 @@ def market(monkeypatch, tmp_path):
 def test_offers_are_whitelisted_capped_single_gpu_and_ordered(market):
     got = box.offers()
     ids = [o["id"] for o in got]
-    # the 3090 at 0.31 is under its 0.65 cap (raised 2026-10-22, 3a9af7e); machine 777 is
+    # the 3090 at 0.31 is under its cap (0.65 from 2026-10-22, 0.40 in the one-search series); machine 777 is
     # blocklisted; the 4090 at 0.50 is over 0.45; the 2-GPU 5090 is out; the A100 is not a
     # whitelisted card, however cheap. Tier 0 (3090 / 5080) first, cheapest first
     assert ids == [4, 2, 1, 5, 7], ids
@@ -87,6 +87,19 @@ def test_the_cheaper_cards(monkeypatch):
     'they shouldn't be bigger than the good GPUs'. Their caps sit below every good card's, they
     rank by price inside tier 0, and a price tie goes to the good card."""
     good = ("RTX_3090", "RTX_3090_Ti", "RTX_4080", "RTX_4080S", "RTX_5080")
+    # the table of 2026-10-25, pinned: a later program's config.json may narrow the card list
+    # (the one-search series of 2026-11-09 rents fast cards first), and this test is about
+    # box.py's ordering and capping, not about one program's list
+    monkeypatch.setitem(box.CFG, "gpu_tiers", [
+        ["RTX_3090", "RTX_3090_Ti", "RTX_4080", "RTX_4080S", "RTX_5080", "RTX_4070S_Ti",
+         "RTX_5070_Ti", "RTX_3080", "RTX_3080_Ti", "RTX_4070", "RTX_4070S", "RTX_4070_Ti",
+         "RTX_5070", "RTX_4060_Ti", "RTX_5060_Ti"], ["RTX_4090"], ["RTX_5090"]])
+    monkeypatch.setitem(box.CFG, "max_dph", {
+        "RTX_3090": 0.65, "RTX_3090_Ti": 0.65, "RTX_4080": 0.65, "RTX_5080": 0.65,
+        "RTX_4090": 0.45, "RTX_5090": 0.6, "RTX_4080S": 0.65, "RTX_4070S_Ti": 0.3,
+        "RTX_5070_Ti": 0.3, "RTX_3080": 0.25, "RTX_3080_Ti": 0.25, "RTX_4070": 0.25,
+        "RTX_4070S": 0.25, "RTX_4070_Ti": 0.25, "RTX_5070": 0.25, "RTX_4060_Ti": 0.2,
+        "RTX_5060_Ti": 0.2})
     caps = box.CFG["max_dph"]
     cheaper = [g for g in box.CFG["gpu_tiers"][0] if g not in good]
     assert {"RTX_4070", "RTX_5070"} <= set(cheaper)

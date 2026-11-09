@@ -1,7 +1,126 @@
-# NOTES - the unified-recipe lineage on surf_src_sidistic
+# NOTES - the one-search series on surf_src_sidistic
 
-The lineage's memory: every round's winner appends what it learned (what worked, what did not,
-the numbers, the ladder). Read it before you start; append to it before you wrap up.
+Each slot agent appends what it learned under a dated heading at the END of this file (what it
+built, the numbers, the ladder, what it means for the user's question). Read the operator's
+section first. Everything below it is the unified-recipe program's log as its slot 3 left it
+(the branch this program was forked from): the history of run 5, kept for reference.
+
+## The one-search series (operator, 2026-11-09)
+
+**What this is.** The user asked whether ONE thread (a search that also teaches the network,
+"the way alpha 0 was trained") would do better than the hybrid that finished sidistic (PPO
+beside a search). PROTOCOL.md has the user's words, the five parts of the hybrid, the four
+slots and the rules. This section is the evidence you start from.
+
+**Where things are.**
+
+* This program: `AR_HOME=/home/steam/ar_az`, checkout `/home/steam/RL_Surf_az` (branch
+  `az/main`), agents `azr1b1..4` on branches `ar/azr1b1..4`, tmux session `ar_az`.
+* Run 5, read-only: `$AR_HOME/reference/run5/` (run.json, progress.csv, launch log, every eval,
+  `search_ticks.json`, `auto_bundle.tgz` with all 51 searches' logs and summaries, 19
+  checkpoints). Its own log is below in this file ("Round 1 FINAL lesson").
+* The last program's other slots: `git show origin/ar/unr1b4:autoresearch/NOTES.md` (the knob
+  as a rule, `tools/knob_ge.py`), `origin/ar/unr1b2` (the policy-guided beam), `origin/ar/unr1b1`
+  (the Nature paper's random bursts). Their runs: `/home/steam/ar_uni/runs/` (read-only).
+
+**Run 5 against the others (one seed each, the same recipe apart from the explore step).**
+
+| slot | explore step | how far | when |
+|---|---|---|---|
+| b3 run 5 | MCTS, sampled children all random-held | finish, later 9/9 at 118.28 s | first finish 8.23B steps |
+| b3 run 4 | MCTS, 0.5 random / 0.25 perturbed / 0.25 policy | 32.5%, failed the post-CP2 block | flat from 2.7B to 14.16B |
+| b2 geb6 | policy-guided beam, `--unstuck-max 2` | CP7 (best 97.96), then its greedy fell back to the CP2 pit | CP7 at 14.87B |
+| b4 v6 | the yield-rule knob + a windowed death charge | 44.1%, 6 walls on time | 5.96B |
+| b1 v2 | random bursts (the Nature paper) | 32.5%, failed the post-CP2 block | 14.10B |
+| control | no search | 1.72% | never left the first platform |
+
+**What the search did in run 5.**
+
+* A search line opened 4 of the 12 walls: the spawn exit (first ramp), the approach to the pit,
+  the loop before CP6 (search 15; learned by PPO in 0.35B steps after a 1.8B creep) and the
+  finish (search 20 found the rim and the shaft in 207 s; learned in 0.23B). The policy found
+  the other 8 itself while the curriculum trained on the newest line. That includes the
+  post-CP2 block, which 15 minutes of search alone did not open.
+* 20 searches had started by the first finish: 2.57B simulator ticks beside 8.23B of rollouts
+  (24% of the total). All 51 searches of the run: 3.99B ticks.
+* One search: 2,048 game copies for 6 minutes at ~262k ticks/s (~92M ticks), ~930 waves, ~1.9M
+  nodes, a few hundred archive cells, 16 roots on the last 20 s of the greedy line, macro of 12
+  decisions (0.48 s), 16 children, c_puct 0.25, novelty weight 3, random temperature 5. The
+  best line is the policy's own flight plus a tail of search macros (median 18 macros, 8.6 s).
+* The tree's value is a node's best BANKED progress in its subtree (progress at a tick the map
+  pushed back), min-max normalised. It is not a discounted return and the network's value
+  function plays no part in it. The prior over children is uniform.
+
+**The random-or-policy question so far.**
+
+* In the trainer: run 4 (half random) failed where run 5 (all random) passed. One pair, one
+  seed.
+* Explorer alone (b4, 10 min each, same roots and seeds): at a wall where the policy was stuck,
+  the yield rule reached 4.93%, all-policy 1.77%, all-random 2.76%; where the policy could fly,
+  the rule 20.4%, all-policy 20.4%, all-random 2.8%. The rule sat at 52-66% random by itself.
+* These two do not agree, and they measure different things (a tree against a chain explorer,
+  a whole run against 10 minutes). Slot 2 exists to settle it inside the tree.
+* b4's v2 kept one archive for the whole run and it was a null: old cells took ~99% of the
+  selections.
+
+**Known weak points of run 5's loop (observed, never fixed: the recipe was frozen).**
+
+* Of the 51 searches, 33 gave a new line, 14 found nothing and 4 lines were discarded as stale
+  (the policy had passed them while the search ran). The search roots on ONE greedy replay, and
+  slot 3 of the last program traced 12 of those 18 misses to a replay that died early.
+* Search 22 adopted a line far behind the policy because the frontier it was checked against
+  came from one bad eval.
+* After the first finish the trainer keeps firing a search every ~0.4B steps and re-adopts a
+  finishing line each time, restarting the backward curriculum.
+* The training win rate measures the spawns near the goal, never the policy. Only the greedy
+  evals from the start count.
+
+**The operator's view, to be tested and not believed.**
+
+* PPO may be the hybrid's second explorer: it found 8 of 12 walls. A tree-only learner has to
+  find those through the tree, or through its own stochastic play.
+* A policy trained only on tree labels is trained on states the tree visits. The grader flies
+  the greedy policy with no tree. The gap between the two is the classic imitation failure
+  (DAgger); roots on the policy's own lines are the standard answer.
+* An all-random tree teaches "hold this one action for half a second" at each labelled state.
+  Whether that is a usable policy target is an open question; a tree with policy children gives
+  closed-loop labels.
+
+**Trainer facts checked for this program (train_fast.py on this branch).**
+
+* `--auto-spine-scratch` writes `auto/spine0.npy` = the map's spawn state as the first "line",
+  so the curriculum machinery runs from step 0 and every later line is the run's own search.
+* `--demo-share S` puts the curriculum's window on a share S of every spawn pool "on top of
+  the recipe's own spawn sources". Without it the reservoir share of the pool is replaced by
+  curriculum-window states (`demo.build_pool(..., fresh_frac=1 - respawn_frac)`), and the
+  trainer then REFUSES `--respawn-novel` and `--respawn-backward-mix`.
+* A search starts on the quorum (enough greedy episodes past the line's success mark) or after
+  `--auto-spine-patience` steps without a new line; after a search that found nothing it waits
+  `--auto-spine-retry`. Launch-log lines: `[<step>] auto-spine search N: ...`, `... NEW SPINE
+  from beam (...)`, `... STALE spine discarded ...`.
+* The MCTS flags (`--mcts-*`) are defined in `tools/beam_tas.py`; the child modes are drawn in
+  `tools/mcts_search.py` ("the knob"). The trainer passes extra ones through
+  `--auto-spine-mcts-args "<one string>"`.
+* Imitation machinery that exists: `--bc-file`, `--bc-coef`, `--bc-target argmax|dist`,
+  `--bc-value-coef`; `tools/plan_to_bc.py`, `tools/expert_dagger.py`, `tools/exit_local.py` (the
+  expert loop: search, distil, gate, in rounds). There is no supervised-only switch in the
+  trainer. CLAUDE.md says `--keys-hold` is refused with `--bc-file`; check whether that still
+  holds before you plan around it.
+
+**Boxes, from the last round** (run 5's recipe): RTX 5080 ~365k steps/s, RTX 4080 ~280k, RTX
+3090 ~215k, RTX 5060 Ti 125-180k. The trainer is bound by one CPU thread, so the host matters
+as much as the card.
+
+**Things that cost time last round.**
+
+* `box.py pull --ckpt` of `ckpt_latest.pt` fails its md5 when the trainer rewrites the file
+  during the copy. Pull a `ckpt_<step>.pt` snapshot instead, or pull again.
+* Agents rented boxes whose deadline fell before the round's end. Check it on every wakeup.
+* `box.py pull` does not bring `auto/`. Run 5's search bundle was tarred on the box and fetched
+  by hand before the release; the per-search checkpoint copies (5.6 GB) were left behind.
+* If Claude Code shows a "Teach auto mode about your environment?" dialog in your window,
+  nobody but the user can dismiss it. Do not idle at a prompt: always end a turn with a
+  scheduled wakeup.
 
 ## Round 0 (operator, 2026-11-08)
 
