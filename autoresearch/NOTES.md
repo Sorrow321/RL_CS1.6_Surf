@@ -1168,7 +1168,7 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   (|tanh mu - u| 0.39-0.42), value MSE 0.040-0.044, agreement 0.24-0.25 (the new tree's rows are
   new targets).
 
-### 23:08 UTC: window (CP1) ON TIME (1.284B steps / 1.668B total; run 5 0.680B / 0.914B)
+### 23:06 UTC: window (CP1) ON TIME (1.284B steps / 1.668B total; run 5 0.680B / 0.914B)
 
 | wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
 |---|---|---|---|---|---|---|
