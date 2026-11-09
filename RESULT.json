@@ -4,10 +4,10 @@
  "final": false,
  "slot": 1,
  "best": {
-  "score": null,
-  "eval_file": null,
+  "score": 1.767,
+  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_0302514176.jsonl",
   "run": "azr1b1_pool1",
-  "step": null,
+  "step": 302514176,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -104,10 +104,10 @@
  },
  "ladder": {
   "unit": "steps",
-  "verdict": "alive (launched 20:48 UTC, no wall yet)",
+  "verdict": "alive: no wall yet at 0.63B; first ramp and CP1 due by 1.6B steps (~22:10 UTC)",
   "total": {}
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off (novel, greedy, front-perturb, backward-mix, and --demo-share), so 10% of training starts are the map start and 90% come from the search's backward curriculum (half on its frontier band). PPO, the search and run 5's search cadence unchanged; --int-real-only also off (the trainer refuses it without novel rows; it only touched novel-row episodes). Run azr1b1_pool1 launched from scratch 2026-11-09 20:48 UTC on an RTX 4080 / Ryzen 9950X box, ~300k steps/s. No wall cleared yet; ladder pending.",
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum. PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~347k steps/s): greedy 1.6-1.8% from 76M to 529M, 2.5% at 604M; run 5 was at 14.1% (first ramp) by 529M, its training episodes having broken out first through October's sources. Found: the curriculum froze on search 1's line (a stand-still stretch in the line; run 5 had the same freeze) and the next search waited the full 0.3B patience. Search 2's line (5%) adopted at 559M. Verdict at the 1.6B deadline.",
  "box": {
   "id": 59950838,
   "gpu": "RTX_4080",
