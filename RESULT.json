@@ -4,49 +4,41 @@
  "final": false,
  "slot": 4,
  "best": {
-  "score": 2.189,
-  "eval_file": "/home/steam/ar_az/runs/azr1b4/azr1b4_tree2/traj_0275352056.jsonl",
-  "run": "azr1b4_tree2",
-  "step": 275352056,
+  "score": 2.595,
+  "eval_file": "/home/steam/ar_az/runs/azr1b4/azr1b4_tree1/traj_1112725338.jsonl",
+  "run": "azr1b4_tree1",
+  "step": 1112725338,
   "ckpt": null,
   "recipe": [
    "bash",
    "tools/az_launch.sh",
-   "azr1b4_tree2",
+   "azr1b4_tree1",
    "--mcts-minutes",
-   "10",
-   "--mcts-max-waves",
-   "700",
-   "--mcts-roots-secs",
-   "300",
-   "--mcts-max-roots",
-   "128",
-   "--az-node-adv",
-   "1"
+   "3"
   ],
-  "commit": "5064f01c",
+  "commit": "153e08d768eb69438ec8d87811b0a2a4b23599f8",
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null
  },
  "ladder": {
   "unit": "total ticks (ladder.py --total-is-step)",
-  "verdict": "alive, all walls PENDING",
   "tree1": {
-   "newest_total": 1053137530,
-   "first ramp": null
+   "first ramp": null,
+   "window (CP1)": null,
+   "verdict": "FAILED first ramp at 2.0B"
   },
-  "tree2": {
-   "newest_total": 481842914,
-   "first ramp": null
-  }
+  "verdict": "v1 failed the first ramp; v2/v3/v4 alive (pending)"
  },
- "summary": "Slot 4 (the tree only: no PPO, no rollouts; the network learns only from MCTS trees rooted on its own greedy line). Three recipes from scratch on one box (the box was mostly idle under one): v1 = run 5's tree as is (3-min searches, roots on the last 20 s): 16 rounds, 1.05B ticks, eval best 1.92%, stuck on the spawn platform - the trees find the landings (1.8-2.8%) and the network learns them at the line's states (100% on its own line rows) but its greedy cannot reproduce them; v2 = roots over the whole greedy line + advantage-weighted node labels: best 2.19% at 0.28B; v3 = v2 + the yaw sigma fitted to the tree's targets (run 5's random children narrowed as PPO narrowed sigma; here nothing did). First ramp (8%) deadline 2.0B total ticks: v1 at ~23:15 UTC, v2 later, v3 later still. Run 5 cleared it at 0.76B total.",
+ "summary": "Slot 4 (the tree only: no PPO, no rollouts; the network learns only from MCTS trees rooted on its own greedy line, every tick counted). v1 = run 5's tree as is: FAILED the first ramp (8%) at 2.0B total ticks (run 5: 0.76B); best eval 2.60%. The trees find the landing below the spawn (1.8-2.8%) and the network learns their lines at the lines' own states, but its greedy cannot fly them from the start. Running: v2 (roots along the whole greedy line + advantage-weighted node labels), v3 (+ the yaw sigma fitted to the tree), v4 (+ a new jittered spawn each round, as the eval has). Next: their first-ramp deadlines (2.0B ticks each).",
  "runs": {
   "azr1b4_tree1": {
    "commit": "153e08d7",
    "recipe": "bash tools/az_launch.sh azr1b4_tree1 --mcts-minutes 3",
-   "launched": "2026-11-09 21:31 UTC"
+   "launched": "2026-11-09 21:31 UTC",
+   "status": "FAILED first ramp + window at 2,008,105,486 total ticks; stopped 2026-11-09 23:28 UTC",
+   "best_score": 2.595,
+   "best_eval": "traj_1112725338.jsonl"
   },
   "azr1b4_tree2": {
    "commit": "5064f01c",
@@ -57,6 +49,11 @@
    "commit": "77466653",
    "recipe": "bash tools/az_launch.sh azr1b4_tree3 --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 1",
    "launched": "2026-11-09 22:28 UTC"
+  },
+  "azr1b4_tree4": {
+   "commit": "7fcfb706",
+   "recipe": "bash tools/az_launch.sh azr1b4_tree4 --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 1 --az-spawn-rotate 1",
+   "launched": "2026-11-09 23:28 UTC"
   }
  }
 }

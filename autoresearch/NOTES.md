@@ -1221,3 +1221,24 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   round's greedy pass, roots, line replay and 2048-copy restore all use it (ctx row0 / obs_start /
   gate_seed). One change against v3. To launch in v1's place when v1 reaches its first-ramp
   deadline (2.0B total ticks, ~23:25 UTC).
+
+### azr1b4 - 2026-11-09 23:29 UTC: **v1 FAILED the first ramp (and the window) at 2.008B total ticks; stopped. v4 launched in its place**
+* **v1 = azr1b4_tree1** (commit 153e08d7: run 5's tree as is with 3-min searches, roots on the last 20 s
+  of the greedy line, prefix anchors before the earliest root, best-child node targets): 35 rounds,
+  35 evals, newest 2,008,105,486 ticks. ladder.py --total-is-step: **first ramp FAILED, window FAILED**
+  (deadlines 2.0B; run 5 cleared them at 0.763B / 0.914B total). Eval scores by round: 0.36 0.87 1.30
+  0.88 0.87 0.87 0.85 0.87 1.03 0.97 0.86 0.93 0.90 0.97 1.87 1.31 1.92 **2.60** (1.11B) 1.85 2.06 1.71 1.05
+  1.88 2.27 2.12 1.97 1.93 2.25 1.91 2.28 2.06 1.61 1.73 1.37 1.34 - never past the landing below the
+  spawn platform (~2%). Stopped 23:28 UTC (kill of its pid); files pulled.
+* **Where and why (the evidence above):** the trees keep finding landings at 1.8-2.8% from the policy's
+  own roots; the network learns those lines at the line's states (az_diag: 100% on the line rows),
+  but its greedy cannot fly them from the start: (a) the trees only searched the end of a
+  wandering greedy line whose start the prefix rows anchored, (b) the targets are mostly the one
+  random child that won, (c) every tree was rooted on ONE spawn heading while the eval flies nine
+  (+-5 deg jitter), and (d) the random children never narrowed (sigma frozen). v2, v3 and v4 each
+  change one of these in turn.
+* **v4 = azr1b4_tree4**, launched 23:28 UTC from step 0 (commit **7fcfb706**, checkout /root/t4): v3 +
+  --az-spawn-rotate 1. Command (cd /root/t4): `bash tools/az_launch.sh azr1b4_tree4 --mcts-minutes 10
+  --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 1
+  --az-spawn-rotate 1`. Running on the box now: v2 (5064f01c, /root/t2), v3 (77466653, /root/t3),
+  v4 (7fcfb706, /root/t4); /root/RL_Surf stays at 153e08d7 (v1's commit).
