@@ -1091,3 +1091,10 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   labelled (anchor rows) only BEFORE the tree's EARLIEST root, i.e. outside the search window;
   inside the window the roots' own node rows decide (prefer-first keeps the policy's move where
   it was the best one).
+
+### azr1b4 - 2026-11-09 21:25 UTC: box 59957469 rented (the pacer's limit had moved to 1.59 $/h)
+* Box **59957469**: RTX 4080 SUPER (reports 32,760 MiB), host CPU AMD EPYC 7K62 (offer: 32 threads; the
+  container sees 96), $0.410/h, machine 141481, ssh root@70.48.44.13 -p 50571. Rented 21:22 UTC with
+  --hours 12: watchdog deadline 2026-11-10 09:22 UTC - to be extended before then (round end 22:40).
+* Deployed ar/azr1b4 at 153e08d7. Smoke test started: `tools/az_launch.sh azr1b4_smoke --mcts-minutes 1
+  --az-steps 100 --az-rounds 2` (the step-0 network from train_fast --steps 0, then 2 short rounds).
