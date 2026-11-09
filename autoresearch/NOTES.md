@@ -692,3 +692,29 @@ harvest of this box would fail the same way: pull before every deadline.
   and neither repeat-p 0.90 nor a direction-aware key changes it. This is the CLAUDE.md 0b case
   ("speedup on ramps that are not shown by reward vector field"): the recipe's exploration has to
   value speed/energy itself well upstream of a wall, not only explore at it.
+
+### 2026-11-09 06:59 UTC - CORRECTION: the post-CP2 slot is a precision gate with a speed floor, not a plain speed gate
+
+The 06:46 entry's "hidden speed gate" rested on the 32 u goal field's picture (a hole through
+the shelf). The simulator's own collision says otherwise. Measured locally with the core (duck
+hull, `autoresearch/analysis/unr1b1_slot_*.py`; MEASUREMENT only, CLAUDE.md 0b):
+* Geometry (ducked origin): shelf top ~10,590 (origin >= 10,608-10,612), the tunnel under it
+  (origin <= 10,524-10,560 by y); a SLIT through the shelf only at |y| <~ 40, x -484..-704; a thin
+  canopy plate (~10,754-10,766) over the slit (|y| <~ 80); a beam (origin 10,524-10,820) at x
+  -420..-464 closes the slit's +x end; at x -708 the tunnel ceiling steps down to origin 10,524
+  (the end wall above); the ledge top 10,322 (origin >= 10,340) at x -912..-948. A flight that
+  clears the ledge and lands on the tunnel floor beyond is teleported back to the map start
+  (sanity flights from inside the tunnel), so the route past the ledge is not the floor.
+* bench2: 328 of v2's own approach positions (6 greedy episodes, kicker apex to end wall) x
+  horizontal speed K 0.6-2.5 x heading +-60 deg x vz +-400 = 132,840 hands-off ducked flights:
+  0 pass. The policy's own velocities: deepest x -768 (the end wall).
+* bench3: synthetic starts over / in the slit (x -500..-650, |y| <= 80, z 10,580-10,700; -x
+  speed 400-1,500, vy +-300, vz -600..+200): 45 of 9,600 pass, ALL at y 0 (in the slit), z
+  10,580-10,620 (shelf height), x -500..-600, -x speed >= 1,000 u/s (0 at 400-800), vz -200..-600.
+* Reading: the line must skim the shelf (<= ~10,620, i.e. inside the slit's near half, entered
+  from the side under the canopy) with >= ~1,000 u/s toward -x. v2's line crosses that x range
+  at 10,750-10,850 with ~900 u/s of -x speed, reaches the slit at its far end and hits the step.
+  Speed is necessary but the altitude and the alignment are what it lacks most: a narrow
+  window (0.5% of a box already centred on it), invisible to the potential field, which only
+  says "go down here". That a uniform explore step from the line's last 4-16 s never finds it
+  (x16, x4L, xR90, xH8) fits a needle of this size; the 06:46 "speed gate" sentence is withdrawn.
