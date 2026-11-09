@@ -1050,8 +1050,9 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     start, replayed open loop on a 1-env core through a greedy wrapper that only READS (the executed
     engine row and view are the line's; the held keys are set to the executed row after each
     decision, beam_tas.prefix_sync's rule): where the line took a random-held child the label is
-    that held move, elsewhere the network's own greedy move at the replayed state. A line row's
-    value is the Q of the path node its decision belongs to (the root's for the greedy prefix).
+    that held move, elsewhere the network's own greedy move at the replayed state; the greedy
+    prefix is labelled only BEFORE the tree's earliest root. A line row's value is the Q of the
+    path node its decision belongs to (the root's for the greedy prefix).
     -> dict of arrays (scal, pose, probs, vmu, vsd, value, kind: 0 node / 1 the line's searched
     part / 2 its greedy prefix, w) + ticks."""
     import torch
@@ -1075,8 +1076,15 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
             "vsd": [nt["vsd"][k]], "value": [nt["value"][k]],
             "kind": [np.zeros(int(k.sum()), np.int8)]}
     # ---- line rows ---------------------------------------------------------------------------
+    # the greedy prefix up to the line's root: ANCHOR rows (-1) only before the tree's EARLIEST
+    # root - outside the search window, the policy's own moves; inside it (-2) the roots' own
+    # node rows say whether the policy's move was the best one, and a self-label there would
+    # contradict them (an idling untrained policy: "keep idling" at the very states where the
+    # tree found the way off the platform)
+    _c0, _n0 = int(tree.cstart[0]), int(tree.ncld[0])
+    r_first = int(np.min(tree.root_dec[_c0:_c0 + _n0])) if _n0 else int(rdec)
     node_d = [int(root)] * int(rdec)
-    kind_d = [-1] * int(rdec)          # -1: the greedy PREFIX up to the root (the policy's own)
+    kind_d = [-1 if d < r_first else -2 for d in range(int(rdec))]
     for nid in path[1:]:
         nd = int(tree.ndec[nid])
         node_d += [int(nid)] * nd
@@ -1100,8 +1108,9 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     for d in range(int(n_dec)):
         pol.act(o)
         # a decision of a SAMPLED / perturbed child (kind 2: none at --mcts-random-frac 1) has no
-        # label here - its executed move was a draw this replay cannot rebuild; it is stepped
-        if kind_d[d] != 2:
+        # label here - its executed move was a draw this replay cannot rebuild - and nor has the
+        # prefix inside the search window (-2); both are stepped
+        if kind_d[d] not in (2, -2):
             l_scal.append(np.asarray(pol.last_scal, np.float32)[0].copy())
             l_pose.append(np.asarray(pol.last_pose, np.float32)[0].copy())
             if kind_d[d] == 1:
