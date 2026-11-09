@@ -748,3 +748,10 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   906M 20.49 / 17.96, 982M 20.52 / 18.77, 1,057M 20.48 / 18.25 - a gate ahead, not a wall (v3 took
   the window, 26.7%, at 1,284M). No spine yet: search 2 (755M) reached d 79,324, STALE against the
   greedy frontier 79,174 that moved under it; next search at 1,138M. 220k steps/s.
+* **06:25 UTC - v6 at 1.81B: WINDOW (CP1) at 1,435M (26.60), ON TIME (deadline 2.07B; v3 1,284M).**
+  Evals 1,133-1,359M 20.46-20.51, 1,435-1,812M 26.43-26.83 (median 26.0-26.4). Now at the CP2-pit
+  dive like v3 at the same steps: at 1,812M 8/9 episodes end `fail` at 28.3-29.2 s with their best
+  d on (or 0.5 s before) the death tick at x 3,230-3,810, z 10,930-11,130 (v3 at 1,812M: 25.1-26.1
+  s, same place). One difference in how they die: v6's last ticks fall at vz -200..-1,030 (v3
+  -1,460..-1,500). Search 3 (1,313M) adopted a spine to d 75,275 (24.5%); the greedy passed it.
+  Pit dive (> 27.5%) due 3.88B (v3 3,165M) - the death charge's test.
