@@ -1184,3 +1184,20 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   tree 26.68 / 27.72 / 27.73% (k04-k06, its fine perturbed steers threaded the gate). The rule
   here: ~half random-held, a third perturbed, P near 0.2; per child R wins most, E next, P least.
   Neither of my pit lines is through the gate (27.5% = d 72,264; lines end at d 73,141 / 73,192).
+
+### 23:46 UTC: **PIT DIVE ON TIME at 2.492B** - the rule's tree threaded the gate (perturbed children)
+
+* Ladder (steps): first ramp 0.755B, window 0.906B, **pit dive 2.492B** (27.55%, median 27.5%) -
+  all ON TIME (run 5 0.529 / 0.680 / 1.812B; deadlines 1.600 / 1.600 / 3.625B). Evals 1.81-2.42B sat
+  at 27.0% (the fatal dive at the gate) until search 6's line was learned.
+* **Search 6** (2.039B, patience; adopted 2.122B): 796 waves, 35,840 cells, best **27.73% banked**
+  (raw 28.30%) by wave ~64, i.e. THROUGH the gate (27.5% = d 72,264; line end d 72,049). Mean
+  shares P 0.19 / E 0.31 / R 0.50. Its 12 macros: **E P R G P E G E G R E E** (E5, P2, R2, child
+  0 x3) - the gate was threaded by PERTURBED children (held fine steers, log-uniform 2-20 deg, keys
+  temperature 1.5), ending on two of them. The policy learned it in 0.37B steps (2.122 -> 2.492B).
+* Against the earlier runs at this gate: run 4 (fixed 0.5 R / 0.25 E / 0.25 P) threaded it in
+  search at 27.72% (k05/k06) and its policy passed at 2.341B; run 5 (all random-held, no E
+  children) never threaded it in search (25.86-26.94% banked) and its policy passed by itself at
+  1.812B. This run passed later than both (0.68B after run 5, inside the 2x deadline) and by the
+  same route as run 4. The rule kept E at ~0.31 although R won more per child here (R 0.0057, E
+  0.0036, P 0.0014 per child): the floor never bound; probability matching left E a third.

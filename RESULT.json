@@ -150,10 +150,11 @@
   "unit": "steps",
   "first ramp": 755499008,
   "window (CP1)": 906493952,
-  "verdict": "alive: 2 walls ON TIME, pit dive pending (deadline 3.625B)",
-  "newest_eval": 1736966144,
-  "best_eval_pct": 27.08,
-  "total": {}
+  "verdict": "alive: 3 walls ON TIME, cavity pending (deadline 4.229B)",
+  "newest_eval": 2491940864,
+  "best_eval_pct": 27.55,
+  "total": {},
+  "pit dive": 2491940864
  },
- "summary": "Slot 2 (a balanced tree): run 5 with ONE change, the MCTS child mix set by a rule instead of fixed all-random (sibling wins per kind -> shares, floor 5%, memory 256 wins; commit 932167fe). Run azr1b2_sib from step 0 at 21:20 UTC (RTX 5080, ~280k steps/s). Ladder in steps: first ramp 0.755B (run 5 0.529B), window 0.906B (run 5 0.680B), both ON TIME; at the pit gate 27.1% raw at 1.74B (wall 27.5%; run 5 1.81B, deadline 3.63B). Pit searches banked 26.6% (run 5's 25.9-26.9%) with the rule at ~R 0.50 / E 0.32 / P 0.18."
+ "summary": "Slot 2 (a balanced tree): run 5 with ONE change, the MCTS child mix set by a rule instead of fixed all-random (sibling wins per kind -> shares, floor 5%, memory 256 wins; commit 932167fe). Run azr1b2_sib from step 0 at 21:20 UTC (RTX 5080, ~290k steps/s). Ladder in steps: first ramp 0.755B, window 0.906B, pit dive 2.492B - all ON TIME (run 5 0.529 / 0.680 / 1.812B). The pit gate was threaded IN SEARCH (search 6, 27.73% banked, line E P R G P E G E G R E E: perturbed children), as in run 4 and unlike run 5 (whose policy passed alone). Next: cavity (deadline 4.23B)."
 }
