@@ -1081,3 +1081,13 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   and the greedy PREFIX up to the root (kind 2: the policy's own moves, an anchor against drift),
   so a long prefix cannot crowd out the new part. Batches: 50% node rows, 25% searched-line
   rows, 25% prefix rows; an empty pool's share goes to the others.
+
+### azr1b4 - 2026-11-09 21:19 UTC: one more label rule before launch (commit 62f3a65f)
+* Run 5's search 1 (on an untrained policy) shows what my first tree will look like: the greedy
+  idles and stalls at 34 s, 16 roots, 934 waves, 1.9M nodes but only 446 cells, best 1.77%
+  banked at depth 17 (a 14.5 s line whose root is ~6.4 s into the idle greedy line).
+* With prefix self-labels up to the line's root, the network would be taught "keep idling" at
+  the very platform states where the tree found the way off it. So the greedy prefix is
+  labelled (anchor rows) only BEFORE the tree's EARLIEST root, i.e. outside the search window;
+  inside the window the roots' own node rows decide (prefer-first keeps the policy's move where
+  it was the best one).
