@@ -617,3 +617,18 @@ harvest of this box would fail the same way: pull before every deadline.
   (64 u x 32 u energy x heading) give it no stepping stone, and the archive saturates, so more
   compute for the same explore step is not the missing piece. With x16 (16 s roots, 24 min) this
   closes the explorer-alone question at this wall for slot 1's step.
+
+### 2026-11-09 00:40 UTC - unr1b1_v2 at 8.81B; box extended to 12:37 UTC; harvest snapshot pulled
+
+* Evals 8.19-8.79B: best 32.45-32.46%, median 32.4-32.5%; best score still 32.476 (traj_6302990336).
+  Searches 15-19 of the second segment: nothing (deepest chain ends d 67,285-67,346). ON TIME; the
+  post-CP2 deadline 13.93B is ~08:35 UTC at 179k steps/s.
+* `box.py extend --hours 12` at 00:37: box 59665725 now runs to 2026-11-09 12:37:56 UTC, past the
+  round end (12:35).
+* The snapshot at or before the best eval, ckpt_final.pt (6,000,476,160 - the first segment's
+  end), pulled to the run dir now (md5 166c386574f325998b442a266140801e, box and local), so the
+  round-end harvest needs only ckpt_latest.pt. Box-side snapshots: 1-5B, final (6.0B), 7B, 8B.
+* Plan: if the ladder calls the post-CP2 block FAILED at 13.93B, stop v2 (ladder rule 2), pull
+  its ckpt_latest.pt (copied aside, md5) and the gel records, and release the box: a new recipe
+  launched at ~08:40 has ~3.2 h (~2.1B steps) before the wrap-up, where v2 itself took 2.8B to
+  reach this wall, so it could not change the ladder's verdict.
