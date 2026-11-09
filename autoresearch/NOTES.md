@@ -769,3 +769,33 @@ hull, `autoresearch/analysis/unr1b1_slot_*.py`; MEASUREMENT only, CLAUDE.md 0b):
 * Box released at 08:51:37 UTC (`box.py status`: no box). No new recipe is launched: ~1.9B steps
   were left before the 11:55 wrap-up, and v2 itself needed 2.34B to reach the cavity, so no recipe
   started now could get past v2's rung; what is left of the round goes to local analysis.
+
+### 2026-11-09 09:32 UTC - an optimizer over the explore step's actions cannot reach the slot from the line's last 4 s either
+
+`autoresearch/analysis/unr1b1_slot_cem.py` (local core, MEASUREMENT only, CLAUDE.md 0b): a
+cross-entropy search (3,000 rollouts x 20 iterations per start, 4% elite, smoothing 0.6) over the
+explore step's own action set, per 4-tick decision, from v2's greedy states (ep 0 of
+traj_13550747648) T s before the end wall. Target: the passing envelope the hands-off bench
+measured (at the x -560 crossing: |y| < 30, z 10,580-10,620, >= 1,000 u/s toward -x) or a pass
+(alive past the ledge). 384 iterations, 1.15M rollouts in all: 0 passes, 0 crossings in the slit
+at shelf height (|y| < 48, z <= 10,640).
+* The view held at an offset from the velocity heading (explore_phase1's), uniform start: from
+  0.5-2 s out the best crossing is in the slit's width (y 22-56) but 170-245 u too high (z
+  10,789-10,864); from 3-6 s out no rollout even gets back to x -560 (random keys fall off the
+  surf ramps).
+* The LINE'S OWN per-tick view + a held delta (+-3..30 deg) and its keys (80% at the policy's
+  choice to start): replaying the line's actions open loop, aligned to the policy's decision
+  phase (its keys change on tick % 4 == 0), reproduces the line from 1-3 s out (it hits the end
+  wall at x -704/-707) but not from 6 s. Best per start: 1 s y -93 z 10,753 858 u/s; 2 s y 30
+  z 10,790 854 u/s; 3 s y -185 z 10,621 743 u/s; 4 s y -269 z 10,600 677 u/s; 5 s loses the line.
+  The search finds the slit's width only 130-170 u too high, or shelf height only 180-270 u
+  beside the slit and 250-320 u/s short - never the two together, let alone with the speed.
+* (Two first variants - a depth score, and a key-seeded start - ran before the phase fix; both
+  0 passes, stuck on the end wall at x -754..-770.)
+* Reading: the slot cannot be reached by changing the line within its last ~4 s, by random
+  bursts (90,000) or by an optimiser (1.15M rollouts) over the explore step's actions. Its entry
+  is set up further upstream, where an open-loop search loses the line, so a search rooted in the
+  last 4-16 s before the stall (the --ge-line roots) has nothing to find there. Generic consequence
+  for the next recipe: the search must branch where the line still has the freedom (seconds
+  before the stall) and carry a closed-loop controller through the surf in between - the
+  explorer's cells only remember open-loop chains.

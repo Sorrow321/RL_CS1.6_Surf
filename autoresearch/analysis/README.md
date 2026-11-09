@@ -36,3 +36,8 @@ box needed for the benches). Map coordinates are measurement boxes only, never a
   random actions, repeat 0.95 per 4-tick decision, view held at an offset from the velocity
   heading: explore_phase1's draw) from the policy's OWN approach states 0.15-2.5 s before the end
   wall: does any 4 s burst pass, enter the slit at shelf height, or bring >= 1,000 u/s there?
+* `unr1b1_slot_cem.py [traj] [ep] [T,..] [N] [iters] [envelope|depth] [uniform|policy|line] [w]` -
+  a cross-entropy search over the explore step's action set from the policy's own greedy states
+  T s before the end wall: can ANY action sequence put the player in the slit's passing envelope
+  (or past the ledge), and from how far upstream? `line` perturbs the line's own per-tick view and
+  keys (replays are aligned to the policy's decision phase, tick % 4 == 0).
