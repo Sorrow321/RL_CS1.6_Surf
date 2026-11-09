@@ -894,3 +894,8 @@ this map's early walls in runs 1-4. Box: RTX 5080, ~364-372k steps/s while train
 ~60 s and the 80 MB scp took longer), so the trainer was paused (SIGSTOP by pid) 6 s after a save and
 the pull repeated: ckpt_latest.pt at 20,459,814,912 verified. 271 evals pulled; score.py --best and
 ladder.py on them give the table and the best above. Box 59668027 released.
+Also pulled before the release (md5 166391c47a867e6c8efa23d33e3c9110 verified):
+`runs/unr1b3/unr1b3_mcts5/auto_bundle.tgz` - every search's spine.npy, auto_spine.log, beam.log,
+beam/summary.json and greedy_baseline.jsonl, plus the keeper's log and state. Not in it: the
+spines' spine.keys.npy / spine.json and the per-search ckpt copies (5.6 GB), lost with the box.
+`box.py status --agent unr1b3`: no box (12:32 UTC).
