@@ -1168,3 +1168,19 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   ~23.6%), shares P 0.15 / E 0.35 / R 0.50. Run 5's pit searches banked 25.86 / 25.87 / 26.94%
   (k03-k05) before its policy threaded the gate itself at 1.81B; run 4's mixed tree threaded it
   in search (27.72%, k05/k06).
+
+### 23:04 UTC: azr1b2_sib at 1.74B - at the pit gate, 27.1% raw (wall 27.5%), two pit lines adopted
+
+* Evals 1.21-1.74B: 26.3, 26.9, 26.9, then 27.1% x5 (medians 26.1-27.1%), CP1. Pit dive (27.5%)
+  not yet; run 5's policy threaded it at 1.812B; deadline 3.625B (~1.8 h at this box's speed).
+* Searches at the pit (both adopted: they bank deeper than the greedy's banked 23.58%):
+
+  | k | start | waves | cells | best banked | raw | mean P/E/R | wins/child G P E R | line |
+  |---|---|---|---|---|---|---|---|---|
+  | 4 | 1.133B quorum | 786 | 27,907 | 26.63% | 27.59% | 0.18/0.33/0.49 | .0091 .0010 .0024 .0038 | P1 E2 |
+  | 5 | 1.586B patience | 894 | 28,152 | 26.58% | 27.56% | 0.19/0.31/0.50 | .0077 .0008 .0023 .0038 | G2 P1 E1 R8 |
+
+  Run 5's pit searches (all random-held) banked 25.86 / 25.87 / 26.94% (k03-k05), run 4's mixed
+  tree 26.68 / 27.72 / 27.73% (k04-k06, its fine perturbed steers threaded the gate). The rule
+  here: ~half random-held, a third perturbed, P near 0.2; per child R wins most, E next, P least.
+  Neither of my pit lines is through the gate (27.5% = d 72,264; lines end at d 73,141 / 73,192).
