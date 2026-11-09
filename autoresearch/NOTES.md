@@ -823,3 +823,62 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   curriculum walks search 13's spine back (starts 2,291-2,296 of 5,262, success 0-59.5%). Healthy:
   kl 0.019, yaw sigma 0.068, 212k steps/s. Hand-on unr1b4_dc6/ckpt_5251792896.pt pulled (md5
   e3ff0554...); RESULT best -> 43.843.
+
+## 2026-11-09 12:00 UTC - WRAP-UP (round 1, the last round): the lesson
+
+**Result.** v6 = `unr1b4_dc6`, ONE run from step 0 on commit 9c8be647: the incumbent recipe + the
+knob explorer (`--auto-spine --auto-spine-scratch --auto-spine-knob --auto-spine-async
+--auto-spine-recheck --auto-spine-milestones --auto-spine-patience 3e8 --auto-spine-envs 2048
+--auto-spine-ge-minutes 10 --demo-share 0.25 --demo-window 5 --demo-grow 5 --demo-grow-max 40
+--demo-cooldown 5 --demo-front-frac 0.67 --demo-success-d 100 --demo-success-bonus 50 --ckpt-every
+2.5e8 --demo-match-band --auto-spine-knob-evalroots --auto-spine-deeper`) + `--death-charge 1
+--death-charge-window 2`. Stopped for the wrap-up at 6,039,797,760 steps. **Best 44.141 at
+5,964,824,576 (median 44.0%, CP3, 0 finishes).** Hand-on: ckpt_latest.pt (step 6,032,982,016, md5
+fa1db1cc...; 68M after the eval, more than twice as near as ckpt_5751963648.pt, md5 a1b8e3fa...,
+213M before - both pulled, plus ckpt_6002049024.pt).
+
+| wall | v6 (knob + death charge) | v3 (knob, no charge) | October | deadline |
+|---|---|---|---|---|
+| first ramp | 604M | 604M | 0.30B | 1.00B |
+| window (CP1) | 1,435M | 1,284M | 1.04B | 2.07B |
+| pit dive | **1,888M** | 3,165M | 1.94B | 3.88B |
+| cavity (CP2) | **2,643M** | 4,712M | 4.14B | 8.27B |
+| post-CP2 block | **4,681M** | FAILED | 6.97B | 13.93B |
+| CP3 | **4,681M** | - | 7.32B | 14.64B |
+| CP4 | pending at 6.04B | - | 9.39B | 18.79B |
+
+The operator's control (incumbent recipe, no search) failed the first ramp (1.72 best to 5.96B).
+
+**What worked.**
+* The knob explorer is what gets a from-scratch policy off the start at all (control: never), and
+  it keeps producing the lines past each wall: in v6 searches 3, 6, 7, 8, 10, 11, 12, 13, 15 each
+  handed on a deeper exact-replay spine (24.5% -> 29.3 -> 30.3 -> 32.4 -> 35.0 -> 36.7 -> 41.4 ->
+  42.3 -> 42.7%), and the greedy followed each within ~0.1-0.4B steps. The random share stayed
+  interior in every search (0.31-0.77); several of the decisive finds came late in a flat 10-min
+  search (v3 searches 6 and 16 at ~450-470 s, v6 search 10 at ~540-600 s).
+* **The windowed death charge** (kappa 1, W 2 s: a death takes back what the ratchet paid in its
+  last 2 s) **removed the fatal-dive plateaus**: v3 sat 1.88B steps in the pit's fatal dive and
+  ~2.6B (4.7-7.3B) in the 30.8% one, each time with the best d ON the death tick (the ratchet pays
+  the fall, nothing charges the death); v6 took 0.45B and ~0.3B over the same walls. Its first
+  ramp matched v3's to the eval (604M); the lead opens exactly at the walls whose frontier is a
+  fatal fall. One seed per arm - a large, consistent lead on one pair of runs, not an effect size.
+* v6 stayed numerically healthy to 6.04B (kl 0.01-0.035, yaw sigma 0.063-0.074).
+
+**What did not.**
+* v3's frozen recipe broke three ways late (all after 7.6B, all still "on time"): a PPO KL
+  runaway driven by weight-norm growth at a fixed lr 3e-4 (yaw sigma flat at ~0.07, policy L2 195
+  -> 439, view_head 4.4x; recovered by itself at 9.0B); a reward/value relapse with no KL signal
+  (10.0B, recovered 10.6B); and the yaw sigma walked to the clamp 2.718 by the entropy bonus once
+  the curriculum sat on a spine's crawl tail (11.1B; never recovered, the run missed post-CP2).
+  v6 never reached 7.6B, so it says nothing about those.
+* The gain rule (a new spine must end 200 u deeper) kept out a near-miss for 4B steps in v3
+  (search 7: 67,302 vs the 67,301 needed).
+* My process slip (01:20 UTC, recorded above): one `git log --all` listed a commit subject from
+  another branch's ref; nothing from it was used.
+
+**For the next generation (not tested here).** Carry the windowed death charge from step 0.
+Before runs go past ~7B, add a step-size stabiliser from step 0 (`--lr 1e-4` stopped October's
+collapse; AdamW `--wd` bites on the norm; a KL-adaptive lr is not in the trainer) and
+`--yaw-entropy 0` (or a yaw sigma cap) against the crawl-tail blow-up - with the caveat that a
+lower yaw sigma raises KL per step. A spine whose tail is slow ground motion is worth cutting
+where the motion stops.

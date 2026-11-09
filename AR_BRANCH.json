@@ -1,0 +1,17 @@
+{
+ "operator_note": "OPERATOR NOTE (2026-11-08 15:10 UTC, the user's decision): round 1 now ends 2026-11-09 12:35 UTC (wrap-up 2026-11-09 11:55 UTC) and it is the LAST round - no fork-and-flush, no round 2 that continues a winner. Why: a frozen recipe cannot be steered after launch, so a round must be long enough for runs to reach the late walls (October: first finish at 25.45B steps; the ladder's finish deadline is 50.9B). So: (1) a run that is ON TIME keeps training - do not stop it to try a variant; (2) a run that misses a wall deadline is stopped (ladder.py), and you may then launch a NEW recipe from scratch; (3) the step cap is only a stopping point (no run uses --ent-final or --bc-file): launch new runs with --steps 60e9, and a run that reaches its cap is resumed from its own checkpoint with the same flags and a higher cap; (4) extend your box in steps of at most 12 h (box.py extend) while a run trains, and release it when nothing does; (5) while a run just trains, wake every 45-60 min. The verdict at the end is the ladder: which recipe got furthest, and when.",
+ "agent": "unr1b4",
+ "round": 1,
+ "rounds": 1,
+ "slot": 4,
+ "branch": "ar/unr1b4",
+ "base_commit": "f54da05d22de43e2927a4deb01ea8fa830e3b06d",
+ "started_at": 1794112555.1458611,
+ "wrapup_at": 1794225351.326859,
+ "round_end": 1794227751.326859,
+ "wrapup_at_utc": "2026-11-09 11:55 UTC",
+ "round_end_utc": "2026-11-09 12:35 UTC",
+ "ar_home": "/home/steam/ar_uni",
+ "incumbent": null,
+ "runs_dir": "/home/steam/ar_uni/runs/unr1b4"
+}
