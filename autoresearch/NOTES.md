@@ -662,3 +662,13 @@ throughout. Training: crash 49-57%, harvest wins 6.3-9.9% @ 2.4 s (reservoir min
 Explorer 98.44% (viable 98.37%, 0 finishes; 32.1M runs, 2.17M cells); line 150 (98.31%) still
 not adoptable. ON TIME (chamber entry deadline 38.7B) - the frozen recipe keeps training.
 Budget: credit $21.38, burn 0.91 $/h.
+
+### 11:10 UTC: geb6 at 20.1B - greedy 27-31%; line 151 (98.41%) adopted on patience
+
+Evals 19.18-20.08B (13): 26.8-31.1%, 0 finishes (5 cross CP2 at 30.8-31.1%). Best stays 97.96
+(15.02B). Line 151 ADOPTED (patience) at 19,615.2M: 127.5 s, 51 links, end d 1,582 (98.41%),
+the greedy's best d in the latest eval 69,706 (30.1%); success on its band 1.6%. approx_kl median per
+0.25B: 0.42 (19.0B), 0.52 (19.25B), 0.47, 0.51, 0.42 (20.0B; p90 0.76-1.13) - level since
+19B at ~6-8x the CP6/CP7 period's 0.05-0.08; crash share 52-56%. Explorer 98.45% (viable
+98.42%, 0 finishes, 33.7M runs, 2.22M cells). ON TIME (chamber entry deadline 38.7B). Budget:
+credit $20.49, burn 0.91 $/h. Next: the wrap-up at 11:55.
