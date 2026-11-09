@@ -745,3 +745,27 @@ hull, `autoresearch/analysis/unr1b1_slot_*.py`; MEASUREMENT only, CLAUDE.md 0b):
   0.95, 4 s / 16 s roots, heading key). What it says for a generic recipe: at a precision gate
   the search has to change the approach seconds upstream and keep the conjunction together; a
   uniform explore step bolted to the policy's own line does not.
+
+### 2026-11-09 08:52 UTC - unr1b1_v2 FAILED the post-CP2 block; stopped at 14.10B, harvested, box released
+
+* ladder.py on the pull at 08:46 UTC: post-CP2 block (33%) FAILED - deadline 13,931,380,736
+  (October 6,965,690,368); the last eval before it (13,928,235,008) 32.463, the first past it
+  (14,003,732,480) 32.434, both CP2, 0/9 finishes. First ramp 227M, window (CP1) 453.5M, pit
+  dive 906.5M, cavity (CP2) 2.341B stand, all ON TIME. Best eval unchanged: 32.476 at 6.30B.
+* Stopped per operator rule (2) at 08:48:53 UTC: `runs/unr1b1_v2.no_autoresume` touched, trainer
+  pid 24267 killed (no signal handler: ckpt_latest.pt is the last periodic save), last progress
+  row 14,099,152,896; no search or explorer left (search 54 had ended at 14.09B: nothing, d
+  67,318). 94 searches in all (40 in the 0-6B segment, 54 after the cap resume); the last line
+  came from search 15 at 2.20B, so 79 searches since found none.
+* Harvest (md5-checked): `ckpt_latest.pt` (global_step 14,093,385,728; md5
+  4cca3059230cfb3328eecd7cdf2a9941) and `ckpt_5001707520.pt` (the newest ckpt_<step>.pt at or
+  before the best eval; md5 fe8116f1dc74c313a9967fd3be470aef; ckpt_final.pt = 6.0B was already
+  local, md5 166c3865...) with 188 eval trajectories, progress.csv and run.json
+  (`tools/pull_run_mss.py`); the search records without the field / archive copies
+  (`runs/unr1b1/xtest_box/unr1b1_v2_records.tgz`, 878 entries, md5 c3e5e97f...) and the explorer
+  tests (`unr1b1_xtest.tgz`, 43 entries, md5 7bfc9468...). The harvest script's own md5 compare
+  also matched its `ls` line and refused both tarballs; re-checked by hand, both match the box.
+  Newest eval 14,079,229,952: 32.462.
+* Box released at 08:51:37 UTC (`box.py status`: no box). No new recipe is launched: ~1.9B steps
+  were left before the 11:55 wrap-up, and v2 itself needed 2.34B to reach the cavity, so no recipe
+  started now could get past v2's rung; what is left of the round goes to local analysis.
