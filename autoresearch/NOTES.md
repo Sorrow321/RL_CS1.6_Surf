@@ -816,3 +816,10 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   episode falls early at 25.9%. Search 12's spine (to 41.4%) was passed by the greedy; search 13
   (5,066M) adopted a spine to d 57,547 = 42.3% from the frontier 57,916. Hand-on
   unr1b4_dc6/ckpt_5001707520.pt pulled (md5 962c8bff...); RESULT best -> 41.924.
+* **11:12 UTC - v6 at 5.46B: best 43.843 at 5,436M**, CP3 (evals 5,134-5,436M 42.29-43.84; medians
+  42.2-42.3% at 5,134 / 5,210 / 5,361M, 15.8% at 5,285 / 5,436M). At 5,436M 4/9 episodes reach
+  42.3-43.8% (the best at (6,826, 305, 8,575) at 53 s, falling, then z 7,776), and 4/9 now die
+  EARLY at 15.8% (~15.5 s, (5,818, 50, 13,030), falling) - an early-line instability while the
+  curriculum walks search 13's spine back (starts 2,291-2,296 of 5,262, success 0-59.5%). Healthy:
+  kl 0.019, yaw sigma 0.068, 212k steps/s. Hand-on unr1b4_dc6/ckpt_5251792896.pt pulled (md5
+  e3ff0554...); RESULT best -> 43.843.
