@@ -1139,3 +1139,38 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   mixed, POV video, 30 s). Round 0 = the smoke's tree at 3 min (deterministic): best 1.766%, 1.28M nodes,
   12,874 node rows + 120 line rows, distil 12 s (loss 4.72, acc 0.73), eval best 0.36%, 61.5M ticks.
   Round 1's greedy line wandered 46 s before dying (raw best 0.8%); its 41 roots sit at 26-46 s.
+
+### azr1b4 - 2026-11-09 21:55 UTC: v1 stuck on the spawn platform after 6 rounds; v2 launched BESIDE it (azr1b4_tree2)
+* **v1 (azr1b4_tree1) after 6 rounds, 341M ticks**: the trees keep finding the way off the platform
+  (best lines 1.77-2.82% banked, from the policy's own roots), the distillation fits the labels
+  (acc 0.93-0.97, yaw z-mse 0.07-0.10), but the greedy does not follow: eval best 0.36 / 0.87 /
+  1.30 / 0.88 / 0.87 / 0.86%. The eval episodes WALK slowly off the spawn (|v_h| 100-260 u/s, leave
+  300 u at 3.5-8 s) and die ~1,200 u below at (8,100, -350, 13,850) after 6-45 s; the greedy
+  lines the trees root on are 25-67 s of that wandering.
+* **Why (two faults of my v1 design for an untrained policy):** (1) the tree is rooted only on the
+  LAST 20 s of the greedy line, and the 18-26 s of wandering before the window are anchored by
+  prefix self-labels (25% of every batch) - the search can only improve the end of a line whose
+  useful change is at its start; (2) the node targets are "whichever of 15 random-held children
+  happened to have the best subtree", which averages into no direction when the greedy child is
+  rarely the best.
+* v1 is NOT failed (first-ramp deadline 2.0B total ticks, ~23:30 UTC at this pace) and keeps
+  running untouched (its checkout /root/RL_Surf stays at 153e08d7).
+* **v2 (azr1b4_tree2), launched 21:55 UTC from step 0 BESIDE v1** on the same box, from a separate
+  checkout /root/t2 at commit **5064f01c** (maps/, runs/, build/ symlinked to /root/RL_Surf, so the
+  caches' mtimes are the main checkout's). Why beside and not after: the box is mostly idle under
+  v1 (load ~9 of 96 visible CPUs, GPU 37%: the search waits on its Python tree bookkeeping), and
+  the credit runs out ~19:00 UTC tomorrow (operator note 2), so v2 gets ~1.5 h more. Its search
+  budget is in WAVES (--mcts-max-waves 700, ~69M ticks, ~3 min alone; cap --mcts-minutes 10) so
+  sharing the box changes its wall-clock, never its ticks per round.
+  Command (cd /root/t2): `bash tools/az_launch.sh azr1b4_tree2 --mcts-minutes 10 --mcts-max-waves 700
+  --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1`. Changes against v1:
+  1. **roots over the WHOLE greedy line** (--mcts-roots-secs 300 covers any episode; up to 128
+     roots, evenly subsampled): the tree searches from the start of the line too, so it can tell
+     the policy to leave the platform at once; with the earliest root at decision 0 there are no
+     prefix anchor rows any more (the rule of 21:18 makes them all window rows);
+  2. **node rows drawn in proportion to their target's advantage** (--az-node-adv 1): the target
+     children's Q minus the mean Q of the node's children, over the tree's Q range
+     (node_targets' "adv"; an advantage-weighted-regression weight, scale-free): a node whose best
+     move beat its siblings by much teaches more than one where a random child won by a hair;
+  3. the search budget in waves (above).
+  Everything else as v1 (run 5's MCTS, 1000 distil steps, 4 trees at recency 0.5, line 25%).
