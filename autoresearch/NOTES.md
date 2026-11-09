@@ -798,3 +798,14 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   walks back fast on the new spine: starts 4,596 -> 4,576 -> 4,536 -> 4,496 (success 71.5-83.0%,
   step 40). Healthy: kl 0.035, yaw sigma 0.065, reward 39.7. ~1.8B steps to the 11:55 wrap-up
   (v3 needed ~0.72B from search 6's spine to the greedy flying it).
+* **10:15 UTC - v6 clears the POST-CP2 BLOCK and CP3 at 4,681M: 38.965 (9/9 at 37.2-39.0%, CP3) -
+  NEW BEST, ON TIME, and ahead of October (6.97B / 7.32B).** v6's ladder: first ramp 604M / window
+  1,435M / pit dive 1,888M / cavity 2,643M / post-CP2 4,681M / CP3 4,681M; October: 0.30 / 1.04 /
+  1.94 / 4.14 / 6.97 / 7.32B; v3 (no death charge): 604M / 1,284M / 3,165M / 4,712M / FAILED.
+  Evals 4,379-4,606M 31.39-31.58, then 4,681M 38.97 and 4,757M 37.37 (median 37.3%). The 4,681M
+  episodes end `fail` at 48-52 s with their best d on the death tick, falling (vz ~-900) at
+  (650, -180, 8,740) - 8/9 alike - and one at (2,192, 272, 8,670) for 38.97%: a lower level
+  (z ~8,500-8,750) below the post-CP2 area. It came after the curriculum on search 11's spine
+  (63,075 = 36.7%, adopted 4,312M) walked back; search 12 (4,767M) has a spine to d 58,361 =
+  41.4% from the new frontier 62,503. Hand-on unr1b4_dc6/ckpt_4501536768.pt pulled (md5
+  c6ca5864...). RESULT.json best -> v6.
