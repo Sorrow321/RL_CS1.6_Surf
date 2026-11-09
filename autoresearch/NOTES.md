@@ -1181,3 +1181,27 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   follow it from the spawn, because the line is ~20 s of slow wandering before the search's
   part and small steering differences compound into states no label covers. That is the
   argument for v2's roots over the whole greedy line (corrections where the greedy actually goes).
+
+### azr1b4 - 2026-11-09 22:29 UTC: v3 (azr1b4_tree3) launched beside v1 and v2: the yaw sigma fitted to the tree
+* At 22:28: v1 round 16, 1.05B ticks, eval best 1.92% (greedy banks 0.3-0.8%); v2 round 6, 0.48B,
+  eval best 2.1-2.2% (its greedy banked 1.42% in rounds 4-5, then 0.33% again in round 6). Both
+  evals still fall off the platform and die on the floor below (z ~13,850, the kill under the
+  spawn), some after ~1,240 u/s of fall east. The trees' best lines: landings at 1.77-2.84% banked.
+* **What differs from run 5's tree in this phase**: run 5's yaw sigma (PPO's) fell from 0.30 to 0.18
+  by 0.25B steps and to 0.07 by 0.57B (its first ramp cleared at 0.529B), so its random-held
+  children (5 x sigma) went from a z spread of 1.5 to ~0.35 - steers of a few degrees instead of
+  20-100. In the tree-only loop nothing trains sigma (my v1/v2 keep the trainer's BC convention:
+  fixed reference sigma), so every tree's random children stay the wildest kind, and their lines
+  are the hardest to imitate precisely - the failure measured above (the greedy cannot reproduce a
+  landing it has learned at the line's own states).
+* **v3 = v2 + --az-sigma-fit 1** (commit **77466653**, checkout /root/t3, launched 22:28 UTC from step
+  0): the yaw head's log sigma gets the maximum-likelihood term on the tree's targets with mu
+  detached (sigma^2 -> the mean squared gap between the policy's steer and the tree's preferred
+  steer), clamped never to exceed its init 0.3. It is the policy fitting the search's distribution,
+  AlphaZero's policy target, for the one parameter nothing else trains here; the random children
+  then narrow as the policy learns, as run 5's did under PPO. One change against v2.
+  Command (cd /root/t3): `bash tools/az_launch.sh azr1b4_tree3 --mcts-minutes 10 --mcts-max-waves 700
+  --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 1`.
+* Box load with three runs: CPU quota 30.7 cores (cfs), each run ~7-8 cores; GPU ~47% with two runs,
+  3.6 of 32 GB; RAM 162 GB free. v1's search budget is wall-clock (3 min), so its ticks per round
+  fall a little while it shares the box; v2/v3 count waves (700 = ~69M ticks a round, fixed).
