@@ -1174,3 +1174,10 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
      move beat its siblings by much teaches more than one where a random child won by a hair;
   3. the search budget in waves (above).
   Everything else as v1 (run 5's MCTS, 1000 distil steps, 4 trees at recency 0.5, line 25%).
+* 21:57 UTC tools/az_diag.py (measurement only) on v1's checkpoint after round 6 against its
+  newest tree's labels: line rows 100% on every categorical head, yaw |dz| median 0.049 (p90 0.145);
+  prefix rows 100%, yaw 0.034; node rows 95% per head (joint 87%), yaw 0.14; value |err| ~0.005.
+  So the network HAS learned the best line at the line's own states; the greedy still does not
+  follow it from the spawn, because the line is ~20 s of slow wandering before the search's
+  part and small steering differences compound into states no label covers. That is the
+  argument for v2's roots over the whole greedy line (corrections where the greedy actually goes).
