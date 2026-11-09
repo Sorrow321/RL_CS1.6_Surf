@@ -1124,7 +1124,7 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
 * Flag-off identity re-proved on 2a4f8edd itself (same CPU test vs the base commit): progress,
   the step-1024 eval trajectory and every policy tensor identical. Test runs deleted.
 
-### 21:52 UTC: azr1b3_tl1 at 538M - still at the spawn trap, search 2's line adopted
+### 21:49 UTC: azr1b3_tl1 at 538M - still at the spawn trap, search 2's line adopted
 
 * Evals 0.52M-453M: best 1.74% (CP0); every greedy episode dies at ~3 s off the spawn platform
   (the trap run 1 and the control sat in). Ladder: all walls PENDING (first ramp deadline 1.6B).
