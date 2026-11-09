@@ -747,3 +747,18 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   each one replayed a greedy run that died early (frontiers 42,651 / 76,072 / 50,833) and rooted
   there. Cost: ~6 min at ~80% PPO throughput each; no regression, the curriculum keeps search
   23's finishing line.
+
+### 05:53 UTC: run 5 at 11.91B - best still 116.011; every eval finishes (1-8 of 9)
+
+- 20 evals since the best (10.42-11.85B): finishes 5,2,4,7,7,8,4,8,8,4,3,6,1,7,6,1,7,5,6,5 of 9
+  (104/180 = 58% of greedy episodes); none 9/9 again, so 116.011 (10.344B) stands. Fastest single
+  finish 118.36 s (11.174B, 3/9). Local score.py agrees with the keeper (no new best since 04:43).
+- Searches 27-30 (patience: the trainer's success count never includes finished episodes, see
+  04:53) all returned finishing lines (end d 0-3) in 21-23 s, because the greedy root they branch
+  from already finishes; each one restarts the backward curriculum at its end. Searches 24-26 had
+  found nothing (their greedy root died early). Since ~10.6B the loop re-adopts a finishing line
+  every ~0.38B steps; the finish rate per eval did not trend up across them (2-8 of 9 throughout).
+- Training: ~370k steps/s, entropy 0.006, sigma 0.065 (near-deterministic). The training win rate
+  (60-73% at 16-23 s episodes) is the curriculum and reservoir spawning near the goal (reservoir
+  min depth 1.16%), not the true-start rate; only the greedy evals measure the policy.
+- Box 59668027 (deadline 12:47 UTC) covers the 11:55 wrap-up; no extension needed.

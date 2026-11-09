@@ -337,7 +337,7 @@
    "cavity (CP2)": 2718433280,
    "post-CP2 block": "FAILED (deadline 13,931,380,736; best 32.499 at 12.458B; stopped at 14.16B)"
   },
-  "verdict": "run 5 (MCTS knob at the RANDOM end, from scratch 20:52 UTC, one recipe) cleared ALL 12 walls ON TIME and FINISHED at 8.230B steps (~6.3 h after launch): first ramp 0.529B, window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B, CP4 3.624B, CP5 3.851B, CP6 6.116B, CP7 6.720B, chamber entry 8.230B, finish 8.230B (October lineage with recipe changes: 0.30/1.04/1.94/4.14/6.97/7.32/9.39/11.78/14.26/15.23/19.35/25.45B). Every eval since finishes (0-9 of 9; one 0/9 at 9.287B); best 116.011 at 10.344B: 9/9 finishes, 119.68 s; fastest single finish 118.87 s (10.042B). Run 4 (0.5 mix) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% to 14.16B)",
+  "verdict": "run 5 (MCTS knob at the RANDOM end, from scratch 20:52 UTC, one recipe) cleared ALL 12 walls ON TIME and FINISHED at 8.230B steps (~6.3 h after launch): first ramp 0.529B, window 0.680B, pit dive 1.812B, cavity 2.114B, post-CP2 block 2.341B, CP3 2.643B, CP4 3.624B, CP5 3.851B, CP6 6.116B, CP7 6.720B, chamber entry 8.230B, finish 8.230B (October lineage with recipe changes: 0.30/1.04/1.94/4.14/6.97/7.32/9.39/11.78/14.26/15.23/19.35/25.45B). Every eval since finishes except one 0/9 at 9.287B (104/180 = 58% of greedy episodes over the 20 evals 10.42-11.85B, 1-8 of 9 each); best 116.011 at 10.344B: 9/9 finishes, 119.68 s; fastest single finish 118.36 s (11.174B). Run 4 (0.5 mix) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4-32.5% to 14.16B)",
   "run5": {
    "first ramp": 529006592,
    "window (CP1)": 680001536,
