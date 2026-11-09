@@ -1066,3 +1066,43 @@ budget (6 min, 2,048 copies), roots, macro, c_puct, novelty, energy value, curri
 spawn pools exactly as run 5. `--steps 60e9`. From step 0.
 
 **Box** 59951396 (RTX 5080, 32 threads, $0.42/h, Ohio), rented 20:53 UTC, deadline 12 h.
+
+### 21:15 UTC: identity check and the paired bench at the CP6 creep (measurement only)
+
+* **Flag-off identity on the GPU** (box 59951396, run 5's ckpt_4900519936, seed 13, 15 waves):
+  the base commit's search (09099d2a) vs this branch with `--mcts-mix-rule off` and with `log`:
+  30,762 nodes each, every array of mcts_tree.npz, the summary and the replayed line equal (log
+  only adds its own summary keys). The rule changes nothing unless it is switched on.
+* **The pair** (run 5's 4.90B checkpoint, inside its 84-86% creep before CP6; the command line
+  of run 5's own searches, seed 13, max-ticks 13,771, 6 min each, alone on the 5080 at ~550-580k
+  ticks/s, so ~2,000 waves against ~1,400 beside training):
+
+  | arm | waves | cells | best banked | raw best | best line's macros |
+  |---|---|---|---|---|---|
+  | run 5's tree (15 random-held + child 0) | 1,968 | 34,168 | 84.54% | 84.61% | RGRGRGRGRRGRR |
+  | the rule, memory 16 waves | 2,077 | 39,680 | **84.83%** | 84.95% | RGREEEPRRPRRE |
+
+  The rule went 285 u deeper and covered 16% more cells; neither found the loop back west that
+  run 5's search 15 found from the 5.66B weights (85.13%), so neither crosses into the gap here.
+  Mean shares of the rule P 0.29 / E 0.35 / R 0.36. Wins per child over the search: child 0
+  0.0047, P 0.0006, E 0.0016, R 0.0023 (run 5's arm: child 0 0.0060, R 0.0014). The best line
+  mixes all three kinds (G = child 0, P sample, E perturbed, R random-held).
+* **A flaw, fixed before launch.** Both trees saturate after ~200 waves (cells +0..+30 per 10
+  waves) and wins become rare (~2 per wave against tens early on). With a memory of 16 WAVES a
+  handful of tail wins swung the shares (P 0.2 -> 0.88 -> 0.2 within 100 waves). The tail is where
+  run 5's wall-opening lines came from (search 15's loop at wave ~392 of 1,415, search 20's finish
+  at ~832 of 843; searches 4-6 and 13 peaked by wave ~50-110), so the tail's mix has to follow
+  evidence. Commit 8cb13c12: the memory is counted in WINS (`--mcts-mix-horizon 256`: each win
+  decays the old points and children by exp(-1/256); a wave without a win changes nothing, and
+  children drawn in proportion to the shares leave the ratios where they were). Test: shares
+  hold through 400 winless waves and move on the next burst. Re-check arm running.
+* **The re-check** (the win-counted memory, same checkpoint, seed and budget): 1,690 waves,
+  28,383 cells, best **84.28%** banked (depth 5, from wave ~60 on), steady shares P 0.20 / E
+  0.37 / R 0.43 the whole search. Three single-seed trees from one checkpoint: run 5's 84.54%,
+  the rule with a 16-wave memory 84.83%, with the win memory 84.28%. The spread between arms is
+  as large as any difference, so 6-minute trees at one seed cannot rank these variants (the same
+  binary-gate pathology CLAUDE.md documents for evals). What the bench does say: the rule runs,
+  its tree reaches about the depth of run 5's tree at this wall, it keeps all three kinds alive
+  (wins per child: R > E > P > 0), and the best lines mix all kinds. The win-counted memory is
+  kept for the run: it is the version whose shares follow evidence, and the tail is where run 5's
+  lines came from. Bench box time: ~27 min (identity 1, three arms 6.3 each).

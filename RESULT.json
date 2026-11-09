@@ -1,0 +1,12 @@
+{
+ "agent": "azr1b2",
+ "round": 1,
+ "final": false,
+ "slot": 2,
+ "best": null,
+ "ladder": {
+  "unit": "steps",
+  "verdict": "not launched"
+ },
+ "summary": "Slot 2 (a balanced tree): run 5 with the MCTS child mix set by one rule instead of fixed all-random. Each wave, the sampled child that beat its siblings (on the tree's value, else on new cells of a live child) earns its kind (policy sample / perturbed / random-held) a point; shares = probability matching per child, floor 5%, horizon 16 waves (--mcts-mix-rule sib, commit 8c606b5f). Bench on box 59951396 (RTX 5080) running; the from-scratch run launches right after it."
+}
