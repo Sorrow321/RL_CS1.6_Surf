@@ -463,14 +463,18 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     policy's head widths (categorical heads at index >= n_view). -> dict with, per input node:
     ``keep`` bool, ``probs`` (n, n_heads, npad) f32 (the best children's first-move histogram
     per categorical head, rows sum to 1; view heads 0), ``vmu`` / ``vsd`` (n, n_z) the best
-    children's view z moments, ``value`` (n,) the node's backed-up Q, ``n_best`` (n,)."""
+    children's view z moments, ``value`` (n,) the node's backed-up Q, ``n_best`` (n,), ``adv`` (n,)
+    the target's ADVANTAGE: the target children's Q minus the mean Q of all the node's children,
+    over the tree's own Q range (tree.qhi - tree.qlo) - how much the move the label names beat
+    the moves it was compared with, in the tree's normalisation (an AWR-style weight)."""
     nodes = np.asarray(nodes, np.int64).reshape(-1)
     n = len(nodes)
     nh = len(nvec)
     n_z = int(c_pz.shape[1]) if c_pz.ndim == 2 else 0
     out = {"keep": np.zeros(n, bool), "probs": np.zeros((n, nh, int(npad)), np.float32),
            "vmu": np.zeros((n, n_z), np.float32), "vsd": np.zeros((n, n_z), np.float32),
-           "value": np.zeros(n, np.float32), "n_best": np.zeros(n, np.int64)}
+           "value": np.zeros(n, np.float32), "n_best": np.zeros(n, np.int64),
+           "adv": np.zeros(n, np.float32)}
     if n == 0:
         return out
     nc = np.asarray(tree.ncld[nodes], np.int64)
@@ -516,6 +520,11 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     out["probs"][sel] = probs.astype(np.float32)
     out["value"][sel] = np.asarray(tree.q[nd], np.float32)
     out["n_best"][sel] = nb
+    span = float(tree.qhi - tree.qlo) if np.isfinite(tree.qhi - tree.qlo) else 0.0
+    q_tgt = np.add.reduceat(np.where(best, q, 0.0), offs) / np.maximum(nb, 1)
+    q_mean = np.add.reduceat(q, offs) / cnt
+    out["adv"][sel] = (np.maximum(q_tgt - q_mean, 0.0) / span if span > 1e-12
+                       else np.zeros(len(sel))).astype(np.float32)
     return out
 
 
@@ -1074,7 +1083,7 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     k = nt["keep"]
     rows = {"scal": [LS[k]], "pose": [LP[k]], "probs": [nt["probs"][k]], "vmu": [nt["vmu"][k]],
             "vsd": [nt["vsd"][k]], "value": [nt["value"][k]],
-            "kind": [np.zeros(int(k.sum()), np.int8)]}
+            "kind": [np.zeros(int(k.sum()), np.int8)], "adv": [nt["adv"][k]]}
     # ---- line rows ---------------------------------------------------------------------------
     # the greedy prefix up to the line's root: ANCHOR rows (-1) only before the tree's EARLIEST
     # root - outside the search window, the policy's own moves; inside it (-2) the roots' own
@@ -1151,6 +1160,7 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
         rows["vsd"].append(np.zeros((nl, len(l_pz[0])), np.float32))
         rows["value"].append(np.asarray(l_val, np.float32))
         rows["kind"].append(np.asarray(l_rk, np.int8))
+        rows["adv"].append(np.ones(nl, np.float32))    # a line row is not weighed by advantage
     out = {}
     for key, parts in rows.items():
         parts = [p for p in parts if len(p)]

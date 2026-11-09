@@ -197,3 +197,38 @@ def test_label_buffer_keeps_the_last_trees_and_mixes_kinds():
     assert int((b0["kind"] == 0).sum()) == 27
     buf.add(3, None)                          # an empty tree is skipped
     assert buf.rounds() == [1, 2]
+
+
+def test_node_targets_advantage_is_the_targets_margin_over_the_siblings_mean():
+    t, r, kids, g = _tree()
+    nvec = (15, 7, 4, 4, 2, 3)
+    pact = np.zeros((t.n, 6), np.int16)
+    nt = node_targets(t, [r, int(kids[1])], pact, np.zeros((t.n, 2), np.float32), nvec, 15)
+    span = t.qhi - t.qlo                      # the tree's own Q range: 0.5 - 0.1
+    # root: children Q 0.1, 0.5, 0.3, 0.2 -> target 0.5, mean 0.275
+    assert np.isclose(nt["adv"][0], (0.5 - 0.275) / span)
+    # kids[1]: children Q 0.5 (its first child, the target) and 0.3 -> mean 0.4
+    assert np.isclose(nt["adv"][1], (0.5 - 0.4) / span)
+
+
+def test_label_buffer_draws_node_rows_by_advantage():
+    import az_loop
+    buf = az_loop.LabelBuffer(2, torch.device("cpu"))
+    n = 6
+    lab = {"scal": np.arange(n, dtype=np.float32)[:, None], "pose": np.zeros((n, 6), np.float32),
+           "probs": np.zeros((n, 6, 15), np.float32), "vmu": np.zeros((n, 2), np.float32),
+           "vsd": np.zeros((n, 2), np.float32), "value": np.zeros(n, np.float32),
+           "kind": np.array([0, 0, 0, 0, 1, 1], np.int8), "w": np.ones(n, np.float32),
+           "adv": np.array([0.0, 0.0, 1.0, 0.0, 1.0, 1.0], np.float32)}
+    buf.add(0, lab)
+    draw, _nk = buf.sampler(64, {0: 0.5, 1: 0.5}, torch.Generator().manual_seed(0),
+                            adv_kinds=(0,))
+    b = draw()
+    nodes = b["scal"][b["kind"] == 0].reshape(-1).numpy()
+    assert set(nodes.tolist()) == {2.0}           # only the node row with advantage is drawn
+    # off: every node row alike; a file without the column loads with adv 1
+    buf2 = az_loop.LabelBuffer(2, torch.device("cpu"))
+    buf2.add(0, {k: v for k, v in lab.items() if k != "adv"})
+    draw2, _nk2 = buf2.sampler(256, {0: 0.5, 1: 0.5}, torch.Generator().manual_seed(0))
+    nodes2 = draw2()["scal"].reshape(-1).numpy()
+    assert {0.0, 1.0, 2.0, 3.0} <= set(nodes2.tolist())

@@ -51,6 +51,8 @@ sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 LABEL_KEYS = ("scal", "pose", "probs", "vmu", "vsd", "value", "kind", "w")
+#: optional label columns (absent in the files of an earlier commit: filled with 1.0)
+LABEL_OPT = ("adv",)
 
 
 def add_args(ap) -> None:
@@ -73,6 +75,12 @@ def add_args(ap) -> None:
     ap.add_argument("--az-recency", type=float, default=0.5,
                     help="--az-loop: a label row of a tree N rounds older than the newest is drawn "
                          "with weight RECENCY**N (1 = every buffered tree alike)")
+    ap.add_argument("--az-node-adv", type=int, default=0, choices=(0, 1),
+                    help="--az-loop: 1 = draw the expanded nodes' rows in proportion to their "
+                         "target's ADVANTAGE (its Q minus the mean Q of the node's children, over "
+                         "the tree's Q range; mcts_search.node_targets): a node where the named "
+                         "move beat its siblings by much teaches more than one where a random "
+                         "child won by a hair. 0 = every node row alike (as before)")
     ap.add_argument("--az-line-frac", type=float, default=0.25,
                     help="--az-loop: share of each batch drawn from the best lines' SEARCHED rows "
                          "(the tree's choices, decision by decision)")
@@ -163,8 +171,9 @@ class LabelBuffer:
         if lab is None or len(lab.get("kind", ())) == 0:
             return
         t = {}
-        for k in LABEL_KEYS:
-            a = np.asarray(lab[k])
+        n_rows = len(np.asarray(lab["kind"]))
+        for k in LABEL_KEYS + LABEL_OPT:
+            a = (np.asarray(lab[k]) if k in lab else np.ones(n_rows, np.float32))
             if k == "kind":
                 t[k] = torch.as_tensor(a.astype(np.int64), device=self.device)
             else:
@@ -183,14 +192,17 @@ class LabelBuffer:
         return int(sum(len(t["kind"]) for _, t in self.sets))
 
     def _cat(self):
-        return {k: torch.cat([t[k] for _, t in self.sets]) for k in LABEL_KEYS}
+        return {k: torch.cat([t[k] for _, t in self.sets]) for k in LABEL_KEYS + LABEL_OPT}
 
-    def sampler(self, batch: int, fracs: dict, gen: torch.Generator, recency: float = 1.0):
+    def sampler(self, batch: int, fracs: dict, gen: torch.Generator, recency: float = 1.0,
+                adv_kinds=()):
         """-> (f() returning one batch dict, {kind: rows}). ``fracs`` {kind: share of the batch}
         (0 node rows, 1 the lines' searched rows, 2 their greedy prefixes); a kind with no rows
         hands its share to the others in proportion. Rows are drawn with replacement, a row of
         the tree ``age`` rounds older than the newest weighted ``recency ** age`` (1 = uniform):
-        where the policy has moved on, the newer tree's labels win the disagreement."""
+        where the policy has moved on, the newer tree's labels win the disagreement. A kind in
+        ``adv_kinds`` is drawn in proportion to its rows' ``adv`` as well (--az-node-adv: a node
+        row by how much its target beat the node's other children; adv 0 is never drawn)."""
         allr = self._cat()
         kind = allr["kind"]
         newest = max(r for r, _ in self.sets)
@@ -199,8 +211,9 @@ class LabelBuffer:
         pools = {}
         for kd in sorted(fracs):
             ix = torch.nonzero(kind == int(kd)).reshape(-1)
-            if len(ix) and float(fracs[kd]) > 0.0 and float(rw[ix].sum()) > 0.0:
-                pools[kd] = (ix, rw[ix], float(fracs[kd]))
+            wk = rw[ix] * (allr["adv"][ix].clamp_min(0.0) if int(kd) in adv_kinds else 1.0)
+            if len(ix) and float(fracs[kd]) > 0.0 and float(wk.sum()) > 0.0:
+                pools[kd] = (ix, wk, float(fracs[kd]))
         tot = sum(f for _i, _w, f in pools.values())
         counts, left = {}, int(batch)
         for j, kd in enumerate(sorted(pools)):
@@ -237,7 +250,8 @@ def distil(policy, packer, lidar, opt, buf: LabelBuffer, a, gen, view_w) -> dict
     fr_line, fr_pre = float(a.az_line_frac), float(a.az_prefix_frac)
     draw, n_kind = buf.sampler(int(a.az_batch), {0: max(0.0, 1.0 - fr_line - fr_pre),
                                                  1: fr_line, 2: fr_pre}, gen,
-                               float(a.az_recency))
+                               float(a.az_recency),
+                               adv_kinds=(0,) if int(a.az_node_adv) else ())
     policy.train()
     acc = None
     t0 = time.time()
@@ -352,7 +366,7 @@ def run_az(B: dict, a) -> None:
             fp = out / "labels" / f
             if fp.exists():
                 z = np.load(fp, allow_pickle=False)
-                buf.add(int(rr), {k: z[k] for k in LABEL_KEYS})
+                buf.add(int(rr), {k: z[k] for k in LABEL_KEYS + LABEL_OPT if k in z.files})
         print(f"az: RESUMED {latest} at round {st['round']}, {st['total']:,} ticks, buffer "
               f"rounds {buf.rounds()} ({buf.rows():,} rows)", flush=True)
     else:
@@ -405,7 +419,8 @@ def run_az(B: dict, a) -> None:
         st["ticks_line"] = int(st["ticks_line"]) + int(sm.get("ticks_line", 0))
         fname = f"r{rnd:05d}.npz"
         if lab is not None and len(lab["kind"]):
-            np.savez(out / "labels" / fname, **{k: lab[k] for k in LABEL_KEYS})
+            np.savez(out / "labels" / fname, **{k: lab[k] for k in LABEL_KEYS + LABEL_OPT
+                                                if k in lab})
             st["label_files"] = (list(st.get("label_files", [])) + [[rnd, fname]])[
                 -int(a.az_buffer):]
             for old in sorted((out / "labels").glob("r*.npz")):
