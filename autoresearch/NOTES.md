@@ -1119,3 +1119,20 @@ as in run 5, its beam.log reads `child mix rule sib (floor 0.05, horizon 256 win
 Provenance of every spawn file: the map spawn (auto/spine0.npy) and the run's own searches on its
 own weights; no demo, no file passed by hand. Box deadline extended to 2026-11-10 09:13 UTC (the
 watchdog's extend is now+12 h, monotone: extend again on later wakeups until it covers 22:40).
+
+### 21:36 UTC: azr1b2_sib at 0.21B - throughput, search 1
+
+* **Box speed**: i9-14900KF (32 threads) + RTX 5080. ~295k steps/s with no search beside the
+  trainer (sampled 202.9M -> 207.6M in 16 s), 250k average over the first 13.5 min with search 1
+  beside it. Run 5's 5080 did 364-372k: this box is ~20% slower, well above the 200k floor. The
+  search beside training runs ~168k ticks/s (run 5's: ~262k). At ~260k average the finish
+  deadline (16.46B) falls near 15:00 UTC on 2026-11-10, before the credit cutoff (~19:00 UTC,
+  operator note 2).
+* **Search 1** (524k -> 92.8M steps, 358 s, beside training): the untrained greedy dies at once
+  (0.17%), 6 roots, 613 waves, 1.26M nodes, only 302 cells (the spawn platform), best banked
+  1.77% (d 97,912, depth 51 = 24 s of macros) - the same point run 5's search 1 found (1.771%).
+  ADOPTED at 92.8M (run 5's was adopted at ~106M in run 4 / its own search 1). The rule: mean
+  shares P 0.26 / E 0.25 / R 0.49; wins per child R 0.0149, child 0 0.0123, P 0.0071, E 0.0065
+  (all on value: at the spawn every expansion's best child is the one that banks deeper); the
+  line's 51 macros: RPRRPRRRRPPPRPRRERRRRRPRPRERRGGRERRRRERRPPRRGRRPPR (R 31, P 13, E 3, G 3).
+* Evals 0.5M / 76M / 151M: 1.68% best (CP0), the spawn trap, as run 5 (1.6-1.7% to 0.38B).
