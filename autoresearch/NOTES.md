@@ -1088,3 +1088,37 @@ this run is on time or faster (the line gets 3.6x the starts).
 
 **Box: none yet.** `box.py rent` was refused twice by the session's permission classifier
 (20:41-20:42 UTC); asked the user. No box rented, no money spent.
+
+### azr1b1 - 2026-11-09 20:51 UTC: launched `azr1b1_pool1`
+
+* **Box 59950838**: RTX 4080 16 GB on an AMD Ryzen 9 9950X (32 threads), Taiwan, 0.417 $/h,
+  ssh -p 29129 root@114.34.155.151. Rented 20:45 with a 12 h deadline; `extend` only moves the
+  deadline to now + N h, so I extend by 12 h on every wakeup (the run must live to 22:00 UTC
+  on 2026-11-10).
+* **Harness note (not a harness issue, a usage one):** `box.py rent` was refused twice by the
+  session's auto-mode classifier when I prefixed it with `cd ... && export ... && timeout`. The
+  user's settings allow exactly `python autoresearch/box.py *`; the plain form (the env vars are
+  already set by .ar_launch.sh) went through at once. Call box.py in the plain form.
+* **Launched** 20:47:43 UTC with `box.py launch --agent azr1b1 --run azr1b1_pool1 --steps 60e9
+  --no-recipe -- <the 85 flags above>`, commit da7981e5 (the box's HEAD, checked). The
+  trainer's command line (run_arm.sh SCRATCH preset first, then my flags; a later value wins):
+  `python3 -u python/train_fast.py --map maps/surf_src_sidistic.bsp --run azr1b1_pool1 --reward
+  race --envs 2048 --spawn platform --lidar-w 64 --lidar-h 32 --lidar-cell 32 --lidar-range 11500
+  --lidar-near 2000 --emb 512 --hidden 448 --act-every 4 --pitch-rate 1.33 --teleport-fail --lr
+  3e-4 --gamma 0.9995 --gae 0.95 --clip 0.2 --vf 0.5 --ent 0.005 --n-steps 128 --epochs 4
+  --minibatches 16 --ep-ticks 12000 --time-pen 0.005 --success-bonus 50 --finish-k 0 --stall-secs
+  15 --race-dist geodesic --maxvel 4000 --train-stride 1 --yaw-adaptive --respawn-frac 0.9
+  --respawn-margin 10 --respawn-reservoir 100000 --int-coef 0.25 --int-view 8 --int-speed 3
+  --steps 60000000000 --ckpt-every 1e9 --record-every 75e6 --eval-eps 9 --eval-greedy-only
+  --view-continuous --view-absolute velocity --keys-hold --obs-potential norm
+  --obs-potential-curtain` + the 85 flags. Record gate passed (greedy, stoch, mixed, POV).
+* **Launch log checks, all as planned:** "demo curriculum: 2 states from .../auto/spine0.npy ...
+  (demo replaces the reservoir share of the pool)"; no NOVEL / GREEDY / FRONT-PERTURB /
+  BACKWARD-MIX / --demo-share / --int-real-only lines; run.json has respawn_frac 0.9,
+  respawn_novel / respawn_greedy / respawn_front_perturb / respawn_backward_mix / demo_share /
+  int_real_only all None, patience and retry 3e8, mcts args '--mcts-random-frac 1.0
+  --mcts-perturb-frac 0'. Search 1 fired at step 524,288 on the quorum (9/9 greedy episodes past
+  the spawn line), exactly as in run 5.
+* **Speed:** 290-320k steps/s instantaneous (from successive cumulative-fps readings) while
+  search 1 runs beside the training; the cumulative figure starts low because the record gate
+  shares the first minute. Between 5080 (~365k) and 3090 (~215k) speed: fine.

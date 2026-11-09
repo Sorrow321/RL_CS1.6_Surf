@@ -3,10 +3,13 @@
  "round": 1,
  "final": false,
  "slot": 1,
- "best": null,
- "planned_recipe": {
-  "launch": "box.py launch --no-recipe (SCRATCH preset) + flags",
-  "flags": [
+ "best": {
+  "score": null,
+  "eval_file": null,
+  "run": "azr1b1_pool1",
+  "step": null,
+  "ckpt": null,
+  "recipe": [
    "--envs",
    "1024",
    "--obs-normal",
@@ -93,14 +96,23 @@
    "--auto-spine-mcts-args",
    "--mcts-random-frac 1.0 --mcts-perturb-frac 0"
   ],
-  "commit": null,
+  "recipe_launch": "box.py launch --no-recipe (run_arm.sh SCRATCH preset at the commit) + recipe",
+  "commit": "da7981e55231a1eeebf8df98e28376edf6be8d3c",
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null
  },
  "ladder": {
   "unit": "steps",
-  "verdict": "not launched"
+  "verdict": "alive (launched 20:48 UTC, no wall yet)",
+  "total": {}
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off (novel, greedy, front-perturb, backward-mix, demo-share), so 10% of starts are the map start and 90% come from the search's backward curriculum. PPO and the search unchanged, run 5's search cadence kept. Not launched yet: box.py rent was refused by the session's permission classifier; waiting for the user."
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off (novel, greedy, front-perturb, backward-mix, and --demo-share), so 10% of training starts are the map start and 90% come from the search's backward curriculum (half on its frontier band). PPO, the search and run 5's search cadence unchanged; --int-real-only also off (the trainer refuses it without novel rows; it only touched novel-row episodes). Run azr1b1_pool1 launched from scratch 2026-11-09 20:48 UTC on an RTX 4080 / Ryzen 9950X box, ~300k steps/s. No wall cleared yet; ladder pending.",
+ "box": {
+  "id": 59950838,
+  "gpu": "RTX_4080",
+  "cpu": "AMD Ryzen 9 9950X (32 threads)",
+  "dph": 0.417,
+  "steps_per_s": "~290-320k instantaneous with search 1 running beside (20:49 UTC)"
+ }
 }
