@@ -30,6 +30,12 @@ class MctsPolicy(SampledTorchPolicy):
         self.hold = None                        # (N,) bool: envs that repeat their first draw
         self.hold_store = False                 # True on the macro's first decision
         self._h_act = self._h_z = None
+        # --mcts-labels (azr1b4, the tree-only loop): keep the SCALAR half of the row the
+        # network read at each decision (`last_scal`) and the pose its image was rendered from
+        # (`last_pose`: origin xyz, yaw, pitch, ducked), so a label can be re-assembled later as
+        # [scal | lidar.render(pose)] - the row this decision saw. Off (False) = untouched.
+        self.capture = False
+        self.last_scal = self.last_pose = None
         self._kt = None if float(keys_temp) == 1.0 else float(keys_temp)
         self._vt = (None if float(view_temp) == 1.0 and self._kt is None
                     else [float(view_temp), 1.0])
@@ -49,7 +55,19 @@ class MctsPolicy(SampledTorchPolicy):
 
     @torch.inference_mode()
     def _decide(self, obs):
-        logits, _ = self._net(self._obs(obs))
+        x = self._obs(obs)
+        if self.capture:
+            # AFTER _obs: its feeds have advanced to this decision and any pitch pin is applied,
+            # so the states_view pose is the one the depth image was just rendered from
+            sd = int(self.policy.scal_dim)
+            self.last_scal = x[:, :sd].float().cpu().numpy()
+            sv = self.core.states_view
+            o = np.asarray(sv["origin"], np.float32)
+            self.last_pose = np.concatenate(
+                [o.reshape(-1, 3), np.asarray(sv["yaw"], np.float32).reshape(-1, 1),
+                 np.asarray(sv["pitch"], np.float32).reshape(-1, 1),
+                 np.asarray(sv["ducked"], np.float32).reshape(-1, 1)], axis=1)
+        logits, _ = self._net(x)
         cat, mu = split_view(logits.float())
         padded = self._mask_padded(self.packer.pad(cat), obs)
         if self._vt is None:

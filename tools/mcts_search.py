@@ -440,6 +440,88 @@ class Tree:
 
 
 # --------------------------------------------------------------------------------------------
+# --mcts-labels: the tree's own training targets (azr1b4, the tree-only loop)
+# --------------------------------------------------------------------------------------------
+def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
+                 tol: float = 1e-9) -> dict:
+    """AlphaZero-style targets at EXPANDED nodes, read off the finished tree (pure numpy).
+
+    The policy target of a node is the set of its children that BEAT THEIR SIBLINGS: the ones
+    whose backed-up value Q (the best score anywhere in the child's subtree) is the best among
+    the node's children. A node carries a target only when that best Q is above the node's own
+    score, i.e. something below it banked more than the node had banked on arrival - a node
+    whose children all tie at the parent's own value says nothing about which move was better.
+    Every number here is a rank or a value normalised inside the tree (the tree's own score:
+    banked progress / the start distance), never a constant of a map.
+
+    ``nodes``: node ids (one label row each); ``c_pact`` (n_nodes_total, n_heads): each child's
+    FIRST decision in policy space; ``c_pz`` (n_nodes_total, n_z): its view z; ``nvec``: the
+    policy's head widths (categorical heads at index >= n_view). -> dict with, per input node:
+    ``keep`` bool, ``probs`` (n, n_heads, npad) f32 (the best children's first-move histogram
+    per categorical head, rows sum to 1; view heads 0), ``vmu`` / ``vsd`` (n, n_z) the best
+    children's view z moments, ``value`` (n,) the node's backed-up Q, ``n_best`` (n,)."""
+    nodes = np.asarray(nodes, np.int64).reshape(-1)
+    n = len(nodes)
+    nh = len(nvec)
+    n_z = int(c_pz.shape[1]) if c_pz.ndim == 2 else 0
+    out = {"keep": np.zeros(n, bool), "probs": np.zeros((n, nh, int(npad)), np.float32),
+           "vmu": np.zeros((n, n_z), np.float32), "vsd": np.zeros((n, n_z), np.float32),
+           "value": np.zeros(n, np.float32), "n_best": np.zeros(n, np.int64)}
+    if n == 0:
+        return out
+    nc = np.asarray(tree.ncld[nodes], np.int64)
+    has = nc > 0
+    sel = np.flatnonzero(has)
+    if len(sel) == 0:
+        return out
+    nd = nodes[sel]
+    cnt = nc[sel]
+    cs = np.asarray(tree.cstart[nd], np.int64)
+    offs = np.cumsum(cnt) - cnt
+    idx = np.repeat(cs - offs, cnt) + np.arange(int(cnt.sum()))     # child ids, block by block
+    q = np.asarray(tree.q[idx], np.float64)
+    qmax = np.maximum.reduceat(q, offs)
+    best = q >= np.repeat(qmax, cnt) - 1e-12
+    nb = np.add.reduceat(best.astype(np.int64), offs)
+    own = np.asarray(tree.score[nd], np.float64)
+    keep = np.isfinite(qmax) & (qmax > own + tol)
+    owner = np.repeat(np.arange(len(nd)), cnt)
+    probs = np.zeros((len(nd), nh, int(npad)), np.float64)
+    bi = np.flatnonzero(best)
+    for h in range(n_view, nh):
+        b = np.asarray(c_pact[idx[bi], h], np.int64)
+        if (b < 0).any() or (b >= int(nvec[h])).any():
+            raise ValueError(f"head {h}: a child's action is outside 0..{int(nvec[h]) - 1}")
+        np.add.at(probs[:, h, :], (owner[bi], b), 1.0)
+    probs[:, n_view:, :] /= np.maximum(nb, 1)[:, None, None]
+    if n_z:
+        z = np.asarray(c_pz[idx], np.float64)
+        zb = np.where(best[:, None], z, 0.0)
+        s1 = np.add.reduceat(zb, offs, axis=0)
+        s2 = np.add.reduceat(zb * zb, offs, axis=0)
+        mu = s1 / np.maximum(nb, 1)[:, None]
+        var = np.maximum(s2 / np.maximum(nb, 1)[:, None] - mu * mu, 0.0)
+        out["vmu"][sel] = mu.astype(np.float32)
+        out["vsd"][sel] = np.sqrt(var).astype(np.float32)
+    out["keep"][sel] = keep
+    out["probs"][sel] = probs.astype(np.float32)
+    out["value"][sel] = np.asarray(tree.q[nd], np.float32)
+    out["n_best"][sel] = nb
+    return out
+
+
+def onehot_rows(pact, nvec, npad: int, n_view: int = 2) -> np.ndarray:
+    """(n, n_heads) policy-space rows -> (n, n_heads, npad) one-hot targets on the categorical
+    heads (view heads 0): a line row's single action as the same layout node_targets writes."""
+    pact = np.asarray(pact, np.int64).reshape(len(pact), -1)
+    out = np.zeros((len(pact), len(nvec), int(npad)), np.float32)
+    r = np.arange(len(pact))
+    for h in range(n_view, len(nvec)):
+        out[r, h, pact[:, h]] = 1.0
+    return out
+
+
+# --------------------------------------------------------------------------------------------
 # helpers on states
 # --------------------------------------------------------------------------------------------
 def energy_h(states) -> np.ndarray:
@@ -612,6 +694,14 @@ def run_mcts(ctx: dict, a) -> dict:
     obsN = np.array(coreN.reset(int(ctx["gate_seed"])))
     polN, sideN = mk_wrapper(coreN, False)
     polN.greedy = np.zeros(N, bool)
+    # --mcts-labels (azr1b4): the tree's own training labels - the row every EXPANDED node's
+    # decision read (its scalar half + the pose of its image) and every child's first decision
+    # in POLICY space (keep bins unresolved) with its view z; built into targets after the search
+    LAB = bool(int(getattr(a, "mcts_labels", 0) or 0))
+    if LAB:
+        polN.capture = True
+        polN.record_policy_act = True
+    lab_leaf, lab_scal, lab_pose = [], [], []
     for i in range(N):
         coreN.set_state(i, ctx["row0"])
     obsN[:] = np.asarray(ctx["obs_start"], np.float32)[None, :]
@@ -647,6 +737,12 @@ def run_mcts(ctx: dict, a) -> dict:
     # edge storage: per node M decisions of engine rows + views
     E_acts = np.zeros((tree._cap, M, 6), np.int8)
     E_view = np.zeros((tree._cap, M, 2), np.float32)
+    # --mcts-labels: per node, its macro's FIRST decision in policy space and its view z, and
+    # how the child was drawn (0 the policy's mode, 1 random-held, 2 a sampled / perturbed one)
+    n_z = int(getattr(ctx["policy"], "n_z", 2))
+    C_pact = np.zeros((tree._cap if LAB else 0, 6), np.int16)
+    C_pz = np.zeros((tree._cap if LAB else 0, n_z), np.float32)
+    C_kind = np.zeros(tree._cap if LAB else 0, np.int8)
 
     Kc = max(2, int(a.mcts_k))
     sigma = float(a.mcts_yaw_sigma)
@@ -716,7 +812,18 @@ def run_mcts(ctx: dict, a) -> dict:
         tt = 0
         for m in range(M):
             polN.hold_store = m == 0
+            if LAB:
+                polN.capture = m == 0      # the node's own row only (one device read per wave)
             act = polN.act(obsN)
+            if LAB and m == 0:
+                # every env of a leaf restored the leaf's state and side state: its rank-0 env's
+                # row IS the node's row; every env's policy-space draw is its child's first move
+                e0 = np.flatnonzero(rank == 0)
+                lab_leaf.append(own[e0].copy())
+                lab_scal.append(np.asarray(polN.last_scal, np.float32)[e0].copy())
+                lab_pose.append(np.asarray(polN.last_pose, np.float32)[e0].copy())
+                w_pact = np.asarray(polN.policy_act, np.int16).copy()
+                w_pz = np.asarray(polN.view_z, np.float32).copy()
             view = np.array(polN.view, np.float32)
             if sigma > 0:
                 if VIEW_ABS:
@@ -824,6 +931,15 @@ def run_mcts(ctx: dict, a) -> dict:
                                                           np.float32)])
             E_acts[ids] = np.transpose(acts_w[:, ch], (1, 0, 2))
             E_view[ids] = np.transpose(view_w[:, ch], (1, 0, 2))
+            if LAB:
+                if tree._cap > len(C_pact):
+                    _g = tree._cap - len(C_pact)
+                    C_pact = np.concatenate([C_pact, np.zeros((_g, 6), np.int16)])
+                    C_pz = np.concatenate([C_pz, np.zeros((_g, n_z), np.float32)])
+                    C_kind = np.concatenate([C_kind, np.zeros(_g, np.int8)])
+                C_pact[ids] = w_pact[ch]
+                C_pz[ids] = w_pz[ch]
+                C_kind[ids] = np.where(rank[ch] == 0, 0, np.where(rnd[ch], 1, 2))
         tree.end_wave()
         b = tree.best_node()
         best_hist.append(float(prog(tree.bank_d[b])) if b > 0 else float("nan"))
@@ -896,4 +1012,135 @@ def run_mcts(ctx: dict, a) -> dict:
           f"{summary['best_pct']:.2f}% (greedy {summary['greedy_pct']:.2f}%) at tick {f_tick} "
           f"({ctx['secs'](f_tick):.2f}s), depth {int(tree.depth[b])}"
           + (" FINISHED" if finished else "") + f", {dt:.0f}s", flush=True)
-    return {"frontier": frontier, "summary": summary, "tree": tree, "archive": arch}
+    # EVERY simulator tick this call spent: the greedy pass (1 env) + every wave's copies
+    summary["ticks_greedy"] = int(g_end)
+    summary["ticks_waves"] = int(sim_ticks) * int(N)
+    summary["ticks_total"] = int(g_end) + int(sim_ticks) * int(N)
+    labels = None
+    if LAB:
+        labels = _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec,
+                              lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K)
+        summary["ticks_line"] = int(labels.pop("ticks"))
+        summary["ticks_total"] += summary["ticks_line"]
+        summary["labels_node"] = int((labels["kind"] == 0).sum())
+        summary["labels_line"] = int((labels["kind"] == 1).sum())
+        summary["labels_nodes_expanded"] = int(labels.pop("n_expanded"))
+        summary["line_replay_d"] = labels.pop("replay_d")
+    return {"frontier": frontier, "summary": summary, "tree": tree, "archive": arch,
+            "labels": labels}
+
+
+def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec,
+                 lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K) -> dict:
+    """--mcts-labels: the finished tree as training rows (azr1b4, the tree-only loop).
+
+    NODE rows - every expanded node with a target (node_targets): the row its decision read
+    (scalar half + image pose, captured when its children were drawn), the best children's
+    first moves, the node's Q. LINE rows - every decision of the best line from the true start,
+    replayed open loop on a 1-env core through a greedy wrapper that only READS (the executed
+    engine row and view are the line's; the held keys are set to the executed row after each
+    decision, beam_tas.prefix_sync's rule): where the line took a random-held child the label is
+    that held move, elsewhere the network's own greedy move at the replayed state. A line row's
+    value is the Q of the path node its decision belongs to (the root's for the greedy prefix).
+    -> dict of arrays (scal, pose, probs, vmu, vsd, value, kind 0 node / 1 line, w) + ticks."""
+    import torch
+    import train_fast as _tf
+    from surfgym.keyshold import HELD_HEADS
+
+    nvec, npad = tuple(_tf.NVEC), int(_tf.NPAD)
+    n_view = int(_tf.N_VIEW)
+    # ---- node rows -------------------------------------------------------------------------
+    if lab_leaf:
+        L = np.concatenate(lab_leaf)
+        LS = np.concatenate(lab_scal)
+        LP = np.concatenate(lab_pose)
+    else:
+        L = np.zeros(0, np.int64)
+        LS = np.zeros((0, 0), np.float32)
+        LP = np.zeros((0, 6), np.float32)
+    nt = node_targets(tree, L, C_pact, C_pz, nvec, npad, n_view)
+    k = nt["keep"]
+    rows = {"scal": [LS[k]], "pose": [LP[k]], "probs": [nt["probs"][k]], "vmu": [nt["vmu"][k]],
+            "vsd": [nt["vsd"][k]], "value": [nt["value"][k]],
+            "kind": [np.zeros(int(k.sum()), np.int8)]}
+    # ---- line rows ---------------------------------------------------------------------------
+    node_d = [int(root)] * int(rdec)
+    kind_d = [0] * int(rdec)
+    for nid in path[1:]:
+        nd = int(tree.ndec[nid])
+        node_d += [int(nid)] * nd
+        kind_d += [int(C_kind[nid])] * nd
+    node_d, kind_d = node_d[:n_dec], kind_d[:n_dec]
+    cfg = ctx["cfg"]
+    core1 = ctx["build_sim"](cfg, ctx["map_path"], 1, ctx["ep_cap"], tick=ctx["TICK"])
+    ctx["arm"](core1)
+    o = np.array(core1.reset(int(ctx["gate_seed"])))
+    core1.set_state(0, ctx["row0"])
+    o[0] = np.asarray(ctx["obs_start"], np.float32)
+    pol, _side = mk_wrapper(core1, True)
+    pol.capture = True
+    pol.record_policy_act = True
+    with torch.inference_mode():
+        pol._obs(o)               # the greedy pass's own tick-0 call (its feeds' first read)
+    keys = bool(ctx["KEYS"])
+    l_scal, l_pose, l_pact, l_pz, l_val = [], [], [], [], []
+    ticks = 0
+    n_held = 0
+    for d in range(int(n_dec)):
+        pol.act(o)
+        # a decision of a SAMPLED / perturbed child (kind 2: none at --mcts-random-frac 1) has no
+        # label here - its executed move was a draw this replay cannot rebuild; it is stepped
+        if kind_d[d] != 2:
+            l_scal.append(np.asarray(pol.last_scal, np.float32)[0].copy())
+            l_pose.append(np.asarray(pol.last_pose, np.float32)[0].copy())
+            if kind_d[d] == 1:
+                l_pact.append(np.asarray(C_pact[node_d[d]], np.int64).copy())
+                l_pz.append(np.asarray(C_pz[node_d[d]], np.float32).copy())
+                n_held += 1
+            else:
+                l_pact.append(np.asarray(pol.policy_act, np.int64)[0].copy())
+                l_pz.append(np.asarray(pol.view_z, np.float32)[0].copy())
+            l_val.append(float(tree.q[node_d[d]]))
+        row = np.ascontiguousarray(np.asarray(acts[d], np.int32).reshape(1, -1))
+        vw = np.ascontiguousarray(np.asarray(views[d], np.float32).reshape(1, -1))
+        if keys and getattr(pol, "keys", None) is not None:
+            # after the decision the held keys ARE the executed engine row's fwd / side / duck
+            pol.keys.state[0] = row[0, list(HELD_HEADS)]
+            pol.keys.boot[0] = pol.keys.state[0]
+        ended = False
+        for _k in range(K):
+            if _k:
+                pol.act(o)
+            o, _r, dn, tr, _t = core1.step(row, view=vw)
+            o = np.array(o)
+            ticks += 1
+            if bool(np.asarray(dn)[0]) or bool(np.asarray(tr)[0]):
+                ended = True
+                break
+        if ended:
+            break
+    nl = len(l_scal)
+    d_end = float(field_d(ctx["gf"], core1.states_view["origin"][0:1])[0])
+    if nl:
+        rows["scal"].append(np.stack(l_scal))
+        rows["pose"].append(np.stack(l_pose))
+        rows["probs"].append(onehot_rows(np.stack(l_pact), nvec, npad, n_view))
+        rows["vmu"].append(np.stack(l_pz))
+        rows["vsd"].append(np.zeros((nl, len(l_pz[0])), np.float32))
+        rows["value"].append(np.asarray(l_val, np.float32))
+        rows["kind"].append(np.ones(nl, np.int8))
+    out = {}
+    for key, parts in rows.items():
+        parts = [p for p in parts if len(p)]
+        out[key] = (np.concatenate(parts) if parts else
+                    np.zeros((0,), np.float32))
+    n_all = len(out["kind"]) if out["kind"].ndim else 0
+    out["w"] = np.ones(n_all, np.float32)
+    out["ticks"] = ticks
+    out["n_expanded"] = len(L)
+    out["replay_d"] = d_end
+    print(f"mcts labels: {int(k.sum()):,} node rows (of {len(L):,} expanded nodes), {nl:,} line "
+          f"rows ({n_held} on random-held macros); line replay "
+          f"{ticks} ticks, ends at d {d_end:,.0f} (search said {float(tree.bank_d[b]):,.0f})",
+          flush=True)
+    return out

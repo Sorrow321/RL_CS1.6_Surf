@@ -1018,3 +1018,29 @@ Also pulled before the release (md5 166391c47a867e6c8efa23d33e3c9110 verified):
 beam/summary.json and greedy_baseline.jsonl, plus the keeper's log and state. Not in it: the
 spines' spine.keys.npy / spine.json and the per-search ckpt copies (5.6 GB), lost with the box.
 `box.py status --agent unr1b3`: no box (12:32 UTC).
+
+## azr1b4 (slot 4: the tree only) - plan, 2026-11-09 20:56 UTC
+
+**What slot 4 builds (v1 = "the tree as it is": the tree does not use the network's value).**
+One long-lived process per run (`tools/beam_tas.py --mcts --az-loop`, driver `tools/az_loop.py`)
+that holds the network and repeats, from a FRESH network at step 0:
+
+1. SEARCH: run 5's MCTS unchanged (M 12, K 16, c_puct 0.25, novelty 3, energy 1, random-frac 1.0,
+   perturb 0, roots on the policy's own greedy line's last 20 s, 2048 copies, 6 min).
+2. LABELS from that tree (no file passed by hand; the search writes them in memory):
+   * every EXPANDED node: policy target = the children that beat their siblings (the children
+     whose backed-up value Q is the best among the siblings, kept only where that best Q is above
+     the node's own banked score, i.e. something below it made progress); value target = the
+     node's backed-up Q (banked progress / start distance, the tree's own normalisation);
+   * every DECISION of the tree's best line from the true start (replayed open loop): the label
+     is the held random action where the line took a random child, else the network's own greedy
+     action (a self-label that keeps the early map from drifting).
+3. DISTIL: supervised steps only (no PPO, no rollouts): cross-entropy of the action heads to the
+   targets, the view heads by the trainer's own Gaussian BC form, value MSE. Last 4 trees kept.
+4. EVAL: 9 greedy episodes from the true start (the trainer's eval rules: parallel, 30 s
+   patience, 300 s cap) -> `traj_<total ticks>.jsonl`.
+
+The step counter is EVERY simulator tick: search waves x 2048 copies + the search's greedy pass +
+the line replay + the eval episodes. Ladder: `ladder.py --total-is-step`.
+The network and observation config come from a `train_fast.py --steps 0` init with run 5's exact
+flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is run 5's.

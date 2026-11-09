@@ -2319,11 +2319,19 @@ def main():
                     help="--mcts: |dvz - one gravity step| above this = the map pushed back")
     ap.add_argument("--mcts-log-every", type=int, default=10)
     ap.add_argument("--mcts-stop-on-finish", type=int, default=1)
+    ap.add_argument("--mcts-labels", type=int, default=0, choices=(0, 1),
+                    help="--mcts: 1 = return the tree's training rows (every expanded node's "
+                         "row and its best children; every decision of the best line), "
+                         "tools/mcts_search._tree_labels. Set by --az-loop; 0 = untouched")
+    import az_loop as _azl
+    _azl.add_args(ap)
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
     ap.add_argument("--no-config-audit", action="store_true")
     args = ap.parse_args()
+    if args.az_loop and not args.mcts:
+        raise SystemExit("--az-loop runs the MCTS: pass --mcts")
 
     t_all = time.time()
     out_dir = Path(args.out_dir)
@@ -2807,6 +2815,18 @@ def main():
                    cfg=cfg, map_path=map_path, ep_cap=ep_cap, TICK=TICK, arm=arm, row0=row0,
                    obs_start=obs_start, gate_seed=gate_seed, gf=ogf, N=int(args.envs),
                    max_ticks=int(args.max_ticks), secs=secs, g_step=gravity_step(core1))
+        if args.az_loop:
+            # ---- --az-loop: the tree-only learner (tools/az_loop.py) ----------------------
+            if n_cc:
+                raise SystemExit("--az-loop: a --curiosity-cond checkpoint is not supported")
+            from az_loop import run_az
+            ev_core = build_sim(cfg, map_path, int(args.az_eval_eps), ep_cap, tick=TICK)
+            arm(ev_core)
+            run_az(dict(ctx=ctx, ck=ck, cfg=cfg, policy=policy, packer=packer, device=device,
+                        lidar=lidar, K=K, stack=stack, KEYS=KEYS, SPAWN_DUCK=SPAWN_DUCK,
+                        mk_feed=mk_feed, XF=XF, cc_fnN=None, TICK=TICK, gf=ogf, ep_cap=ep_cap,
+                        eval_core=ev_core), args)
+            return
         res = run_mcts(ctx, args)
         fr = res["frontier"]
         summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": int(args.envs),
