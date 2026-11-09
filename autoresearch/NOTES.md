@@ -584,3 +584,25 @@ from burst copies). ON TIME; keeps training.
   explorer-noise lesson above). Not adopted: line 123 does not beat the latest eval's best d
   by the gain; the trainer's curriculum is still line 97 (54.5%), success 40.6%.
 * Snapshot ckpt_13004439552.pt pulled (md5 27c71a7c..., 90 s). RESULT.json best moved. ON TIME.
+
+### 06:07 UTC: geb6 clears CP6 (14,496.0M) and CP7 (14,873.5M) - best 97.61; the explorer led
+
+Timeline (trainer step, eval best-of-9; explorer lines from ge/ge_beam_0.log):
+* 13,892.1M: eval collapse (all nine at 10.4%); line 123 ADOPTED (patience, line 97 had run 2B
+  steps): end 84.45% = the greedy's own frontier, so 20% of the starts sit at the frontier.
+* 13.97-14.42B: the greedy creeps 84.8 -> 84.9 -> 86.0 -> 85.8 -> 86.1 -> 87.6 -> 87.6%.
+* 05:37 UTC: the explorer's line jumps 84.74% -> 89.71% (line 126), then 90.0-91.5% (127-132),
+  92.29% (133), 93.8-96.7% (134-144, 05:45-05:59), 97.94% (147, 124.9 s, 41 links, 06:06);
+  deepest cell 98.04% (October's basement stall is 98.0-98.3%, chamber entry 98.5%).
+* 14,477.2M: line 126 ADOPTED (89.71%; the greedy, 87.6%, had crossed line 123) -> eval
+  14,496.0M **91.3% = CP6** (October 14.26B).
+* 14,614.0M: line 133 ADOPTED (92.29%; greedy 91.4%) -> 14,722.5M 96.5%.
+* 14,841.0M: line 144 ADOPTED (96.73%; greedy 96.4%) -> 14,873.5M **97.61% = CP7** (October
+  15.23B). Then 88.6% (14.95B).
+Reading (one seed): from 84% on, the explorer and the greedy ride the same improving policy;
+each explorer line was 1-2% ahead of the greedy when adopted and the greedy passed it within one
+eval. Both plateau exits (82% -> 84% after line 97, 84-86% -> CP6 after line 123) came 0.3-0.6B
+steps after an adoption that put a fifth of the starts at or near the frontier. Not shown: what
+the base recipe's own frontier spawns would have done in the same steps (they had 8B steps at
+82% and did not). Snapshot ckpt_14004781056.pt pulled (md5 fe9bbd20..., 96 s). ON TIME; at
+~1.02B steps/h the round clock ends the run at ~20.9B (October: chamber entry 19.35B).
