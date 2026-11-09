@@ -443,7 +443,7 @@ class Tree:
 # --mcts-labels: the tree's own training targets (azr1b4, the tree-only loop)
 # --------------------------------------------------------------------------------------------
 def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
-                 tol: float = 1e-9) -> dict:
+                 tol: float = 1e-9, prefer_first: bool = True) -> dict:
     """AlphaZero-style targets at EXPANDED nodes, read off the finished tree (pure numpy).
 
     The policy target of a node is the set of its children that BEAT THEIR SIBLINGS: the ones
@@ -451,6 +451,10 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     the node's children. A node carries a target only when that best Q is above the node's own
     score, i.e. something below it banked more than the node had banked on arrival - a node
     whose children all tie at the parent's own value says nothing about which move was better.
+    ``prefer_first``: when the node's FIRST child (child 0 of an expansion: the policy's own
+    greedy macro) is among the best, the target is that child alone - a tie with random-held
+    children is no reason to move the policy toward randomness (slot 3 measured on run 5's
+    4.53B checkpoint: the greedy child is the best at ~70% of the nodes whose children differ).
     Every number here is a rank or a value normalised inside the tree (the tree's own score:
     banked progress / the start distance), never a constant of a map.
 
@@ -482,6 +486,11 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     q = np.asarray(tree.q[idx], np.float64)
     qmax = np.maximum.reduceat(q, offs)
     best = q >= np.repeat(qmax, cnt) - 1e-12
+    if prefer_first:
+        first = np.zeros(len(idx), bool)
+        first[offs] = True
+        f_best = np.repeat(best[offs], cnt)      # the node's first child is among the best
+        best = np.where(f_best, first, best)
     nb = np.add.reduceat(best.astype(np.int64), offs)
     own = np.asarray(tree.score[nd], np.float64)
     keep = np.isfinite(qmax) & (qmax > own + tol)

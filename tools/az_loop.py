@@ -67,6 +67,9 @@ def add_args(ap) -> None:
     ap.add_argument("--az-batch", type=int, default=1024, help="--az-loop: rows per step")
     ap.add_argument("--az-buffer", type=int, default=4,
                     help="--az-loop: the last N trees' labels are trained on")
+    ap.add_argument("--az-z-clip", type=float, default=3.0,
+                    help="--az-loop: view targets in pre-tanh z are clipped to +-Z (tanh 3 = "
+                         "0.995: past it the executed steer barely moves); 0 = off")
     ap.add_argument("--az-recency", type=float, default=0.5,
                     help="--az-loop: a label row of a tree N rounds older than the newest is drawn "
                          "with weight RECENCY**N (1 = every buffered tree alike)")
@@ -145,8 +148,9 @@ STAT_NAMES = ("loss", "ce", "acc", "joint_acc", "yaw_mse", "value_mse")
 class LabelBuffer:
     """The last ``keep`` trees' label rows, on the device, sampled by kind."""
 
-    def __init__(self, keep: int, device):
+    def __init__(self, keep: int, device, z_clip: float = 0.0):
         self.keep, self.device = max(1, int(keep)), device
+        self.z_clip = float(z_clip or 0.0)
         self.sets = []           # [(round, {key: tensor})]
 
     def add(self, rnd: int, lab: dict) -> None:
@@ -158,6 +162,10 @@ class LabelBuffer:
             if k == "kind":
                 t[k] = torch.as_tensor(a.astype(np.int64), device=self.device)
             else:
+                if k == "vmu" and self.z_clip > 0.0:
+                    # a view target past tanh's saturation steers the same as one at it; in the
+                    # z-space Gaussian term it would only cost a squared error the steer never sees
+                    a = np.clip(a, -self.z_clip, self.z_clip)
                 t[k] = torch.as_tensor(a.astype(np.float32), device=self.device)
         self.sets.append((int(rnd), t))
         self.sets = self.sets[-self.keep:]
@@ -320,7 +328,7 @@ def run_az(B: dict, a) -> None:
     n_zv = int(getattr(policy, "n_z", 2))
     view_w = torch.ones(n_zv, device=device)
     view_w[n_zv - 1] = float(a.az_pitch_coef)
-    buf = LabelBuffer(int(a.az_buffer), device)
+    buf = LabelBuffer(int(a.az_buffer), device, z_clip=float(a.az_z_clip))
     seed0 = int(a.torch_seed)
     st = {"round": 0, "total": 0, "ticks_search": 0, "ticks_line": 0, "ticks_eval": 0,
           "best_score": None, "best_step": None, "label_files": [], "started": time.time()}

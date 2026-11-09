@@ -1044,3 +1044,26 @@ The step counter is EVERY simulator tick: search waves x 2048 copies + the searc
 the line replay + the eval episodes. Ladder: `ladder.py --total-is-step`.
 The network and observation config come from a `train_fast.py --steps 0` init with run 5's exact
 flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is run 5's.
+
+### azr1b4 - 2026-11-09 21:09 UTC: built and unit-tested; no box yet (budget pacer)
+* Code (ar/azr1b4, commits 3eb376fa + c7225e83): `tools/az_loop.py` (the loop, the distil loss,
+  the label buffer, the eval), `tools/mcts_search.py --mcts-labels` (node_targets, onehot_rows,
+  _tree_labels: the line replay), `tools/mcts_policy.py` (MctsPolicy.capture: the scalar half of
+  the row and the image pose at a decision), `tools/beam_tas.py --az-loop` (dispatch),
+  `tools/az_launch.sh` (the step-0 network from train_fast `--steps 0` with run_arm.sh's SCRATCH
+  preset + config.incumbent_recipe, then the loop under nohup), `tests/python/test_az_loop.py`
+  (6 tests, CPU: targets on a toy tree incl. ties and flat nodes, the loss fits a fixed target,
+  the buffer). Existing `test_mcts_search.py` still passes. All new flags default off; without
+  `--mcts-labels` / `--az-loop` the search runs the code it ran before (the capture is gated).
+* Design choices written down before any run: label rows store the SCALAR half of the network's
+  input exactly as the decision read it (captured in the wrapper) plus the image pose (origin,
+  yaw, pitch, ducked); the image is re-rendered with the run's own lidar at train time. The
+  policy's view log-sigma is NOT trained (the trainer's BC convention: fixed reference sigma
+  0.3), so the tree's random children keep the init spread (5 x 0.3 in z) for the whole run -
+  in run 5 PPO narrowed it (0.065 late). Older trees' labels are drawn with weight 0.5^age
+  (`--az-recency 0.5`), last 4 trees kept, half of each batch from best-line rows.
+* `box.py rent` REFUSED at 21:03 and 21:08: the other three boxes burn 1.174 $/h of the 1.466 $/h
+  limit, and the cheapest passing offer (RTX 3090 / Ryzen 7950X) is 0.356 $/h. At this burn the
+  pacer's room reaches 0.33-0.36 $/h in ~4.5-7 h unless an offer gets cheaper or a box is
+  released. A background retry (every 2 min, the plain `box.py rent` form) rents and deploys as
+  soon as one fits.

@@ -57,10 +57,25 @@ def test_node_targets_tie_spreads_the_mass_and_flat_nodes_are_dropped():
     pact[kids, 3] = [2, 0, 1]
     pz = np.zeros((t.n, 2), np.float32)
     pz[kids, 0] = [1.0, 3.0, 0.0]
-    nt = node_targets(t, [int(r[0])], pact, pz, (15, 7, 4, 4, 2, 3), 15)
+    nt = node_targets(t, [int(r[0])], pact, pz, (15, 7, 4, 4, 2, 3), 15, prefer_first=False)
     assert nt["keep"][0] and nt["n_best"][0] == 2
     assert np.allclose(nt["probs"][0, 3, [2, 0]], 0.5)
     assert np.isclose(nt["vmu"][0, 0], 2.0) and np.isclose(nt["vsd"][0, 0], 1.0)
+    # the default: the policy's own child (the first) ties for best -> it alone is the target
+    nt1 = node_targets(t, [int(r[0])], pact, pz, (15, 7, 4, 4, 2, 3), 15)
+    assert nt1["keep"][0] and nt1["n_best"][0] == 1
+    assert nt1["probs"][0, 3, 2] == 1.0 and np.isclose(nt1["vmu"][0, 0], 1.0)
+    assert nt1["vsd"][0, 0] == 0.0
+    # ...and when a random child is strictly better, the first child gets nothing
+    t3 = Tree(cap=16)
+    r3 = t3.add_children(0, [0.2], [True], tick=[0])
+    k3 = t3.add_children(int(r3[0]), [0.3, 0.4, 0.4], [True, True, True], tick=[48] * 3)
+    p3 = np.zeros((t3.n, 6), np.int16)
+    p3[k3, 3] = [2, 0, 1]
+    nt3 = node_targets(t3, [int(r3[0])], p3, np.zeros((t3.n, 2), np.float32),
+                       (15, 7, 4, 4, 2, 3), 15)
+    assert nt3["n_best"][0] == 2 and np.allclose(nt3["probs"][0, 3, [0, 1]], 0.5)
+    assert nt3["probs"][0, 3, 2] == 0.0
     # a node whose children all tie at its own score says nothing: dropped
     t2 = Tree(cap=8)
     r2 = t2.add_children(0, [0.2], [True], tick=[0])

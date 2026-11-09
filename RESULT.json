@@ -1,0 +1,5 @@
+{"agent": "azr1b4", "round": 1, "final": false, "slot": 4,
+ "best": null,
+ "ladder": {"unit": "total ticks (trainer step counts every simulator tick: --total-is-step)",
+            "verdict": "not launched"},
+ "summary": "Slot 4 (the tree only): no PPO and no rollouts; one process holds the network and repeats run 5's MCTS on the current weights (roots on its own greedy line), turns the tree into labels (every expanded node: the children that beat their siblings, the node's backed-up value; every decision of the best line), distils them with supervised steps, and evals greedy from the true start; every simulator tick is counted. Built and unit-tested (commit c7225e83, tools/az_loop.py, beam_tas --az-loop). Not launched yet: box.py rent is REFUSED by the budget pacer (3 boxes burn 1.17 of the 1.47 $/h limit; the cheapest passing offer is 0.356 $/h); a background retry rents and deploys as soon as an offer fits. Next: on-box smoke test (2 short rounds), then the from-scratch run."}
