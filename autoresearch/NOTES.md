@@ -762,3 +762,16 @@ trap (same depth, 5.5 s faster, 2.2x cells); one seed throughout.
   (60-73% at 16-23 s episodes) is the curriculum and reservoir spawning near the goal (reservoir
   min depth 1.16%), not the true-start rate; only the greedy evals measure the policy.
 - Box 59668027 (deadline 12:47 UTC) covers the 11:55 wrap-up; no extension needed.
+
+### 06:53 UTC: run 5 at 13.27B - best still 116.011; where the non-finishers stop
+
+- 18 evals 11.93-13.21B: finishes 4,7,8,3,7,4,5,5,6,5,7,8,8,7,2,5,2,4 of 9 (97/162 = 60%), no
+  9/9, fastest single finish 118.49 s (12.231B); 116.011 (10.344B) stands, keeper agrees.
+- Searches 31 (finishing line, 23 s), 32 and 33 (NO line, 368-370 s): the root replay died early
+  (beam frontier d 13,899 / 15,377 against a greedy frontier of ~2,200).
+- Measurement over all 38 evals since the best (342 greedy episodes, 201 finished = 59%): the 141
+  failures stop at 0-5% (7), 5-20% (12), 20-25% (17), 25-30% (29, 13 of them at 27.75-27.78% =
+  the pit dive), 30-35% (18), 40-45% (18), 45-50% (8), 55-60% (14), 60-90% (16), and NONE past
+  90%. So the late walls (CP6 gap, CP7 slit, chamber, finish) are solved; the misses are early
+  and mid-route control slips, 45% of them in the 20-35% band around the pit dive and the
+  cavity. Not a missing skill: the same checkpoint passes each of these places in most episodes.
