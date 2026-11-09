@@ -533,3 +533,10 @@ Evals 7.70-8.61B (13): best-of-9 80.0-82.5% in 12 of them (82.455 at 8.53B, just
 new depth since ~22:12 UTC, line 53 still the curriculum). ON TIME (CP6 deadline 28.5B; at this
 rate the round clock ends the run at ~21B). Box extended 12 h to 11:55 UTC; one more extension
 after 00:40 UTC covers the wrap-up (11:55) and the round end (12:35).
+
+### 00:53 UTC: geb6 82.52 at 8.91B (still CP5); box to 12:58 UTC
+
+Evals 8.68-9.66B (14): best-of-9 80.7-82.5% in 13, **82.515 at 8,909.2M** (new best, +0.04
+over 7.47B - the same plateau, not a new wall), one dip 71.0% at 8.76B; medians 14.6-81.2%.
+Explorer still 54.24% (step 6,821, 572 min). Box extended 12 h to 12:57:51 UTC (covers the
+wrap-up at 11:55 and the round end at 12:35). ON TIME; keeps training.
