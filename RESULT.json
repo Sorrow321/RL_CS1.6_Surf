@@ -4,10 +4,10 @@
  "final": false,
  "slot": 1,
  "best": {
-  "score": 1.767,
-  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_0302514176.jsonl",
+  "score": 27.101,
+  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_1208483840.jsonl",
   "run": "azr1b1_pool1",
-  "step": 302514176,
+  "step": 1208483840,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -104,10 +104,15 @@
  },
  "ladder": {
   "unit": "steps",
-  "verdict": "alive: no wall yet at 0.63B; first ramp and CP1 due by 1.6B steps (~22:10 UTC)",
-  "total": {}
+  "first ramp": 680001536,
+  "window (CP1)": 1057488896,
+  "verdict": "alive: walls 1-2 ON TIME (1.29x / 1.55x run 5); pit dive due by 3.625B",
+  "total": {
+   "first ramp": 1035242155,
+   "window (CP1)": 1412729515
+  }
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum. PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~347k steps/s): greedy 1.6-1.8% from 76M to 529M, 2.5% at 604M; run 5 was at 14.1% (first ramp) by 529M, its training episodes having broken out first through October's sources. Found: the curriculum froze on search 1's line (a stand-still stretch in the line; run 5 had the same freeze) and the next search waited the full 0.3B patience. Search 2's line (5%) adopted at 559M. Verdict at the 1.6B deadline.",
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~347k steps/s) cleared the first ramp at 0.680B steps (run 5 0.529B) and CP1 at 1.057B (run 5 0.680B): ON TIME, 1.3-1.6x run 5 in both units. Best eval 27.1% at 1.208B. The gap is mostly a curriculum freeze on the first search line (a standing-still stretch; run 5 had it too) and the 0.3B patience before search 2. Once a line reached ~5% the policy flew to 26% by itself. Next wall: pit dive (>27.5%), due by 3.625B.",
  "box": {
   "id": 59950838,
   "gpu": "RTX_4080",

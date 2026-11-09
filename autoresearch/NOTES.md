@@ -1156,3 +1156,25 @@ this run is on time or faster (the line gets 3.6x the starts).
   when the policy cannot reach the line's end. If this run misses the 1.6B deadline, the next
   recipe keeps one pool and fixes those two (`--demo-match-band`, a shorter patience/retry),
   each stated as a change.
+
+### azr1b1 - 2026-11-09 21:52 UTC: 1.24B steps, walls 1-2 ON TIME
+
+| wall | this run, steps | run 5, steps | deadline | this run, total | run 5, total | deadline |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 1.035B | 0.763B | 2.000B |
+| window (CP1) | 1.057B | 0.680B | 1.600B | 1.413B | 0.914B | 2.000B |
+| pit dive | - (best 27.1%) | 1.812B | 3.625B | - | 2.448B | 4.897B |
+
+* **How it got out.** Once search 2's line (to ~5%) was in the curriculum (559M), the greedy went
+  2.5% (604M) -> 7.5% (680M) -> 9.3% (755M) -> 15.4% (906M) -> 25.8% (1.057B): the policy flew
+  past the line's end BY ITSELF, 20 points of course with no new line. Search 3 (patience, 0.68B)
+  came out STALE (its end 92,161 behind the greedy's 90,489 when it ended). The quorum (9/9 past
+  line 2's mark) fired search 4 at 1.133B; its line (2,558 rows, end d 72,551 = 27.2%) was
+  adopted at 1.236B. Training episodes led again: reservoir min depth 75.1% at 1.236B.
+* **So far the one pool costs about 1.3-1.6x run 5 on the first two walls** (steps: 1.29x and
+  1.55x; total: 1.36x and 1.55x), inside the 2x rule. Most of the gap is the 0.3B the curriculum
+  sat frozen on line 1 (the standing-still repeat) plus the 0.3B patience before search 2.
+* Lines 3 and 4 have no repeated origins: the freeze was line 1's alone (the young policy paused
+  at the start of its own greedy flight).
+* Search ticks so far: 4 searches, 496M ticks (search_ticks.json saved beside the run).
+* Box deadline extended to 2026-11-10 09:17 UTC at 21:17; extend again every wakeup.
