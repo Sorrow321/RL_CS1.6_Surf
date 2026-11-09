@@ -4,71 +4,59 @@
  "final": false,
  "slot": 4,
  "best": {
-  "score": null,
-  "eval_file": null,
-  "run": "azr1b4_tree1",
-  "step": null,
+  "score": 2.189,
+  "eval_file": "/home/steam/ar_az/runs/azr1b4/azr1b4_tree2/traj_0275352056.jsonl",
+  "run": "azr1b4_tree2",
+  "step": 275352056,
   "ckpt": null,
   "recipe": [
    "bash",
    "tools/az_launch.sh",
-   "azr1b4_tree1",
+   "azr1b4_tree2",
    "--mcts-minutes",
-   "3"
+   "10",
+   "--mcts-max-waves",
+   "700",
+   "--mcts-roots-secs",
+   "300",
+   "--mcts-max-roots",
+   "128",
+   "--az-node-adv",
+   "1"
   ],
-  "recipe_expanded": {
-   "init": "python3 -u python/train_fast.py + run_arm.sh SCRATCH preset + config.incumbent_recipe + --steps 0 --run azr1b4_tree1_init (runs/azr1b4_tree1_init_launch.txt)",
-   "loop": [
-    "python3",
-    "-u",
-    "tools/beam_tas.py",
-    "runs/azr1b4_tree1_init/ckpt_final.pt",
-    "--map",
-    "maps/surf_src_sidistic.bsp",
-    "--envs",
-    "2048",
-    "--resample-every",
-    "25",
-    "--score",
-    "d",
-    "--greedy-envs",
-    "32",
-    "--allow-nonfinisher",
-    "--skip-gate",
-    "--route-file",
-    "none",
-    "--max-ticks",
-    "30000",
-    "--torch-seed",
-    "0",
-    "--log-every",
-    "5",
-    "--mcts-log-every",
-    "50",
-    "--out-dir",
-    "runs/azr1b4_tree1",
-    "--mcts",
-    "--mcts-minutes",
-    "6",
-    "--mcts-random-frac",
-    "1.0",
-    "--mcts-perturb-frac",
-    "0",
-    "--az-loop",
-    "--az-run",
-    "azr1b4_tree1",
-    "--mcts-minutes",
-    "3"
-   ]
-  },
-  "commit": "153e08d768eb69438ec8d87811b0a2a4b23599f8",
+  "commit": "5064f01c",
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null
  },
  "ladder": {
-  "unit": "total ticks (the loop's step counter counts every simulator tick: ladder.py --total-is-step)",
-  "verdict": "launched 21:31 UTC, no eval yet"
+  "unit": "total ticks (ladder.py --total-is-step)",
+  "verdict": "alive, all walls PENDING",
+  "tree1": {
+   "newest_total": 1053137530,
+   "first ramp": null
+  },
+  "tree2": {
+   "newest_total": 481842914,
+   "first ramp": null
+  }
  },
- "summary": "Slot 4 (the tree only): no PPO, no rollouts. One process holds the network and repeats: run 5's MCTS on the current weights (3-min searches instead of 6: every tick here is search, and 45 of run 5's 51 searches had their final best in the first half), labels from the tree (every expanded node: the children that beat their siblings, preferring the policy's own child on a tie, value = the node's backed-up banked progress; every decision of the best line), 1000 supervised steps, 9 greedy episodes from the true start. Every simulator tick counted. Run azr1b4_tree1 launched from scratch 21:31 UTC on box 59957469 (RTX 4080S, ~380k search ticks/s). Ladder: no eval yet."
+ "summary": "Slot 4 (the tree only: no PPO, no rollouts; the network learns only from MCTS trees rooted on its own greedy line). Three recipes from scratch on one box (the box was mostly idle under one): v1 = run 5's tree as is (3-min searches, roots on the last 20 s): 16 rounds, 1.05B ticks, eval best 1.92%, stuck on the spawn platform - the trees find the landings (1.8-2.8%) and the network learns them at the line's states (100% on its own line rows) but its greedy cannot reproduce them; v2 = roots over the whole greedy line + advantage-weighted node labels: best 2.19% at 0.28B; v3 = v2 + the yaw sigma fitted to the tree's targets (run 5's random children narrowed as PPO narrowed sigma; here nothing did). First ramp (8%) deadline 2.0B total ticks: v1 at ~23:15 UTC, v2 later, v3 later still. Run 5 cleared it at 0.76B total.",
+ "runs": {
+  "azr1b4_tree1": {
+   "commit": "153e08d7",
+   "recipe": "bash tools/az_launch.sh azr1b4_tree1 --mcts-minutes 3",
+   "launched": "2026-11-09 21:31 UTC"
+  },
+  "azr1b4_tree2": {
+   "commit": "5064f01c",
+   "recipe": "bash tools/az_launch.sh azr1b4_tree2 --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1",
+   "launched": "2026-11-09 21:55 UTC"
+  },
+  "azr1b4_tree3": {
+   "commit": "77466653",
+   "recipe": "bash tools/az_launch.sh azr1b4_tree3 --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 1",
+   "launched": "2026-11-09 22:28 UTC"
+  }
+ }
 }
