@@ -722,3 +722,19 @@ start. Either would be ONE generic term, set at step 0 and frozen.
 * Process slip, 01:20 UTC: a `git log --all -S--yaw-entropy` also listed a commit subject from
   another branch's ref (a commit not in this branch's history). The protocol forbids reading other
   branches' refs; nothing from it is used, and searches here stay on HEAD's history.
+* **04:00 UTC - v3 FAILED the post-CP2 block and is STOPPED; v6 launched.** Evals 12,791-14,074M
+  0.9-2.1 (yaw sigma still 2.713-2.718); the evals past the deadline, 13,998M and 14,074M, scored
+  1.97 and 1.58. `ladder.py` on the chain (188 evals): "STOP: a wall was missed" - first ramp
+  604,504,064 / window 1,283,981,312 / pit dive 3,165,126,656 / cavity 4,712,300,544 ON TIME,
+  post-CP2 block FAILED (deadline 13,931,380,736). Trainer pid 37326 sent TERM at 14,126M (no
+  search was running; nothing left on the GPU). v3's final: best **32.482 at 10,752M** (hand-on
+  ckpt_10510925824.pt, md5 5dda60e8...), the 33.25% line of search 16 never reached the greedy.
+  Box extended to 2026-11-09 16:00 UTC (12 h; released at wrap-up 11:55).
+  **v6 = `unr1b4_dc6`**: the box's code is v3's commit 9c8be647 (clean), the incumbent recipe +
+  v3's exact extra flags (from boxes/unr1b4.json, run unr1b4_knob3) + `--death-charge 1
+  --death-charge-window 2`, from scratch, `--steps 60e9`. Record gate passed (greedy, stoch,
+  mixed + POV in 36 s); the trainer prints DEATH CHARGE kappa=1 and the 2 s window (200 calls)
+  under the ratchet. The death-charge next-spawn fix ee29bffb is an ancestor of 9c8be647. Question:
+  does charging back a fatal fall's last 2 s of ratchet pay shorten the fatal-dive plateaus (v3:
+  window 1,284M -> pit dive 3,165M; the 30.8% dive 4.7-7.3B)? It has ~6.5B steps to 11:55 UTC;
+  matched-step comparison against v3's ladder.
