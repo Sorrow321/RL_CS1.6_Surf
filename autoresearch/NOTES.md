@@ -743,3 +743,8 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   left the platform at 454M, 6.28). First ramp (> 8%) pending, deadline 1.00B (v3 604M). Search 1
   (from 0.30B) found no new spine (21,818 cells, 0.98M runs, lambda 0.68). 207k steps/s (v3
   ~225k).
+* **05:30 UTC - v6 at 1.16B: FIRST RAMP at 604M (12.65; v3 also 604M), ON TIME; 20.5% from 831M**
+  (9/9 alike). Matched steps v6 / v3: 680M 15.21 / 15.15, 755M 15.78 / 15.75, 831M 20.58 / 17.27,
+  906M 20.49 / 17.96, 982M 20.52 / 18.77, 1,057M 20.48 / 18.25 - a gate ahead, not a wall (v3 took
+  the window, 26.7%, at 1,284M). No spine yet: search 2 (755M) reached d 79,324, STALE against the
+  greedy frontier 79,174 that moved under it; next search at 1,138M. 220k steps/s.
