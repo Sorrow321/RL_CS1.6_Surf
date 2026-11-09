@@ -809,3 +809,10 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   (63,075 = 36.7%, adopted 4,312M) walked back; search 12 (4,767M) has a spine to d 58,361 =
   41.4% from the new frontier 62,503. Hand-on unr1b4_dc6/ckpt_4501536768.pt pulled (md5
   c6ca5864...). RESULT.json best -> v6.
+* **10:42 UTC - v6 at 5.07B: best 41.924 at 5,059M (41.920 at 4,983M; 8/9 at 41.9%), CP3; CP4 next
+  (due 18.79B, October 9.39B).** Evals 4,832 / 4,908M 37.38 / 37.34, then 4,983 / 5,059M 41.92.
+  The 41.9% episodes reach their best at (5,290-5,296, 531-540, 8,528-8,573) STANDING on a ledge
+  (vz 0, hspd 62-195) at ~51 s, then drop to z ~7,770 and die (vz ~-1,100) about 1.5 s later; one
+  episode falls early at 25.9%. Search 12's spine (to 41.4%) was passed by the greedy; search 13
+  (5,066M) adopted a spine to d 57,547 = 42.3% from the frontier 57,916. Hand-on
+  unr1b4_dc6/ckpt_5001707520.pt pulled (md5 962c8bff...); RESULT best -> 41.924.
