@@ -800,3 +800,23 @@ at shelf height (|y| < 48, z <= 10,640).
   before the stall) and keep control through the surf in between - from 3-6 s out, uniform
   random keys fall off the ramps (no uniform-start rollout got back to the slot), so a uniform
   explore step rooted there rarely reaches the slot at all, let alone inside the envelope.
+
+### 2026-11-09 10:46 UTC - which head carries approx_kl: the view heads (>= 99% per optimizer step), not the keys
+
+* Measured locally on v2's own checkpoints (box released, CPU): one greedy episode recorded per
+  checkpoint with tools/record_ckpt.py (678 / 821 observations), the weights moved k steps along
+  the checkpoint's stored Adam direction (-lr m_hat / (sqrt(v_hat) + eps)), and the KL of every
+  head in PPO's joint ratio measured on those observations (`analysis/unr1b1_kl_heads.py`).
+* Shares of the per-step KL (identical at k = 1, 8 and 64): **14.09B - pitch 58%, yaw 41%, the
+  four key heads (fwd/side/jump/duck) 1% together; 6.0B - yaw 99%, pitch 1%, keys < 1%.** sigma yaw
+  0.051 at both (z units), pitch 0.33 -> 0.50 (its cap); from 6.0B to 14.09B the view-head weights
+  grew 3.8x (yaw) and 3.5x (pitch), the key head 1.24x.
+* What it does not show is the growth: the trainer's median approx_kl went 0.062 (6.0B) -> 4.03
+  (14.0B), and the proxy gives the opposite order (k = 1: 0.031 at 6.0B, 0.0014 at 14.09B). One
+  saved Adam state is a snapshot of the last minibatches, not an update, so only the shares are read.
+* Reading (generic): PPO's ratio multiplies the categorical key heads with Gaussian view heads at
+  sigma ~0.05, which are two orders of magnitude more KL-sensitive per unit of output change, so the
+  joint ratio and its clip are decided by the view heads (one of them the camera pitch: no physics
+  effect, no entropy term). Leads for the next program, untested: a sigma floor on yaw as on pitch
+  (`--pitch-sigma-min`), the pitch head out of the ratio, per-head clipping, a KL-targeted step size
+  (constants set once for every map).

@@ -41,3 +41,7 @@ box needed for the benches). Map coordinates are measurement boxes only, never a
   T s before the end wall: can ANY action sequence put the player in the slit's passing envelope
   (or past the ledge), and from how far upstream? `line` perturbs the line's own per-tick view and
   keys (replays are aligned to the policy's decision phase, tick % 4 == 0).
+* `unr1b1_kl_heads.py <ckpt> <out traj.jsonl>` - which policy head carries PPO's approx_kl: records
+  one greedy episode on the CPU (record_ckpt), moves the weights k steps along the checkpoint's own
+  stored Adam direction, and splits the KL of PPO's joint ratio by head (the four key heads, the yaw
+  and pitch Gaussians) on the recorded observations. A snapshot proxy: read the shares, not the level.
