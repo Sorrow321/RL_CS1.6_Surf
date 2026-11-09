@@ -699,3 +699,26 @@ start. Either would be ONE generic term, set at step 0 and frozen.
   on a floor further west at (-1,375, -214, 9,911) and crawls west along it to (-1,452, -42,
   9,958) at the end. The curriculum restarts at its end; the wall is due 13.93B (~2.8B steps, ~3.4
   h); search 6's line took ~0.8B steps to reach the greedy.
+* **01:25 UTC - v3 at 11.94B: a THIRD collapse, a different one - the yaw sigma blew up to the
+  clamp right after search 16's spine.** Evals 11,129 / 11,205M 32.41 / 32.36, then 11,281-11,885M
+  1.3-4.3. Box log (every 30th step line): at the adoption (11,087M) crawl 33% -> 58-66%, stall
+  0 -> 5-55%, kl 7.96 / 6.60, reward ~45 -> ~23; then the yaw sigma climbs exponentially from 0.053
+  (11.09B): 0.060 (11.12B), 0.104 (11.19B), 0.266 (11.23B), 0.486 (11.28B), 0.989 (11.36B), 1.306
+  (11.39B) ... **2.718 = exp(LOG_STD_MAX) by 11.9B** (entropy loss -1.9 -> -6.5, value loss 4-5 ->
+  14-19, kl ~0.07). The curriculum sits at that spine's rows 4,334-4,339 (success 13-34%,
+  oscillating), i.e. on its tail: a slow crawl along the floor at x -1,375..-1,452 (hspd 25-100)
+  where yaw barely matters, so the entropy bonus can win on the one state-independent yaw sigma.
+  The trainer already has the generic fix in this branch's history: `--yaw-entropy 0`
+  (c416c4a8; its help cites princessburglar 0.08 -> 2.718 in ~500M steps), and the uf2r1b1 dcw arm
+  ran it from scratch with the windowed death charge (ledger: the lineage that finished
+  unitfarmer2). The incumbent recipe does not carry it. Trade-off: with no bonus the yaw sigma is
+  left to the policy gradient and may sit LOWER, which is the side of failure 1 (KL ~ 1/sigma^2).
+  So v3 has now shown three late failure modes on one frozen recipe: KL runaway with weight-norm
+  growth (7.6B), a reward/value relapse with no KL signal (10.0B), and the yaw sigma at the clamp
+  after a crawl-tailed spine (11.1B). Still ON TIME (post-CP2 due 13.93B; the first eval past it
+  is 13,998M, ~03:51 UTC). v6 stays as planned (v3 flags + `--death-charge 1
+  --death-charge-window 2`; box code = 9c8be647, v3's): all three failures came after ~7.6B and v6
+  has ~6.5B steps; `--yaw-entropy 0` goes to the next generation's list with the trade-off.
+* Process slip, 01:20 UTC: a `git log --all -S--yaw-entropy` also listed a commit subject from
+  another branch's ref (a commit not in this branch's history). The protocol forbids reading other
+  branches' refs; nothing from it is used, and searches here stay on HEAD's history.
