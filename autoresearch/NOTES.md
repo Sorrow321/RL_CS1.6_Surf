@@ -1136,3 +1136,19 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   (all on value: at the spawn every expansion's best child is the one that banks deeper); the
   line's 51 macros: RPRRPRRRRPPPRPRRERRRRRPRPRERRGGRERRRRERRPPRRGRRPPR (R 31, P 13, E 3, G 3).
 * Evals 0.5M / 76M / 151M: 1.68% best (CP0), the spawn trap, as run 5 (1.6-1.7% to 0.38B).
+
+### 22:05 UTC: azr1b2_sib at 0.69B - off the spawn platform (4.4%), first ramp pending
+
+* Evals: 1.6-1.7% to 0.53B (the spawn trap, as run 5 to 0.38B), then **4.44% at 0.604B and
+  0.680B** (median 4.4%). First ramp (8%) not yet: run 5 0.529B, deadline 1.600B. Throughput
+  282k steps/s average since launch (searches included).
+* Searches (`autoresearch/analysis/mix_searches.py` on the pulled auto/ logs):
+
+  | k | start | waves | cells | greedy | best banked | mean P/E/R | wins/child G P E R | line | outcome |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 1 | 0.5M | 613 | 302 | 0.17% | 1.77% | 0.26/0.25/0.49 | .0123 .0071 .0065 .0149 | G3 P12 E4 R31 | adopted 92.8M |
+  | 2 | 453M (patience) | 747 | 678 | 1.46% | 2.33% | 0.31/0.33/0.36 | .0095 .0069 .0073 .0082 | E3 R2 | adopted 538M |
+  | 3 | 680M (quorum) | running | | 3.67% median | 5.77% at wave 230 | 0.35/0.36/0.30 at wave 230 | | | |
+
+  The policy learned search 2's line within one eval (4.4% at 604M). At the spawn the rule leaned
+  random (R 0.49); one step further on, the kinds' win rates were close and the shares near equal.
