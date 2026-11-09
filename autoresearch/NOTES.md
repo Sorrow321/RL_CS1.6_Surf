@@ -1201,3 +1201,7 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   1.812B. This run passed later than both (0.68B after run 5, inside the 2x deadline) and by the
   same route as run 4. The rule kept E at ~0.31 although R won more per child here (R 0.0057, E
   0.0036, P 0.0014 per child): the floor never bound; probability matching left E a third.
+* Total unit (steps + search ticks; search_ticks.json: 7 searches, 525M ticks by 2.49B): first
+  ramp 0.962B, window 1.113B, pit dive 3.017B - ON TIME (run 5 0.763 / 0.914 / 2.448B; deadlines
+  2.000 / 2.000 / 4.897B). A search here spends ~60-80M ticks (6 min at 170-220k ticks/s beside
+  the trainer on this box) against ~92M in run 5.
