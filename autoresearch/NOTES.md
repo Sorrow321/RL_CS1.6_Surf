@@ -1152,3 +1152,19 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
 
   The policy learned search 2's line within one eval (4.4% at 604M). At the spawn the rule leaned
   random (R 0.49); one step further on, the kinds' win rates were close and the shares near equal.
+
+### 22:32 UTC: azr1b2_sib at 1.13B - first ramp and window ON TIME; at the pit-dive wall
+
+* **Ladder (steps)**: first ramp **0.755B** ON TIME (run 5 0.529B, deadline 1.600B); window
+  (CP1) **0.906B** ON TIME (run 5 0.680B, deadline 1.600B). Evals 0.83B 20.7%, 0.91B 26.8%
+  (CP1), then 26.9 / 26.8 / 26.9% to 1.13B: the pit-dive wall (27.5%; run 5 1.812B, deadline
+  3.625B). The 1.057B eval's median was 15.8% (early-death episodes, as in run 5).
+* Search 3 (680M, quorum on search 2's line) found 5.77% banked and came back STALE: the policy
+  had flown to 14.2% by itself in the 6 min (as run 5's search 2). So the first ramp and the
+  window were the policy's own progress from the search-2 curriculum, exactly the pattern of run
+  5. Search 3's rule: mean P 0.38 / E 0.37 / R 0.26, final 0.43 / 0.46 / 0.11; wins per child G
+  0.0022, P 0.0010, E 0.0011, R 0.0017.
+* Search 4 (1.133B, quorum) at the pit: 26.63% banked by wave ~550 (the greedy's banked frontier
+  ~23.6%), shares P 0.15 / E 0.35 / R 0.50. Run 5's pit searches banked 25.86 / 25.87 / 26.94%
+  (k03-k05) before its policy threaded the gate itself at 1.81B; run 4's mixed tree threaded it
+  in search (27.72%, k05/k06).
