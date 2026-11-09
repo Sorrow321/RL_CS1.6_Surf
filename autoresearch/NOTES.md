@@ -1065,3 +1065,61 @@ directly, as an extra loss summed into every PPO minibatch step. Nothing else ch
   already built), so `search_ticks.py` counts this run exactly as it counts run 5.
 
 **Box** 59952494 (RTX 5080, 96 threads, Quebec, $0.337/h), rented 20:58 UTC, deadline 12 h.
+
+### 21:08 UTC: the label rule revised after a measurement (commit 2a4f8edd)
+
+* **Label smoke** (bench, run 5's ckpt_4530372608 inside the CP6 creep, one 2-min MCTS with run 5's
+  knob + `--mcts-labels`, on box 59952494): 406 waves, 831,530 nodes, best 84.28% (greedy pass
+  79.79% banked), 51,882 expanded nodes captured, labels built in 0.3 s, file 8.5 MB. 24,755 of
+  the 51,882 expanded nodes had all children tied (same backed-up score, same survival). Of the
+  others, the policy's OWN greedy child was a best child at **70%**.
+* So the first rule ("the better half of the siblings, rank-weighted") would have put most of
+  its weight on random-held actions at nodes where the policy was already the best: with 15 of 16
+  children random at temperature 5, that target is a pull toward randomness (an entropy bonus
+  with a coefficient ~20x PPO's), not a teacher. **Revised rule:** a child's weight is
+  max(0, r - r_own), r its sibling rank by backed-up score (survival breaks ties), r_own the
+  policy's own child's rank; normalised per node. The label moves the policy only where the
+  tree found something better than what the policy does, more toward the bigger improvement; a
+  node where nothing beats the policy teaches no policy row. The VALUE head now trains on EVERY
+  expanded node (nodes drawn uniformly over the kept trees; the policy term is masked to the
+  nodes that have a row).
+* **Flag-off bit-identity, proved on the box** (CPU, the full SCRATCH preset + run 5's recipe,
+  32 envs x 8 decisions, 3 iterations, base commit 09099d2a vs 99a73b50 in two worktrees):
+  progress.csv identical (fps aside), the step-1024 greedy eval trajectory identical (3.0 MB),
+  checkpoint keys equal, every policy tensor equal; run.json config differs only in demo_file
+  (the run's own spine0 path). 2a4f8edd changes only code inside the flag's guards.
+* Why not `--bc-file`: it reads one file at startup ("one round, one file") and its value term
+  writes into PPO's critic. The label path reuses its pieces (keys_engine_logp, the BC reference
+  sigma, the per-minibatch render) with a buffer that refreshes at every search end.
+
+### 21:11 UTC: run `azr1b3_tl1` launched from step 0 (box 59952494, commit 2a4f8edd)
+
+`python autoresearch/box.py launch --agent azr1b3 --run azr1b3_tl1 --steps 60e9 -- --tree-labels 0.1`
+= run 5's full recipe (config.incumbent_recipe, 126 elements, unchanged: same search, same knob
+`--mcts-random-frac 1.0 --mcts-perturb-frac 0`, same curriculum, same two spawn pools) + ONE
+change, `--tree-labels 0.1` (with the defaults `--tree-labels-batch 1024 --tree-labels-keep 4
+--tree-value-coef 0.25`). The trainer appends `--mcts-labels` to every search command. Record
+gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k steps).
+* Why 0.1: the Go-Explore Nature paper's self-imitation coefficient beside PPO (robustification,
+  SIL 0.1); the label loss is a mean NLL over the rows of the nodes where the tree beat the
+  policy, plus 0.25 x the tree-value MSE on its own head. Set once, before launch; nothing in it
+  comes from this map.
+* Provenance of every label and spawn file: the map spawn (spine0) and this run's own searches
+  on its own weights. No demo, no other run's checkpoint.
+
+### 21:21 UTC: the first tree teaches (azr1b3_tl1 at 108M steps)
+
+* Search 1 (524k -> 91.75M steps, the untrained policy idling at the spawn, as in run 5) wrote its
+  labels and the trainer loaded them: **116,500 expanded nodes; at 27,762 (23.8%) some child
+  beat the policy's own greedy child -> 166,815 policy rows; 77,640 nodes had all children
+  tied**; built in 2.0 s. Its line was STALE (97,920 vs the policy's newer 98,113), exactly as
+  run 5's search 1 (stale against 97,964) - same code path, same outcome.
+* First label step (iteration ~180): label loss 5.99 = keys NLL 3.21 + yaw 2.77 (|tanh mu - u|
+  0.62 on the policy rows) + value MSE 0.056 x 0.125; joint agreement of the four key / jump /
+  duck heads with the label 11.6%; 22% of each 1024-row label batch carries a policy row. The
+  term enters the PPO loss as 0.1 x 5.99 = 0.60.
+* The first label step compiled once (~100 s stall in that iteration, max-autotune), then ran.
+  Throughput read at the next wakeup over a longer window (early fps is a cumulative average
+  diluted by the startup compile and the search beside the training).
+* Flag-off identity re-proved on 2a4f8edd itself (same CPU test vs the base commit): progress,
+  the step-1024 eval trajectory and every policy tensor identical. Test runs deleted.
