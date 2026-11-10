@@ -1350,3 +1350,22 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
 * 19 searches = 1.814B search ticks; 7.617B steps / 9.36B total ticks at 05:37.
 * Box 59952494 extended 6 h to 11:41 UTC (CP6's deciding eval, step 12,231,114,752, is due
   ~10:45 at 250k steps/s).
+
+### 06:38 UTC: 72.30% at 8.230B - two more search lines adopted (19, 20); CP6 still ~13-18 points away
+
+* Evals: 69.5% to 7.93B (69.75), then 71.73 (8.003B), 71.94, 72.20, **72.30% (8.230B)**, 72.20,
+  72.16, 72.19 (8.456B); medians 71.4-72.2%.
+* Search 19 (7.550B -> 7.633B): NEW SPINE, end d 30,263 vs greedy frontier 31,806 (+1,543 u).
+  Search 20 (8.003B -> 8.088B): NEW SPINE, end d 27,456 vs 30,302 (+2,846 u); the curriculum is
+  at its end (tau ~9,085 of 9,325, band success 11-29%). Search 21 started at 8.456B (greedy d
+  30,276). Since CP5 every gain came from a search line (16, 19, 20), each 1.5-3.7k u past the
+  policy; 4 searches lost to a dead replay, 2 stale.
+* Where CP6 is: in run 5, CP5 came at 70.7% and the policy reached 84% within 0.4B steps, sat
+  there 1.8B steps, and a search line gave the CP6 loop (CP6 first at 89.9%, 6.116B). This run
+  is at 72.3% with 3.7B steps left before CP6's deadline (12.232B, ~10:46 UTC); at the rate since
+  5.8B (~2.8 points per B steps) it would reach ~83% - a line has to open the loop in time.
+* Labels: searches 19/20 beat the policy at 6.5% / 10.6% of nodes (more where a new line is
+  being found); 7% of a label batch carries a policy row; keys NLL 2.14, yaw 0.25, value MSE
+  0.053, agreement 0.33.
+* Insurance pull: ckpt_latest.pt (8.53B, md5 408c275a...) and ckpt_8002732032.pt (md5
+  c9ba8e06...) are local. 21 searches = 2.017B search ticks; 8.53B steps / 10.47B total.
