@@ -4,11 +4,11 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 82.17,
-  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_11476140032.jsonl",
+  "score": 82.287,
+  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_11929124864.jsonl",
   "run": "azr1b3_tl1",
-  "step": 11476140032,
-  "ckpt": null,
+  "step": 11929124864,
+  "ckpt": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/ckpt_latest.pt",
   "recipe": [
    "--envs",
    "1024",
@@ -155,7 +155,7 @@
   "CP4": 4983357440,
   "CP5": 5511839744,
   "CP6": null,
-  "verdict": "alive: 8 walls ON TIME (0.680, 1.284, 1.812, 2.794, 3.926, 4.606, 4.983, 5.512B); CP6 PENDING (deadline 12.232B; curtain at d ~12,160 = 87.8%, greedy at 82.2% = d ~17,800 at 11.476B)",
+  "verdict": "FAILED at CP6: 8 walls ON TIME (0.680, 1.284, 1.812, 2.794, 3.926, 4.606, 4.983, 5.512B steps); CP6 not cleared by its deadline 12.232B - the deciding eval 12,231,114,752 reached 82.28% (CP5; the greedy's best episode stops at d ~17,700, 5.6k u before the CP6 curtain at d ~12,160) - so the run was stopped at ~12.42B steps (10:59 UTC). Total ticks at the deciding eval ~15.03B (CP6 total deadline 16.44B; steps decide for slot 3).",
   "total": {
    "first ramp": 977379793,
    "window (CP1)": 1667960905,
@@ -167,5 +167,5 @@
    "CP5": 6888634858
   }
  },
- "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~250k steps/s): 8 walls ON TIME - steps 0.680 / 1.284 / 1.812 / 2.794 / 3.926 / 4.606 / 4.983 / 5.512B vs run 5 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643 / 3.624 / 3.851B (1.0-1.9x); total ticks 0.98 / 1.67 / 2.29 / 3.55 / 5.00 / 5.78 / 6.25 / 6.89B. After CP5 every gain came from a search line: 16 -> 69.7% (6.795B), 19+20 -> 72.3% (8.230B), then flat at 72.1-72.3% for 3B steps while lines 23-25 ended ~2.5-3k u past the policy; lines 26 and 27 (10.80B, 11.26B) ended 8.4k and 11.9k u past it (d 21,857 and 18,358 in the search field) and the greedy jumped to 81.8% at 11.325B, best 82.17 at 11.476B (all 9 episodes >= 81%). Six searches (13, 15, 17, 18, 21, 22) were lost to a dead greedy replay. The trees beat the policy's own child at 2-19% of nodes (most where a new region opens). CP6 (curtain d ~12,160, 87.8%) is ~5.6k u ahead with its deadline at 12.232B."
+ "summary": "Slot 3 (the tree teaches beside PPO): labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run 1 azr1b3_tl1 = run 5 + labels (from step 0, RTX 5080, ~250k steps/s): 8 walls ON TIME - steps 0.680 / 1.284 / 1.812 / 2.794 / 3.926 / 4.606 / 4.983 / 5.512B vs run 5 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643 / 3.624 / 3.851B (1.0-1.9x); total ticks 0.98 / 1.67 / 2.29 / 3.55 / 5.00 / 5.78 / 6.25 / 6.89B - then FAILED CP6 (deadline 12.232B steps) at 82.3%. After CP5 every gain came from a search line: 16 -> 69.7% (6.795B), 19+20 -> 72.3% (8.230B), flat 3B steps while lines 23-25 ended ~2.5-3k u past the policy, lines 26/27 (8.4k and 11.9k u past it) -> 81.8% at 11.325B, best 82.29% at 11.929B; lines 27-29 then all ended at the same place ~2k u past the greedy and the curriculum on them went back only ~180-1,000 ticks. Six searches were lost to a dead greedy replay. The trees beat the policy's own child at 2-19% of nodes (most where a new region opens) and the labels never moved the greedy across a shelf by themselves. Run 2 azr1b3_tl2 (launched 11:00 UTC, same box and commit) = slot 1's finishing recipe (azr1b1_pool1, 85 flags) + --tree-labels 0.1, so slot 1's run is its paired control; its ladder is PENDING."
 }

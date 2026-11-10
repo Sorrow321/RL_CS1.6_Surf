@@ -1427,3 +1427,49 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
 * Box extended at 09:56 to 12:56 UTC (needed past 11:41 either way: tl1 keeps it if CP6 clears,
   tl2 needs it if not). Insurance pull: ckpt_latest.pt at ~11.52B, just after the 82.17 eval
   (md5 e482588b20dd5a87747f17b52abb23a2). 27 searches = 2.585B search ticks.
+
+### 11:04 UTC: tl1 FAILED at CP6 (82.3% at the deciding eval); harvested and stopped; run 2 tl2 = slot 1's recipe + labels launched
+
+**tl1's final ladder (steps decide, total ticks beside):** first ramp 0.680 / CP1 1.284 / pit dive
+1.812 / CP2 2.794 / post-CP2 block 3.926 / CP3 4.606 / CP4 4.983 / CP5 5.512B, all ON TIME
+(1.0-1.9x run 5); total 0.98 / 1.67 / 2.29 / 3.55 / 5.00 / 5.78 / 6.25 / 6.89B. **CP6 FAILED:**
+the deciding eval 12,231,114,752 (deadline 12,231,639,040) reached 82.28%, max CP5. Best eval
+82.287 at 11,929,124,864. Total ticks at the deciding eval ~15.03B (CP6's total deadline is
+16.44B, but slot 3 is judged in steps).
+
+**Where and why.** Evals sat at 82.17-82.29% from 11.476B to 12.307B (11 evals). The greedy's best
+episode stops at d ~17,700 of score.py's field, 5.6k u before the CP6 curtain (d ~12,160).
+Searches 27 (11.26B), 28 (11.71B) and 29 (12.16B) all found lines that end at the same place, d
+18,358 / 18,124 / 18,008 in the search field, only ~2,000 u past the greedy frontier (20,150-
+20,158). The trees beat the policy's own child at 16.9% / 10.0% / 4.3% of nodes. On line 29 the
+curriculum went back only ~180 ticks from the end and then flipped between a start that
+succeeds 57-60% and one 5 ticks earlier that succeeds ~20%. Run 5 reached CP6 2.27B steps after
+CP5. tl1 spent 6.7B steps after CP5 and got 82%: five shelves (64.9 / 69.7 / 72.2 / 82.2%),
+each broken only by a search line learned through the curriculum, and each line learned at
+most ~2-3k u at a time except lines 26/27. **What the labels did:** a policy row in ~11% of a
+label batch, fit keys NLL 1.8-2.4, agreement 0.24-0.49. They never moved the greedy across a
+shelf on their own: every rise followed a new line by ~0.5B steps. That is one seed against
+one reference (run 5), so it cannot say whether the labels slowed the post-CP5 phase. The
+pre-CP5 walls were 1.0-1.9x run 5, inside what CLAUDE.md calls the seed floor for one seed.
+
+**Harvest (local, md5-verified):** ckpt_latest.pt (~12.38B, the 82.2% policy, md5
+1d519cdcd09ef62991e652a2c5160f2e), ckpt_11003756544.pt (the snapshot before the best eval, md5
+129d580a04774e6078e79ce047249b55), ckpt_8002732032.pt; search_ticks.json (29 searches, 2.796B
+search ticks); auto_bundle.tgz (auto/ without ckpt.pt / mcts_tree.npz / labels.npz / field.npz,
+plus tree_labels.csv: 10.5 MB, 276 files, md5 efa65abcbfb328b46c383843a1a93a7a, via base64);
+the launch log, progress.csv, run.json and all 164 evals. Stopped 10:59 UTC at ~12.42B steps
+(kill 5076; no search child was running; GPU at 0%).
+
+**Run 2 `azr1b3_tl2`** launched 11:00:13 UTC on the same box and commit 2a4f8edd (pid 27295):
+`--no-recipe` + slot 1's 85 flags (azr1b1_pool1, commit da7981e5, which changes no
+python/tools/src code against the base) + `--tree-labels 0.1`, `--steps 60e9`. The flag list
+was checked equal to b1's RESULT.json recipe + the two label tokens. The record gate passed
+(greedy, stoch, mixed, POV). run.json: tree_labels 0.1 / batch 1024 / keep 4 / value coef
+0.25, respawn_frac 0.9, no novelty pool, no demo share. Throughput 267k steps/s at 20M.
+**Paired control:** azr1b1_pool1 FINISHED (all 12 walls ON TIME; finish at 14.194B steps, best
+7/9 finishes 115.97 s). Its walls: 0.680 / 1.057 / 1.359 / 2.341 / 2.492 / 2.643 / 3.549 / 4.304 /
+CP6 7.852 / CP7 8.230B. The question tl2 answers: do tree labels change slot 1's time-to-wall?
+A gap under ~30% at a wall is not an answer (one seed each).
+**Money:** credit $23.08, fleet burn $1.174/h (3 boxes), reserve in 11.1 h. Box extended to
+15:01 UTC. At ~250k steps/s tl2 reaches ~8-9B steps by the budget end (~20:40), so CP6/CP7 come
+into reach only if it keeps slot 1's pace.
