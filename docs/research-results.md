@@ -37113,3 +37113,25 @@ A's two winning lines are made mostly of policy and perturbed children.
 warm start, no flag changed.
 
 **Budget.** Credit 20.17 $, reserve 10 $, burn 0.70 $/h, 14.5 h above the reserve.
+
+## 2026-11-10 14:55 UTC - second-map test, CORRECTION to the 14:45 interim entry (arm A's first line)
+
+The 14:45 table row "curriculum start hovers at 456-476 ... 2.13B -> 2.81B" and the sentence "its
+curriculum stalled on the upper slab for ~680M steps" are wrong: I had read the log only up to
+2.28B. Read to the end, the first line's curriculum start kept walking back:
+
+| curriculum start (tick of 1,261) first at or below | trainer step | success at that move |
+|---|---|---|
+| 480 (on the upper slab) | 2.129B | 22% |
+| 450 | 2.299B | 22% |
+| 400 | 2.365B | 26% |
+| 350 (before both slab jumps, ticks ~340-420 of the line) | 2.435B | 23% |
+| 320 | 2.606B | 20% |
+| 280 | 2.805B | 22% |
+
+So the staircase itself was learned ON THE FIRST LINE by about 2.44B (540M steps after that line
+was adopted), from spawns placed just before the jumps. The slow part, 2.44B -> 2.81B, was the
+walk back through the line's 3.4 s wander in the south-west corner (ticks ~150-330). Search 7's
+line (adopted 2.810B, 1,089 states, no wander) replaced it; its curriculum start reached tick 400
+at 2.862B, 200 at 3.030B and 0 at 3.083B, and the greedy from the true start cleared the room 2/9
+at 2.945B, 8/9 at 3.020B, 9/9 at 3.096B as stated. The other rows of the 14:45 entry stand.
