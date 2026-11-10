@@ -40,7 +40,7 @@
    "window (CP1)": null,
    "verdict": "FAILED first ramp at 2.0B"
   },
-  "verdict": "v1-v4 failed the first ramp; v5-v8 alive (pending)",
+  "verdict": "v1-v5 failed the first ramp; v6-v9 alive (pending)",
   "tree2": {
    "first ramp": null,
    "window (CP1)": null,
@@ -52,6 +52,11 @@
    "verdict": "FAILED first ramp at 2.0B"
   },
   "tree4": {
+   "first ramp": null,
+   "window (CP1)": null,
+   "verdict": "FAILED first ramp at 2.0B"
+  },
+  "tree5": {
    "first ramp": null,
    "window (CP1)": null,
    "verdict": "FAILED first ramp at 2.0B"
@@ -94,7 +99,10 @@
   "azr1b4_tree5": {
    "commit": "6f629101",
    "recipe": "bash tools/az_launch.sh azr1b4_tree5 --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32",
-   "launched": "2026-11-10 00:01 UTC"
+   "launched": "2026-11-10 00:01 UTC",
+   "status": "FAILED first ramp + window at 2,042,943,699 total ticks; stopped 2026-11-10 02:43 UTC",
+   "best_score": 2.383,
+   "best_eval": "traj_0673750856.jsonl"
   },
   "azr1b4_tree6": {
    "commit": "6f629101",
@@ -110,6 +118,11 @@
    "commit": "f7d53224",
    "recipe": "bash tools/az_launch.sh azr1b4_tree8 --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1",
    "launched": "2026-11-10 02:08 UTC"
+  },
+  "azr1b4_tree9": {
+   "commit": "f7d53224",
+   "recipe": "bash tools/az_launch.sh azr1b4_tree9 --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1 --az-steps 2000",
+   "launched": "2026-11-10 02:43 UTC"
   }
  }
 }

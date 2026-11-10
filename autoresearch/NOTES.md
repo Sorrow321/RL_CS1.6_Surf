@@ -1342,3 +1342,14 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   0, 0, 2, 4, 4, 4, 1, 5 of 8; every one of them still dies within a few seconds (it touches the ramp
   and falls to the kill floor instead of surfing north-east on it). v7 over 24 rounds: 14 of 192 passes.
   Evals: v5 ~2.0% at 1.97B (deadline next eval), v6 ~2.1% at 1.34B, v7 ~1.9% at 0.79B, v8 best 2.15%.
+
+### azr1b4 - 2026-11-10 02:43 UTC: **v5 FAILED the first ramp at 2.043B; stopped. v9 launched (v8 + 2000 distil steps)**
+* **v5 = azr1b4_tree5** (6f629101: v4 + the yaw sigma fitted on line rows + the 32 u line cut): 30 evals,
+  newest 2,042,943,699 ticks; **first ramp FAILED, window FAILED**; best eval 2.383 at 0.67B. Its sigma
+  went 0.29 -> 0.020 (the random children narrowed as designed) and its trees reached 5.1-5.5% lines,
+  but its evals stayed at ~2%. Stopped 02:43 UTC.
+* **v9 = azr1b4_tree9** (commit f7d53224, checkout /root/t8 shared with v8, launched 02:43 UTC from step 0)
+  = v8 + `--az-steps 2000` (twice the supervised steps per round; free in ticks): with v8's labels now
+  consistent along the whole best line, a tighter fit is the cheapest way to make the greedy follow it
+  more exactly. One change against v8.
+* Running: v6, v7, v8, v9. Failed: v1-v5 (first ramp, at 2.0B total ticks).
