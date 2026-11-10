@@ -37452,3 +37452,72 @@ line (d about 56,918 every time).
 
 **Budget.** Credit 40.14 $, reserve 10 $, burn 1.00 $/h with three boxes, 30.2 h above the
 reserve.
+
+## 2026-11-10 23:15 UTC - second-map test: arm A (the frozen sidistic recipe, FROM SCRATCH) RELEASED at 12.86B steps, stopped at the pit (3.2%) since 3.0B: the recipe does not repeat on the second map; the old-simulator seed-1 replicate finds no line past the pit
+
+**Arm A `m2sib_pb1`, final.** m2/sib d8410be8, RTX 4080 (instance 60063342, $0.283/h), one seed, from
+scratch, the frozen sidistic recipe of `azr1b2_pool` flag for flag (launch entry of 12:00 UTC; the one
+environment token that differs is `--maxvel 3500`), no demo, no map-specific term. Launched 11:52 UTC,
+released by the operator at 23:08:13 UTC, 38 minutes before its watchdog deadline (the user was told at
+20:05, 21:15 and 22:09 UTC that it would be saved and let go instead of extended; no objection).
+About 11.4 box-hours, about $3.2. `vastai show instances` and the fleet registry show the instance gone.
+
+| what | value |
+|---|---|
+| last step (progress.csv) | 12,861,833,216 at 318k steps/s |
+| greedy evals from the true start | 171, finishes 0/9 in every one |
+| best eval | score 3.218 (`traj_10192683008.jsonl`); the last three, 12.68-12.84B: 3.215 / 3.216 / 3.214 |
+| leaves the start room | 2/9 at 2,944,925,696, 9/9 at 3.096B (by itself: no line, state or weight handed to it) |
+| stands at the pit | from ~3.0B to the end: ~9.8B steps; after 3.2B the greedy frontier d stayed in 55,352-55,382 in all 128 evals (9 of 9 episodes past the line in 115 of them) |
+| searches | 29; a line in 2 (search 5, adopted 1,903,689,728, 1,262 states, end d 55,311; search 7, adopted 2,810,183,680, 1,089 states, end d 55,345); searches 8-29, 22 in a row, no line |
+| what each failed search reached | ~35 u past the greedy, 200 u needed (search 29 at 12,626,952,192: greedy_d 55,375.7, beam_frontier_d 55,341.3) |
+| backward curriculum on its last line | every decile 96-100% (nothing left to learn on that line) |
+| same recipe on surf_src_sidistic | first finish at 7.248B steps (`azr1b2_pool`); here, at 1.77x that step count, 3.2% of the map |
+
+**Verdict.** NULL on the second map: under section 0b the one-pool + sibling-yield recipe is not a
+unified winner, it does not repeat on surf_princessburglar_b26 with no constant changed. Two things it
+did show: (1) it is the only arm that left the start room by training alone (arm B's random-end tree:
+never, 14 searches, released at 6.02B; the transfer arm: not by 5.71B, 0 of 14 searches); (2) once in
+the pit its tree search is the limit, not the learner: the curriculum learned every line the search
+returned, and the search returned nothing for 22 searches. What the missing line looks like is in the
+20:05 and 21:15 entries (a run-up: ~400 u/s built in a level passage by first moving away from the
+goal). The run was kept past the 10-minute stationary rule on purpose, as the from-scratch control the
+transfer arm and the diagnostic arm are read against; that is the only reason it ran to 12.86B.
+
+**Files** (`/home/steam/ar_m2/runs/m2sib/m2sib_pb1/` on the droplet, 652 MB): `ckpt_latest.pt` md5
+385b8e6aea19c6728b1c5cdf5b7e8803 (63,177,215 bytes, pulled 23:07:28 UTC, md5 checked against the box
+by box.py), `ckpt_12004098048.pt` md5 bb64e8cda5ae00409c26afc502de6b8e, `ckpt_10003415040.pt` md5
+9bf130b30de0afc4657257e636cfee06, `ckpt_3001024512.pt` md5 38bc123afd9ef9bc41457062554870a5 (the
+room-exit step), `run.json`, `progress.csv`, the launch log, 171 eval trajectories. **Not saved:** the
+search folders `auto/k01..k29` on the box, so the two spine files of searches 5 and 7 are gone with the
+instance (operator miss: the pull does not take them and they were not copied by hand). What stands in
+for them: the greedy trajectories, which run that line from the true start (9 of 9 in most evals), and the beam frontier
+of the search-18 bench (`runs/m2ge/bench_k18ge/`). The two boxes still up get their `auto/k*/spine.*`
+copied before any release.
+
+**Seed replicates of October's search command (measurement only), 4 of 6 done.**
+
+| run | simulator | seed | best distance | cells over the pit / east ledge / end zone | found the crossing |
+|---|---|---|---|---|---|
+| bench 4 | OLD (tables 128), October's code | 0 | 52,203u | 58 / 166 / 79 | yes (iteration 260) |
+| o1 | OLD | 1 | 52,583u | 0 / 0 / 0 | no (420 iterations, 5,109,214 runs, 11,963 cells) |
+| bench 3 | FIXED, today's code | 0 | 52,582u | 0 / 0 / 0 | no (420 iterations) |
+| f1 | FIXED | 1 | 52,260u | 29 / 174 / 42 | yes (iteration 270) |
+
+One of two on each simulator, on different seeds: the crossing is a matter of seed, and four runs do
+not show the fix making it rarer or commoner. f2 (fixed, seed 2) is running, o2 follows (about 00:40
+UTC).
+
+**The two arms still running, same watch (23:02 UTC).** TRANSFER arm `m2warm_pb1`: 5.71B steps, greedy
+0.40%, 0/9, still in the start room; 14 searches, 0 with a line (the tree's best d 56,917.6 every
+time). Arm B was released in this state at 6.02B; whether to keep this one past that is with the user.
+DIAGNOSTIC search-swap arm `m2ge_pb1`: 5.24B steps, greedy still at the spawn (0.4%, 0/9; arm A left
+the room at 2.945B). Its searches found the way out of the room to the pit in 10 of the 12 searches
+since the second (2-7, 9, 10, 12, 13; end d 55,301-55,315), none past the pit; searches 8 and 11 each
+returned a 200-state line INSIDE the room (end d 56,909), adopted because that eval's greedy frontier
+happened to read 57,129 / 57,134 instead of ~56,92x, and each threw away the exit line being learned.
+Reach of the backward curriculum on each exit line when it was replaced: 60% decile (search 2's line),
+90%, 90%, 80%, 50%, 40%, 30% (search 9's), 50% (search 10's, replaced after 328M steps), 30% (search
+12's); search 13's stood at the 60% decile after 420M steps. Thirteen adoptions in 5.2B steps; the
+start of the line has not been reached once. Credit $38.05, burn $0.716/h with two boxes, 39 h above
+the $10 reserve.
