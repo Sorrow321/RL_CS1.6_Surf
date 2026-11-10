@@ -8,7 +8,7 @@
   "eval_file": "/home/steam/ar_az/runs/azr1b4/azr1b4_tree4/traj_1355167164.jsonl",
   "run": "azr1b4_tree4",
   "step": 1355167164,
-  "ckpt": null,
+  "ckpt": "/home/steam/ar_az/runs/azr1b4/azr1b4_tree4/ckpt_1355167164.pt",
   "recipe": [
    "bash",
    "tools/az_launch.sh",
@@ -31,7 +31,8 @@
   "commit": "7fcfb706",
   "one_recipe": true,
   "from_scratch_step0": true,
-  "resume_from": null
+  "resume_from": null,
+  "ckpt_note": "the snapshot saved AT the best eval (az_loop keeps a ckpt at every new best), md5-verified by box.py pull"
  },
  "ladder": {
   "unit": "total ticks (ladder.py --total-is-step)",
