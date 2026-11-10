@@ -37230,3 +37230,143 @@ staircase at its 5th try, 1.812B), and whether it gets past the pit at 3.2% wher
 since 3.0B. First numbers: step 0 eval 0.35%, 0/9 (the sidistic network does nothing useful in
 this room by itself, as expected); view sigma starts at the source's 0.05 / 0.11; search 1 is
 running; 164k steps/s cumulative at 71M steps, still rising.
+
+## 2026-11-10 20:05 UTC - second-map test: DIAGNOSTIC search-swap arm m2ge_pb1 LAUNCHED (October's search loop on arm A's recipe); what passes the pit, measured search-only
+
+On the user's instruction (18:20 UTC): "Let's launch a 3rd box with the same type of search that
+has passed princessburglar before. If it works, we'll think how can we unite them (and what
+exactly makes it find the line while current method fails)". Arm A and the transfer arm run on
+unchanged.
+
+**What the arm is.** `m2ge_pb1`: FROM SCRATCH, one seed, arm A's recipe with ONLY the search loop
+swapped for the October princessburglar loop as packaged in `tools/auto_spine.py`: the plain beam
+explorer, then branched beams, then three Go-Explore stages of 5 minutes. Against arm A the stored
+`run.json` differs in 10 of 280 keys, all expected: `auto_spine_explorer` (A: mcts; here absent =
+beam), `auto_spine_mcts_args` and `auto_spine_mcts_minutes` (absent), `auto_spine_banked` (A: 1;
+absent), `auto_spine_envs` (2048 -> 4096), `auto_spine_ge_minutes` (0 -> 5), plus `demo_file`,
+`git.commit`, `label`, `started`. The search gain is the default 200 u, as in arm A (a first draft
+used 500; removed before the launch). It is a DIAGNOSTIC arm: the search settings come from this
+map's own October lineage, so it is never a recipe candidate and never a 0b result. Provenance:
+from scratch, every spine comes from the run's own searches on the run's own checkpoints; no demo
+and no October file enters its training. October's line, root states and archives are used on the
+bench only (measurement).
+
+    --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --unstuck --unstuck-reach eval
+    --respawn-margin 2 --unstuck-max 0.2 --unstuck-temp-heads keys --obs-surf 1 --surf-bonus 0
+    --obs-compass 1 --obs-pot-rate 1 --race-ratchet --race-no-corner-cut 1 --time-pen 0.001
+    --stall-eps 5 --pitch-sigma-min 0.05 --eval-patience 30 --eval-parallel 1 --front-temp 1
+    --front-band 0.01 --energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1
+    --maxvel 3500 --auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck
+    --auto-spine-envs 4096 --auto-spine-ge-minutes 5 --auto-spine-patience 3e8
+    --auto-spine-retry 3e8 --demo-success-d 100 --demo-window 5 --demo-grow 5 --demo-grow-max 40
+    --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.5
+
+**Box.** vast 60107502 (owner name m2ge), RTX 5080, 0.349 $/h, machine 146173, 32 threads; rented
+18:34 UTC, ready in 3.7 min, health ok; m2/sib 5201ee03 (config `max_boxes` 2 -> 3). A local CPU
+dress rehearsal of the flag set passed before the rent (beam, branched beam, three GE stages,
+replay, read-back). Launched 19:27:48 UTC through `box.py launch`, record gate passed,
+`--steps 60e9`, 356-386k steps/s. Watchdog until 2026-11-11T06:33:52Z with harvest spec and pid
+file; dashboard tunnelled to localhost:8603. The three arms sit on three different cards: read
+them step-matched, never on wall clock.
+
+**First read-out: the way out of the start room.** Search 1 (step 0.5M, the scratch search): a
+4,497-state line, end d 56,724. Search 2 (triggered at 378,011,648 steps, adopted at 390,594,560):
+NEW SPINE from the plain beam in 47 s, 4,200 states, end d 55,302 = the pit (3.23%); it leaves the
+room by the doorway staircase and the south corridor (first tick west of x 600 at tick 539), the
+route arm A's tree found at ITS fifth search (triggered 1.812B, adopted 1.904B). Spine md5
+f1f0986e1fcad8beb95960603f45b1ae (`runs/m2ge_pb1/auto/k02/spine.npy` on the box). One search each,
+one seed each: this says the beam explorer can find the staircase early, not how often. The
+backward curriculum stood at the 60% decile of that line at 686M steps; the greedy from the true
+start is still in the room (0.0-0.4%). Read-outs to come, against arm A: the step the greedy first
+leaves the room (A: 2/9 at 2.945B, 9/9 at 3.096B) and whether anything gets past the pit, where A
+has stood since 3.0B (9.22B now, 21 searches without a line).
+
+**The pit, search-only (measurement only; box CPU before the launch and beside the first minutes
+of training, then the droplet).** The field is the run's own (cell 32, d0 57,149). Pit floor
+d 55,302-55,315; October's line ends at (536,-2688,3409), d 54,901 = 3.93%.
+
+| bench | code | core | roots | iters | cells | cells d<55,300 | over the pit | east ledge | deepest d |
+|---|---|---|---|---|---|---|---|---|---|
+| October `snap_a` (2026-10-24, GE6) | a3f34715 | old (128 solids) | October's 64 north-tunnel states | 300 | 14,744 | 327 | 57 | 160 | 54,901 |
+| 4 `ge6old` | a3f34715 | old | the same 64 | 420 | 14,971 | 371 | 58 | 166 | 54,901 |
+| 3 `ge6oct` | 5201ee03 | fixed (512) | the same 64 | 617 | 14,609 | 0 | 0 | 0 | 55,318 |
+| 2 `ge6x` | 5201ee03 | fixed | arm A's own 64 south-corridor-end states | 916 | 16,469 | 0 | 15 | 1 | 55,321 |
+
+"Over the pit" = cells in x 700..900, y -3100..-2950, z 3500..3620; "east ledge" = x 930..1100,
+y -3200..-2760, z 3400..3520 (`count_cells.py`). All four are the one command (seed 0):
+
+    tools/explore_phase1.py --map maps/surf_princessburglar_b26.bsp --envs 4096 --cell 64
+        --cell-energy 32 --decisions 100 --act-every 4 --exact-chains --roots-spine <roots>
+        --goals 1 --seed 0 --maxvel 3500
+
+Archive md5s: bench 2 5128bf7ddf1f0611b3875daa2130e89c, bench 3 831f68de0f521b9e1ee61b5f6f1051d3,
+bench 4 0cd1e9e984193608de3d175c87eb6a8f. Bench 1 (`k18ge`): the PACKAGED ladder (the one the arm
+runs; gain 500 in that draft) on a copy of arm A's search-18 checkpoint (md5 362d8030...): no
+line (`AUTO_SPINE {"spine": null}`; beam best d 55,305 against a greedy frontier of 55,382,
+branched beams 55,301-55,311, GE stages no better). The packaged Go-Explore is not October's
+hand-run GE6 (it adds `--cell-heading 1`, `--view-follow`, `--roots-keep-all`, speed-boosted
+roots, 48 roots, 3 x 5 min) and the trainer has no passthrough for its options.
+
+What the benches say:
+
+* October's own line is real on today's simulator: `ge_replay.py` on October's archive replays it
+  24 of 24 links on the corrected core, end d 54,901.
+* The search is deterministic, and October's find is reproduced: bench 4 lands on October's
+  deepest cell exactly ((536,-2688,3409), depth 1880), the tool's best distance stepping
+  52,582u -> 52,319u at iteration 260 -> 52,203u at iteration 300.
+* The same command with the same roots and seed on today's code and corrected core finds nothing
+  past the pit (bench 3), nor does it from arm A's own states (bench 2).
+
+**Code or simulator: the simulator.** Between a3f34715 and 5201ee03 three commits touch `src/`
+(6bd7f931 entity tables 128 -> 512; 294e5638 `--goal-hull`; ee48f07d harness) and six touch the
+explorer, each adding a default-off option (`--cell-heading`, `--tick-ms`, `--view-follow`,
+`--roots-keep-all`, `--select-energy`, `--cell-contact`). Bisect on the droplet (CPU, nice 19,
+3 threads, throwaway worktrees): old code + old core repeats the box at iteration 10 (3,595
+cells, 44,570 runs, 3,757 deaths); today's code + fixed core repeats the box (3,488 / 44,793 /
+3,971); OLD code + FIXED core (a3f34715 with `git show 6bd7f931 -- src/` applied) is identical to
+today's code + fixed core in cells, runs and deaths at every printed iteration through iteration
+50 (599,611 runs; stopped there). So the explorer code is not the difference; the entity-table
+fix is. The fix restored func_button *247, func_conveyor *249 and *250 (the doorway by the spawn)
+and func_wall *261-*264; the line does not touch them (it replays), so what changed is which
+rollouts the search keeps, not what is flyable.
+
+**Where the fixed-core search stops** (`chain_cmp.py`: the parent chain of bench 4's deepest cell,
+each cell looked up in bench 3's archive; ke = |v|^2/1600, H = z + ke):
+
+| chain cell | depth (ticks) | place | speed | ke | H | bench 3 at that place |
+|---|---|---|---|---|---|---|
+| 0-8 | 0-622 | north tunnel, creeping EAST and up to (837,-2856,3765) | 13-223 | 0-32 | 3,748-3,785 | same cells |
+| 9 | 774 | (754,-2856,3765), turned back west | 208 | 32 | 3,797 | place yes, this speed no |
+| 10 | 833 | (581,-2867,3749) | 315 | 65 | 3,814 | 1 cell, ke 11 |
+| 11 | 975 | (82,-2867,3750), west end of the tunnel | 389 | 96 | 3,846 | 1 cell, ke 6 |
+| 12 | 1032 | (67,-2988,3702), leaving it | 414 | 161 | 3,863 | ke 75-117 |
+| 13 | 1086 | (291,-2980,3426), falling at 726 u/s | 414 | 437 | 3,863 | has it (ke to 420) |
+| 14 | 1097 | (346,-2958,3369), the dip of the ridge | 665 | 365 | 3,734 | ke at most 293 |
+| 15 | 1137 | (568,-3003,3432), thrown up at +450 u/s | 393 | 223 | 3,655 | ke at most 132 |
+| 17 | 1200 | (804,-3032,3557), over the pit | 408 | 106 | 3,663 | no cell |
+| 18-25 | 1250-1883 | east wall, north along it, jump west to (530,-2684,3396) | | | 3,474-3,559 | no cell |
+
+The line that passes the pit is a RUN-UP: 600 u back up the north tunnel (about 640 u worse on
+d), then west through it gaining speed to 414 u/s, a 390 u fall into the ridge's dip at 665 u/s,
+and the ridge's rising end turns the fall into a launch over the pit about 190 u above the line
+arm A stops on. The fixed-core archive has the same places, slower: about 90 u of H short at the
+launch point. What lets this explorer build such a line where the recipe's tree does not: it does
+not rank by distance to goal (rare cells are expanded wherever they are, backwards too), and its
+cell key holds an energy band of 32 u, so "the same place, faster" is a new cell that is kept and
+expanded (the chain climbs ke 32 -> 65 -> 96 -> 161 -> 437). The tree ranks by progress on d,
+needs +200 u, and its archive cells are 128 u with 256 u energy bands, in which this whole
+run-up is one band. That is a reading of the two designs, not yet a test.
+
+**Open: luck of one seed, or a real effect of the fix.** One seed per core so far (the old core:
+October's GE4 and GE6 and bench 4 found the line; the fixed core: benches 2 and 3 did not).
+Seed replicates run on the droplet since 19:55 UTC (seeds 1 and 2 on each core, 420 iterations,
+the rebuilt old core first re-checked against the box: 3,595 / 44,570 / 3,757). Until they are
+in, "October's search passes the pit" is shown on the old simulator only.
+
+**Arm A and the transfer arm at 19:57 UTC.** A `m2sib_pb1`: 9,224,323,072 steps, greedy 3.2%, 0/9
+finishes, in the pit for about 6.2B steps, searches 8-21 no line (search 21: beam frontier
+d 55,342 against a greedy frontier of 55,378, 200 needed). Transfer arm `m2warm_pb1`:
+2,721,054,720 steps, greedy 0.40%, 0/9, in the start room; searches 1-7 no line (d about 56,917).
+
+**Budget.** Credit 41.23 $ after the user's top-up (about 24.5 $ between 17:46 and 18:29 UTC),
+reserve 10 $, burn 1.00 $/h with three boxes, 31.2 h above the reserve.
