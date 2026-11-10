@@ -8,7 +8,7 @@
   "eval_file": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool/traj_2793930752.jsonl",
   "run": "azr1b2_pool",
   "step": 2793930752,
-  "ckpt": "box:/root/RL_Surf/runs/azr1b2_pool_snaps/ckpt_2765619200.pt (not pulled yet)",
+  "ckpt": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool_snaps/ckpt_2765619200.pt",
   "recipe": [
    "--envs",
    "1024",
@@ -103,7 +103,8 @@
   "launched_utc": "2026-11-10 01:58",
   "box": 59951396,
   "ckpt_latest": null,
-  "no_recipe": true
+  "no_recipe": true,
+  "ckpt_md5": "ba01f4d8f7c677bf9ec3dd71934d705e"
  },
  "ladder": {
   "unit": "steps",
