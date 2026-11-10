@@ -1318,7 +1318,7 @@ this run is on time or faster (the line gets 3.6x the starts).
   beats the CURRENT line's end by --auto-spine-gain, plus `--demo-match-band` (the line-1 freeze,
   existing flag). Building it now; the run keeps training until its deadline (it is on time).
 
-### azr1b1 - 2026-11-10 02:45 UTC: the line fell back again (search 20, to ~30%); recipe 2 built
+### azr1b1 - 2026-11-10 02:42 UTC: the line fell back again (search 20, to ~30%); recipe 2 built
 
 * **Search 20** (patience, 7.399B, eval median 74,062) returned a line to d 72,049 (~30%: the CP2
   block) and it was adopted (it beats the median by 2k): the curriculum's line went 85% (line 15)
