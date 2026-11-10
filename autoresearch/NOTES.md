@@ -1303,3 +1303,15 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   75 roots, restore check 864/864 exact, 44,747 expanded nodes, best line **2.79%** (K=1: 1.77%) with the
   replay ending 12 u from the search's point.
 * **v7 (queued for v3's slot at its deadline)** = v6 + --mcts-spawns 8 (16 roots per spawn).
+
+### azr1b4 - 2026-11-10 01:26 UTC: **v3 FAILED the first ramp at 2.023B total ticks; stopped. v7 launched (8 spawns per tree)**
+* **v3 = azr1b4_tree3** (77466653: v2 + the yaw sigma fitted on all rows): 30 evals, newest 2,023,428,438
+  ticks; **first ramp FAILED, window FAILED**; best eval 2.581 (2.58%) at 0.88B. Its fitted sigma never
+  left the 0.3 cap (on node rows the network is ~0.3 off in z). Stopped 01:25 UTC.
+* **v7 = azr1b4_tree7** (commit **29804eb5**, checkout /root/t7, launched 01:26 UTC from step 0) = v6 +
+  `--mcts-spawns 8`: every tree rooted on the greedy lines of 8 jittered spawns (16 roots each), so the
+  landing it teaches is taught for the start's real headings. One change against v6. Command
+  (cd /root/t7): `bash tools/az_launch.sh azr1b4_tree7 --mcts-minutes 10 --mcts-max-waves 350
+  --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1
+  --mcts-labels-cut 32 --mcts-spawns 8`.
+* Running now: v4 (1.36B), v5 (0.88B), v6 (0.45B), v7 (new). Failed: v1, v2, v3 (first ramp, at 2.0B).
