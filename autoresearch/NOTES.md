@@ -1353,3 +1353,18 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   consistent along the whole best line, a tighter fit is the cheapest way to make the greedy follow it
   more exactly. One change against v8.
 * Running: v6, v7, v8, v9. Failed: v1-v5 (first ramp, at 2.0B total ticks).
+
+### azr1b4 - 2026-11-10 03:14 UTC: --mcts-labels-dense built and smoked (commit 6920ddc4); v10 queued for v6's slot
+* Why: a node row labels only the FIRST decision of the chosen macro (12 decisions, 0.48 s); the fall and
+  the landing - where the precision is needed - are covered between nodes only by the one best line.
+* `--mcts-labels-dense 1`: after the search, every labelled node's chosen child macro is replayed open
+  loop from the node's stored state in the population core (batched, 2,048 at a time; its engine rows
+  and views the tree's own, held keys set to each executed row) and decisions 1..11 are labelled (held
+  move for a random child, the network's greedy move for its own child), as node rows with the node's
+  advantage. Smoke on the box (v8's flags, 100 waves, 2 rounds): node rows 2,768 -> +26,736 dense rows
+  (196,608 replay ticks), then 1,518 -> +14,813 (98,304 ticks); restore checks exact; line replays
+  within 5 u of the search's points.
+* **v10 (queued for v6's slot at its 2.0B deadline)** = v8 + --mcts-labels-dense 1.
+* Elsewhere in the series (status.md, 03:05): slot 1 (PPO, one spawn pool) cleared walls 1-8 on time
+  (CP5, 84.9%); slot 3 (tree labels beside PPO) walls 1-6 on time. Every PPO-based run gets past the
+  landing this slot's tree-only learner has not survived in 9 recipes.
