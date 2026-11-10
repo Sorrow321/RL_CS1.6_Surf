@@ -1468,3 +1468,44 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
 * The quorum (14.12B) started search 39 from the repaired greedy. ~30 evals remain before the
   deadline; the chamber entry needs one episode at 98.5% (d ~1,550; the greedy's best stops at
   ~d 2,200).
+
+### azr1b1 - 2026-11-10 08:57 UTC: FINISHED - all 12 walls ON TIME; first finish at 14.194B steps (5/9, 117.68 s)
+
+| wall | this run, steps | run 5, steps | deadline | this run, total | run 5, total | deadline |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 1.035B | 0.763B | 2.000B |
+| window (CP1) | 1.057B | 0.680B | 1.600B | 1.413B | 0.914B | 2.000B |
+| pit dive | 1.359B | 1.812B | 3.625B | 1.856B | 2.448B | 4.897B |
+| cavity (CP2) | 2.341B | 2.114B | 4.229B | 3.255B | 2.887B | 5.774B |
+| post-CP2 block | 2.492B | 2.341B | 4.682B | 3.538B | 3.252B | 6.504B |
+| CP3 | 2.643B | 2.643B | 5.286B | 3.689B | 3.554B | 7.108B |
+| CP4 | 3.549B | 3.624B | 7.249B | 4.804B | 4.928B | 9.855B |
+| CP5 | 4.304B | 3.851B | 7.702B | 5.836B | 5.293B | 10.586B |
+| CP6 | 7.852B | 6.116B | 12.232B | 10.719B | 8.220B | 16.440B |
+| CP7 | 8.230B | 6.720B | 13.440B | 11.097B | 8.966B | 17.933B |
+| chamber entry | 14.194B | 8.230B | 16.459B | 19.186B | 10.801B | 21.602B |
+| finish | 14.194B | 8.230B | 16.459B | 19.186B | 10.801B | 21.602B |
+
+* **The one pool finishes sidistic from scratch, inside the 2x ladder**: 1.72x run 5 in steps,
+  1.78x in total ticks (42 searches, 5.41B search ticks by 15.25B). The eval at 14,194,049,024
+  finished 5/9 episodes from the true start (clip-hull checked, box_only 0), best 117.68 s, score
+  111.633 (run 5's first finishing eval: 2/9, 121.21 s). Later: 14.647B 2/9 (118.09 s), 15.176B
+  4/9 (116.19 s).
+* **How it got there.** Search 35's FINISHING line (12.69B) taught the last ~26 s: training
+  episodes from its tail finished 44-89% of the time. Search 37 then replaced it with a line to
+  85% (13.63B) and the greedy sat at a 54% failure; search 38's line ended right past that
+  failure (14.07B), and two evals later the repaired policy flew the whole map in 5/9 episodes:
+  the finishing skill had stayed in the weights after its line was gone.
+* **Fifth repair by a line ending at the failure.** After the finish the CP2-block failure came
+  back (14.27-15.10B, medians 68-74k; searches 39 and 40 STALE); search 41 (15.13B, patience
+  from a median of 74,169) ended at d 73,501 and the next eval (15.18B) had 9/9 past it and 4
+  finishes. Tally: lines ending at the failure 5/5 repaired (20, 28, 34, 38, 41).
+* **What it cost against run 5.** Walls 1-8 were level with run 5 (0.75-1.55x, 0.98-1.12x from the
+  post-CP2 block on); the gap opened between CP5 and the finish (CP6 1.28x, finish 1.72x), where the
+  greedy kept losing the CP2 block (and once a 54% spot) whenever the curriculum's line moved on,
+  with ~1-1.5B steps per cycle spent until a patience search happened to end a line at the failure.
+  Run 5's 75% of other starts kept those skills alive.
+* Checkpoint: ckpt_14004781056.pt (the snapshot before the first finishing eval) pulled and
+  md5-verified to the run's folder; ckpt_latest's md5 failed (rewritten every ~60 s) - pull again
+  at wrap-up. Recipe 2 is not needed (an on-time run keeps training to the round end); the run
+  keeps training and the score can still rise (more finishes, faster times).

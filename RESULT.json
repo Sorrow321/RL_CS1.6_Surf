@@ -4,11 +4,11 @@
  "final": false,
  "slot": 1,
  "best": {
-  "score": 98.075,
-  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_9135718400.jsonl",
+  "score": 111.633,
+  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_14194049024.jsonl",
   "run": "azr1b1_pool1",
-  "step": 9135718400,
-  "ckpt": null,
+  "step": 14194049024,
+  "ckpt": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_14004781056.pt (snapshot at 14.005B, before the best eval; md5 e48cfcd0f9a01ba9f05028d9aee54715)",
   "recipe": [
    "--envs",
    "1024",
@@ -108,7 +108,7 @@
   "window (CP1)": 1057488896,
   "pit dive": 1359478784,
   "cavity (CP2)": 2340945920,
-  "verdict": "alive: walls 1-10 ON TIME (CP6 1.28x, CP7 1.22x run 5 in steps); greedy cycles between 98% and the CP2 block; chamber entry and finish due by 16.459B",
+  "verdict": "FINISHED: all 12 walls ON TIME (finish at 14.194B steps = 1.72x run 5's 8.230B; 19.186B total ticks = 1.78x run 5's 10.801B); best eval 5/9 finishes, 117.68 s",
   "total": {
    "first ramp": 1035242155,
    "window (CP1)": 1412729515,
@@ -119,21 +119,25 @@
    "CP4": 4804129179,
    "CP5": 5835647265,
    "CP6": 10719325160,
-   "CP7": 11096812520
+   "CP7": 11096812520,
+   "chamber entry": 19185619780,
+   "finish": 19185619780
   },
   "post-CP2 block": 2491940864,
   "CP3": 2642935808,
   "CP4": 3548905472,
   "CP5": 4303880192,
   "CP6": 7852261376,
-  "CP7": 8229748736
+  "CP7": 8229748736,
+  "chamber entry": 14194049024,
+  "finish": 14194049024
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~356k steps/s): first ramp 0.680B steps (run 5 0.529B), CP1 1.057B (0.680B), pit dive 1.359B (1.812B), CP2 2.341B (2.114B), post-CP2 block 2.492B (2.341B), CP3 2.643B (2.643B), CP4 3.549B (3.624B), CP5 4.304B (3.851B), CP6 7.852B (6.116B), CP7 8.230B (6.720B): walls 1-10 ON TIME in steps and in total ticks (0.75-1.55x run 5). Best eval 98.08% (CP7) at 9.136B, no finish yet. With one pool every line replacement moves 90% of the starts: a line ending 25 points past the greedy's failure point (6.45B) let the greedy fall back to the CP2 block for ~1B steps, and a line ending AT the failure (7.50B) repaired it within one eval. Next: chamber entry and finish, due by 16.459B steps.",
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~354k steps/s) FINISHED sidistic from the true start at 14.194B steps (5/9 episodes, best 117.68 s, score 111.633): all 12 walls ON TIME in steps and in total ticks. Walls 1-8 level with run 5 (0.75-1.55x; 0.98-1.12x from the post-CP2 block on); CP6 1.28x, CP7 1.22x, finish 1.72x run 5 in steps (1.78x in total ticks, 42 searches). The late gap: with one pool every line replacement moves 90% of the starts, and the greedy kept losing the CP2 block whenever the line's tail moved on; each time a patience search happened to end a line AT the failure, one eval repaired it (5/5), while lines ending past it did not. The finish came when search 35's finishing line (12.69B) had taught the last ~26 s and search 38's line repaired a 54% failure (14.07B).",
  "box": {
   "id": 59950838,
   "gpu": "RTX_4080",
   "cpu": "AMD Ryzen 9 9950X (32 threads)",
   "dph": 0.417,
-  "steps_per_s": "~354k (05:26 UTC)"
+  "steps_per_s": "~354k (08:42 UTC)"
  }
 }
