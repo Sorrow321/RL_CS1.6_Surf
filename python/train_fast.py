@@ -6586,6 +6586,19 @@ def main() -> None:
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
+    ap.add_argument("--init-weights", default=None, metavar="CKPT",
+                    help="a FROM-SCRATCH run whose learner starts as another run's: the policy "
+                         "weights, their Adam moments and (under --ret-norm) the return "
+                         "normaliser are read from CKPT, and NOTHING else is - the step counter "
+                         "starts at 0, and the map, the flags, the novelty counts, the spawn "
+                         "pools, the curriculum, the first spine and every schedule are this "
+                         "run's own, so the complete flag set is on the command line as for any "
+                         "scratch run. For a transfer arm: one recipe on a second map, started "
+                         "from the first map's network (the user, 2026-11-10). Refused with "
+                         "--ckpt, on a demo_contaminated source (CLAUDE.md section 0) and when a "
+                         "setting the weights read or write differs from the source's. run.json "
+                         "records init_weights and its md5 / step / map / demo_file; "
+                         "record_ckpt TRAIN_ONLY")
     ap.add_argument("--reward", choices=["forward", "path", "blend", "maxspeed",
                                          "coverage", "acro", "race"],
                     default=None,
@@ -8047,6 +8060,11 @@ def main() -> None:
     ck = None
     obj_changed = False
     tick_ms_ckpt = None          # set when a resume changes the tick
+    if args.init_weights and args.ckpt:
+        raise SystemExit("--init-weights starts a FROM-SCRATCH run from another run's network; "
+                         "--ckpt resumes a run with everything it carries. Pass one of them (a "
+                         "crash-resume of an --init-weights run is a plain --ckpt resume of its "
+                         "own checkpoint)")
     if args.ckpt:
         ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
         ck_cfg = ck.get("config") or {}
@@ -14664,6 +14682,66 @@ def main() -> None:
         print(f"resumed {args.ckpt} at step {global_step:,}"
               + (" (steps reset)" if args.reset_steps else ""))
 
+    # --init-weights: another run's LEARNER under a from-scratch run. Deliberately not a
+    # resume: ck stays None, so every restore above and below (the flags, the step counter, the
+    # novelty counts, the reservoirs, the curriculum, the schedules, --auto-spine-scratch's
+    # first spine) takes its scratch path on THIS run's map. Only what the optimiser owns comes
+    # over: the weights, their Adam moments and the return normaliser the critic was fitted
+    # under.
+    INIT_W = None
+    if args.init_weights:
+        _iw_path = Path(args.init_weights)
+        if not _iw_path.exists():
+            raise SystemExit(f"--init-weights: no checkpoint at {_iw_path}")
+        _iw = torch.load(_iw_path, map_location="cpu", weights_only=False)
+        _iw_cfg = dict(_iw.get("config") or {})
+        if _iw_cfg.get("demo_contaminated"):
+            raise SystemExit("--init-weights: this checkpoint was trained on DEMO-DERIVED "
+                             "targets (demo_contaminated): CLAUDE.md section 0 - it is never "
+                             "resumed, benchmarked as a result or used as a base")
+        _iw_md5 = hashlib.md5()
+        with open(_iw_path, "rb") as _fh:
+            for _blk in iter(lambda: _fh.read(1 << 20), b""):
+                _iw_md5.update(_blk)
+        try:
+            policy.load_state_dict(_iw["policy"])
+        except RuntimeError as _e:
+            raise SystemExit("--init-weights: the checkpoint's network does not fit this run's "
+                             "architecture (the run must be launched with the source run's own "
+                             "network and observation flags): " + str(_e)[:800])
+        if VIEW_ABS:
+            _mv = policy.project_log_std()
+            if _mv:
+                print(f"--init-weights: {_mv} view head(s) of the checkpoint sat outside this "
+                      "run's log sigma bounds - projected onto them; sig now "
+                      + "/".join(f"{v:.3f}" for v in policy.log_std().exp().tolist()))
+        try:
+            opt.load_state_dict(_iw["optimizer"])
+        except (ValueError, KeyError) as _e:
+            raise SystemExit("--init-weights: the checkpoint's optimizer state does not fit "
+                             "this run's parameter list: " + str(_e)[:400])
+        relayout_optimizer_state(opt)
+        for g in opt.param_groups:
+            g["lr"] = args.lr
+        _iw_retn = bool(RETN and _iw.get("ret_norm") is not None)
+        if _iw_retn:
+            retn.load_state_dict(_iw["ret_norm"])
+        INIT_W = {"init_weights": _iw_path.name,
+                  "init_weights_md5": _iw_md5.hexdigest(),
+                  "init_weights_step": int(_iw.get("global_step", 0)),
+                  "init_weights_map": str(_iw_cfg.get("map")),
+                  "init_weights_demo_file": (str(_iw_cfg["demo_file"])
+                                             if _iw_cfg.get("demo_file") else None)}
+        print(f"--init-weights: the policy ({len(_iw['policy'])} tensors), its Adam moments"
+              + (" and the return normaliser" if _iw_retn else "")
+              + f" are {_iw_path}'s (md5 {INIT_W['init_weights_md5']}, trained on "
+              f"{INIT_W['init_weights_map']} to step {INIT_W['init_weights_step']:,}); the "
+              "step counter starts at 0 and everything else is this run's own (not a resume)")
+        del _iw
+    # a crash-resume of an --init-weights run keeps saying where its network started
+    INIT_W_KEEP = ({_k: _v for _k, _v in ck_cfg.items() if _k.startswith("init_weights")}
+                   if ck is not None else {})
+
     # DDP: no wrapper constructor syncs weights here — broadcast explicitly,
     # then hold every rank to an EXACTLY equal param checksum (startup and
     # every 100 iterations, on by default). The chain: identical init ->
@@ -15720,6 +15798,39 @@ def main() -> None:
               + (f"; keys heads sample at 1 + {args.cc_temp_gain:g} T"
                  if CC_TEMP else "; sampling temperature untouched")
               + "; evals run the T = 0 member (docs/curiosity_cond.md)")
+    # --init-weights: its provenance, written ONLY when set (a control's config dump stays
+    # byte-identical; record_ckpt.py: TRAIN_ONLY - a recording runs the weights it is given),
+    # and the source run's settings against this run's. A setting the weights READ or WRITE
+    # through must agree (no restore path enforces it here, the run being a scratch run); the
+    # rest are listed, so the log says how far this run is from the one that trained them.
+    if INIT_W is not None:
+        _reads = ("act_every", "act_hist", "chunk", "n_codes", "conv_mult", "emb", "hidden",
+                  "tower_depth", "trunk", "simba", "rnn", "rnn_size", "frame_stack",
+                  "lidar_w", "lidar_h", "lidar_cell", "lidar_hfov", "lidar_vfov", "lidar_near",
+                  "lidar_range", "pinhole", "normals", "obs_compass", "obs_fourier",
+                  "obs_normal", "obs_pot_rate", "obs_potential", "obs_potential_curtain",
+                  "obs_reward", "obs_surf", "goal_obs", "goals", "gps", "surf_mask",
+                  "keys_hold", "side_hold", "view_continuous", "view_absolute",
+                  "yaw_adaptive", "yaw_blend", "pitch_rate", "pitch_fixed", "fix_pitch",
+                  "tick_ms", "tick_ms_eff", "vision_clip", "race_dist", "race_ratchet",
+                  "race_no_corner_cut", "priv_critic", "int_split", "route_points",
+                  "curiosity_cond", "goal_planner")
+        _mine = meta["config"]
+        _diff = sorted(_k for _k in set(_iw_cfg) | set(_mine)
+                       if _iw_cfg.get(_k) != _mine.get(_k))
+        _bad = [_k for _k in _diff if _k in _reads]
+        print("--init-weights: settings that differ from the source run's ("
+              + str(len(_diff)) + "): "
+              + ("; ".join(f"{_k} {_iw_cfg.get(_k)!r} -> {_mine.get(_k)!r}" for _k in _diff)
+                 or "none"))
+        if _bad:
+            raise SystemExit("--init-weights: " + ", ".join(_bad) + " differ from the source "
+                             "run's, and the weights read or write through them - the network "
+                             "would be run under semantics it was not trained with. Launch "
+                             "with the source run's own values")
+        meta["config"].update(INIT_W)
+    elif INIT_W_KEEP:
+        meta["config"].update(INIT_W_KEEP)
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
