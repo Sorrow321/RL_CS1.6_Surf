@@ -1574,3 +1574,37 @@ The 4080 offer at 0.31 $/h left the market before the pace reached it; the next 
   cheapest passing offers are a 3090 at 0.356 and a 5080 at 0.380). Retrying every ~20 min; a
   launch by ~15:00 UTC still reaches the first ramp's 2.0B-tick deadline well before the 22:00
   wrap-up.
+
+### azr1b4 - 2026-11-10 11:41 UTC: **WRAP-UP (ROUND OVER from the operator). Final: every slot-4 recipe that ran FAILED the first wall; v12 (the network in the search) was built and never ran**
+
+**The ladder, final** (unit: total simulator ticks, `ladder.py --total-is-step`; slot 4's step counter
+counts every tick: searches, line replays, evals). Eleven tree-only recipes from scratch, each one
+seed: all FAILED the first ramp and the window (deadline 2.0B total ticks; run 5 cleared them at
+0.763B / 0.914B). Best eval 2.675 (score.py --best), reached by v4 (azr1b4_tree4, traj_1355167164,
+its checkpoint ckpt_1355167164.pt pulled and md5-checked before the box was released, md5
+7156370efbef42861700ad718db8e673) and v10 (traj_0764358571). Per recipe: v1 2.595, v2 2.273, v3
+2.581, v4 2.675, v5 2.383, v6 2.499, v7 2.400, v8 2.673, v9 2.255, v10 2.675, v11 2.512. The
+round's lesson (above, "the round's lesson") stands unchanged.
+
+**What the result does NOT cover - the strongest caveat.** All eleven runs used "the tree as it is":
+run 5's MCTS, whose non-greedy children are all random-held and which never reads the network's
+value. The protocol's second version - the network IN the search (its policy as the prior over
+children, its value at the leaves) - is built, tested and pushed as v12 (commits 1e6e2a66 /
+45e6028b slot 2's mix rule, 252b2dc7 --mcts-leaf-value, b7305d68 the labels of sampled and
+perturbed children; tests/python/test_mcts_leaf_value.py, test_mcts_mix.py), but it never ran: no
+box was available within the budget pace before the round was called (09:43 a 5070 Ti failed
+gpu_health with a 250 W power cap and was blocklisted; the 4080 and 3090 Ti offers left the market
+before the pace reached them; 11:15 a 5080 never came up and box.py blocklisted it). So slot 4's
+negative is a negative for distilling a value-free expert's trees, not yet for AlphaZero's own
+loop. To run it: `bash tools/az_launch.sh azr1b4_tree12 --mcts-minutes 10 --mcts-max-waves 350
+--mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1
+--mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1
+--mcts-mix-rule sib --mcts-leaf-value 1` (on a box, from step 0; first-ramp deadline 2.0B total
+ticks, about 2.5-3 h on a 5080-class box).
+
+**Housekeeping.** No box is held (box.py status: no box). Nothing was left on a box: every run's
+evals, progress.csv, run.json and launch log are under $AR_HOME/runs/azr1b4/, plus the best
+checkpoint. The bench (run 5's 4.90B checkpoint) is in azr1b4_bench_cp6 with its evals renamed
+bench_traj_* so the scorer never counts them. tools/bad_hosts.json gained two entries today
+(machines 154768 and 147973). Not committed: the orchestrator's own .ar_launch.sh, .ar_prompt.txt
+and AR_BRANCH.json (no other slot commits them either).

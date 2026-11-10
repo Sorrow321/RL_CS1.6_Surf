@@ -1,7 +1,7 @@
 {
  "agent": "azr1b4",
  "round": 1,
- "final": false,
+ "final": true,
  "slot": 4,
  "best": {
   "score": 2.675,
@@ -38,12 +38,12 @@
   "unit": "total ticks (ladder.py --total-is-step)",
   "first ramp": null,
   "window (CP1)": null,
-  "verdict": "FAILED: all eleven tree-only recipes failed the first ramp (8% progress) by its deadline of 2.0B total ticks (run 5: 0.763B total); best eval 2.675 (v4 at 1.36B, v10 at 0.76B)",
+  "verdict": "FAILED: all eleven tree-only recipes that ran failed the first ramp (8% progress) by its deadline of 2.0B total ticks (run 5: 0.763B total); best eval 2.675 (v4 at 1.36B, v10 at 0.76B). v12 (the network in the search) was built but never ran.",
   "total": {
    "first ramp": null
   }
  },
- "summary": "Slot 4 (the tree only: no PPO, no rollouts, no reward; the network learns its policy and value only from MCTS trees grown on its own greedy line; every simulator tick counted). Eleven recipes from scratch, all FAILED the first wall (8% by 2.0B total ticks; run 5 cleared it at 0.76B): best eval 2.675. Every eval dies in the first drop under the spawn platform. The trees find the way through every round (landings at 1.8%, lines to 5.9%), and the network learns their lines at the lines' own states, but cannot fly them from the start: label fixes (consistency along the greedy line, the spawn jitter, narrower random children, denser labels, a bigger replay buffer) raised the share of greedy flights reaching the landing ramp from 7% to 52%, and none of ~2,400 flights stayed on it. Bench: one round of tree-label distillation took run 5's skilled 4.90B policy from 84% to 8%. Reading for the user's question: the search alone finds the moves; a learner trained only on its labels does not become a controller - PPO (optimising the policy's own execution) is what the hybrid needs the second thread for; the tree's role is WHERE (spawns, curricula) and, beside PPO, what to prefer. Next (v12, built 10:00 UTC, waiting for a box within the budget pace): the network IN the search, the protocol's second version - children drawn from the network's policy with slot 2's mix rule, and its value at the leaves guiding the tree.",
+ "summary": "Slot 4 (the tree only): no PPO, no rollouts, no reward - the network learns its policy and value only from MCTS trees grown on its own greedy line; every simulator tick counted (ladder unit: total ticks). Eleven recipes from scratch, all FAILED the first wall (8% by 2.0B total ticks; run 5 cleared it at 0.76B); best eval 2.675. Every eval dies in the first drop under the spawn platform. The trees find the way every round (landings at 1.8%, lines to 5.9%) and the network learns their lines where they are, but cannot fly them from the start: label fixes raised greedy flights reaching the landing ramp from 7% to 52%, and none of ~2,400 stayed on it. Bench: one round of tree-label distillation took run 5's 84% policy to 8%. Reading for the user's question: the search alone finds the moves; a learner trained only on a value-free expert's labels does not become a controller - PPO, which optimises the policy's own execution, is what the hybrid's second thread is for; the tree's role is WHERE (spawns, curricula) and, beside PPO, what to prefer. Caveat: the network-in-the-search version (v12: its policy as the prior via slot 2's mix rule, its value at the leaves) was built and tested but never ran (no box within the budget pace before the round was called), so AlphaZero's own loop is untested here. One seed per recipe; late start; up to four runs shared one box.",
  "runs": {
   "azr1b4_tree1": {
    "commit": "153e08d7",
@@ -143,7 +143,7 @@
   },
   "azr1b4_tree12": {
    "commit": "b7305d68",
-   "status": "BUILT, waiting for a box within the budget pace",
+   "status": "BUILT and tested (commits 1e6e2a66, 45e6028b, 252b2dc7, b7305d68), NEVER LAUNCHED: no box within the budget pace before ROUND OVER (a 5070 Ti failed gpu_health with a 250 W cap; a 5080 never came up)",
    "change": "v8 + the network in the search: slot 2's child-mix rule (children from the network's policy, perturbed or random-held by a sibling tournament) + --mcts-leaf-value 1 (the network's value at the leaves guides selection)",
    "recipe": [
     "bash",

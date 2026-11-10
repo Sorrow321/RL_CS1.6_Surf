@@ -2968,6 +2968,15 @@
       "detail": "RTX 5070 Ti machine 154768 host 89306: power limit 250 W of 300 W default (83%), gpu_health UNHEALTHY (no reference for the model); HBM 769 GB/s, bf16 99 TFLOPS, sm 2887 MHz under load (azr1b4, 2026-11-10 09:52 UTC)",
       "run": "",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "23.114.229.53",
+      "machine_id": 147973,
+      "host_id": 365454,
+      "date": null,
+      "detail": "autoresearch azr1b4: not running after 330 s (status loading, )",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
