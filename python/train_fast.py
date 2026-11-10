@@ -5105,6 +5105,16 @@ def main() -> None:
                          "curriculum trains on new starts beside the "
                          "frontier plus replayed old ones, 200:100 = 2/3. "
                          "0 = off, byte-identical. ckpt restores")
+    ap.add_argument("--demo-whole-frac", type=float, default=None,  # None = off
+                    help="--demo-file: this share W of the curriculum's draws is uniform over "
+                         "the WHOLE spine [0,n-1]; the rest is drawn as before (--demo-front-frac "
+                         "of it on the frontier band, the remainder on [tau,n-1]). Florensa et "
+                         "al. 2017's replayed old starts for a curriculum that restarts at the end "
+                         "of every new search line: with one pool (no reservoir) only the map "
+                         "starts trained the course behind the line's tail, and azr1b1_pool1's "
+                         "greedy lost the CP2 block whenever the tail sat elsewhere, then "
+                         "repaired it within one eval when a line ended there. None = off, "
+                         "byte-identical; config only when set; not restored")
     ap.add_argument("--demo-tau0", type=int, default=None,   # None = the spine's end
                     help="--demo-file: start the backward curriculum at spine state T instead of "
                          "the spine's last state - the curriculum position is not in the "
@@ -12228,6 +12238,11 @@ def main() -> None:
         if not args.demo_grow:
             raise SystemExit("--demo-front-frac needs --demo-grow: the sliding "
                              "window already draws only its band")
+    if args.demo_whole_frac is not None:
+        if not args.demo_file:
+            raise SystemExit("--demo-whole-frac is a share of the --demo-file curriculum's draws")
+        if not 0.0 < float(args.demo_whole_frac) < 1.0:
+            raise SystemExit("--demo-whole-frac must be in (0, 1)")
     if args.demo_file:
         _dkw = {}
         if args.demo_cooldown is not None:
@@ -12238,11 +12253,18 @@ def main() -> None:
             _dkw["grow_max"] = int(args.demo_grow_max)
         if args.demo_match_band:
             _dkw["match_band"] = True
+        # --demo-whole-frac: kept out of _dkw (the pace line below prints _dkw's keys)
+        _wkw = ({"whole_frac": float(args.demo_whole_frac)}
+                if args.demo_whole_frac is not None else {})
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
                               front_frac=float(args.demo_front_frac),
-                              tau0=args.demo_tau0, **_dkw)
+                              tau0=args.demo_tau0, **_dkw, **_wkw)
+        if _wkw:
+            print(f"--demo-whole-frac {float(args.demo_whole_frac):g}: that share of the "
+                  f"curriculum's draws is uniform over the whole spine, the rest as before "
+                  f"(replayed old starts; every new search line keeps it)")
         if _dkw:
             print("demo curriculum pace: "
                   + (f"cooldown {demo.cooldown} iterations" if "cooldown" in _dkw else "")
@@ -15462,6 +15484,9 @@ def main() -> None:
         # --demo-front-frac: dumped only when on (a flag-off run.json is the
         # control's byte for byte); a resume restores it
         meta["config"]["demo_front_frac"] = float(args.demo_front_frac)
+    if args.demo_file and args.demo_whole_frac is not None:
+        # --demo-whole-frac: dumped only when set (not restored: a property of the run)
+        meta["config"]["demo_whole_frac"] = float(args.demo_whole_frac)
     if args.demo_file and args.demo_share is not None:
         meta["config"]["demo_share"] = float(args.demo_share)
     if args.demo_file and args.demo_success_d is not None:

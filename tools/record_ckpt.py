@@ -137,6 +137,9 @@ TRAIN_ONLY = frozenset({
     "auto_spine_recheck",
     # --auto-spine-no-retreat: WHETHER the training curriculum adopts a SHORTER spine
     "auto_spine_no_retreat",
+    # --demo-whole-frac: a share of the TRAINING curriculum's draws over its whole spine; a
+    # recording spawns at the map start like the trainer's eval
+    "demo_whole_frac",
     # --auto-spine-scratch / --auto-spine-explorer / --auto-spine-mcts-minutes (unr1b3): the
     # TRAINING curriculum's first spine and its search; --demo-share: that curriculum's share
     # of the TRAINING spawn pool. A recording spawns at the map start like the trainer's eval

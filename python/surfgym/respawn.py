@@ -45,6 +45,7 @@ class DemoCurriculum:
                  min_ep: float = 50.0, seed: int = 29,
                  grow: int = 0, front_frac: float = 0.0, tau0=None,
                  cooldown: int = 20, grow_max: int = 0, match_band: bool = False,
+                 whole_frac: float = 0.0,
                  name: str = "demo curriculum") -> None:
         # the log prefix of a move (train_fast --finish-line runs a second instance)
         self.name = str(name)
@@ -88,6 +89,16 @@ class DemoCurriculum:
             raise ValueError("front_frac needs grow > 0: the sliding window "
                              "already draws only its band")
         self.front_frac = float(front_frac)
+        # --demo-whole-frac W (0 = off, byte-identical draws; azr1b1, 2026-11-10): a share W of
+        # the demo draws is uniform over the WHOLE spine [0, n-1], the rest is drawn as before
+        # (front_frac of it on the band, the remainder on [tau, n-1]). Florensa et al. 2017's
+        # replayed old starts, for a spine whose curriculum restarts at the end of every new
+        # line: with one pool (no reservoir) only the map starts trained the course behind the
+        # line's tail, and azr1b1_pool1's greedy kept losing the CP2 block whenever the tail sat
+        # elsewhere (and repaired it within one eval when a line ended there).
+        if not 0.0 <= float(whole_frac) < 1.0:
+            raise ValueError(f"whole_frac must be in [0, 1), got {whole_frac}")
+        self.whole_frac = float(whole_frac)
         # tau0 (None = the spine's end, the paper's start): a continuation picks the
         # curriculum up where its previous run left it (the position is not checkpointed)
         self.tau = self.n - 1 if tau0 is None else int(np.clip(int(tau0), 0, self.n - 1))
@@ -166,6 +177,9 @@ class DemoCurriculum:
         n_demo = pool_size - n_fresh
         self._move()
         d_lo, d_hi = self._draw()
+        # --demo-whole-frac: that share of the demo draws is uniform over the whole spine
+        n_whole = int(round(n_demo * self.whole_frac)) if self.whole_frac > 0.0 else 0
+        n_demo -= n_whole
         if self.front_frac > 0.0:
             b_lo, b_hi = self._band()
             n_front = int(round(n_demo * self.front_frac))
@@ -174,6 +188,8 @@ class DemoCurriculum:
                 self.rng.integers(d_lo, d_hi + 1, n_demo - n_front)])
         else:
             idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
+        if n_whole:
+            idx = np.concatenate([idx, self.rng.integers(0, self.n, n_whole)])
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
         return np.concatenate([fresh, self.S[idx].copy()])
 
@@ -185,6 +201,9 @@ class DemoCurriculum:
         self._move()
         m = int(m)
         d_lo, d_hi = self._draw()
+        # --demo-whole-frac: that share of the draws is uniform over the whole spine
+        n_whole = int(round(m * self.whole_frac)) if self.whole_frac > 0.0 else 0
+        m -= n_whole
         if self.front_frac > 0.0:
             b_lo, b_hi = self._band()
             n_front = int(round(m * self.front_frac))
@@ -193,6 +212,8 @@ class DemoCurriculum:
                 self.rng.integers(d_lo, d_hi + 1, m - n_front)])
         else:
             idx = self.rng.integers(d_lo, d_hi + 1, m)
+        if n_whole:
+            idx = np.concatenate([idx, self.rng.integers(0, self.n, n_whole)])
         return self.S[idx].copy()
 
     def match(self, origins: np.ndarray) -> np.ndarray:
@@ -244,6 +265,9 @@ class DemoCurriculum:
             b_lo, b_hi = self._band()
             self.last_info += (f" | {self.front_frac:.0%} of demo draws on "
                                f"the band [{b_lo},{b_hi}]")
+        if self.whole_frac > 0.0:
+            self.last_info += (f" | {self.whole_frac:.0%} of demo draws over the whole "
+                               f"spine [0,{self.n - 1}]")
         if moved:
             d_lo, d_hi = self._draw()
             print(f"{self.name}: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
