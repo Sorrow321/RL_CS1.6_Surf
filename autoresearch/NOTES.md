@@ -1399,3 +1399,21 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
   its `test_the_trainer_runs_the_search_and_logs_it` starts a tiny train_fast + auto_spine smoke
   run (~1 min, 16 search envs). That is a trainer on this machine, against the rule. Nothing was
   left running or on disk. Only pure-numpy / source-reading tests from now on here.
+
+### azr1b1 - 2026-11-10 05:29 UTC: 11.08B steps - the repair repeated (line 28 ends at the CP2 block)
+
+* Walls 1-10 ON TIME; best 98.08% (9.136B), no finish; chamber entry and finish due by 16.459B
+  (~4.2 h of steps, ~09:40 UTC).
+* **Second confirmation of the pattern.** Line 27 (9.918B, patience from a median of 68,354) ends
+  at d 57,525 (~44%): past the CP2 block, and the evals stayed broken (medians 69.7-74.3k, best
+  32-56%, 9.97-10.34B). Line 28 (10.374B, patience from a median of 74,069) ends at d 69,442
+  (~32.6%), right past the CP2 block: one eval later 4/9 past its mark, two evals later 8/9 and the
+  median back at 84% (10.49B), 9/9 at 10.57B, and 7/9 at 97.9% at 10.72B (median d 2,313). Line 30
+  (11.05B, quorum, to d 15,101 ~85%) is the curriculum now (tau 9091 of 9,406, 92-98% band
+  success).
+* Tally of backward lines: ending AT the failing block (lines 20, 28): repaired within 1-2 evals,
+  2 of 2. Ending far past it (17, 25, 27): the failure persisted or grew, 3 of 3. The cycle (the
+  skill decays when the tail moves on, a bad eval triggers a patience search, the line lands near
+  the failure) has period ~1.5-2B steps here.
+* Note on my own tooling: `ls traj_*.jsonl | tail` sorts 11-digit steps (>= 10B) BEFORE 10-digit
+  ones; the per-episode tables from now on sort numerically.
