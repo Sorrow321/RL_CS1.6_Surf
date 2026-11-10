@@ -37003,3 +37003,62 @@ greedy_d 177 / gain 500 and refused it at greedy_d 0. Flag-off behaviour is unch
 
 CORRECTION to the section above (appended, 2026-10-31 05:58 UTC): the fix is commit **58574f32**,
 not b7e1b0f8, and the section was written at 05:56 UTC, not 06:20.
+
+## 2026-11-10 12:00 (UTC) - m2: the two sidistic recipes that finished, unchanged, from scratch on surf_princessburglar_b26 (LAUNCH)
+
+**Why.** Section 0b: a winner is called only when the SAME recipe repeats on a second map with no
+constant changed. The one-search series on surf_src_sidistic (ar/azr1b1..4, wrapped up
+2026-11-10 11:32 UTC at the user's call) left two recipes that finish from scratch:
+
+| recipe | sidistic run | first finish (trainer steps) | steps + search ticks | card |
+|---|---|---|---|---|
+| A: one pool + sibling-yield mix rule in the MCTS | `azr1b2_pool` (4644510b) | 7,248,281,600 | 8.787B | RTX 5080 |
+| B: one pool, MCTS at the random end | `azr1b1_pool1` (da7981e5) | 14,194,049,024 | 19.186B | RTX 4080 |
+| (reference) run 5, PPO + MCTS beside October's spawn rules | `unr1b3_mcts5` | 8,230,000,000 | 10.801B | RTX 5080 |
+
+**What runs.** Operator-run, no agents, one seed per arm, from step 0, nothing changed after launch.
+
+| arm | run | branch / commit | box | last argument |
+|---|---|---|---|---|
+| A | `m2sib_pb1` | m2/sib d8410be8 (= 4644510b + config) | 60063342, RTX 4080, 0.283 $/h, machine 148127 | `--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2'` |
+| B | `m2pool_pb1` | m2/pool 035325a7 (= da7981e5 + config) | 60064135, RTX 4080, 0.417 $/h, machine 35039 (the machine `azr1b1_pool1` ran on) | `--auto-spine-mcts-args '--mcts-random-frac 1.0 --mcts-perturb-frac 0'` |
+
+Launched 11:52:51 and 11:57:44 UTC through `autoresearch/box.py launch` -> `SCRATCH=1 tools/run_arm.sh`
+with `--steps 60e9`; both passed the record gate. The flag list is the 83 tokens common to the two
+sidistic launch lines (`~/ar_az/box.log`, 2026-11-09 20:47:43 and 2026-11-10 01:58:26; the two lines
+are identical up to the last argument), stored as `incumbent_recipe` in `autoresearch/config.json`.
+
+**The flag set, checked from the stored configs.** `run.json` of each pb run against its sidistic
+original, key by key (281 keys): the only differences are `map`, `maxvel`, the per-map
+`obs_potential_d0`, the run's own `demo_file` path (its auto spine), the commit, the label, the
+start time and `git.dirty`.
+
+* `--maxvel 3500` instead of 4000 is the ONE token that differs. It is the map's server physics
+  (the server's sv_maxvelocity, as in every earlier princessburglar, unitfarmer2 and za_loop run;
+  sidistic's server runs 4000), set with the map like the .bsp, not tuned.
+* `git.dirty` is True on both boxes because the map tarball's `zones.json` replaces the tracked
+  one; the two files hold the same content (checked on each box with a JSON compare), only the
+  formatting differs. No code file is modified.
+* Map files: `~/ar_m2/maps/pb_maps.tar.gz` (md5 a37138381274501763f53d6523f240cc; the bsp and the
+  caches baked 2026-10-23, the tarball the corrected-core pbf lineage used). The core is the fixed
+  one (6bd7f931: 512-entry entity tables, the conveyor slab *250 is loaded) and the finish is the
+  trigger's real hull (model *123), armed by the core at create.
+
+**Provenance (section 0).** No demo, no record-derived file, no warm start. The only spawn-state
+files are each run's own auto spines (`runs/<run>/auto/`), built by the search from the run's own
+checkpoints.
+
+**What is measured.** Finishes from the true start inside the real finish hull and the trainer step
+of the first finishing eval; failing that, the best progress on the map's field
+(`autoresearch/score.py`) and where the greedy line stops. Sidistic's wall ladder does not apply
+here and no ladder exists for this map: the only reference is each recipe's own sidistic run, in
+steps, plus the fact that no from-scratch frozen-recipe run has finished princessburglar on the
+corrected core (the 117.862 incumbent of the earlier program is a warm lineage at 74.97B steps).
+
+**Budget.** Credit 22.0 $ at launch, reserve 10 $, burn 0.70 $/h: about 17 h for both boxes.
+Watchdog deadlines 23:46 and 23:55 UTC with a harvest spec each; dashboards tunnelled to
+localhost:8601 (A) and 8602 (B) on the droplet.
+
+**First minutes.** A: 213k steps/s at 100M; its first search (at 76M) returned no line 200 u deeper
+than the greedy. B: 186k steps/s at 37M, first search running. Both greedy lines stop at 0.4% (the
+spawn room), as expected at this age.
