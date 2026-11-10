@@ -1198,3 +1198,28 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
 * Label fit now (iteration ~3,200, trees k02-k05): keys NLL 2.57, yaw 1.06 (|tanh mu - u| 0.35),
   value MSE 0.049, agreement 0.29.
 * Search ticks 0.473B over 5 searches; throughput ~243k steps/s cumulative.
+
+### 00:05 UTC (2026-11-10): pit dive ON TIME at 1.812B (= run 5's step); 28.2% before the cavity
+
+| wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 0.977B | 0.763B | 2.000B |
+| window (CP1) | 1.284B | 0.680B | 1.600B | 1.668B | 0.914B | 2.000B |
+| pit dive | 1.812B | 1.812B | 3.625B | 2.285B | 2.448B | 4.897B |
+
+* Evals 1.812B: 27.84%, then 28.19-28.20% (CP1) at every eval from 1.888B to 2.492B: the shelf
+  before the cavity (CP2 deadline 4.229B steps / 5.774B total, ~01:56 UTC at 246k steps/s).
+* Search 6 (2.114B, patience): NEW SPINE 2,902 states, end d 72,247 vs frontier 73,973; labels:
+  128,426 expanded nodes, beaten at 6.0%, 86.6% all tied. The curriculum's backward walk on it is
+  at tau ~400 of 2,901 (starts [~400, 2901], band success flipping 0-55%); 0/9 greedy episodes past
+  its success line in 5 evals; unstuck T at its 0.2 cap ("stuck 698M"). Search 7 fired at 2.492B.
+* Label fit (trees k03-k06): keys NLL 2.01, yaw 0.44 (|tanh mu - u| 0.22), value MSE 0.053,
+  agreement 0.42; only 9% of a label batch carries a policy row now (the trees rarely beat the
+  policy).
+* Other slots (their RESULT.json, 23:58): slot 1 (one pool) cavity at 2.341B; slot 2 (balanced
+  tree) at the pit dive; slot 4 (tree only) at the spawn.
+* **If this run fails the cavity** (stopped at its deadline, harvest first), the next recipe is
+  slot 1's 85-flag list (`--no-recipe`, one pool, its notes) + `--tree-labels 0.1`: the two
+  parts of the user's endpoint that keep PPO (one pool of spawns, the tree teaching the
+  network), and slot 1's run is its paired control (same flags, no labels, seed 0). Not built
+  yet: the same commit runs it.
