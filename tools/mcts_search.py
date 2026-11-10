@@ -478,7 +478,7 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     out = {"keep": np.zeros(n, bool), "probs": np.zeros((n, nh, int(npad)), np.float32),
            "vmu": np.zeros((n, n_z), np.float32), "vsd": np.zeros((n, n_z), np.float32),
            "value": np.zeros(n, np.float32), "n_best": np.zeros(n, np.int64),
-           "adv": np.zeros(n, np.float32)}
+           "adv": np.zeros(n, np.float32), "best_child": np.full(n, -1, np.int64)}
     if n == 0:
         return out
     nc = np.asarray(tree.ncld[nodes], np.int64)
@@ -527,6 +527,9 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     out["probs"][sel] = probs.astype(np.float32)
     out["value"][sel] = np.asarray(tree.q[nd], np.float32)
     out["n_best"][sel] = nb
+    _pos = np.where(best, np.arange(len(idx)), len(idx))
+    _fp = np.minimum.reduceat(_pos, offs)
+    out["best_child"][sel] = np.where(_fp < len(idx), idx[np.minimum(_fp, len(idx) - 1)], -1)
     span = float(tree.qhi - tree.qlo) if np.isfinite(tree.qhi - tree.qlo) else 0.0
     q_tgt = np.add.reduceat(np.where(best, q, 0.0), offs) / np.maximum(nb, 1)
     q_mean = np.add.reduceat(q, offs) / cnt
@@ -1084,6 +1087,8 @@ def run_mcts(ctx: dict, a) -> dict:
     if LAB:
         labels = _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec,
                               passes[k_root]["spawn"], root_sp,
+                              dict(store=store, coreN=coreN, polN=polN, sideN=sideN,
+                                   E_acts=E_acts, E_view=E_view),
                               lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K)
         summary["ticks_line"] = int(labels.pop("ticks"))
         summary["ticks_total"] += summary["ticks_line"]
@@ -1096,8 +1101,92 @@ def run_mcts(ctx: dict, a) -> dict:
             "labels": labels}
 
 
+
+def _dense_rows(tree, nodes, best_child, adv, pop, C_kind, C_pact, C_pz, M, K, nvec, npad,
+                n_view):
+    """--mcts-labels-dense: every LATER decision of each labelled node's chosen macro (decisions
+    1..ndec-1; decision 0 is the node row itself), replayed open loop from the node's stored state
+    in the population core, its engine rows and views the tree's own (E_acts / E_view), the held
+    keys set to each executed row - the line replay's rule, batched. A random-held child's label is
+    its held move at every decision; the policy's own child's is the network's greedy move at the
+    replayed state. Rows are node rows (kind 0) with their node's advantage and the chosen
+    child's Q. -> (rows dict, ticks)."""
+    import torch
+    from surfgym.keyshold import HELD_HEADS
+    store, coreN, polN, sideN = pop["store"], pop["coreN"], pop["polN"], pop["sideN"]
+    E_acts, E_view = pop["E_acts"], pop["E_view"]
+    N = coreN.num_envs
+    out = {k_: [] for k_ in ("scal", "pose", "probs", "vmu", "vsd", "value", "kind", "adv")}
+    ticks = 0
+    nodes = np.asarray(nodes, np.int64)
+    best_child = np.asarray(best_child, np.int64)
+    ok = (best_child >= 0) & (tree.slot[nodes] >= 0)
+    nodes, best_child, adv = nodes[ok], best_child[ok], np.asarray(adv)[ok]
+    idxN = np.arange(N)
+    polN.hold = None
+    polN.capture = True
+    for s0 in range(0, len(nodes), N):
+        nb = nodes[s0:s0 + N]
+        cb = best_child[s0:s0 + N]
+        ab = adv[s0:s0 + N]
+        n = len(nb)
+        fill = np.concatenate([np.arange(n), np.zeros(N - n, np.int64)])  # spare envs copy row 0
+        S, O, SD = store.rows(tree.slot[nb[fill]])
+        for i in range(N):
+            coreN.set_state(i, S[i:i + 1])
+        obsN = np.array(O, np.float32)
+        sideN.scatter(idxN, SD)
+        kind_b = np.asarray(C_kind[cb], np.int64)
+        polN.greedy = np.concatenate([kind_b == 0, np.zeros(N - n, bool)])
+        nd = np.minimum(np.asarray(tree.ndec[cb], np.int64), M)
+        alive = np.ones(n, bool)
+        for m in range(M):
+            polN.act(obsN)
+            if m >= 1:
+                take = np.flatnonzero(alive & (m < nd))
+                if len(take):
+                    sc = np.asarray(polN.last_scal, np.float32)[take]
+                    po = np.asarray(polN.last_pose, np.float32)[take]
+                    held = kind_b[take] == 1
+                    pa = np.where(held[:, None], np.asarray(C_pact[cb[take]], np.int64),
+                                  np.asarray(polN.policy_act, np.int64)[take])
+                    pz = np.where(held[:, None], np.asarray(C_pz[cb[take]], np.float32),
+                                  np.asarray(polN.view_z, np.float32)[take])
+                    out["scal"].append(sc)
+                    out["pose"].append(po)
+                    out["probs"].append(onehot_rows(pa, nvec, npad, n_view))
+                    out["vmu"].append(pz.astype(np.float32))
+                    out["vsd"].append(np.zeros_like(pz, dtype=np.float32))
+                    out["value"].append(np.asarray(tree.q[cb[take]], np.float32))
+                    out["kind"].append(np.zeros(len(take), np.int8))
+                    out["adv"].append(np.asarray(ab[take], np.float32))
+            rowsE = np.zeros((N, 6), np.int32)
+            viewE = np.zeros((N, 2), np.float32)
+            rowsE[:n] = E_acts[cb, m]
+            viewE[:n] = E_view[cb, m]
+            rowsE[n:] = rowsE[0]
+            viewE[n:] = viewE[0]
+            if getattr(polN, "keys", None) is not None:
+                polN.keys.state[:] = rowsE[:, list(HELD_HEADS)]
+                polN.keys.boot[:] = polN.keys.state
+            for _k in range(K):
+                if _k:
+                    polN.act(obsN)
+                obsN, _r, dn, tr, _t = coreN.step(np.ascontiguousarray(rowsE),
+                                                  view=np.ascontiguousarray(viewE))
+                obsN = np.array(obsN)
+                ticks += N
+                ended = (np.asarray(dn, bool) | np.asarray(tr, bool))[:n]
+                alive &= ~ended
+    polN.capture = False
+    polN.greedy = np.zeros(N, bool)
+    rows = {k_: (np.concatenate(v) if v else None) for k_, v in out.items()}
+    if rows["kind"] is None:
+        return {k_: np.zeros(0, np.float32) for k_ in out}, ticks
+    return rows, ticks
+
 def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec, spawn,
-                 root_sp,
+                 root_sp, pop,
                  lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K) -> dict:
     """--mcts-labels: the finished tree as training rows (azr1b4, the tree-only loop).
 
@@ -1147,6 +1236,14 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     rows = {"scal": [LS[k]], "pose": [LP[k]], "probs": [nt["probs"][k]], "vmu": [nt["vmu"][k]],
             "vsd": [nt["vsd"][k]], "value": [nt["value"][k]],
             "kind": [np.zeros(int(k.sum()), np.int8)], "adv": [nt["adv"][k]]}
+    dense_ticks, n_dense = 0, 0
+    if int(getattr(a, "mcts_labels_dense", 0) or 0) and k.any():
+        dr, dense_ticks = _dense_rows(tree, L[k], nt["best_child"][k], nt["adv"][k], pop,
+                                      C_kind, C_pact, C_pz, M, K, nvec, npad, n_view)
+        n_dense = len(dr["kind"])
+        for key in rows:
+            if n_dense:
+                rows[key].append(dr[key])
     # ---- line rows ---------------------------------------------------------------------------
     # the greedy prefix up to the line's root: ANCHOR rows (-1) only before the tree's EARLIEST
     # root - outside the search window, the policy's own moves; inside it (-2) the roots' own
@@ -1270,9 +1367,13 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
                     np.zeros((0,), np.float32))
     n_all = len(out["kind"]) if out["kind"].ndim else 0
     out["w"] = np.ones(n_all, np.float32)
-    out["ticks"] = ticks
+    out["ticks"] = ticks + dense_ticks
     out["n_expanded"] = len(L)
+    out["n_dense"] = n_dense
     out["replay_d"] = d_end
+    if n_dense:
+        print(f"mcts labels: {n_dense:,} dense rows (the chosen macros' later decisions), "
+              f"{dense_ticks:,} replay ticks", flush=True)
     print(f"mcts labels: {int(k.sum()):,} node rows (of {len(L):,} expanded nodes), {nl:,} line "
           f"rows ({n_held} on random-held macros, {n_cut} cut past the last {cut_u:g} u); "
           f"line replay "

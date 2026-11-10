@@ -2336,6 +2336,10 @@ def main():
                     help="--mcts-labels: 1 = label the best line's WHOLE greedy prefix (up to its "
                          "root) with the policy's own moves, not only the part before the earliest "
                          "root; 0 = off")
+    ap.add_argument("--mcts-labels-dense", type=int, default=0, choices=(0, 1),
+                    help="--mcts-labels: 1 = also label every LATER decision of each labelled "
+                         "node's chosen macro (replayed open loop from the node's state in the "
+                         "population core); 0 = the node's first decision only")
     ap.add_argument("--mcts-labels-cut", type=float, default=0.0,
                     help="--mcts-labels: the best line's searched rows stop at the first decision "
                          "whose banked d is within U of the line's final banked d (the rest is time "
