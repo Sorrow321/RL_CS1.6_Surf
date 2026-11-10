@@ -1369,3 +1369,27 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   0.053, agreement 0.33.
 * Insurance pull: ckpt_latest.pt (8.53B, md5 408c275a...) and ckpt_8002732032.pt (md5
   c9ba8e06...) are local. 21 searches = 2.017B search ticks; 8.53B steps / 10.47B total.
+
+### 07:42 UTC: flat at 72.2% since 8.0B; the curriculum cannot pass ~2.5 s before search 20's end
+
+* Evals 8.456-9.438B: 72.15-72.25% at every one (medians 72.1%); best still 72.30% (8.230B).
+* The curriculum on search 20's line (end d 27,456, adopted 8.088B) sat for ~1.3B steps at its
+  last 245-250 ticks: starts at tick 9,075 of 9,325 succeed 26-38%, starts at 9,080 succeed
+  5-8%, and the window flips between the two. The policy flies to d ~30,260 and does not learn
+  the 3,000 u after it.
+* Searches 21 (8.456B) and 22 (8.909B): NO new spine, dead greedy replays again (d 69,445 /
+  72,039 against a frontier of ~30,270): 6 of the last 11 searches lost that way. Search 23
+  (9.362B -> 9.445B): NEW SPINE, end d 27,265 vs 30,266 (+3,001 u, nearly the same end as search
+  20's line); its tree beat the policy at 19.2% of nodes (the most since search 2: a region the
+  policy cannot fly). The curriculum restarted at its end and already backs off at tau ~8,450 of
+  8,590 (success 3-16%).
+* Labels: a policy row in 10% of a label batch now; fit keys NLL 2.40, yaw 0.28, agreement 0.24
+  (the new tree's labels are not fitted yet).
+* CP6's deciding eval is step 12,231,114,752, due ~10:48 UTC; the run needs +13-18 points by
+  then (run 5 met CP6 at ~90%). If it does not clear CP6 there: harvest (ckpt_latest, the
+  snapshot at/before the best eval - ckpt_8002732032 is already local -, search_ticks, a bundle
+  of auto/ without ckpt.pt / mcts_tree.npz / labels.npz / field.npz), stop pid 5076 and any search
+  child, and launch run 2 `azr1b3_tl2` = slot 1's 85 flags (`--no-recipe`) + `--tree-labels 0.1`
+  on commit 2a4f8edd. Slot 1's commit da7981e5 changes no trainer code against the base
+  (`git diff --stat 09099d2a da7981e5 -- python/ tools/ src/` is empty), so tl2 is exactly slot
+  1's run plus the labels, and slot 1's azr1b1_pool1 is its paired control.
