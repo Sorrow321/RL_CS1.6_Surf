@@ -1,0 +1,17 @@
+{
+ "operator_note": "OPERATOR NOTE 2 (2026-11-09 21:25 UTC), two things. (1) MONEY. The first boxes cost 0.42 $/h against the 0.34 planned, so the pacer left 0.29 $/h for the fourth box and slot 4 could not rent. I set budget_end_hours 26 -> 24 in autoresearch/config.json (in the checkout and in all four worktrees; it shows as a modified file - leave it, or commit it with your next commit, do not revert it). Consequence for everyone: with four boxes the credit above the $10 reserve lasts to about 19:00 UTC on 2026-11-10, not to the round end at 22:40. So: extend in small steps and expect `extend` to be refused near the end (it refuses when fleet burn x hours does not fit above the reserve); pull your run's files in good time and always before a deadline; release your box as soon as your run has failed a wall deadline and you have nothing ready to launch, or when you only bench now and then. A run that is ON TIME keeps its box. (2) box.py is called in its PLAIN form, one Bash call that starts with `python autoresearch/box.py` (for example `python autoresearch/box.py rent --agent azr1b1 --hours 8`): the environment is already exported in your session and the user's settings allow exactly that form; a rent wrapped in `export ... && timeout ...` was refused by the auto-mode classifier twice at 20:42. If a plain call is refused, do not try other shapes: write it under 'Harness issue' in NOTES.md and go on. Never end a turn waiting for an answer.",
+ "agent": "azr1b1",
+ "round": 1,
+ "rounds": 1,
+ "slot": 1,
+ "branch": "ar/azr1b1",
+ "base_commit": "09099d2a8f4bbe2a5f817d916a2270296a94543f",
+ "started_at": 1794256801.5446754,
+ "wrapup_at": 1794348000.1672168,
+ "round_end": 1794350400.1672168,
+ "wrapup_at_utc": "2026-11-10 22:00 UTC",
+ "round_end_utc": "2026-11-10 22:40 UTC",
+ "ar_home": "/home/steam/ar_az",
+ "incumbent": null,
+ "runs_dir": "/home/steam/ar_az/runs/azr1b1"
+}

@@ -1,14 +1,14 @@
 {
  "agent": "azr1b1",
  "round": 1,
- "final": false,
+ "final": true,
  "slot": 1,
  "best": {
   "score": 113.912,
   "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_15326511104.jsonl",
   "run": "azr1b1_pool1",
   "step": 15326511104,
-  "ckpt": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_15005122560.pt (snapshot at 15.005B, the last before the best eval; md5 25ee0043c8c582d1e77b1340af38bfd5)",
+  "ckpt": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_15005122560.pt",
   "recipe": [
    "--envs",
    "1024",
@@ -101,7 +101,21 @@
   "one_recipe": true,
   "from_scratch_step0": true,
   "resume_from": null,
-  "ckpt_note": "The snapshot at/before the best eval sits in a CP2-block failure phase (its nearest eval, 15.025B, reached 27.6%); search 41's repair line came at 15.128B. A finishing-phase checkpoint is also pulled: /home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_16005464064.pt (md5 310c11ee7985c21b3d5d91f37addf128), one PPO iteration before the 16.006B eval (1/9 finishes, 117.39 s; the evals either side 7/9 and 5/9)."
+  "ckpt_note": "the trainer's snapshot at/before the best eval (15.327B, 7/9, 115.97 s); it sits in a CP2-block failure phase (the eval at 15.025B reached 27.6%; search 41's repair line came at 15.128B). A finishing-phase copy is snapshot_finishing (one PPO iteration before the 16.006B eval: 1/9, 117.39 s; the evals either side 7/9 and 5/9). snapshot_first_finish is the last snapshot before the first finishing eval (14.194B, 5/9, 117.68 s). ckpt_latest is the run at ~18.97B, pulled after the round-over message; the run went on to ~19.3B until the box was released.",
+  "ckpt_md5": "25ee0043c8c582d1e77b1340af38bfd5",
+  "snapshot_finishing": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_16005464064.pt",
+  "snapshot_finishing_md5": "310c11ee7985c21b3d5d91f37addf128",
+  "snapshot_first_finish": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_14004781056.pt",
+  "snapshot_first_finish_md5": "e48cfcd0f9a01ba9f05028d9aee54715",
+  "ckpt_latest": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_latest.pt",
+  "ckpt_latest_md5": "5e0d06637a7396be6343803ba5ed034d",
+  "ckpt_latest_near_step": 18970312704,
+  "search_ticks": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/search_ticks.json",
+  "search_bundle": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/auto_bundle.tgz",
+  "search_bundle_md5": "6640236aca22d3cbe81e2c4b2d5ea073",
+  "launched_utc": "2026-11-09 20:47",
+  "box": 59950838,
+  "no_recipe": true
  },
  "ladder": {
   "unit": "steps",
@@ -109,7 +123,7 @@
   "window (CP1)": 1057488896,
   "pit dive": 1359478784,
   "cavity (CP2)": 2340945920,
-  "verdict": "FINISHED: all 12 walls ON TIME (finish at 14.194B steps = 1.72x run 5's 8.230B; 19.186B total ticks = 1.78x run 5's 10.801B); best eval 15.327B: 7/9 finishes, 115.97 s (score 113.912)",
+  "verdict": "FINISHED: all 12 walls ON TIME: finish at 14.194B steps = 1.72x run 5's 8.230B (19.186B total ticks = 1.78x run 5's 10.801B); best eval 113.912 at 15.327B (7/9 finishes, 115.97 s); stopped at ~19.3B steps when the box was released after the round-over message (256 evals to 19.252B; 51 searches, 6.37B search ticks to ~18.97B)",
   "total": {
    "first ramp": 1035242155,
    "window (CP1)": 1412729515,
@@ -133,12 +147,13 @@
   "chamber entry": 14194049024,
   "finish": 14194049024
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~355k steps/s) FINISHED sidistic from the true start at 14.194B steps (5/9, 117.68 s): all 12 walls ON TIME, 1.72x run 5 in steps and 1.78x in total ticks; walls 1-8 level with run 5 (0.98-1.12x from the post-CP2 block on), CP6 1.28x, CP7 1.22x. Best eval 15.327B: 7/9, 115.97 s (score 113.912). The cost of one pool: the greedy keeps losing the early map (the CP2 block at ~30%) whenever the curriculum's line moves on, and only a patience line ending AT the failure repairs it (5/5; lines past it never did). After the first finish it finishes in 62% of evals (mean 2.03/9, never 9/9) against run 5's 98% (4.78/9) over the same 58 evals, but its finishes are ~3 s faster (best 115.07 s vs run 5's 117.94 s). For the user's question: one pool alone works but is slower and less stable than the hybrid; run 5's other 75% of starts acted as a replay of the whole map (slot 2's one pool + a balanced tree finished at 0.88x run 5). Next: keep a share of the curriculum on the whole line (--demo-whole-frac, built and tested here).",
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and its cadence unchanged (85 flags, commit da7981e5). Run azr1b1_pool1 (from scratch 2026-11-09 20:48 UTC, RTX 4080, ~355k steps/s) FINISHED sidistic from the true start at 14.194B steps (5/9, 117.68 s): all 12 walls ON TIME, 1.72x run 5 in steps and 1.78x in total ticks; walls 1-8 level with run 5 (0.98-1.12x from the post-CP2 block on), CP6 1.28x, CP7 1.22x. Best eval 113.912 at 15.327B (7/9, 115.97 s). The cost of one pool: the greedy keeps losing the early map (the CP2 block, ~30%) whenever the curriculum's line moves on; a patience line ending AT the failure repaired it 6/6 times, lines ending past it never did. After the first finish it finishes in 63% of evals (mean 1.94/9, never 9/9) against run 5's 98% (4.91/9) over the same 65 evals, but faster (best 115.07 s vs run 5's 117.94 s). For the user's question: one pool alone works but is slower and less steady than the hybrid; run 5's other 75% of starts acted as a replay of the whole map (slot 2's same pool + a balanced tree finished at 0.88x run 5, with the same loss of steadiness). Next: one pool + --demo-whole-frac 0.5 (half the curriculum spread over the whole line; built and tested here).",
  "box": {
   "id": 59950838,
   "gpu": "RTX_4080",
   "cpu": "AMD Ryzen 9 9950X (32 threads)",
   "dph": 0.417,
-  "steps_per_s": "~355k (11:12 UTC)"
+  "steps_per_s": "~355k",
+  "released_utc": null
  }
 }

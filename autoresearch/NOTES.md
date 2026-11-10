@@ -1564,3 +1564,108 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
   rule finished at 7.248B steps (0.88x run 5, one seed, RTX 5080); slot 3's run 2 (11:00 UTC) =
   this run's 85 flags + --tree-labels 0.1, with this run as its paired control.
 * Box deadline 21:54:29 UTC (credit $22.89 at 11:11, burn 1.174 $/h, reserve reached ~22:10).
+### azr1b1 - 2026-11-10 11:50 UTC: ROUND 1 LESSON (slot 1, one pool) - FINAL
+
+**What I changed.** One part of run 5: the spawn pools. Run 5's 126-element list without
+`--respawn-novel*`, `--respawn-greedy*`, `--respawn-front-perturb*`, `--respawn-backward-mix`,
+`--respawn-backward-elev`, `--demo-share` and the forced `--int-real-only` (85 flags, commit
+da7981e5, `box.py launch --no-recipe`). Every pool is then 10% map starts + 90% states from the
+search's backward curriculum (half of those on its frontier band). PPO, the reward, the search
+(6-min MCTS, 1 greedy + 15 random-held children), its cadence (patience/retry 3e8) and the line
+rules are run 5's. One run, one seed, from scratch: azr1b1_pool1, 2026-11-09 20:47 UTC, RTX 4080 /
+Ryzen 9 9950X, ~355k steps/s; stopped at ~19.3B steps when the box was released after the
+round-over message (11:33 UTC).
+
+**The ladder beside run 5** (2x deadlines; every wall ON TIME in both units):
+
+| wall | steps | run 5 | ratio | total ticks | run 5 | ratio |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.29x | 1.035B | 0.763B | 1.36x |
+| window (CP1) | 1.057B | 0.680B | 1.55x | 1.413B | 0.914B | 1.55x |
+| pit dive | 1.359B | 1.812B | 0.75x | 1.856B | 2.448B | 0.76x |
+| cavity (CP2) | 2.341B | 2.114B | 1.11x | 3.255B | 2.887B | 1.13x |
+| post-CP2 block | 2.492B | 2.341B | 1.06x | 3.538B | 3.252B | 1.09x |
+| CP3 | 2.643B | 2.643B | 1.00x | 3.689B | 3.554B | 1.04x |
+| CP4 | 3.549B | 3.624B | 0.98x | 4.804B | 4.928B | 0.97x |
+| CP5 | 4.304B | 3.851B | 1.12x | 5.836B | 5.293B | 1.10x |
+| CP6 | 7.852B | 6.116B | 1.28x | 10.719B | 8.220B | 1.30x |
+| CP7 | 8.230B | 6.720B | 1.22x | 11.097B | 8.966B | 1.24x |
+| chamber entry | 14.194B | 8.230B | 1.72x | 19.186B | 10.801B | 1.78x |
+| finish | 14.194B | 8.230B | 1.72x | 19.186B | 10.801B | 1.78x |
+
+First finish 14.194B (5/9, 117.68 s); best eval 15.327B (7/9, 115.97 s, score 113.912). 51
+searches, 6.37B search ticks; up to the first finish the searches took 26% of all ticks (run 5:
+24%). Search verdicts: 28 NEW, 9 STALE, 13 NO spine.
+
+**After the first finish, matched by eval count** (greedy evals; `end == done`, equal to
+score.py's clip-checked count on 12/12 spot-checked evals):
+
+| | evals with >= 1 finish | mean finishes | 9/9 evals | best time |
+|---|---|---|---|---|
+| run 5, its first 65 evals from 8.23B | 64/65 (98%) | 4.91/9 | 1 | 117.94 s (162 evals to 20.39B) |
+| this run, 65 evals 14.19-18.95B | 41/65 (63%) | 1.94/9 | 0 | 115.07 s (15.63B) |
+
+**What it says about the user's question.**
+
+1. **One pool works.** With every non-map start on a search line, PPO learned to fly the whole
+   map from the true start inside the 2x ladder. Up to CP5 it kept run 5's pace (0.98-1.12x from
+   the post-CP2 block on): there, the search's curriculum alone did the job of run 5's two pools.
+2. **But it forgets, and that is its whole cost.** The curriculum puts 90% of the starts on the
+   last part of the current line. The early map - the CP2 block at ~30% - is then trained only by
+   the 10% map starts, and each time a new line moved the curriculum on, the greedy lost the CP2
+   block within ~0.3-0.5B steps (once a 54% spot instead). Each loss cost ~1-1.5B steps, and the
+   cycle repeated every ~1.5-2B steps from CP5 to the end. That is the 1.72x, and also why the
+   finished policy finishes in 63% of evals instead of run 5's 98%. Run 5's other 75% of starts
+   (novel, greedy-death, front-perturbed and backward rows) are spread over everything the policy
+   already flies: they work as a replay of the whole map, and one pool has no replay.
+3. **The repair was an accident of the search rules.** A patience search starts from the failing
+   eval's median deepest point; when its line ENDED AT the failure, the curriculum on that line
+   repaired the policy within 1-2 evals: 6 of 6 (lines 20, 28, 34, 38, 41, 50). Lines that ended
+   past the failure never did (17, 25, 27, 37).
+4. **A failure mode that only one pool exposes.** The search starts from the eval's MEDIAN deepest
+   d, and `--auto-spine-recheck` compares the new line with that median. On a bimodal eval (some
+   episodes at 85%, the median at the CP2 block) a shorter line beats the median and replaces a
+   longer one: 17 replaced 15 (57% over 85%), 25 replaced 24, 37 replaced the finishing line 35,
+   and 47/48 replaced the finishing line 43. With two pools that moves 25% of the starts; here it
+   moves 90%. Also a quirk of a finishing line: its success line is d <= 102, but a finishing
+   greedy episode ends in the finish trigger at d ~2,200, so the log says "0/9 past the success
+   line" at 7/9 finishes and patience searches keep firing every 0.3B steps.
+5. **One thread or two, and what the tree should teach.** This run says the tree's LINES are
+   enough to teach WHERE to go: every wall fell with only search lines and map starts. What the
+   lines do not keep is everything the policy already knows. Slot 2 ran this same pool with a
+   balanced tree and finished at 0.88x run 5, with the same loss of steadiness after the finish
+   (61% of evals vs run 5's 97%). So the pool is not what makes a recipe slow, but it drops the
+   replay that run 5 got from October's sources. A one-thread design has to put that replay
+   back: train on states spread over everything the tree has already shown, not only at the
+   newest line's end.
+6. **The finishes are faster** (best 115.07 s vs run 5's 117.94 s over 162 evals, the first
+   finishing evals 117.68 s vs 121.21 s). With 90% of the starts on search lines, the policy flies
+   the search's lines more closely; this is a guess from one seed, not tested.
+
+**What I would run next.** This run + `--demo-whole-frac 0.5`: half of the curriculum's draws
+spread uniformly over the whole current line (Florensa et al. 2017 replay old starts in their
+reverse curriculum). The flag is built and tested on this branch (commit 4961a562, off =
+byte-identical, tests/python/test_demo_whole_frac.py, TRAIN_ONLY in record_ckpt) and was never
+launched. Also add `--demo-match-band` (the existing fix for the line-1 freeze seen here from
+~250M to 559M steps), and take slot 2's rule for the tree. `--auto-spine-no-retreat` (also built
+here, 802ae122/60ddbefd) is NOT a candidate: it would also have blocked the repairing lines.
+
+**Caveats.** One seed, and the trainer is not reproducible run to run: the late gap comes from a
+few forgetting cycles, so another seed could land anywhere from ~1.2x to 2x. An RTX 4080 box
+(steps and ticks compare across cards, wall clock does not). Slot 2's comparison is one seed each
+on a different card (RTX 5080). The run started in the first hour. No human data: every
+training start is the map start or a state on the search's own lines. Once on this machine I ran
+tests/python/test_auto_spine.py, which starts a tiny trainer and search for about a minute
+(noted at the time).
+
+**Files** (all md5-verified against the box):
+- best eval: /home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_15326511104.jsonl
+- ckpt_15005122560.pt (md5 25ee0043c8c582d1e77b1340af38bfd5): the snapshot at/before the best
+  eval, in a failure phase (the 15.025B eval reached 27.6%)
+- ckpt_16005464064.pt (310c11ee7985c21b3d5d91f37addf128): a finishing-phase snapshot
+- ckpt_14004781056.pt (e48cfcd0f9a01ba9f05028d9aee54715): the last before the first finish
+- ckpt_latest.pt (5e0d06637a7396be6343803ba5ed034d): the run at ~18.97B
+- auto_bundle.tgz (6640236aca22d3cbe81e2c4b2d5ea073): searches 1-51 (logs, summaries, lines; no
+  checkpoint copies, no MCTS trees); search_ticks.json (51 searches, 6.37B ticks); run.json,
+  progress.csv, the launch log and all 256 evals (to 19.252B: the last four 2-4/9 finishing), in
+  /home/steam/ar_az/runs/azr1b1/azr1b1_pool1/
