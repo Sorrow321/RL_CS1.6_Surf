@@ -1422,3 +1422,17 @@ all-random children): same flags apart from the child mix, another box and seed 
   76.2k) while the best evals were at CP7. Next search at 6.129B.
 * Keeper copy for the 98.435 eval: ckpt_5647630336.pt (-15M), pulled, md5
   c0093b911d525a755114c98c446dde72 (verified on the box). Search ticks: 16 searches, 1,233M.
+
+### 08:20 UTC: run 2 at 6.87B - no finish yet; best still 98.44%; search 18 adopted deep
+
+* Evals 5.89-6.80B: 86.1, 58.1, 97.9, then a weak stretch 6.12-6.42B (42.1, 33.6, 41.9, 42.1, 46.7:
+  the best episodes died at CP2-CP3), then 86.1, 97.9, 54.1, 33.8, **98.41 (6.795B, median 86.0)**.
+  All episodes end in a fall. Chamber entry / finish deadline 16.46B (~17:10 UTC).
+* Searches split by where their greedy root dies: roots at the pit / cavity (15: 30.1%, 16: 23.6%,
+  17: 20.2% field) gain 0-7 points and are wasted; roots past the middle (14: 59.7%, 18: 54.0%) reach
+  ~85% and are adopted. **Search 18** (6.644B, 107,307 cells, best 84.55%, line G21 P13 E28 R14)
+  ADOPTED at 6.744B: 9,977 states, end d 15,405. The curriculum at its end is harder than at search
+  14's (success 15-52% per 500 episodes, one back-off) - the end sits in the CP6-CP7 stretch.
+* Rule shares: pit-root searches mean R 0.48-0.49 / E 0.34-0.35 / P 0.17-0.18; the deep-root ones
+  R 0.44-0.47 / E 0.35-0.36 / P 0.17-0.21; per child R > E > P in both (search 18: 0.016 / 0.012 /
+  0.0055). Search ticks: 18 searches, 1,387M.
