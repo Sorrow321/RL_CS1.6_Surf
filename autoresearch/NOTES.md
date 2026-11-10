@@ -1436,3 +1436,39 @@ all-random children): same flags apart from the child mix, another box and seed 
 * Rule shares: pit-root searches mean R 0.48-0.49 / E 0.34-0.35 / P 0.17-0.18; the deep-root ones
   R 0.44-0.47 / E 0.35-0.36 / P 0.17-0.21; per child R > E > P in both (search 18: 0.016 / 0.012 /
   0.0055). Search ticks: 18 searches, 1,387M.
+
+### 09:15 UTC: run 2 FINISHED sidistic from scratch at 7.248B steps - all 12 walls ON TIME
+
+* **First finish at 7.248B steps** (eval 108.078: 2/9 finishes, 124.34 s, median 97.5%), 0.88x run
+  5's 8.230B; in total ticks 8.787B = 0.81x run 5's 10.801B (21 searches, 1,615M search ticks by
+  7.7B steps). Then 7.32B 2/9, 7.40B 1/9, **7.475B 4/9 (score 110.3, best 124.33 s, median 97.9%)**,
+  7.55B 0/9 (98.0%), 7.63B 1/9.
+* Ladder against run 5 and slot 1 (one pool, no rule; azr1b1_pool1, RTX 4080), steps (B):
+
+  | wall | run 5 | slot 1 pool | run 2 pool + rule |
+  |---|---|---|---|
+  | first ramp | 0.529 | 0.680 | 0.680 |
+  | window (CP1) | 0.680 | 1.057 | 0.982 |
+  | pit dive | 1.812 | 1.359 | 1.586 |
+  | cavity (CP2) | 2.114 | 2.341 | 1.737 |
+  | post-CP2 block | 2.341 | 2.492 | 1.812 |
+  | CP3 | 2.643 | 2.643 | 1.888 |
+  | CP4 | 3.624 | 3.549 | 2.114 |
+  | CP5 | 3.851 | 4.304 | 2.416 |
+  | CP6 | 6.116 | 7.852 | 4.379 |
+  | CP7 | 6.720 | 8.230 | 5.210 |
+  | finish | 8.230 | 14.194 | **7.248** |
+
+  One seed each, different cards (5080 here, 4080 for slot 1). The gaps to slot 1 from the cavity
+  on are 1.35-1.96x (finish 1.96x), above the ~30% floor, but they are one pair of runs.
+* Where the late walls came from: CP6 one eval after search 12's line (adopted 4.244B, end d
+  57,545); CP7 after **search 14's** line (adopted 4.924B, end d 14,588 = 85% field, line G21 P7 E19
+  R9); searches 18 (6.744B, end d 15,405) and 19 (7.179B, root 83.65%, end d 14,946) re-seeded the
+  CP6-CP7 stretch. **No search line reached the chamber or the finish: the policy found the last
+  ~15% of the field itself** (in run 5 a search line gave the finish). Search 20 (7.248B) started
+  from a pit root (17.4%) and gave nothing.
+* Checkpoints (pulled, md5 verified on the box): ckpt_7248281600.pt (exact copy for the first-finish
+  eval, da7ea2a09c8918e4771db5cdd2eb3452) and ckpt_7476871168.pt (+2.1M after the 110.3 eval, the
+  keeper's nearest copy, e4cbf810c0468922cf2683e0e11df035).
+* PROTOCOL: a run that is ON TIME keeps training to the end of the round. Fleet at 09:06: 3 boxes,
+  credit $25.38, 13.1 h to the reserve; this box's deadline 17:31 UTC, to extend in small steps.
