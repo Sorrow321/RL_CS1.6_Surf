@@ -1372,3 +1372,30 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
 * Next: the chamber entry (98.5%) and the finish, due by 16.459B steps (~6 h at ~1.28B/h). Run 5
   sat at 97.9-98.0% from 6.8B to 8.15B and finished at 8.23B after its search 20 found a
   finishing line (8.0B).
+
+### azr1b1 - 2026-11-10 04:38 UTC: 9.89B steps - the same fall-back again (line 25); recipe 2 redrawn
+
+* Walls 1-10 ON TIME; best eval 98.08% (CP7, 9.136B), no finish. Chamber entry and finish due by
+  16.459B steps (~09:35 UTC at ~1.28B/h).
+* **The cycle repeated.** Line 24 (8.635B) ends at d 1,498 (~98.5%); the greedy reached 97.9% but
+  never its success line (0/9, 8.68-9.06B). Search 25 (patience, 8.985B, from an eval MEDIAN of
+  44,029) gave a line to d 39,819 (~61%), adopted 9.086B: the curriculum's tail jumped back from
+  98.5% to 61%, past the CP2 block and far behind the frontier - line 17's case. Since then most
+  evals' medians sit at the CP2 block (74k) again; best per eval 97.9% (9.36B, 9.66B) or
+  37-44% (9.51B, 9.59B, 9.74B, 9.82B). Search 26 (9.47B) found nothing; search 27 is due now
+  (patience from a median of 68-70k), which, like line 20, may end at the CP2 block and repair it.
+* **What the whole run says about one pool so far.** Whenever the curriculum's tail is away from
+  the CP2 block, the greedy's CP2-block skill decays (only the 10% map starts train it), and a line
+  ending exactly there repairs it within one eval. Run 5 kept it alive with its 75% of other
+  starts (the reservoir of its own states all over the course, greedy-death spawns, ...).
+* **Recipe 2 (only if this run misses a deadline; it is on time and keeps training)**, commit
+  4961a562: recipe 1 + `--demo-whole-frac 0.5` (NEW, default off, byte-identical off: half of the
+  curriculum's draws uniform over the WHOLE current line - Florensa et al. 2017's replayed old
+  starts, the one-pool stand-in for run 5's reservoir) + `--auto-spine-no-retreat` (the line
+  never shrinks, so that whole line keeps reaching the frontier; with the whole line replayed, the
+  CP2 block no longer needs a backward line to be trained) + `--demo-match-band` (the line-1
+  freeze). Pool then: 10% map starts, 45% whole line, 22.5% band, 22.5% tail.
+* **Harness note (my mistake).** Checking the flag I ran `tests/python/test_auto_spine.py` locally;
+  its `test_the_trainer_runs_the_search_and_logs_it` starts a tiny train_fast + auto_spine smoke
+  run (~1 min, 16 search envs). That is a trainer on this machine, against the rule. Nothing was
+  left running or on disk. Only pure-numpy / source-reading tests from now on here.
