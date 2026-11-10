@@ -163,7 +163,7 @@
    "cavity (CP2)": 3322433118
   }
  },
- "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 azr1b2_sib (run 5 + the rule): first ramp 0.755B, window 0.906B, pit dive 2.492B, cavity 2.718B ON TIME (run 5 0.529/0.680/1.812/2.114B), then FAILED the post-CP2 block (flat 32.4%, deadline 4.682B) - the wall where run 4's fixed mixed tree failed too; run 5 (all random) passed it when its policy found a detour. The rule settled near R 0.5 / E 0.32 / P 0.18, close to run 4's mix; its perturbed children threaded the pit gate in search (run 5's never did). Run 2 azr1b2_pool (one pool from slot 1 + the rule) launched from step 0 at 01:58 UTC.",
+ "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 azr1b2_sib (run 5 + the rule): 4 walls ON TIME (first ramp 0.755B ... cavity 2.718B), then FAILED the post-CP2 block (flat 32.4%, deadline 4.682B) like run 4's fixed mixed tree; run 5 (all random) passed it by its policy's own detour. The rule settled near R 0.5 / E 0.32 / P 0.18 and its perturbed children threaded the pit gate in search. Run 2 azr1b2_pool (slot 1's one pool + the rule), from step 0 at 01:58 UTC: first ramp 0.680B, window 0.982B ON TIME; its search 4 threaded the pit gate already at 0.98B (adopted 1.08B).",
  "runs": [
   {
    "run": "azr1b2_sib",
@@ -280,7 +280,11 @@
    "one_recipe": true,
    "from_scratch_step0": true,
    "resume_from": null,
-   "verdict": "running"
+   "verdict": "running: first ramp 0.680B, window 0.982B ON TIME; pit gate line adopted 1.079B",
+   "ladder_steps": {
+    "first ramp": 680001536,
+    "window (CP1)": 981991424
+   }
   }
  ]
 }

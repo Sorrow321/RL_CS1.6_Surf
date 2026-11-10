@@ -1322,3 +1322,12 @@ all-random children): same flags apart from the child mix, another box and seed 
   every run finds); 0-1/9 greedy past its line since; search 2 fired on patience at 0.453B (2.83%
   by wave 450, shares P 0.25 / E 0.36 / R 0.39). ~311k steps/s average (run 1: ~282k; no October
   spawn sources to build).
+
+### 03:02 UTC: run 2 azr1b2_pool - first ramp 0.680B, window 0.982B ON TIME; the gate line adopted at 1.08B
+
+* Ladder (steps): first ramp **0.680B**, window (CP1) **0.982B**, both ON TIME (run 5 0.529 /
+  0.680B; run 1 0.755 / 0.906B; slot 1's one-pool all-random run 0.680 / 1.057B). 27.07% at 1.057B.
+* Searches: k01 1.77% (adopted 97M), k02 2.83% (adopted 0.567B), k03 15.35% (adopted 0.773B: the
+  first-ramp line, E7 of 15 macros), **k04 (0.982B) 27.70% banked = through the pit gate**, adopted
+  1.079B, its 34 macros G6 P10 E8 R10. Shares as in run 1: R 0.39-0.49 / E 0.32-0.36 / P 0.19-0.29.
+  Run 1's search found the gate line only at 2.04B (search 6), after two 26.6% lines.
