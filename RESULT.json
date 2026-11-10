@@ -36,59 +36,14 @@
  },
  "ladder": {
   "unit": "total ticks (ladder.py --total-is-step)",
-  "tree1": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "verdict": "v1-v10 FAILED the first ramp; v11 (large replay buffer, gentler distillation) alive (pending)",
-  "tree2": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree3": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree4": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree5": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree6": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree7": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree8": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree9": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
-  },
-  "tree10": {
-   "first ramp": null,
-   "window (CP1)": null,
-   "verdict": "FAILED first ramp at 2.0B"
+  "first ramp": null,
+  "window (CP1)": null,
+  "verdict": "FAILED: all eleven tree-only recipes failed the first ramp (8% progress) by its deadline of 2.0B total ticks (run 5: 0.763B total); best eval 2.675 (v4 at 1.36B, v10 at 0.76B)",
+  "total": {
+   "first ramp": null
   }
  },
- "summary": "Slot 4 (the tree only: no PPO, no rollouts; the network learns only from MCTS trees rooted on its own greedy line, every tick counted). v1 = run 5's tree as is: FAILED the first ramp (8%) at 2.0B total ticks (run 5: 0.76B); best eval 2.60%. The trees find the landing below the spawn (1.8-2.8%) and the network learns their lines at the lines' own states, but its greedy cannot fly them from the start. Running: v2 (roots along the whole greedy line + advantage-weighted node labels), v3 (+ the yaw sigma fitted to the tree), v4 (+ a new jittered spawn each round, as the eval has), v5 (+ the yaw sigma fitted on the best lines only, so the random children narrow as in run 5, and best lines cut where they stop gaining). Of 405 eval episodes of v2-v4, 6 survived the drop off the spawn platform: that landing is the missing skill; the trees find it every round. Next: their first-ramp deadlines (2.0B ticks each).",
+ "summary": "Slot 4 (the tree only: no PPO, no rollouts, no reward; the network learns its policy and value only from MCTS trees grown on its own greedy line; every simulator tick counted). Eleven recipes from scratch, all FAILED the first wall (8% by 2.0B total ticks; run 5 cleared it at 0.76B): best eval 2.675. Every eval dies in the first drop under the spawn platform. The trees find the way through every round (landings at 1.8%, lines to 5.9%), and the network learns their lines at the lines' own states, but cannot fly them from the start: label fixes (consistency along the greedy line, the spawn jitter, narrower random children, denser labels, a bigger replay buffer) raised the share of greedy flights reaching the landing ramp from 7% to 52%, and none of ~2,400 flights stayed on it. Bench: one round of tree-label distillation took run 5's skilled 4.90B policy from 84% to 8%. Reading for the user's question: the search alone finds the moves; a learner trained only on its labels does not become a controller - PPO (optimising the policy's own execution) is what the hybrid needs the second thread for; the tree's role is WHERE (spawns, curricula) and, beside PPO, what to prefer. Box released 08:30 UTC so the progressing slots keep their credit to the round end.",
  "runs": {
   "azr1b4_tree1": {
    "commit": "153e08d7",
@@ -179,7 +134,12 @@
   "azr1b4_tree11": {
    "commit": "fe387555 (code 6920ddc4)",
    "recipe": "bash tools/az_launch.sh azr1b4_tree11 --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1 --az-buffer 1000 --az-recency 1.0 --az-steps 300",
-   "launched": "2026-11-10 06:30 UTC"
+   "launched": "2026-11-10 06:30 UTC",
+   "status": "FAILED first ramp + window at 2,032,285,627 total ticks; stopped 2026-11-10 08:27 UTC",
+   "best_score": 2.512,
+   "best_eval": "traj_1997845440.jsonl",
+   "greedy_passes_landing_area": "55/480",
+   "greedy_passes_past_landing": "0/480"
   }
  },
  "bench_cp6": {
@@ -191,5 +151,9 @@
    5.73
   ],
   "reading": "one round of 1,000 distil steps on one tree's labels collapsed the skilled policy (catastrophic forgetting)"
+ },
+ "box": {
+  "id": 59957469,
+  "released": "2026-11-10 08:30 UTC"
  }
 }
