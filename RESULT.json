@@ -138,7 +138,7 @@
   "chamber entry": 7248281600,
   "finish": 7248281600
  },
- "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 (run 5 + the rule) FAILED the post-CP2 block, like run 4's fixed mixed tree. Run 2 azr1b2_pool (slot 1's one pool + the rule, from step 0 at 01:58 UTC, RTX 5080) FINISHED sidistic from the true start at 7.248B steps: all 12 walls ON TIME, finish 0.88x run 5 in steps (8.230B) and 0.81x in total ticks (8.787B vs 10.801B); slot 1's same pool without the rule finished at 14.194B (one seed each). CP6/CP7 came from two deep search lines (searches 14 and 18, ~85% field); the policy found the chamber and the finish itself. Best 112.527 at 8.456B (6/9, 124.18 s). The rule leans random-held where the policy is stuck and toward policy samples where it flies. The run keeps training to the end of the round.",
+ "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 (run 5 + the rule) FAILED the post-CP2 block, like run 4's fixed mixed tree. Run 2 azr1b2_pool (slot 1's one pool + the rule, from step 0 at 01:58 UTC, RTX 5080) FINISHED sidistic from the true start at 7.248B steps: all 12 walls ON TIME, finish 0.88x run 5 in steps (8.230B) and 0.81x in total ticks (8.787B vs 10.801B); slot 1's same pool without the rule finished at 14.194B (one seed each). CP6/CP7 came from two deep search lines (searches 14 and 18, ~85% field); the policy found the chamber and the finish itself. Best 112.527 at 8.456B (6/9, 124.18 s); search 24 (8.917B) gave the first search line that finishes. After the first finish run 2 finishes in 61% of evals (36 evals, mean 1.69/9, best 123.26 s) against run 5's 97% (4.47/9, 118.76 s) - the same steadiness as slot 1's pool without the rule (62%, 2.03/9), so that is the pool's cost, not the rule's. The rule leans random-held where the policy is stuck and toward policy samples where it flies. The run keeps training to the end of the round.",
  "runs": [
   {
    "run": "azr1b2_sib",
@@ -255,7 +255,7 @@
    "one_recipe": true,
    "from_scratch_step0": true,
    "resume_from": null,
-   "verdict": "FINISHED: all 12 walls ON TIME; finish 7.248B steps (run 5 8.230B), 8.787B total ticks (run 5 10.801B); best 112.527 at 8.456B (6/9 finishes, 124.18 s); keeps training",
+   "verdict": "FINISHED: all 12 walls ON TIME; finish 7.248B steps (run 5 8.230B), 8.787B total ticks (run 5 10.801B); best 112.527 at 8.456B (6/9 finishes, 124.18 s); at 9.89B no better eval; finishes in 22/36 evals since the first finish (run 5 35/36); keeps training",
    "ladder_steps": {
     "first ramp": 680001536,
     "window (CP1)": 981991424,

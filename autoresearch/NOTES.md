@@ -1505,3 +1505,31 @@ lines (searches 14 and 18) that carried CP7.
 * Keeper copy for the 112.527 eval: ckpt_8444182528.pt (-12M), pulled, md5
   5df5f1a2fc5081bd900b75cfdda0a528 (verified on the box). Fleet at 10:15: 3 boxes, credit $23.99,
   11.9 h to the reserve (~22:10 UTC); this box's deadline 17:31, to be extended in small steps.
+
+### 11:25 UTC: run 2 at 10.0B - 112.527 stands; a search line finishes; run 2 finishes less steadily than run 5
+
+* Evals 8.83-9.89B: 111.4 (8.834B, 5/9), 108.1 (2/9), 108.1 (2/9), 110.3 (9.060B, 4/9, fastest
+  finish so far 123.26 s), 86.1 (CP5), 97.9, **32.0 (9.287B: one eval back at CP2)**, 108.1 (2/9),
+  109.2 (3/9), 110.3 (9.513B, 4/9), 86.2, 107.0 (1/9), 108.1 (2/9), 107.0 (1/9), 108.1 (9.891B, 2/9,
+  123.32 s). No eval beats 112.527 (8.456B, 6/9); keeper copy ckpt_8444182528.pt stays the best.
+* Search 24 (8.909B) ADOPTED at 8.917B: 12,488 states to **end d 0, the first search line that
+  finishes**. It took the search one wave (1 s): 49 children finished, and the kept line is one
+  greedy child (kind G) from a root on the policy's own line - the policy's flight replayed, not a
+  new route. Searches 23, 25 and 26 started where the greedy line had stopped early (the pit or the
+  CP5 stop) and gave nothing (373 s each).
+* **How steadily it finishes once it has finished** (new: `autoresearch/analysis/finish_rate.py`,
+  the round's scorer, 36 evals from each run's first finish):
+
+  | run | evals with a finish | mean finishes | max | best time | median best time |
+  |---|---|---|---|---|---|
+  | run 2 (one pool + the rule) | 22/36 = 61% | 1.69/9 | 6 | 123.26 s | 124.24 s |
+  | run 5 | 35/36 = 97% | 4.47/9 | 9 | 118.76 s | 119.82 s |
+  | slot 1, one pool, no rule (its status, 58 evals) | 62% | 2.03/9 | - | 115.07 s | - |
+
+  Run 2's 14 evals without a finish: ten stop at CP5 (86.1%), three at CP7 (97.9-98.0%), one at
+  CP2 (9.287B). The rule did not change how steadily the one-pool recipe finishes (61% vs slot 1's
+  62%): that is the pool's cost (no replay of the whole map; slot 1's reading), and run 2's finishes
+  are ~5 s slower than run 5's. One seed each.
+* Fleet at 11:15: 4 boxes (slot 4 renting again), credit $22.70, burn 1.48 $/h, 8.6 h to the
+  reserve (~19:50 UTC). This box's deadline is 17:31; extend in small steps from ~15:30 and pull
+  the final search bundle and evals before the last deadline the budget allows.
