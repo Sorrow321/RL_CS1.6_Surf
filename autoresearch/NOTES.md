@@ -1379,3 +1379,13 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1
   --mcts-labels-dense 1`.
 * Running: v7 (1.45B), v8 (1.0B), v9 (0.45B), v10 (new). Failed: v1-v6 (first ramp, at 2.0B total ticks).
+
+### azr1b4 - 2026-11-10 04:31 UTC: **v7 FAILED the first ramp at 2.031B; stopped (no new run in its slot)**
+* **v7 = azr1b4_tree7** (29804eb5: v6 + roots on 8 jittered spawns per tree): 59 evals, newest 2,030,991,862
+  ticks; **first ramp FAILED, window FAILED**; best eval 2.40% at 0.17B; 14 of its 192 greedy passes
+  banked a contact in the landing area, none survived it. Stopped 04:30 UTC.
+* No eighth variant is launched in its place: the label faults I could find are each covered by a run
+  still going (v8: root chain + whole prefix; v9: v8 + 2,000 steps; v10: v8 + dense macro labels). Once
+  they reach their deadlines, the plan is the protocol's slot-4 bench (run 5's 4.90B checkpoint inside its
+  CP6 creep: do tree labels alone teach a SKILLED policy the tree's detour, against PPO's 0.35B steps?)
+  and then the release of the box, so the slots that are progressing get the credit.
