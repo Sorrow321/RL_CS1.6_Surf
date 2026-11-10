@@ -1434,3 +1434,8 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
 * **v11** (next, from step 0): v8 + `--az-buffer 1000 --az-recency 1.0 --az-steps 300` - every tree of the run kept
   and drawn alike, 300 steps a round instead of 1,000 (a round's tree is ~1/N of the data after N rounds). Flags
   only: the box checkout (fe387555) already has every flag.
+* 06:29 UTC: box extended to 10:29 UTC (box.py extend sets now + 4 h). **v11 = azr1b4_tree11** launched from
+  step 0 on the box checkout /root/RL_Surf at **fe387555** (code = 6920ddc4): `bash tools/az_launch.sh azr1b4_tree11
+  --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2
+  --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1
+  --az-buffer 1000 --az-recency 1.0 --az-steps 300`. Alone on the box; first-ramp deadline 2.0B ticks (~58 rounds).

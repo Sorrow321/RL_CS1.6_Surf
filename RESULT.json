@@ -41,7 +41,7 @@
    "window (CP1)": null,
    "verdict": "FAILED first ramp at 2.0B"
   },
-  "verdict": "FAILED: all ten tree-only recipes (v1-v10) failed the first ramp (8% by 2.0B total ticks; run 5 0.76B)",
+  "verdict": "v1-v10 FAILED the first ramp; v11 (large replay buffer, gentler distillation) alive (pending)",
   "tree2": {
    "first ramp": null,
    "window (CP1)": null,
@@ -175,6 +175,21 @@
    "best_eval": "traj_0764358571.jsonl",
    "greedy_passes_landing_area": "90/472",
    "greedy_passes_past_landing": "0/472"
+  },
+  "azr1b4_tree11": {
+   "commit": "fe387555 (code 6920ddc4)",
+   "recipe": "bash tools/az_launch.sh azr1b4_tree11 --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1 --az-buffer 1000 --az-recency 1.0 --az-steps 300",
+   "launched": "2026-11-10 06:30 UTC"
   }
+ },
+ "bench_cp6": {
+  "ckpt": "run 5 ckpt_4900519936.pt (eval 84.38%)",
+  "tree_best_line_pct": 81.83,
+  "eval_after_round": [
+   8.11,
+   5.75,
+   5.73
+  ],
+  "reading": "one round of 1,000 distil steps on one tree's labels collapsed the skilled policy (catastrophic forgetting)"
  }
 }
