@@ -1509,3 +1509,35 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
   md5-verified to the run's folder; ckpt_latest's md5 failed (rewritten every ~60 s) - pull again
   at wrap-up. Recipe 2 is not needed (an on-time run keeps training to the round end); the run
   keeps training and the score can still rise (more finishes, faster times).
+### azr1b1 - 2026-11-10 10:15 UTC: 17.14B steps - best eval 7/9 finishes (115.97 s) at 15.33B; the decay cycle goes on after the finish
+
+* **New best eval, 15,326,511,104: 7/9 finishes, best 115.97 s, score 113.912** (clip-hull
+  checked, box_only 0). It came two evals after search 41's repair line (15.13B, end d 73,501 at
+  the CP2 block); the evals 14.72-15.10B had all stopped at 27-32%. From 15.18B to 16.46B most
+  evals finished 3-7/9 (best times 115.07-117.39 s), with three dips to CP5/CP6 (0/9).
+* **Search 43 (15.64B) adopted a second FINISHING line** (11,544 rows, end d 2, found in 24 s), and
+  the curriculum restarted at the finish. By 17.06B tau had backed up to row ~6,700 of 11,543
+  (~58% of the way along the line), so the first ~58% of the map - the CP2 block at ~30% among
+  it - is again trained by the 10% map starts alone, and the greedy has decayed the same way as
+  before: 16.69B stopped at 31.6% (CP2), 16.84-17.14B 0-3/9 finishing, most episodes at 26-32%
+  or ~44%.
+* **A quirk of a finishing line (same code as run 5, not changed).** Its success line is d <= 102,
+  but a finishing greedy episode ends inside the finish trigger at d ~2,180-2,220, so the log
+  reads "0/9 greedy episodes past the success line" even at 7/9 finishes, and patience searches
+  fire every 0.3B steps while the policy finishes (44 STALE: end d 15,054 vs frontier 2,200; 45
+  and 46 NO spine: their beams died at d 81.7k and 69.4k). Such a search can only be adopted when
+  the eval before it failed (it must beat that eval's median by 200 u) - which is how the repair
+  lines happen - or when it finishes, which restarts the curriculum at the finish (search 43).
+* **Checkpoints, md5-verified in the run folder.** ckpt_15005122560.pt (md5
+  25ee0043c8c582d1e77b1340af38bfd5) is the snapshot at/before the best eval, but it sits in the
+  CP2 failure phase (the eval at 15.025B reached 27.6%). ckpt_16005464064.pt (md5
+  310c11ee7985c21b3d5d91f37addf128) is one PPO iteration before the 16.006B eval (1/9, 117.39 s;
+  the evals either side 7/9 and 5/9), i.e. a finishing-phase policy. Both are in RESULT.json.
+* **Search bundle saved as insurance:** auto_bundle.tgz (searches 1-46: auto_spine.log, beam.log,
+  summary.json, greedy_baseline.jsonl, spine.npy/.json, current.json; no ckpt copies, no MCTS
+  trees), md5 6d6953ec0117c7c67b459ffc6f956b4a on the box and here; search_ticks.json: 46
+  searches, 5.76B ticks (the total-ticks ladder is unchanged).
+* **Box and money.** Extended at 09:54 to 2026-11-10 21:54:29 UTC (credit $24.41, fleet burn
+  1.174 $/h, $10 reserve: the money reaches about 22:10 UTC, so the deadline cannot be pushed much
+  past 22:00). Plan: the full wrap-up pull (--ckpt, bundle, search ticks) at about 21:20-21:40,
+  a last small pull before 21:54, try one more extend past 22:00, then the wrap-up at 22:00.

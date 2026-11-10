@@ -4,11 +4,11 @@
  "final": false,
  "slot": 1,
  "best": {
-  "score": 111.633,
-  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_14194049024.jsonl",
+  "score": 113.912,
+  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_15326511104.jsonl",
   "run": "azr1b1_pool1",
-  "step": 14194049024,
-  "ckpt": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_14004781056.pt (snapshot at 14.005B, before the best eval; md5 e48cfcd0f9a01ba9f05028d9aee54715)",
+  "step": 15326511104,
+  "ckpt": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_15005122560.pt (snapshot at 15.005B, the last before the best eval; md5 25ee0043c8c582d1e77b1340af38bfd5)",
   "recipe": [
    "--envs",
    "1024",
@@ -100,7 +100,8 @@
   "commit": "da7981e55231a1eeebf8df98e28376edf6be8d3c",
   "one_recipe": true,
   "from_scratch_step0": true,
-  "resume_from": null
+  "resume_from": null,
+  "ckpt_note": "The snapshot at/before the best eval sits in a CP2-block failure phase (its nearest eval, 15.025B, reached 27.6%); search 41's repair line came at 15.128B. A finishing-phase checkpoint is also pulled: /home/steam/ar_az/runs/azr1b1/azr1b1_pool1/ckpt_16005464064.pt (md5 310c11ee7985c21b3d5d91f37addf128), one PPO iteration before the 16.006B eval (1/9 finishes, 117.39 s; the evals either side 7/9 and 5/9)."
  },
  "ladder": {
   "unit": "steps",
@@ -108,7 +109,7 @@
   "window (CP1)": 1057488896,
   "pit dive": 1359478784,
   "cavity (CP2)": 2340945920,
-  "verdict": "FINISHED: all 12 walls ON TIME (finish at 14.194B steps = 1.72x run 5's 8.230B; 19.186B total ticks = 1.78x run 5's 10.801B); best eval 5/9 finishes, 117.68 s",
+  "verdict": "FINISHED: all 12 walls ON TIME (finish at 14.194B steps = 1.72x run 5's 8.230B; 19.186B total ticks = 1.78x run 5's 10.801B); best eval 15.327B: 7/9 finishes, 115.97 s (score 113.912)",
   "total": {
    "first ramp": 1035242155,
    "window (CP1)": 1412729515,
@@ -132,12 +133,12 @@
   "chamber entry": 14194049024,
   "finish": 14194049024
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~354k steps/s) FINISHED sidistic from the true start at 14.194B steps (5/9 episodes, best 117.68 s, score 111.633): all 12 walls ON TIME in steps and in total ticks. Walls 1-8 level with run 5 (0.75-1.55x; 0.98-1.12x from the post-CP2 block on); CP6 1.28x, CP7 1.22x, finish 1.72x run 5 in steps (1.78x in total ticks, 42 searches). The late gap: with one pool every line replacement moves 90% of the starts, and the greedy kept losing the CP2 block whenever the line's tail moved on; each time a patience search happened to end a line AT the failure, one eval repaired it (5/5), while lines ending past it did not. The finish came when search 35's finishing line (12.69B) had taught the last ~26 s and search 38's line repaired a 54% failure (14.07B).",
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~354k steps/s) FINISHED sidistic from the true start at 14.194B steps (5/9 episodes, 117.68 s): all 12 walls ON TIME in steps and in total ticks. Best eval so far 15.327B: 7/9 finishes, best 115.97 s (score 113.912; run 5's first finishing eval 2/9, 121.21 s). Walls 1-8 level with run 5 (0.75-1.55x; 0.98-1.12x from the post-CP2 block on); CP6 1.28x, CP7 1.22x, finish 1.72x run 5 in steps (1.78x in total ticks). The late gap: with one pool every line replacement moves 90% of the starts, and the greedy keeps losing the CP2 block whenever the line's tail moves on; each time a patience search ends a line AT the failure, one or two evals repair it (5/5: lines 20, 28, 34, 38, 41), while lines ending past it do not. After the finish the cycle goes on (17.06B: 0-3/9 finishing again, line 43 = a finishing line with tau ~58% of the way along it).",
  "box": {
   "id": 59950838,
   "gpu": "RTX_4080",
   "cpu": "AMD Ryzen 9 9950X (32 threads)",
   "dph": 0.417,
-  "steps_per_s": "~354k (08:42 UTC)"
+  "steps_per_s": "~356k (10:05 UTC)"
  }
 }
