@@ -1407,3 +1407,9 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   contact in the landing area, **0 past it** - the tighter fit raised the share reaching the ramp a little
   over v8's 41% and did nothing for staying on it. Stopped 06:02 UTC. v10 (dense labels) is 2 rounds from
   its deadline.
+
+### azr1b4 - 2026-11-10 06:06 UTC: **v10 FAILED the first ramp at 2.010B; stopped. All ten tree-only recipes failed the first wall**
+* **v10 = azr1b4_tree10** (6920ddc4: v8 + dense macro labels): 58 evals, newest 2,009,916,226 ticks; **first ramp
+  FAILED, window FAILED**; best eval 2.675 at 0.76B; greedy passes 90 of 472 in the landing area, **0 past it**.
+  Stopped 06:05 UTC. Ten times the node labels around the chosen macros did not change the picture.
+* Next: the protocol's slot-4 bench on run 5's 4.90B checkpoint (box redeployed with it), then the release.

@@ -41,7 +41,7 @@
    "window (CP1)": null,
    "verdict": "FAILED first ramp at 2.0B"
   },
-  "verdict": "v1-v9 failed the first ramp; v10 alive (pending)",
+  "verdict": "FAILED: all ten tree-only recipes (v1-v10) failed the first ramp (8% by 2.0B total ticks; run 5 0.76B)",
   "tree2": {
    "first ramp": null,
    "window (CP1)": null,
@@ -78,6 +78,11 @@
    "verdict": "FAILED first ramp at 2.0B"
   },
   "tree9": {
+   "first ramp": null,
+   "window (CP1)": null,
+   "verdict": "FAILED first ramp at 2.0B"
+  },
+  "tree10": {
    "first ramp": null,
    "window (CP1)": null,
    "verdict": "FAILED first ramp at 2.0B"
@@ -164,7 +169,12 @@
   "azr1b4_tree10": {
    "commit": "6920ddc4",
    "recipe": "bash tools/az_launch.sh azr1b4_tree10 --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1 --mcts-labels-dense 1",
-   "launched": "2026-11-10 03:37 UTC"
+   "launched": "2026-11-10 03:37 UTC",
+   "status": "FAILED first ramp + window at 2,009,916,226 total ticks; stopped 2026-11-10 06:05 UTC",
+   "best_score": 2.675,
+   "best_eval": "traj_0764358571.jsonl",
+   "greedy_passes_landing_area": "90/472",
+   "greedy_passes_past_landing": "0/472"
   }
  }
 }
