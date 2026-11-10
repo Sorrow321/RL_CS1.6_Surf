@@ -1393,3 +1393,16 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   on commit 2a4f8edd. Slot 1's commit da7981e5 changes no trainer code against the base
   (`git diff --stat 09099d2a da7981e5 -- python/ tools/ src/` is empty), so tl2 is exactly slot
   1's run plus the labels, and slot 1's azr1b1_pool1 is its paired control.
+
+### 08:43 UTC: still 72.1% at 10.34B (flat for 2.3B steps); searches 23-25 all end at d ~27,300-27,800
+
+* Evals 9.51-10.34B: 72.09-72.22% (medians 72.0-72.1%); best still 72.30% (8.230B).
+* Searches 24 (9.815B -> 9.899B, end d 27,771) and 25 (10.268B -> 10.352B, end d 27,457) were
+  both adopted, +2,500-2,800 u past the greedy's d ~30,260 - the same place as the lines of
+  searches 20 and 23. Each restart of the curriculum runs back ~350-400 ticks from the line's end
+  and then flips between a start that succeeds ~30% and one 5 ticks earlier that succeeds 2-5%.
+  The trees there beat the policy at 7% (24) and 18% (25) of nodes; a policy row is now in 11% of
+  a label batch, fit keys NLL 1.94, agreement 0.43. The label channel is at its loudest since the
+  first searches, and it has not moved the greedy.
+* 25 searches = 2.403B search ticks; 10.39B steps / 12.75B total at 08:44. CP6's deciding eval
+  (12,231,114,752) is ~10:48 UTC.
