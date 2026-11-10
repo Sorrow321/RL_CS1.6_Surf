@@ -1258,3 +1258,24 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   NOTES list) + `--tree-labels 0.1`, same commit 2a4f8edd (the box's checkout). Harvest first:
   `pull --ckpt --snapshot 3001024512`, search_ticks.json, and the auto/ bundle tarred on the box
   without the per-search ckpt copies (fetched as a `ckpt_<name>.pt` snapshot for box.py's md5).
+
+### 01:47 UTC: post-CP2 block ON TIME at 3.926B (run 5 2.341B; run 4 failed it) - five walls
+
+| wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 0.977B | 0.763B | 2.000B |
+| window (CP1) | 1.284B | 0.680B | 1.600B | 1.668B | 0.914B | 2.000B |
+| pit dive | 1.812B | 1.812B | 3.625B | 2.285B | 2.448B | 4.897B |
+| cavity (CP2) | 2.794B | 2.114B | 4.229B | 3.552B | 2.887B | 5.774B |
+| post-CP2 block | 3.926B | 2.341B | 4.682B | 5.000B | 3.252B | 6.504B |
+
+* Evals 3.25B-3.85B: best episode 32.1-32.5%, then 33.11% (3.926B), 33.33% (4.002B, the best so
+  far), 33.25% (4.077B); the medians stay at 31.4-32.1% (one or two episodes get through).
+  The wall run 4 sat under for 11B steps fell 1.13B steps after the cavity (run 5: 0.23B).
+* Searches 10 (3.475B -> 3.560B, end d 66,478; 7.0% of nodes beaten) and 11 (3.926B -> 4.010B,
+  end d 67,424; 3.3% beaten, 81% tied) both adopted. The curriculum on search 11's line is at tau
+  ~3,164 of 3,814 (band success 51%, step 40).
+* Label fit: keys NLL 1.68, yaw 0.24 (|tanh mu - u| 0.15), value MSE 0.056, agreement 0.51; 7% of
+  a label batch carries a policy row.
+* Next: CP3, deadline 5.286B steps (the deciding eval 5,285,347,328, ~03:04 UTC); run 5 2.643B.
+  Box 59952494: age 4.8 h, deadline 08:58 UTC; credit $36.77 at 01:47.
