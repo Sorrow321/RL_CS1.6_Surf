@@ -1199,7 +1199,7 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   value MSE 0.049, agreement 0.29.
 * Search ticks 0.473B over 5 searches; throughput ~243k steps/s cumulative.
 
-### 00:05 UTC (2026-11-10): pit dive ON TIME at 1.812B (= run 5's step); 28.2% before the cavity
+### 00:00 UTC (2026-11-10): pit dive ON TIME at 1.812B (= run 5's step); 28.2% before the cavity
 
 | wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
 |---|---|---|---|---|---|---|
