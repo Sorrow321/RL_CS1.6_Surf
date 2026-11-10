@@ -1417,3 +1417,22 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
   the failure) has period ~1.5-2B steps here.
 * Note on my own tooling: `ls traj_*.jsonl | tail` sorts 11-digit steps (>= 10B) BEFORE 10-digit
   ones; the per-episode tables from now on sort numerically.
+
+### azr1b1 - 2026-11-10 06:21 UTC: 12.12B steps - falling back again on line 30; the deadline plan
+
+* Walls 1-10 ON TIME; best 98.08%, no finish. Chamber entry / finish due by 16.459B steps; the
+  last eval before it is traj_16458973184 (~09:40 UTC).
+* Line 30 (11.05B, to d 15,101 ~85%): at 11.10B 7/9 greedy episodes were past its mark (median d
+  2,285, 97.8%); since then the CP2-block (27.6-34%) and a 43.5-44.1% mode are back (best per
+  eval 44-98%; 2-3/9 at 97.9% in some evals). Searches 31, 32, 33 (11.21B, 11.66B, 12.11B) found
+  NO line: their beams from the map start die before the policy's best episodes do. The
+  curriculum has walked line 30 back to row 6186 of 9,406 (its last third, ~60-85%).
+* **Plan at the deadline.** If the eval at 16,458,973,184 has not cleared the chamber entry
+  (98.5%): the run has FAILED at wall 11. Then: pull it with --ckpt and the snapshot nearest
+  before the best eval, save search_ticks.json, write it up, stop the trainer (and any search
+  beside it), `box.py deploy` the branch (deploy_box.sh fetches + checks out, runs/ survives),
+  and launch recipe 2 (`azr1b1_pool2`, commit 4961a562 or later, recipe 1 + --demo-whole-frac
+  0.5 + --auto-spine-no-retreat + --demo-match-band) from scratch: ~8 h to the credit reserve
+  (~18:40 UTC), ~10B steps - enough to see whether the CP2-block cycles go away and where it
+  stands at CP6/CP7 against recipe 1 and run 5, not enough to reach recipe 1's late walls'
+  deadlines. Box deadline 18:15 UTC (the budget now caps extensions near that).
