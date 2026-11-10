@@ -1339,7 +1339,7 @@ this run is on time or faster (the line gets 3.6x the starts).
      ~250-559M here and ~200M-1.0B in run 5).
   Same commit base otherwise, same search cadence, one pool, from scratch.
 
-### azr1b1 - 2026-11-10 03:40 UTC: 8.61B steps - RECOVERED: CP6 and CP7 ON TIME, best 97.93%
+### azr1b1 - 2026-11-10 03:39 UTC: 8.61B steps - RECOVERED: CP6 and CP7 ON TIME, best 97.93%
 
 | wall | this run, steps | run 5, steps | deadline | this run, total | run 5, total | deadline |
 |---|---|---|---|---|---|---|
