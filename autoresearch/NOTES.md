@@ -1355,3 +1355,8 @@ all-random children): same flags apart from the child mix, another box and seed 
   pool: same rule, same code, the spawn pool changed. One seed each; the difference between runs 1
   and 2 is the pool (and the path that follows from it).
 * Searches 5-6 kept the shares near R 0.42-0.45 / E 0.35-0.36 / P 0.20-0.23.
+* 03:50 UTC: started run 5's read-only harvest helper on the box for run 2
+  (`python3 autoresearch/analysis/best_keeper.py azr1b2_pool`, nohup, writes only
+  runs/azr1b2_pool_snaps/): it copies every new ckpt_latest into a ring of 8 and keeps the copy at or
+  before each new best eval. For the evals before it started it can only keep the first copy after
+  them (ckpt_2013790208, 50M after the 1.963B best). Run 2's search ticks: 7 searches, 499M by 1.96B.
