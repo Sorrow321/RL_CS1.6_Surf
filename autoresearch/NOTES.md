@@ -1288,3 +1288,18 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2
   --az-spawn-rotate 1 --mcts-labels-cut 32`.
 * Running: v3 (1.50B, round 21, eval 1.77%), v4 (0.88B, round 12), v5 (0.34B, round 4), v6 (new).
+
+### azr1b4 - 2026-11-10 01:12 UTC: --mcts-spawns K built and checked (commit 29804eb5); v7 queued
+* Still no eval survives the drop (0-1 of 9 per eval in v4, v5, v6). The tree's landing line leaves the
+  platform at ~800 u/s and lands on a ramp ~110 u above the kill floor ~1,000 u east; the evals walk
+  off at 150-450 u/s and fall short. The landing needs the right exit speed and heading, and every
+  tree so far taught it for ONE spawn heading while the eval flies nine (+-5 deg).
+* **--mcts-spawns K** (tools/mcts_search.py, default 1): K greedy passes from K spawns of the map start
+  (the round's own and K-1 drawn by the core's reset with derived seeds - the eval's jitter), each
+  giving max-roots // K roots; the best line is replayed from its root's spawn.
+  On the box, from v6's own step-0 network and flags (350 waves): **K=1 reproduces v6's round 0 bit for
+  bit** (greedy death at 779 ticks, 17 roots, restore 195/195, 8,680 node rows of 44,689 expanded, 311
+  line rows, replay end d 97,910 = 97,910). **K=4**: passes from yaws 351.75 / 350.06 / 347.80 / 353.25,
+  75 roots, restore check 864/864 exact, 44,747 expanded nodes, best line **2.79%** (K=1: 1.77%) with the
+  replay ending 12 u from the search's point.
+* **v7 (queued for v3's slot at its deadline)** = v6 + --mcts-spawns 8 (16 roots per spawn).
