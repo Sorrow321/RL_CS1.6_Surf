@@ -1472,3 +1472,23 @@ all-random children): same flags apart from the child mix, another box and seed 
   keeper's nearest copy, e4cbf810c0468922cf2683e0e11df035).
 * PROTOCOL: a run that is ON TIME keeps training to the end of the round. Fleet at 09:06: 3 boxes,
   credit $25.38, 13.1 h to the reserve; this box's deadline 17:31 UTC, to extend in small steps.
+
+### 09:35 UTC: how far each search got from its own root - run 5 (all random-held) vs the rule
+
+Gain = best banked % - greedy root % (field progress) per search, binned by where the search's own
+greedy replay died (summary.json of every search; run 5 from $AR_HOME/reference/run5/auto_bundle.tgz):
+
+| root bin | run 5, all R (51) | run 1, rule + run 5 recipe (12) | run 2, rule + one pool (20) |
+|---|---|---|---|
+| < 22% (first ramp..pit) | n 7, mean 9.2, median 9.3, >=10 pts 3 | n 3, mean 1.5 | n 6, mean 6.7, median 8.3, >=10 pts 2 |
+| 22-35% (pit..CP3) | n 11, mean 2.4, median 2.0, >=10 pts 0 | n 9, mean 1.8, >=10 pts 0 | n 10, mean 6.0, median 4.2, >=10 pts 3 (max 17.0) |
+| 35-70% | n 7, mean 13.2, median 2.9, >=10 pts 2 (max 53.5) | - | n 3, mean 19.8, median 25.7, >=10 pts 2 (max 30.6) |
+| >= 70% | n 26, mean 2.1 (the tail before the finish) | - | n 1, 1.4 |
+
+Read with care: the policies under the trees differ (run 2's pool policy is not run 5's), the bins
+hold 3-26 searches of one seed each, and the paired bench (one checkpoint, one seed, 6 min each:
+84.54 all-R vs 84.83 / 84.28 rule) found no depth difference. What the table does show: with run
+5's recipe the rule's trees were as stuck at the post-CP2 block as run 5's all-R trees (run 1: 1.8
+mean gain from pit roots, run 5: 2.4); with the pool policy the rule's trees gained more from the
+same kind of root (6.0, three of ten >= 10 points) and two of three mid-map roots gave ~25-30-point
+lines (searches 14 and 18) that carried CP7.
