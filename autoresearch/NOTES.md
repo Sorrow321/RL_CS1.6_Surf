@@ -1331,3 +1331,27 @@ all-random children): same flags apart from the child mix, another box and seed 
   first-ramp line, E7 of 15 macros), **k04 (0.982B) 27.70% banked = through the pit gate**, adopted
   1.079B, its 34 macros G6 P10 E8 R10. Shares as in run 1: R 0.39-0.49 / E 0.32-0.36 / P 0.19-0.29.
   Run 1's search found the gate line only at 2.04B (search 6), after two 26.6% lines.
+
+### 03:50 UTC: **run 2 (one pool + the rule) clears walls 3-6 ON TIME and ahead of run 5**
+
+| wall | run 2 steps | run 5 | run 1 (two pools + rule) | slot 1 (one pool + all random) | run 2 total | run 5 total |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 0.755B | 0.680B | 0.861B | 0.763B |
+| window (CP1) | 0.982B | 0.680B | 0.906B | 1.057B | 1.239B | 0.914B |
+| pit dive | **1.586B** | 1.812B | 2.492B | 1.359B | 1.926B | 2.448B |
+| cavity (CP2) | **1.737B** | 2.114B | 2.718B | 2.341B | 2.167B | 2.887B |
+| post-CP2 block | **1.812B** | 2.341B | FAILED | 2.492B | 2.243B | 3.252B |
+| CP3 | **1.888B** | 2.643B | - | 2.643B | 2.387B | 3.554B |
+
+(slot 1's numbers from its status line at 00:29 UTC.) Best 42.008 at 1.963B (CP3, median 42.0%).
+
+* **How the walls fell.** Search 4's gate line (27.70%, adopted 1.08B) was learned by 1.586B (the
+  pit dive; evals sat at 27.0-27.1% for 0.5B while the curriculum walked it back); search 5 (1.435B,
+  patience) re-adopted a 27.2% line at 1.53B. Then the POLICY went through the cavity (1.737B) and
+  the post-CP2 block (1.812B) by itself: search 6 (1.737-1.829B) found only a 31.98% line, below
+  what the policy reached. That is run 5's pattern at the block (its policy found the westward
+  detour), not run 1's (flat 2B steps).
+* So the "mixed tree fails at the post-CP2 block" pattern of runs 4 and 1 does not hold with one
+  pool: same rule, same code, the spawn pool changed. One seed each; the difference between runs 1
+  and 2 is the pool (and the path that follows from it).
+* Searches 5-6 kept the shares near R 0.42-0.45 / E 0.35-0.36 / P 0.20-0.23.
