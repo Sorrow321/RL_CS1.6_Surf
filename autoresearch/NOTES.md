@@ -1315,3 +1315,25 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1
   --mcts-labels-cut 32 --mcts-spawns 8`.
 * Running now: v4 (1.36B), v5 (0.88B), v6 (0.45B), v7 (new). Failed: v1, v2, v3 (first ramp, at 2.0B).
+
+### azr1b4 - 2026-11-10 02:08 UTC: **v4 FAILED the first ramp at 2.021B; stopped. v8 launched (root chain + whole prefix)**
+* **v4 = azr1b4_tree4** (7fcfb706: v3 + a new jittered spawn each round): 30 evals, newest 2,021,065,497
+  ticks; **first ramp FAILED, window FAILED**; best eval 2.675 (2.68%) at 1.36B. Stopped 02:03 UTC.
+* Drop survivors per eval since: v5 (23 evals) 1,0,...,1,...0; v6 (31 evals) three evals with 1; v7 (11
+  evals) one eval with 2. Nothing has learned the landing.
+* **Two structural faults found in my labels since v2 (roots along the whole greedy line):**
+  (1) roots are SIBLINGS under the virtual root, so the value of flying on along the greedy line to a
+  later root - from which the tree found the landing - is never credited to the earlier root: its node
+  label can prefer a random child that is worse than "keep going"; (2) with roots from decision 0 the
+  best line's greedy prefix (spawn -> its root) carries NO labels at all (the 21:18 rule made it
+  "window"), so after distillation the network's own early moves drift, the greedy never reaches the
+  root, and the landing macros it learned there (100% fit at those states, az_diag) are never used.
+* **v8 = azr1b4_tree8** (commit **f7d53224**, checkout /root/t8, launched 02:08 UTC from step 0) = v7 +
+  `--mcts-root-chain 1` (a root's first child - the policy's own move - takes at least the best Q of the
+  later roots of its own greedy line; with prefer-first the roots before the line's root then say "fly
+  on") + `--mcts-labels-prefix-all 1` (the best line's WHOLE greedy prefix is labelled with the policy's
+  own moves: "fly your line to the root, then the tree's landing" is one consistent target). Command
+  (cd /root/t8): `bash tools/az_launch.sh azr1b4_tree8 --mcts-minutes 10 --mcts-max-waves 350
+  --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1
+  --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1`.
+* Running: v5 (~1.3B), v6 (~0.8B), v7 (~0.4B), v8 (new). Failed: v1-v4 (first ramp at 2.0B).
