@@ -28,7 +28,12 @@
    "window (CP1)": null,
    "verdict": "FAILED first ramp at 2.0B"
   },
-  "verdict": "v1 failed the first ramp; v2/v3/v4 alive (pending)"
+  "verdict": "v1, v2 failed the first ramp; v3-v6 alive (pending)",
+  "tree2": {
+   "first ramp": null,
+   "window (CP1)": null,
+   "verdict": "FAILED first ramp at 2.0B"
+  }
  },
  "summary": "Slot 4 (the tree only: no PPO, no rollouts; the network learns only from MCTS trees rooted on its own greedy line, every tick counted). v1 = run 5's tree as is: FAILED the first ramp (8%) at 2.0B total ticks (run 5: 0.76B); best eval 2.60%. The trees find the landing below the spawn (1.8-2.8%) and the network learns their lines at the lines' own states, but its greedy cannot fly them from the start. Running: v2 (roots along the whole greedy line + advantage-weighted node labels), v3 (+ the yaw sigma fitted to the tree), v4 (+ a new jittered spawn each round, as the eval has), v5 (+ the yaw sigma fitted on the best lines only, so the random children narrow as in run 5, and best lines cut where they stop gaining). Of 405 eval episodes of v2-v4, 6 survived the drop off the spawn platform: that landing is the missing skill; the trees find it every round. Next: their first-ramp deadlines (2.0B ticks each).",
  "runs": {
@@ -43,7 +48,10 @@
   "azr1b4_tree2": {
    "commit": "5064f01c",
    "recipe": "bash tools/az_launch.sh azr1b4_tree2 --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1",
-   "launched": "2026-11-09 21:55 UTC"
+   "launched": "2026-11-09 21:55 UTC",
+   "status": "FAILED first ramp + window at 2,017,680,075 total ticks; stopped 2026-11-10 00:30 UTC",
+   "best_score": 2.273,
+   "best_eval": "traj_0807837455.jsonl"
   },
   "azr1b4_tree3": {
    "commit": "77466653",
@@ -59,6 +67,11 @@
    "commit": "6f629101",
    "recipe": "bash tools/az_launch.sh azr1b4_tree5 --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32",
    "launched": "2026-11-10 00:01 UTC"
+  },
+  "azr1b4_tree6": {
+   "commit": "6f629101",
+   "recipe": "bash tools/az_launch.sh azr1b4_tree6 --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32",
+   "launched": "2026-11-10 00:30 UTC"
   }
  }
 }

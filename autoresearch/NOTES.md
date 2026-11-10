@@ -1270,3 +1270,21 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1
   --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32`. Four runs share the box now (CPU ~30 of
   the 30.7-core quota); v2 reaches its first-ramp deadline in ~6 rounds.
+
+### azr1b4 - 2026-11-10 00:31 UTC: **v2 FAILED the first ramp at 2.018B total ticks; stopped. v6 launched (v5 with half-size searches)**
+* **v2 = azr1b4_tree2** (5064f01c: roots over the whole greedy line + advantage-weighted node rows):
+  30 evals, newest 2,017,680,075 ticks; **first ramp FAILED, window FAILED** (ladder.py --total-is-step);
+  best eval 2.273 (2.27%) at 0.81B; one tree found a 4.85% line (round 17) that the greedy never flew.
+  Same failure as v1: the evals die in the drop under the spawn platform. Stopped 00:30 UTC.
+* **v5 so far (rounds 0-4)**: the line-fitted yaw sigma narrows as designed - 0.291, 0.241, 0.184, 0.140,
+  0.109 (run 5's PPO: 0.30 -> 0.18 at 0.25B -> 0.07 at 0.57B); its round-4 tree found a 4.48% line;
+  eval 1.24 / 1.92 / 1.83 / 1.86 / **2.16**%; the line cut removed 0-25 rows a round.
+* **v6 = azr1b4_tree6** (commit 6f629101, the same checkout /root/t5 as v5, launched 00:30 UTC from step 0)
+  = v5 with **--mcts-max-waves 350** (~34M ticks a round instead of ~69M). Why: every round is one
+  correction step of a DAgger-like loop, the trees find the landing within their first 50-100 waves
+  (the smoke: 98% of the final best by wave 50), and the deciding unit is ticks - half-size trees give
+  twice the corrections per tick (~58 rounds before the 2.0B deadline instead of ~29). One change
+  against v5. Command (cd /root/t5): `bash tools/az_launch.sh azr1b4_tree6 --mcts-minutes 10
+  --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2
+  --az-spawn-rotate 1 --mcts-labels-cut 32`.
+* Running: v3 (1.50B, round 21, eval 1.77%), v4 (0.88B, round 12), v5 (0.34B, round 4), v6 (new).
