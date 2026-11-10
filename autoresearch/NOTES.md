@@ -1333,3 +1333,20 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   0.43-0.46.
 * 17 searches = 1.628B search ticks. Throughput 250k steps/s; CP6's deadline (12.232B) is ~10:50
   UTC, eight minutes after the box's current end (10:42): extend in a small step before then.
+
+### 05:37 UTC: search 16's line learned - best 69.70% at 6.795B (still before CP6); box to 11:41
+
+* Evals: 64.89% (6.644B) -> 68.90 -> **69.70% (6.795B)**, then 69.49-69.57% at every eval to
+  7.550B (medians 69.5%, two evals with a fall at 31.4% / 43.8%). The policy took search 16's
+  line (end d 34,061) in ~0.5B steps and stops ~2,250 u past its end (greedy d ~31,810).
+* Searches 17 (6.644B -> 6.727B) and 18 (7.097B -> 7.184B): NO new spine, both because the greedy
+  replay the search roots on died early (d 66,527 / 58,365 against eval frontiers 37,804 /
+  31,821). That is 4 of the last 7 searches lost to the one-replay rooting weakness of run 5's
+  loop (13, 15, 17, 18), and 2 more were STALE (12, 14). Search 19 started at 7.550B (greedy d
+  31,807).
+* The curriculum is back on search 16's line at tau ~3,700 of 8,208, band success 7-16% (backoff).
+* Labels: searches 17/18 beat the policy at 8.0% / 2.5% of nodes; 5% of a label batch carries a
+  policy row; fit keys NLL 1.58, yaw 0.27, value MSE 0.064, agreement 0.49.
+* 19 searches = 1.814B search ticks; 7.617B steps / 9.36B total ticks at 05:37.
+* Box 59952494 extended 6 h to 11:41 UTC (CP6's deciding eval, step 12,231,114,752, is due
+  ~10:45 at 250k steps/s).
