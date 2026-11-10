@@ -1452,3 +1452,19 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
   (13.06B: best 50%, median 31.9%). Patience searches fire again (13.06B, 13.14B) from medians of
   58-74k: a line ending at the CP2 block would repair the greedy (3/3 so far) but would also
   replace the finishing line; a line ending further on would replace it without repairing.
+
+### azr1b1 - 2026-11-10 07:56 UTC: 14.22B steps - the finishing line was replaced; a fourth repair
+
+* Still ON TIME for walls 1-10; best 98.08%; chamber entry / finish due by 16.459B (~09:41 UTC).
+* **Search 37 (patience, 13.63B, from a median of 66,689) gave a line to d 15,132 (~85%) and it
+  REPLACED the finishing line of search 35** (end d 0) - a 15k retreat, the case
+  `--auto-spine-no-retreat` was built for. The greedy then sat at a new failure mode at 53.5-54%
+  (13.44-13.97B, 0/9 past line 37's mark).
+* **Fourth repair by a line ending at the failure.** Search 38 (patience, 14.07B, from a median of
+  47,777) ended at d 45,903 (~55%), just past the 54% failure: the next eval (14.12B) had 5/9 past
+  it, the one after (14.19B) 6/9 and median d 2,216 (97.9%). Tally of backward lines: ending at
+  the failure 4/4 repaired (lines 20, 28, 34, 38); ending past it or far behind the frontier 0/4
+  (17, 25, 27, 37).
+* The quorum (14.12B) started search 39 from the repaired greedy. ~30 evals remain before the
+  deadline; the chamber entry needs one episode at 98.5% (d ~1,550; the greedy's best stops at
+  ~d 2,200).
