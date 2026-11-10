@@ -1368,3 +1368,14 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
 * Elsewhere in the series (status.md, 03:05): slot 1 (PPO, one spawn pool) cleared walls 1-8 on time
   (CP5, 84.9%); slot 3 (tree labels beside PPO) walls 1-6 on time. Every PPO-based run gets past the
   landing this slot's tree-only learner has not survived in 9 recipes.
+
+### azr1b4 - 2026-11-10 03:38 UTC: **v6 FAILED the first ramp at 2.031B; stopped. v10 launched (v8 + dense macro labels)**
+* **v6 = azr1b4_tree6** (6f629101: v5 with 350-wave trees): 59 evals, newest 2,031,076,363 ticks; **first ramp
+  FAILED, window FAILED**; best eval 2.499 (2.50%) at 0.24B. Twice the rounds per tick (59 vs v5's 30)
+  did not change the picture. Stopped 03:37 UTC.
+* **v10 = azr1b4_tree10** (commit **6920ddc4**, checkout /root/t10, launched 03:37 UTC from step 0) = v8 +
+  `--mcts-labels-dense 1`. Command (cd /root/t10): `bash tools/az_launch.sh azr1b4_tree10 --mcts-minutes 10
+  --mcts-max-waves 350 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2
+  --az-spawn-rotate 1 --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1
+  --mcts-labels-dense 1`.
+* Running: v7 (1.45B), v8 (1.0B), v9 (0.45B), v10 (new). Failed: v1-v6 (first ramp, at 2.0B total ticks).
