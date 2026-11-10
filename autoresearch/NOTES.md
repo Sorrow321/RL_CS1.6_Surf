@@ -1541,3 +1541,26 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
   1.174 $/h, $10 reserve: the money reaches about 22:10 UTC, so the deadline cannot be pushed much
   past 22:00). Plan: the full wrap-up pull (--ckpt, bundle, search ticks) at about 21:20-21:40,
   a last small pull before 21:54, try one more extend past 22:00, then the wrap-up at 22:00.
+### azr1b1 - 2026-11-10 11:16 UTC: 18.50B steps - no new best; after the first finish this run finishes less often than run 5 but faster
+
+* **Evals 17.21-18.42B: 0-4/9 finishing** (best times 116.28-118.03 s), medians 31-71%; two dips
+  to the CP2 block (18.27B, 31.5%) and CP3 (18.35B). Best eval still 15.33B (7/9, 115.97 s).
+* **Searches 47 and 48 (17.48B, 17.93B) replaced the finishing line 43 with lines to d ~15,100
+  (~85%)**, both started from failing evals (medians 44,033 and 28,398); the curriculum now sits
+  at rows ~7,240-9,424 of line 48 (tau ~77% along it). The greedy still finishes 1-4/9 with no
+  finishing line in the curriculum: the finishing skill stays in the weights. Search 49 STALE.
+* **Reliability after the first finish, matched by eval count** (greedy evals, `end == done`,
+  scratchpad fin_table.py; the first 58 evals after each run's first finishing eval):
+
+  | | evals with >= 1 finish | mean finishes | 9/9 evals | best time |
+  |---|---|---|---|---|
+  | run 5, 8.23-12.53B | 57/58 (98%) | 4.78/9 | 1 | 117.94 s (over its 162 evals to 20.39B) |
+  | this run, 14.19-18.42B | 36/58 (62%) | 2.03/9 | 0 | 115.07 s (15.63B) |
+
+  One pool finishes less often - the early map (the CP2 block) is lost and re-learned in a
+  cycle - but its finishing lines are ~3 s faster than anything run 5 flew in 162 evals. Run 5's
+  75% October starts acted as a replay of the whole map; here only the 10% map starts do.
+* **The series around this run (status.md 11:13):** slot 2's run 2 = this pool + its balanced-tree
+  rule finished at 7.248B steps (0.88x run 5, one seed, RTX 5080); slot 3's run 2 (11:00 UTC) =
+  this run's 85 flags + --tree-labels 0.1, with this run as its paired control.
+* Box deadline 21:54:29 UTC (credit $22.89 at 11:11, burn 1.174 $/h, reserve reached ~22:10).
