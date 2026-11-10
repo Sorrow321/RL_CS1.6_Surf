@@ -1565,3 +1565,12 @@ gpu_health said UNHEALTHY (power limit 250 W of the card's 300 W default, and no
 model), so it was blocklisted (machine 154768, gpu_capped) and released at 09:50 after ~7 minutes.
 The 4080 offer at 0.31 $/h left the market before the pace reached it; the next offers are 0.356
 (3090) and 0.38 (5080). I retry each wakeup; the pace's room grows ~0.02 $/h per hour.
+
+### azr1b4 - 2026-11-10 11:21 UTC: v12 still waiting for a box
+
+* 11:15 the pace reached a RTX 5080 at 0.309 $/h (offer 59996517, machine 147973, Ryzen 9 7950X):
+  instance 60060335 stayed "loading" past box.py's 330 s readiness window, so box.py blocklisted
+  the machine and destroyed it (11:21). No other offer is within the pace (room ~0.32 $/h; the
+  cheapest passing offers are a 3090 at 0.356 and a 5080 at 0.380). Retrying every ~20 min; a
+  launch by ~15:00 UTC still reaches the first ramp's 2.0B-tick deadline well before the 22:00
+  wrap-up.
