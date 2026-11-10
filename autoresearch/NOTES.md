@@ -1236,3 +1236,19 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   `--auto-spine-mcts-args "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256
   --mcts-mix-warm 2"`. Taken from slot 1 (azr1b1_pool1, walls 1-7 ON TIME by 3.55B). It is the
   protocol's own example of a combined second recipe.
+
+### 01:15 UTC: azr1b2_sib at 4.00B - flat under the post-CP2 block (31.6-32.4%), deadline 4.682B
+
+* Evals 3.32-4.00B: 32.3, 32.3, 32.4, 31.9, 32.2, 32.2, 32.2, 31.7, 32.2, 32.4% (medians
+  31.6-32.1%); best still 32.449 at 2.869B. Search 10 (3.624B, quorum): no line (+63 u over the
+  greedy's banked 69,780 = 30.0%). Searches 8-10 at this block found nothing deeper; run 4's
+  searches here found +200-350 u (3.2-4.1B) and 32.1-32.4% lines (4.56-4.71B), none past the block.
+* Where the 4.00B eval's episodes stop (MEASUREMENT only): 5/9 pass the cavity and die at x -300
+  .. -900, z 10,400-10,800 (ep 3 the deepest, (-889, 301, 9,714) at 34.9 s) - run 4's plateau
+  ((-400, ~150, 10,600), the 4 u teleport floor); 3/9 reach x ~880 then turn back east and fall
+  into the pit floor (x ~5,400, z ~10,780); 1/9 dies at 15 s over the pit. Run 5's policy went
+  further WEST (x -1,400 .. -2,000) and came back east under the sheets.
+* Pulled (md5 verified): ckpt_2000683008.pt and ckpt_3001024512.pt (the milestones around the
+  best eval at 2.869B; the 3.0B one is 0.13B after it, the 2.0B one 0.87B before).
+* The last eval that can clear this wall is the one AT the deadline (4,681,891,840 is an eval
+  step); if it misses, the run is stopped, harvested, and the planned second recipe launched.
