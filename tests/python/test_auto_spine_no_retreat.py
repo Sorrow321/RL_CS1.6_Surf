@@ -1,5 +1,6 @@
-"""--auto-spine-no-retreat (azr1b1, 2026-11-10): a search's spine is adopted only if its end also
-beats the CURRENT spine's end by --auto-spine-gain - the curriculum's line never moves backwards.
+"""--auto-spine-no-retreat (azr1b1, 2026-11-10): a search's spine is NOT adopted when its end lies
+more than --auto-spine-gain behind the CURRENT spine's end - the curriculum's line never moves
+backwards; a line within the gain (another route through the same wall) is adopted as before.
 
 azr1b1_pool1 (one pool: 90% of the training starts on the curriculum's line): search 17 started
 from a bimodal eval whose MEDIAN deepest d read 52,192 while 4/9 episodes were at 84%; its line
@@ -7,7 +8,7 @@ ended at d 44,423 (~57%) and replaced line 15 (end d 15,007, ~85%). The greedy f
 84% to the CP2 block (~31%) within ~0.3B steps. unr1b1's --ge-line had the same rule for its own
 loop ("and the current line's end by as much").
 
-(a) spine_moves_on: the rule, and None (no current spine) adopts.
+(a) spine_retreats: the rule, and None (no current spine) is never a retreat.
 (b) the trainer: the flag needs --auto-spine, is written to the config only when on, and the
     adoption path checks it after --auto-spine-recheck and before the curriculum is touched; off,
     the adoption path is the old one; the recorder lists it TRAIN_ONLY.
@@ -23,18 +24,23 @@ sys.path.insert(0, str(ROOT / "python"))
 
 
 def test_the_rule():
-    from train_fast import spine_moves_on
-    # the azr1b1_pool1 case: a line to 44,423 does not replace a line to 15,007
-    assert not spine_moves_on(44423.0, 15007.0, 200.0)
-    # equal ends, or a gain under 200 u, do not replace either
-    assert not spine_moves_on(15007.0, 15007.0, 200.0)
-    assert not spine_moves_on(14808.0, 15007.0, 200.0)
-    # 200 u further does
-    assert spine_moves_on(14807.0, 15007.0, 200.0)
-    # the first replacement of the scratch spine (the spawn) always moves on
-    assert spine_moves_on(97915.0, 103000.0, 200.0)
-    # no current spine: adopt
-    assert spine_moves_on(44423.0, None, 200.0)
+    from train_fast import spine_retreats
+    # the azr1b1_pool1 cases: a line to 44,423 after a line to 15,007 retreats, and so does a
+    # line to 72,049 after one to 44,423
+    assert spine_retreats(44423.0, 15007.0, 200.0)
+    assert spine_retreats(72049.0, 44423.0, 200.0)
+    # within the gain of the current end it is the same depth (another route): not a retreat.
+    # run 5: search 14's line to 15,133 after search 13's to 15,037, then search 15's to 14,839
+    # (the line that opened CP6) - all adopted, as without the flag
+    assert not spine_retreats(15133.0, 15037.0, 200.0)
+    assert not spine_retreats(14839.0, 15133.0, 200.0)
+    assert not spine_retreats(15207.0, 15007.0, 200.0)
+    assert spine_retreats(15208.0, 15007.0, 200.0)
+    # deeper is never a retreat; the first line after the scratch spine (the spawn) neither
+    assert not spine_retreats(10000.0, 15007.0, 200.0)
+    assert not spine_retreats(97915.0, 103000.0, 200.0)
+    # no current spine: not a retreat
+    assert not spine_retreats(44423.0, None, 200.0)
 
 
 def test_the_trainer_wires_it():
@@ -49,7 +55,7 @@ def test_the_trainer_wires_it():
     # and compares with the CURRENT spine (demo.S, before reset_spine replaces it)
     i_load = src.index('sp = np.load(res["spine"])')
     i_recheck = src.index("spine_is_fresh(_de_new", i_load)
-    i_chk = src.index("spine_moves_on(_de_new, _de_cur", i_load)
+    i_chk = src.index("spine_retreats(_de_new, _de_cur", i_load)
     i_cur = src.index('_de_cur = float(_f.sample(np.asarray(demo.S[-1]["origin"]', i_load)
     i_reset = src.index("demo.reset_spine(sp)", i_load)
     assert i_load < i_recheck < i_cur < i_chk < i_reset
