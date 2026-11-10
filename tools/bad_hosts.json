@@ -2959,6 +2959,15 @@
       "detail": "RTX 5060 Ti (Ontario CA, EPYC 7C13) at 100% util, 726 MiB, 150/150 W with no process in our container before any launch: a foreign tenant on the GPU (deploy gpu_health BUSY); instance 59662180, unop control box, entered by hand after the release",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "174.92.225.233",
+      "machine_id": 28531,
+      "host_id": 79850,
+      "date": "2026-11-10",
+      "detail": "RTX 4080 SUPER power limit 255 W of 320 W default (80 pct), bf16 GEMM 97 TFLOPS, sm 2475 of 3105 MHz under load; gpu_health --all verdict UNHEALTHY, deploy_box.sh refused (2026-11-10 17:02 UTC, m2warm)",
+      "run": "",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [

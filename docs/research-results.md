@@ -37135,3 +37135,98 @@ walk back through the line's 3.4 s wander in the south-west corner (ticks ~150-3
 line (adopted 2.810B, 1,089 states, no wander) replaced it; its curriculum start reached tick 400
 at 2.862B, 200 at 3.030B and 0 at 3.083B, and the greedy from the true start cleared the room 2/9
 at 2.945B, 8/9 at 3.020B, 9/9 at 3.096B as stated. The other rows of the 14:45 entry stand.
+
+## 2026-11-10 17:15 UTC - second-map test: arm B RELEASED at 6.02B (never left the start room); TRANSFER arm m2warm_pb1 LAUNCHED (arm A's recipe, network from the sidistic run of the same recipe)
+
+On the user's instruction (16:30 UTC): "Let's release B and launch A, but with network
+initialization that came from sidistic map".
+
+### Arm B `m2pool_pb1` - final (one pool, MCTS at the random end; sidistic `azr1b1_pool1`)
+
+| | |
+|---|---|
+| launched / released | 2026-11-10 11:57 UTC / 16:40:11 UTC (box 60064135, RTX 4080, 0.417 $/h, about 1.97 $) |
+| last step | 6,015,156,224 |
+| greedy from the true start | 0.40%, 0/9 past the start-room line at every one of 80 evals; best eval ever 0.417 at 1,736,966,144 |
+| searches | 14, no line in any (the tree never left the room) |
+| finishes | 0 |
+| same recipe on sidistic | first finish at 14.194B steps |
+
+**Verdict: NULL at 6.02B steps, and not a matched-step comparison with sidistic** (the sidistic
+run needed 14.19B; this one was stopped at 42% of that by the user's call, to move the hours).
+What it does show, against arm A on the same map: with every non-policy child random-held, 14
+searches in a row found no way out of the start room, while arm A's rule-balanced tree found the
+staircase at its 5th search (1.812B). One seed each.
+
+Files (md5 checked against the box before the release):
+`~/ar_m2/runs/m2pool/m2pool_pb1/ckpt_latest.pt` md5 `4ed0478eaa3c0983b9db3e421dee4522`, 80 eval
+trajectories, `run.json`, `progress.csv`, the launch log, and the 14 search logs in
+`~/ar_m2/runs/m2pool/m2pool_pb1_autologs/autologs.tgz`.
+
+### Arm A `m2sib_pb1` at 17:12 UTC (from scratch, unchanged, still running - the control)
+
+6.11B steps, 319k steps/s. Greedy from the true start leaves the room 9/9 at every eval since
+3.10B and stops in the pit under the room at 3.2% (frontier d ~55,374). Searches 8-14 (3.02B to
+5.74B) found no line: each tops out at d ~55,337-55,343, about 35 u past the greedy, 200 needed.
+So 3.1B steps without movement at gate 2.
+
+### TRANSFER arm `m2warm_pb1` (LAUNCH, 17:05:36 UTC)
+
+**What it is.** Arm A's recipe flag for flag, on the same map from the same true start, with ONE
+difference: the policy network and its Adam moments start from the sidistic run of the SAME
+recipe instead of from a random draw. **This is a transfer arm. It is not a from-scratch result
+and it is not a 0b recipe result** (the recipe now includes "a network trained on another map");
+it measures whether what the network learned on sidistic helps on a map it has never seen.
+
+**The new trainer option, `--init-weights CKPT`** (m2/sib f512debb; `python/train_fast.py`,
+`tools/record_ckpt.py`, `tests/python/test_init_weights.py`). It is NOT a `--ckpt` resume: the
+run stays a scratch run (step counter 0, its own map, flags, novelty counts, spawn pools,
+curriculum, schedules and first spine = the map's spawn state). Only the policy tensors and the
+optimizer state are read. Refused together with `--ckpt`, on a `demo_contaminated` source, on a
+network that does not fit, and when a setting the weights read or write through differs from the
+source run's (act_every, emb, hidden, lidar, obs, keys_hold, view, tick, race distance ...);
+every other differing setting is printed. `run.json` and every checkpoint record
+`init_weights`, `init_weights_md5`, `init_weights_step`, `init_weights_map`,
+`init_weights_demo_file`, and a crash-resume keeps them. Tested before renting: 9 tests on the
+droplet (sidistic -> princessburglar, `--lr 0` gives a policy bit-equal to the source; 9 passed
+in 85 s), a CPU dress rehearsal with the full frozen flag set at tiny size, and a recorder run.
+
+**Source checkpoint (section 0 provenance).** `~/ar_az/runs/azr1b2/azr1b2_pool/ckpt_latest.pt`,
+md5 `d4f230b3f6eb95b8950c1eb3a121a721` (verified on the box), step 10,432,282,624, sidistic run
+`azr1b2_pool`: from scratch (resume None), spawn states = the map's spawn + that run's own search
+lines (`--auto-spine-scratch`), `bc_file` None, `route_file` None, no human demo, no record line.
+It first finished sidistic at 7.248B steps (best 112.527); its last six pulled evals finish 0-2
+of 9.
+
+**Launch (through `box.py launch` -> `tools/run_arm.sh`, SCRATCH=1):**
+
+    MAP=maps/surf_princessburglar_b26.bsp BUDGET=60000000000 RECORD_EVERY=75e6 SCRATCH=1 \
+      bash tools/run_arm.sh m2warm_pb1 <the 83 flags of autoresearch/config.json incumbent_recipe> \
+      --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2' \
+      --init-weights runs_ckpt.pt
+
+The trainer's own lines: "the policy (37 tensors), its Adam moments are runs_ckpt.pt's (md5
+d4f230b3..., trained on surf_src_sidistic to step 10,432,282,624); the step counter starts at 0
+and everything else is this run's own (not a resume)" and "settings that differ from the source
+run's (4): demo_file (own spine0); map; maxvel 4000 -> 3500; obs_potential_d0". Stored `run.json`
+compared with arm A's key by key: the only differences are the five `init_weights*` keys, the
+run's own spine path, the commit (d8410be8 -> f512debb), the label and the start time. Record
+gate passed (4 recordings, 50 s).
+
+**Box.** 60097464, RTX 5080 16 GB, 0.367 $/h, machine 155253; `gpu_health --all` healthy. Arm A
+is on an RTX 4080, so **read the two step-matched, never on wall clock** (the standing same-card
+rule cannot be met: no second box of A's machine was on offer). Watchdog: registered until
+2026-11-11T05:03:51Z with a harvest spec and the pid file; dashboard tunnelled to localhost:8602.
+The first rent (60096643, RTX 4080 SUPER, machine 28531) was refused by `deploy_box.sh`: power
+limit 255 W of 320 W, health verdict UNHEALTHY; blacklisted (`tools/bad_hosts.json`), released
+after about 8 minutes, about 0.03 $.
+
+**Budget.** Credit 18.48 $, reserve 10 $, burn 0.65 $/h (A 0.283 + transfer 0.367), 13.0 h above
+the reserve.
+
+**What will be read off it** (step-matched against arm A, one seed each): the step at which the
+greedy first leaves the start room (A: 2/9 at 2.945B, 9/9 at 3.096B; A's search found the
+staircase at its 5th try, 1.812B), and whether it gets past the pit at 3.2% where A has stood
+since 3.0B. First numbers: step 0 eval 0.35%, 0/9 (the sidistic network does nothing useful in
+this room by itself, as expected); view sigma starts at the source's 0.05 / 0.11; search 1 is
+running; 164k steps/s cumulative at 71M steps, still rising.
