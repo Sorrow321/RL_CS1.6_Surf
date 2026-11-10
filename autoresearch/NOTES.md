@@ -1338,3 +1338,37 @@ this run is on time or faster (the line gets 3.6x the starts).
   2. `--demo-match-band` (existing, pbr6b4): the line-1 freeze (repeated origins, tau frozen
      ~250-559M here and ~200M-1.0B in run 5).
   Same commit base otherwise, same search cadence, one pool, from scratch.
+
+### azr1b1 - 2026-11-10 03:40 UTC: 8.61B steps - RECOVERED: CP6 and CP7 ON TIME, best 97.93%
+
+| wall | this run, steps | run 5, steps | deadline | this run, total | run 5, total | deadline |
+|---|---|---|---|---|---|---|
+| CP5 | 4.304B | 3.851B | 7.702B | 5.836B | 5.293B | 10.586B |
+| CP6 | 7.852B | 6.116B | 12.232B | 10.719B | 8.220B | 16.440B |
+| CP7 | 8.230B | 6.720B | 13.440B | 11.097B | 8.966B | 17.933B |
+| chamber entry / finish | - | 8.230B | 16.459B | - | 10.801B | 21.602B |
+
+Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). Best eval 97.93%
+(CP7, 8.381B; 5/9 episodes at 97.9% by 8.53B), no finish yet. 24 searches, 3.133B search ticks.
+
+* **The backward line that REPAIRED the regression.** Search 20's line (7.50B) ended at d 72,049,
+  ~30%: just past the CP2 block, the exact place where the greedy had been dying since 6.72B (the
+  median 74k the search started from). With one pool, 90% of the starts landed on that spot, and
+  ONE eval later (7.55B, +47M steps) 8/9 greedy episodes were back at 84% (median 16,560). Then
+  line 21 (7.65B, to d 15,047 ~85%) -> CP6 at 7.852B (90.0%, 6/9 past its mark); line 22 (7.95B,
+  to d 10,132 ~90%) -> CP7 at 8.230B (96.9%); line 23 (8.41B, patience from a median of 74,318:
+  to d 14,951, again BEHIND line 22's end) and 97.9% in 5/9 episodes by 8.53B; line 24 (8.635B,
+  quorum, 11,869 rows to d 1,498 ~98.5%) is the curriculum now.
+* **So my 02:36 diagnosis was half right and the fix built from it is wrong.** The median-read
+  frontier does make the search aim at the bimodal greedy's BAD mode, and a line ending there
+  pulls the curriculum back. But when that line ENDS AT the failure (line 20), the one pool trains
+  exactly the failing skill and repairs it within one eval - run 5's --respawn-greedy (spawns at
+  the greedy's deaths) by another road. Line 17 hurt because it ended 25 points PAST the failure
+  (57% vs the CP2 block at ~31%), so the curriculum trained neither the failure nor the frontier.
+  `--auto-spine-no-retreat` would have blocked line 17 AND line 20 (and line 23). It stays in the
+  code, default off, and is NOT a recipe candidate on this evidence; recipe 2 as built is shelved.
+  The run is on time and keeps training (no recipe 2 needed).
+* The regression cost ~1.0B steps (6.45-7.50B) plus the 0.3B patience before search 20.
+* Next: the chamber entry (98.5%) and the finish, due by 16.459B steps (~6 h at ~1.28B/h). Run 5
+  sat at 97.9-98.0% from 6.8B to 8.15B and finished at 8.23B after its search 20 found a
+  finishing line (8.0B).
