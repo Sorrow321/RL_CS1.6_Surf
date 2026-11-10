@@ -1533,3 +1533,145 @@ lines (searches 14 and 18) that carried CP7.
 * Fleet at 11:15: 4 boxes (slot 4 renting again), credit $22.70, burn 1.48 $/h, 8.6 h to the
   reserve (~19:50 UTC). This box's deadline is 17:31; extend in small steps from ~15:30 and pull
   the final search bundle and evals before the last deadline the budget allows.
+
+## FINAL lesson (azr1b2, slot 2: a balanced tree) - round over 2026-11-10 11:37 UTC
+
+**What I changed in run 5: one part, how the search picks the children it tries.** At every leaf
+run 5's MCTS tried one greedy child (G: the policy's own next macro-step) and 15 random-held
+children (R: a random key and view command held for the macro-step). AlphaZero draws every child
+from the network's policy. The rule (`--mcts-mix-rule sib`, `tools/mcts_search.py`, default off;
+with it off the search draws the same random numbers as run 5, tested) keeps G and offers three
+kinds for the other children - policy samples (P), the greedy move perturbed (E), random-held (R) -
+and lets the tree set how many of each: the children of one leaf play a small tournament (the one
+that beats its parent's value wins; if none does, the live child that opened the most new cells),
+each kind's wins per child are counted over its last 256 wins, and the shares follow those win
+rates (probability matching, at least 5% each, 2 warm waves at equal shares). These three
+constants were set once and never tuned.
+
+**The two runs (one seed each, from step 0, the true start).**
+
+* Run 1 `azr1b2_sib` = run 5 + the rule (from 21:20 UTC 11-09): FAILED the post-CP2 block
+  (deadline 4.682B steps; flat at 31.6-32.4% from 2.87B), like run 4's fixed mixed tree in the
+  last program.
+* Run 2 `azr1b2_pool` = slot 1's one pool (90% of training starts on the search's backward
+  curriculum, 10% at the map start; azr1b1 da7981e5) + the rule (RTX 5080, from 01:58 UTC, 5 h
+  after the round began): **FINISHED sidistic at 7.248B steps, all 12 walls ON TIME**. Stopped at
+  10.443B steps by the round-over message (11:37 UTC).
+
+Ladder in steps (B) beside run 5's and slot 1's same pool without the rule:
+
+| wall | run 5 | slot 1: one pool, no rule | **run 2: one pool + rule** | run 1: run 5 + rule |
+|---|---|---|---|---|
+| first ramp | 0.529 | 0.680 | 0.680 | 0.755 |
+| window (CP1) | 0.680 | 1.057 | 0.982 | 0.906 |
+| pit dive | 1.812 | 1.359 | 1.586 | 2.492 |
+| cavity (CP2) | 2.114 | 2.341 | 1.737 | 2.718 |
+| post-CP2 block | 2.341 | 2.492 | 1.812 | FAILED |
+| CP3 | 2.643 | 2.643 | 1.888 | - |
+| CP4 | 3.624 | 3.549 | 2.114 | - |
+| CP5 | 3.851 | 4.304 | 2.416 | - |
+| CP6 | 6.116 | 7.852 | 4.379 | - |
+| CP7 | 6.720 | 8.230 | 5.210 | - |
+| chamber entry = finish | 8.230 | 14.194 | **7.248 (0.88x run 5)** | - |
+
+Ladder in total ticks (training steps + every search tick, B), run 2 beside run 5:
+
+| wall | run 5 | run 2 | run 2 / run 5 |
+|---|---|---|---|
+| first ramp | 0.763 | 0.861 | 1.13 |
+| window (CP1) | 0.914 | 1.239 | 1.36 |
+| pit dive | 2.448 | 1.926 | 0.79 |
+| cavity (CP2) | 2.887 | 2.167 | 0.75 |
+| post-CP2 block | 3.252 | 2.243 | 0.69 |
+| CP3 | 3.554 | 2.387 | 0.67 |
+| CP4 | 4.928 | 2.614 | 0.53 |
+| CP5 | 5.293 | 2.992 | 0.57 |
+| CP6 | 8.220 | 5.372 | 0.65 |
+| CP7 | 8.966 | 6.271 | 0.70 |
+| chamber entry = finish | 10.801 | 8.787 | 0.81 |
+
+Run 2's 27 searches took 1.946B ticks (16% of its 12.37B total at the stop); run 5's 51 (its whole run, to
+20.2B steps) took 3.986B. Slot 1's pool without the rule finished at 1.78x run 5 in total ticks (its status line).
+
+**How well it flies after the finish.** Best eval 112.527 at 8.456B (6/9 finishes, median 100%,
+124.18 s); its copy ckpt_8444182528.pt (12M steps before the eval, md5 5df5f1a2). The fastest
+finish of the run was 123.26 s (9.060B). Over 36 evals from each run's first finish
+(`autoresearch/analysis/finish_rate.py`): run 2 finished in 61% of evals (mean 1.69/9), run 5 in
+97% (4.47/9, best 118.76 s), slot 1's pool without the rule 62% (2.03/9, its own count over 58
+evals). The steadiness is the one pool's (no replay of the whole map), not the rule's, and run 2's
+finishes are ~5 s slower than run 5's.
+
+**What the trees did** (27 searches, 15 lines adopted, 1.946B search ticks; table:
+`python -I autoresearch/analysis/mix_searches.py <bundle>/auto <launch log>`).
+
+* Three deep lines took the curriculum to the gap after CP6 (~85% of the field): search 14 (root
+  59.7% -> 85.4%), 18 (54.0% -> 84.6%) and 19 (83.7% -> 85.0%). CP7 came 0.29B steps after search
+  14's line (the evals rose 86 -> 91 -> 95 -> 96 -> 97% right after it), and the first finish at
+  the first eval after search 19's line. CP6 itself fell to the policy (4.379B), 0.14B steps after
+  search 12's line, which only covered the early map (30% -> 42%). No line reached the chamber
+  before the policy finished: it flew the last ~15% of the map by itself. Search 22 (8.10B) was
+  the first line into the chamber; searches 24 and 27 replayed the policy's own finishing flight
+  (one wave, 1 s).
+* The shares the rule chose: mean P 0.15-0.29, E 0.31-0.40, R 0.39-0.50 in 25 of 27 searches;
+  only from a deep root where the policy already flies (search 9) did it lean to the policy (final
+  P 0.45 / E 0.40 / R 0.15). Per child, the greedy child won most often, then random-held, then
+  perturbed, and the policy's own samples least - late in training the policy is nearly
+  deterministic (entropy ~0.006), so its samples are near copies of G and rarely beat it.
+* The deep lines were mixtures of all four kinds: search 14's line G21 P7 E19 R9 macro-steps,
+  search 18's G21 P13 E28 R14, search 22's G11 P10 E14 R10. No one kind made them.
+* 10 of 27 searches (0.84B ticks, 43% of all search ticks) rooted on a greedy replay that ended
+  below 35% of the field - at the block after CP2 where half of every eval's episodes also stop -
+  and none of them gave a line. In 5 of them the eval that triggered the search had gone much
+  deeper (its greedy line at 67-98%).
+
+**What this says about the user's question.**
+
+* **One thread or two: two.** The search's job in this slot was WHERE: lines past the place where
+  the policy stops, which the curriculum then trains on; PPO turned the lines into flying (CP7
+  came 0.29B steps after search 14's line, the first finish one eval after search 19's), and the
+  policy flew the last ~15% of the map by itself. Nothing here trains the network from the tree. Slot 4's tree-only learner
+  failed the first wall eleven times, and slot 3's tree labels beside PPO did not move the greedy
+  across a shelf on their own.
+* **What the tree should teach: where to start, not which move.** And the children the tree tries
+  should not all come from the policy, which is AlphaZero's choice: here the policy's own samples
+  were the weakest proposals per child, random-held and perturbed children opened the new
+  regions, and every deep line mixed all four kinds. A rule that lets the tree's own sibling
+  results set the mix needs no map knowledge.
+* The balanced tree did not rescue run 5's two pools (run 1 failed early, as the fixed mixed tree
+  did in the last program). With slot 1's one pool it gave this round's earliest finish in steps:
+  0.88x run 5 and 0.51x slot 1's pool without the rule, the gap opening from CP4 on (CP4 2.114
+  vs 3.549B, CP6 4.379 vs 7.852B, finish 7.248 vs 14.194B). One seed each: suggestive, not
+  proven.
+
+**What I would run next.**
+
+1. Run 2's recipe + slot 1's `--demo-whole-frac` (a share of the curriculum on the whole line), to
+   get back run 5's steadiness after the finish while keeping the one pool's speed to it.
+2. The rule on a second map (petrus or cannonball) with the same constants, before calling it
+   part of the recipe (CLAUDE.md 0b).
+3. Root each search on the deepest of several greedy replays (or on the eval's own best episode,
+   the policy's own recording) instead of one replay: 43% of the search ticks here went to roots at
+   the early block while the eval had gone deeper. A hypothesis from this run's logs; the
+   search's root code was not checked against it.
+4. A paired bench of the rule against run 5's all-random knob from mid roots (35-70% of the field),
+   where the gains differed (mean 19.8 vs 13.2 points, n 3 vs 7), with at least 10 roots; the
+   earlier paired bench from pit roots showed no difference.
+
+**Caveats.** One seed per run. Run 2 and slot 1's pool ran on different cards (RTX 5080 / RTX
+4080) and run 5 on another in the last program: steps compare, wall-clock does not. Run 2 started
+5 h late and was stopped at 10.44B, so its post-finish record is 43 evals. Evals flip between the
+CP5 stop and a finish with small weight changes, so single evals are noisy. The late walls (CP6
+on) are the kind of late mark that varied 5-9x between identical runs on cannonball. The search
+gain table compares different policies with 3-11 roots per bin. Run 2 differs from slot 1's run by
+the rule AND the box.
+
+**Files** (`/home/steam/ar_az/runs/azr1b2/`): `azr1b2_pool/` - run.json, progress.csv, the launch
+log, 139 evals, `ckpt_latest.pt` (10.443B, md5 d4f230b3f6eb95b8950c1eb3a121a721),
+`ckpt_8002732032.pt` (the trainer's last snapshot before the best eval, md5
+74d4ff122066aede5784f6f06e9a2c56), `search_ticks.json` (27 searches, 1,945,912,492 ticks),
+`auto_bundle.tgz` (md5 3131eb386a2a0ff31e8d8fa4458270f0: every search's spine, logs, summary and
+frontier, the keeper log), `auto_trees_adopted_a.tar` (trees of searches 14, 22, 24, 27; md5
+bdeb3a4ee25d9014b8ccb44fd66eb4cb) and `_b.tar` (searches 12, 18; md5
+e0061529ce4c22dd0107df084bdefeb6); `azr1b2_pool_snaps/` - the keeper's copies, best
+`ckpt_8444182528.pt` (md5 5df5f1a2fc5081bd900b75cfdda0a528); `azr1b2_sib/` - run 1. Box 59951396
+released at 11:41 UTC (`box.py status`: no box).
