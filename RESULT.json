@@ -150,9 +150,9 @@
   "unit": "steps",
   "first ramp": 755499008,
   "window (CP1)": 906493952,
-  "verdict": "alive: 3 walls ON TIME, cavity pending (deadline 4.229B)",
-  "newest_eval": 2491940864,
-  "best_eval_pct": 27.55,
+  "verdict": "alive: 4 walls ON TIME, post-CP2 block pending (deadline 4.682B)",
+  "newest_eval": 3246915584,
+  "best_eval_pct": 32.45,
   "total": {
    "first ramp": 962149247,
    "window (CP1)": 1113144191,
@@ -160,7 +160,8 @@
    "search_ticks_to_2.49B": 525417131,
    "searches": 7
   },
-  "pit dive": 2491940864
+  "pit dive": 2491940864,
+  "cavity (CP2)": 2718433280
  },
- "summary": "Slot 2 (a balanced tree): run 5 with ONE change, the MCTS child mix set by a rule instead of fixed all-random (sibling wins per kind -> shares, floor 5%, memory 256 wins; commit 932167fe). Run azr1b2_sib from step 0 at 21:20 UTC (RTX 5080, ~290k steps/s). Ladder in steps: first ramp 0.755B, window 0.906B, pit dive 2.492B - all ON TIME (run 5 0.529 / 0.680 / 1.812B). The pit gate was threaded IN SEARCH (search 6, 27.73% banked, line E P R G P E G E G R E E: perturbed children), as in run 4 and unlike run 5 (whose policy passed alone). Next: cavity (deadline 4.23B)."
+ "summary": "Slot 2 (a balanced tree): run 5 with ONE change, the MCTS child mix set by a rule instead of fixed all-random (sibling wins per kind -> shares, floor 5%, memory 256 wins; commit 932167fe). Run azr1b2_sib from step 0 at 21:20 UTC (RTX 5080, ~290k steps/s). Ladder in steps: first ramp 0.755B, window 0.906B, pit dive 2.492B, cavity 2.718B - all ON TIME (run 5 0.529 / 0.680 / 1.812 / 2.114B). The pit gate was threaded IN SEARCH by perturbed children (as run 4; run 5's policy passed alone). Now at the post-CP2 block (32.45% at 2.87B; run 4 failed here, run 5's policy passed at 2.34B), deadline 4.68B. Rule's shares steady at R ~0.5 / E ~0.32 / P ~0.17."
 }
