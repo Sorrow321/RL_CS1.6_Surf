@@ -1406,3 +1406,24 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   first searches, and it has not moved the greedy.
 * 25 searches = 2.403B search ticks; 10.39B steps / 12.75B total at 08:44. CP6's deciding eval
   (12,231,114,752) is ~10:48 UTC.
+
+### 09:59 UTC: lines 26 and 27 end 8-12k u past the policy; greedy 72.2% -> 81.8% at 11.325B, best 82.17%
+
+* Search 26 (10.721B -> 10.805B): NEW SPINE, end d 21,857 against the greedy's 30,260 (+8,400 u,
+  search field); its tree beat the policy's own child at only 2.4% of nodes. Search 27 (11.174B
+  -> 11.260B): NEW SPINE, end d 18,358 (+11,900 u), own child beaten at 16.9% of nodes.
+* Evals: 72.1-72.3% through 11.250B, then 81.83 (11.325B, median 81.39), 81.97 (11.401B),
+  82.17 (11.476B, median 82.01): all 9 episodes past 81%, the first big step since CP5. It came
+  0.52B steps after line 26 was adopted (65M after line 27), the same lag as line 16 -> 69.7%.
+* The curriculum on line 27 runs back faster than on lines 20-25: starts at tau 8,077 of 9,168
+  (~1,090 ticks back) at 75% success by 11.5B. Label fit: keys NLL 1.83, yaw 0.20, agreement
+  0.44, a policy row in 11% of a batch.
+* What CP6 needs: score.py's CP6 curtain is at d ~12,160 of its field (87.8% progress) and the
+  best greedy episode reaches d ~17,770 there, so ~5,600 u remain, past the end of line 27 (the
+  recheck at 11.476B puts the greedy ~1,800 u short of line 27's end in the search field; the
+  two fields differ by ~800 u at the start, so I do not mix their d values). Search 28 is due
+  ~11.63B and ends ~11.71B; the deciding eval is 12,231,114,752 at ~10:45 UTC. CP6 clears only
+  if search 28 finds a line past the curtain and the policy learns it at least as fast as line 26.
+* Box extended at 09:56 to 12:56 UTC (needed past 11:41 either way: tl1 keeps it if CP6 clears,
+  tl2 needs it if not). Insurance pull: ckpt_latest.pt at ~11.52B, just after the 82.17 eval
+  (md5 e482588b20dd5a87747f17b52abb23a2). 27 searches = 2.585B search ticks.

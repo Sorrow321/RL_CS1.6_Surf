@@ -17,8 +17,8 @@
   "ablation_minutes_first": 30,
   "ablation_minutes_max": 360,
   "budget_reserve_usd": 10.0,
-  "budget_end_hours": 26,
-  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: one 26 h round. Move it with round_hours.",
+  "budget_end_hours": 24,
+  "_budget_end_hours_doc": "Hours from THIS program's start (state.json started) over which box.py spreads the credit above the reserve: 26 (the whole round) at launch; 24 since 2026-11-09 21:25 UTC (operator): the first boxes cost 0.42 $/h against the 0.34 planned, so at 26 the pace left 0.29 $/h for the fourth box and no offer passed. With four boxes the credit above the reserve lasts to about 19:00 UTC on 2026-11-10, not to the round end. The reserve itself is held by extend's burn x hours check and by the box deadlines, not by this horizon.",
   "gpu_tiers": [
     [
       "RTX_5080",
