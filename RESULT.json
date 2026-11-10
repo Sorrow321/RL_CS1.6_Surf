@@ -108,7 +108,7 @@
   "window (CP1)": 1057488896,
   "pit dive": 1359478784,
   "cavity (CP2)": 2340945920,
-  "verdict": "alive: walls 1-10 ON TIME (CP6 1.28x, CP7 1.22x run 5 in steps); chamber entry and finish due by 16.459B",
+  "verdict": "alive: walls 1-10 ON TIME (CP6 1.28x, CP7 1.22x run 5 in steps); greedy cycles between 98% and the CP2 block; chamber entry and finish due by 16.459B",
   "total": {
    "first ramp": 1035242155,
    "window (CP1)": 1412729515,
@@ -134,6 +134,6 @@
   "gpu": "RTX_4080",
   "cpu": "AMD Ryzen 9 9950X (32 threads)",
   "dph": 0.417,
-  "steps_per_s": "~354k (04:30 UTC)"
+  "steps_per_s": "~354k (05:26 UTC)"
  }
 }
