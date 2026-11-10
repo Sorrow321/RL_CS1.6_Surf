@@ -1265,7 +1265,7 @@ this run is on time or faster (the line gets 3.6x the starts).
 * Next: CP6, due by 12.232B steps (run 5 cleared it 2.27B after its CP5; ~5.8 h of steps left to
   the deadline at ~1.28B steps/h).
 
-### azr1b1 - 2026-11-10 01:40 UTC: 6.07B steps, at the CP6 plateau (84.2-84.9% for 1.1B steps)
+### azr1b1 - 2026-11-10 01:35 UTC: 6.07B steps, at the CP6 plateau (84.2-84.9% for 1.1B steps)
 
 * Walls 1-8 ON TIME (no change since 00:38). Best eval 84.92% (CP5) at 5.361B. Every eval from
   4.83B to 5.96B reads 84.2-84.9% best (medians swing 30-84%: some episodes fall early).
