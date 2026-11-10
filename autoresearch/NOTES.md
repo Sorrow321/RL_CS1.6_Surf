@@ -1228,3 +1228,11 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   0.14-0.19; per child R > E > P every time, child 0 above all.
 * Other slots (status.md 00:29): slot 1 (one pool) walls 1-7 ON TIME, CP4 at 3.55B; slot 3 at
   28.2% before CP2; slot 4 v1 failed the first ramp.
+* **Planned next recipe, written before any launch (used ONLY if azr1b2_sib fails a wall):**
+  one pool + the balanced tree = slot 1's flag list (its RESULT.json, commit da7981e5: run 5's
+  126 flags without `--respawn-novel*`, `--respawn-greedy*`, `--respawn-front-perturb*`,
+  `--respawn-backward-mix`, `--respawn-backward-elev`, `--demo-share`, `--int-real-only`; 85
+  elements, launched with `--no-recipe`) with its last value replaced by this slot's rule string
+  `--auto-spine-mcts-args "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256
+  --mcts-mix-warm 2"`. Taken from slot 1 (azr1b1_pool1, walls 1-7 ON TIME by 3.55B). It is the
+  protocol's own example of a combined second recipe.
