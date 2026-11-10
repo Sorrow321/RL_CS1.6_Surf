@@ -1408,3 +1408,17 @@ all-random children): same flags apart from the child mix, another box and seed 
   (verified on the box). Also kept: ckpt_4366270464 (89.699), ckpt_4668784640 (89.86).
 * Search ticks: 14 searches, 1,061M ticks. Budget at 06:31: credit $29.25, burn 1.584 $/h, 12.2 h to
   the reserve (~18:40 UTC); box deadline 17:31 UTC covers the finish deadline.
+
+### 07:30 UTC: run 2 - CP7 5.210B ON TIME (run 5 6.720B); best 98.44% at 5.663B, no finish yet
+
+* Ladder (steps): **CP7 5.210B** (total ticks 6.271B; run 5 6.720B / 8.966B) - ten walls ON TIME.
+  Search 14's line (adopted 4.924B, end d 14,588) carried it: evals 4.91-5.81B: 86.1, 91.0, 94.6,
+  95.8, **97.3 (CP7)**, 97.9, 86.0, 97.9, 97.9, 86.1, **98.44 (5.663B, best)**, 97.9, 86.1. Every
+  episode still ends in a fall ('fail'); medians 9-86% (early deaths). Next: chamber entry (98.5%)
+  and the finish, deadline 16.46B steps (~17:10 UTC); run 5's first finish was 8.23B, from a search
+  line.
+* Searches 15 (5.285B: no new spine, its root died at d ~69.5k) and 16 (5.738B: STALE, end d 72,067
+  against a greedy frontier of 45,851) gave nothing: both started from bad greedy roots (d 67.7k /
+  76.2k) while the best evals were at CP7. Next search at 6.129B.
+* Keeper copy for the 98.435 eval: ckpt_5647630336.pt (-15M), pulled, md5
+  c0093b911d525a755114c98c446dde72 (verified on the box). Search ticks: 16 searches, 1,233M.
