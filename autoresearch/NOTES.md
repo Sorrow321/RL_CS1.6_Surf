@@ -1264,3 +1264,26 @@ this run is on time or faster (the line gets 3.6x the starts).
   38.7 $, 18.1 h to the reserve).
 * Next: CP6, due by 12.232B steps (run 5 cleared it 2.27B after its CP5; ~5.8 h of steps left to
   the deadline at ~1.28B steps/h).
+
+### azr1b1 - 2026-11-10 01:40 UTC: 6.07B steps, at the CP6 plateau (84.2-84.9% for 1.1B steps)
+
+* Walls 1-8 ON TIME (no change since 00:38). Best eval 84.92% (CP5) at 5.361B. Every eval from
+  4.83B to 5.96B reads 84.2-84.9% best (medians swing 30-84%: some episodes fall early).
+* **Run 5 sat on the same plateau.** Its evals read 83.7% (4.30B), 84.1-84.2% (4.83-5.81B), 85.0%
+  (6.04B), then 89.9% / CP6 at 6.116B: ~1.8B steps at ~84%. Ours started at 4.83B; at run 5's
+  plateau length CP6 would fall near 6.6B. Deadline 12.232B steps (~4.8 h at ~1.28B/h, ~06:15
+  UTC); in total ticks 8.02B now, deadline 16.44B.
+* **Searches 14-16.** Search 14 (quorum, 4.98B): NO line, its beam from the map start died at
+  d 72,049 (tick 2,821) - the third search whose beam died before ~30% of the course (9: 68,775;
+  12: 67,837) while the greedy policy was at 84%. Search 15 (quorum, 5.44B): line 15, 9,453 rows
+  to d 15,007 (~85.4%), adopted 5.538B. Search 16 (patience, 5.89B): STALE, started from an eval
+  whose MEDIAN deepest d read 54,862 (the run-5 trigger reads the median, which a bimodal eval
+  drags back), found a line to 54,001. Tally: 16 searches, 9 new lines, 4 stale, 3 empty; 2.056B
+  search ticks.
+* **Line 15's curriculum sits at a precise spot near its end.** tau bounces between rows 9287 and
+  9292 of 9,453 (0.0-0.1% band success from 9287 vs ~32% from 9292). Rows 9270-9297 are a ducked
+  surf up a ramp (vz 374 -> 1,050, horizontal speed 1,684 -> 1,209 u/s) that leaves the ramp at
+  row 9298 (duck released): the launch. So the curriculum trains the last 1.6 s of the line and
+  the launch is what fails from 5 rows (50 ms) earlier. No repeated origins there.
+* Reservoir min depth 14,986 (~85.5%): training episodes reach the line's end, the greedy does not
+  yet. Box extended to 13:29 UTC; fleet credit 37.3 $, 17.2 h to the reserve.
