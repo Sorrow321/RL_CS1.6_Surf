@@ -1492,3 +1492,16 @@ hold 3-26 searches of one seed each, and the paired bench (one checkpoint, one s
 mean gain from pit roots, run 5: 2.4); with the pool policy the rule's trees gained more from the
 same kind of root (6.0, three of ten >= 10 points) and two of three mid-map roots gave ~25-30-point
 lines (searches 14 and 18) that carried CP7.
+
+### 10:20 UTC: run 2 at 8.9B - best 112.527 (6/9 finishes) at 8.456B; a search line now reaches the chamber
+
+* Evals 7.70-8.76B: a stretch of 86.1% x6 (7.70-8.08B: the best episodes stopped at CP5), then
+  **110.3 (8.154B, 4/9)**, 86.3, 108.1 (2/9), 86.1, **112.527 (8.456B, 6/9, median 100%, 124.18 s)**,
+  111.4 (8.532B, 5/9, median 100%), 108.0 (2/9), 97.9, 110.3 (8.758B, 4/9, 123.54 s). Finishing
+  evals alternate with CP5 evals (one greedy line, small weight changes flip it).
+* Search 22 (8.023B) ADOPTED at 8.099B: 11,808 states to **end d 2,962** - the first search line
+  in the chamber, after the policy had found the finish itself. Search 23 (8.456B) started from the
+  pit root and gave nothing.
+* Keeper copy for the 112.527 eval: ckpt_8444182528.pt (-12M), pulled, md5
+  5df5f1a2fc5081bd900b75cfdda0a528 (verified on the box). Fleet at 10:15: 3 boxes, credit $23.99,
+  11.9 h to the reserve (~22:10 UTC); this box's deadline 17:31, to be extended in small steps.
