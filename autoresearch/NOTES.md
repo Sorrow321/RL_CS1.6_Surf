@@ -1317,3 +1317,24 @@ this run is on time or faster (the line gets 3.6x the starts).
   backwards: a new flag (default off) under which a search's line is adopted only if its end also
   beats the CURRENT line's end by --auto-spine-gain, plus `--demo-match-band` (the line-1 freeze,
   existing flag). Building it now; the run keeps training until its deadline (it is on time).
+
+### azr1b1 - 2026-11-10 02:45 UTC: the line fell back again (search 20, to ~30%); recipe 2 built
+
+* **Search 20** (patience, 7.399B, eval median 74,062) returned a line to d 72,049 (~30%: the CP2
+  block) and it was adopted (it beats the median by 2k): the curriculum's line went 85% (line 15)
+  -> 57% (line 17, 6.45B) -> 30% (line 20, 7.50B). Evals 7.25-7.47B: best 34-47%, every episode
+  dead at 1.5-47%, most at 27.6-32% (the CP2 block). The run is still ON TIME (CP6 due by
+  12.232B; the last eval before it is 12,231,114,752) and keeps training (PROTOCOL: an on-time
+  run is not stopped to try a variant).
+* **Recipe 2, ready if CP6 is missed** (commit 60ddbefd, pushed; tests pass locally:
+  tests/python/test_auto_spine_no_retreat.py, test_auto_spine_recheck.py, test_demo_match_band.py):
+  recipe 1's 85 flags plus two curriculum fixes, both for failures this run showed:
+  1. `--auto-spine-no-retreat` (NEW, default off, byte-identical off, TRAIN_ONLY in
+     record_ckpt): a search's line is NOT adopted when its end lies more than --auto-spine-gain
+     (200 u) behind the current line's end. A line within 200 u of the current end is adopted as
+     before: run 5's CP6 was opened by search 15's line to 14,839 replacing a line to 15,133,
+     "another route through the same wall"; requiring +200 u would have thrown it away. Rule
+     taken from unr1b1's --ge-line adoption ("and the current line's end by as much").
+  2. `--demo-match-band` (existing, pbr6b4): the line-1 freeze (repeated origins, tau frozen
+     ~250-559M here and ~200M-1.0B in run 5).
+  Same commit base otherwise, same search cadence, one pool, from scratch.
