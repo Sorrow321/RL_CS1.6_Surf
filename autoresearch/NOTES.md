@@ -1252,3 +1252,65 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   best eval at 2.869B; the 3.0B one is 0.13B after it, the 2.0B one 0.87B before).
 * The last eval that can clear this wall is the one AT the deadline (4,681,891,840 is an eval
   step); if it misses, the run is stopped, harvested, and the planned second recipe launched.
+
+### 01:58 UTC: run 1 `azr1b2_sib` FAILED the post-CP2 block (deadline 4.682B); run 2 `azr1b2_pool` launched
+
+**Run 1's final ladder** (ladder.py on 65 pulled evals; best 32.449 at 2.869B, CP2):
+
+| wall | steps | run 5 | deadline | total ticks | run 5 total |
+|---|---|---|---|---|---|
+| first ramp | 0.755B | 0.529B | 1.600B | 0.962B | 0.763B |
+| window (CP1) | 0.906B | 0.680B | 1.600B | 1.113B | 0.914B |
+| pit dive | 2.492B | 1.812B | 3.625B | 3.015B | 2.448B |
+| cavity (CP2) | 2.718B | 2.114B | 4.229B | 3.322B | 2.887B |
+| post-CP2 block | **FAILED** | 2.341B | 4.682B | (5.85B by 4.76B steps; deadline 6.50B) | 3.252B |
+
+The eval just under the deadline (4.6814B) read 32.40%; flat at 31.6-32.4% from 2.87B to the stop
+(4.843B, 20 evals). Stopped by pid at 01:55 UTC (trainer and an orphaned search 13). In total ticks
+the run was still inside the post-CP2 deadline (its searches spent ~78M ticks each against run 5's
+~92M), but steps decide for slots 1-3.
+
+**Harvest** ($AR_HOME/runs/azr1b2/azr1b2_sib/, md5 verified): ckpt_latest.pt (4,842,848,256 steps,
+md5 664d5cb3ee057faa903c18b63e6d1308), ckpt_2000683008.pt (6a3f482d...), ckpt_3001024512.pt
+(2003be8a..., the milestone nearest the best eval at 2.869B), 65 evals, run.json, progress.csv, the
+launch log, search_ticks.json (13 searches, 1,013,041,500 ticks), auto_bundle.tgz (md5
+f7c4bb45ebc8f5d1664ef0c9e03eeda0: every search's spine / keys / json, auto_spine.log, beam.log,
+summary.json, greedy_baseline.jsonl, beam_frontier.npz, and search 6's whole tree mcts_tree.npz with
+the per-node kind; not the per-search ckpt copies or field.npz).
+
+**Searches 10-12 at the block** (all with the rule near R 0.48 / E 0.33 / P 0.19):
+
+| k | start | greedy banked | best banked | raw | outcome |
+|---|---|---|---|---|---|
+| 10 | 3.624B | 30.04% | 30.05% | 32.12% | no line |
+| 11 | 4.077B | 30.01% | 30.06% | 31.71% | no line |
+| 12 | 4.530B | 29.98% | 30.30% | 32.40% | adopted 4.616B (+319 u) |
+
+**Where and why it failed.** At the post-CP2 block the trees found nothing past the greedy's own
+banked frontier (30.0%; +1..+319 u in five searches) and the policy did not find the westward detour
+by itself. The plateau is run 4's, episode for episode (die at x -300 .. -900 on the thin teleport
+floor). Run 4's fixed mix (0.5 R / 0.25 E / 0.25 P) and this rule's chosen mix (~0.5 R / 0.32 E /
+0.18 P) are close, and both runs failed exactly here, while run 5 (all random-held) passed when its
+POLICY found the detour. Two mixed-tree runs against one all-random run, one seed each: a pattern,
+not a law. What differs on the way there: both mixed-tree runs threaded the pit gate IN SEARCH with
+perturbed children (run 4 k05/k06, run 1 here k06/k07, 27.72%), so their policies were handed the
+gate line; run 5's searches never threaded it (25.9-26.9%) and its policy threaded the gate itself,
+then also found the post-CP2 detour itself. A possible mechanism (not tested): a curriculum that
+hands the policy each hard line keeps the policy following lines, and the next wall needs the
+policy's own exploration because the 6-min tree does not reach it.
+
+**What the rule did** (13 searches): it chose R 0.49 at the spawn, near-equal shares one wall on,
+then settled at R ~0.5 / E ~0.32 / P ~0.18 from the pit on; per child, random-held children won more
+expansions than perturbed, and perturbed more than plain policy samples, in every search; child 0
+won most of all. The floor never bound. It reproduced the CP6 bench: the rule's trees match run 5's
+in depth at a creep; it adds perturbed children that thread precision gates (the pit) in search.
+
+**Run 2 = the planned second recipe, launched 01:58 UTC from step 0** (commit 4644510b; code as
+932167fe): `box.py launch --agent azr1b2 --run azr1b2_pool --steps 60e9 --no-recipe --` slot 1's 85
+flags (run 5 without `--respawn-novel*`, `--respawn-greedy*`, `--respawn-front-perturb*`,
+`--respawn-backward-mix`, `--respawn-backward-elev`, `--demo-share`, `--int-real-only`; taken from
+azr1b1's RESULT.json, commit da7981e5) with the child-mix rule string as the last value. Launch log:
+"demo replaces the reservoir share of the pool" (10% map starts / 90% curriculum rows, as slot 1
+confirmed), no NOVEL / GREEDY / FRONT-PERTURB / BACKWARD-MIX lines; run.json `auto_spine_mcts_args`
+= the rule string. Record gate passed (44 s). It pairs with slot 1's azr1b1_pool1 (one pool +
+all-random children): same flags apart from the child mix, another box and seed path.
