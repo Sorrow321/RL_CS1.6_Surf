@@ -1287,3 +1287,33 @@ this run is on time or faster (the line gets 3.6x the starts).
   the launch is what fails from 5 rows (50 ms) earlier. No repeated origins there.
 * Reservoir min depth 14,986 (~85.5%): training episodes reach the line's end, the greedy does not
   yet. Box extended to 13:29 UTC; fleet credit 37.3 $, 17.2 h to the reserve.
+
+### azr1b1 - 2026-11-10 03:00 UTC: 7.30B steps - a SHORTER line replaced the curriculum's, the greedy fell back to CP2
+
+* Walls 1-8 ON TIME, best 84.92% (5.361B), CP6 due by 12.232B steps (~06:15 UTC at ~1.28B/h).
+* **What happened at 6.45B.** Search 17 started on the patience at 6.342B, when that eval's
+  MEDIAN deepest d read 52,192 (4/9 episodes at 84%, 5/9 dead at 27-60%: a bimodal greedy). Its
+  line ends at d 44,423 (~57%). `--auto-spine-recheck` compares a new line only with the LATEST
+  eval's median (6.417B: 56,298), so the line was adopted - and it REPLACED line 15, which ended at
+  d 15,007 (~85.4%). The curriculum restarted at line 17's end: 90% of all training starts moved
+  from the CP6 approach (rows 9287+ of line 15, ~84%) back to ~45-57% of the course.
+* **The greedy fell back.** Episodes at 84% per eval (of 9): 4, 2, 1, 5, 6, 5, 6, 4, 3, 4
+  (5.74-6.42B), then 6, 4, 4 (6.49-6.64B), then 0, 2, 2, 2, 0, 0, 0 (6.72-7.17B). The 7.02-7.17B
+  evals score 34.1 / 33.8 / 44.5%: most episodes now die at 27.6-34% (the CP2 block, d ~70-74k).
+  Training episodes got 3x longer after the switch (ep_len_mean ~1,000 -> 2,500-3,190: starts at
+  ~57% fly on to ~84%), so the map-start episodes - the only training that passes the CP2 block -
+  became a much smaller share of the batch. The CP2-block failure existed before (1-5 of 9
+  episodes from ~5.2B on) and now dominates.
+* **Run 5 had the same rule and survived it.** It kept lines ending at ~85% (d 15,124 / 15,037 /
+  15,133 / 14,839, searches 12-15, 4.41-5.77B) and its policy passed CP6 (89.9%) by itself at
+  6.116B, 1.7B steps after the first such line; its one backwards replacement (search 22, 8.80B:
+  a 72k line after finish lines) cost it only its 25% curriculum share. With one pool the same
+  rule moves 90% of the starts backwards.
+* **The searches' beams die at the CP2 block too.** Searches 9, 12, 14, 18, 19 ended at d
+  67,837-72,184 (ticks 2,812-3,372) while the greedy was at 54-84%: the line the MCTS is rooted on
+  dies there whenever the greedy's start goes the bad way. Patience searches now start from a
+  median of ~69.8k.
+* **If this run misses CP6 (12.232B), recipe 2** = recipe 1 + a curriculum that never moves
+  backwards: a new flag (default off) under which a search's line is adopted only if its end also
+  beats the CURRENT line's end by --auto-spine-gain, plus `--demo-match-band` (the line-1 freeze,
+  existing flag). Building it now; the run keeps training until its deadline (it is on time).
