@@ -1436,3 +1436,19 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
   (~18:40 UTC), ~10B steps - enough to see whether the CP2-block cycles go away and where it
   stands at CP6/CP7 against recipe 1 and run 5, not enough to reach recipe 1's late walls'
   deadlines. Box deadline 18:15 UTC (the budget now caps extensions near that).
+
+### azr1b1 - 2026-11-10 07:07 UTC: 13.16B steps - a FINISHING search line (search 35), greedy not finishing
+
+* Walls 1-10 ON TIME; best 98.08%, no finish from the map start. Deadline for the chamber entry
+  (98.5%) and the finish: 16.459B steps, the eval at 16,458,973,184 (~09:41 UTC).
+* **Third repair by a line ending at the CP2 block.** Search 34 (patience, 12.56B, median 74,051)
+  gave a line to d 69,466; the next eval (12.61B) had 8/9 past it and median d 2,238 (97.8%),
+  6/9 at 97.9-98.0% (12.61B and 12.68B).
+* **Search 35 (quorum, 12.694B) found a line to the FINISH** (11,907 rows, end d 0, in 310 s): the
+  first finishing line of this run (run 5's came at 8.0B). The curriculum on it: training
+  episodes from its tail finish 44-89% of the time, finish_s 0.3 s -> 18.8 s by 13.11B as tau
+  walks back (rows 9316+ of 11,906, the last ~26 s). That is the curriculum's harvest, not the
+  policy: the greedy from the map start has 0/9 finishes and fell back to the CP2 block again
+  (13.06B: best 50%, median 31.9%). Patience searches fire again (13.06B, 13.14B) from medians of
+  58-74k: a line ending at the CP2 block would repair the greedy (3/3 so far) but would also
+  replace the finishing line; a line ending further on would replace it without repairing.
