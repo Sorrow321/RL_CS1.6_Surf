@@ -1413,3 +1413,24 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   FAILED, window FAILED**; best eval 2.675 at 0.76B; greedy passes 90 of 472 in the landing area, **0 past it**.
   Stopped 06:05 UTC. Ten times the node labels around the chosen macros did not change the picture.
 * Next: the protocol's slot-4 bench on run 5's 4.90B checkpoint (box redeployed with it), then the release.
+
+### azr1b4 - 2026-11-10 06:28 UTC: **BENCH (measurement only): one round of tree-label distillation wrecks run 5's skilled policy (84% -> 8%)**
+* The protocol's slot-4 bench: run 5's ckpt_4900519936.pt (inside its CP6 creep; its own eval there 84.38%, median
+  84.3%; md5 59ad5e7c95ba0ea23fd9523a9faeafe3), the tree-only loop for 3 rounds with run 5's search settings (6-min
+  MCTS, roots on the greedy line's last 20 s, random-held children) and v8's labels (root chain, whole prefix,
+  node advantage, line cut), 1,000 supervised steps a round, lr 3e-4. Box redeployed on ar/azr1b4 (fe387555).
+* Round 0: the greedy pass (seed-0 spawn) died at 74.9 s with 59.0% banked; 41 roots over 55.7-74.9 s; 840 waves,
+  1.72M nodes, 54,647 cells; the tree's best line **81.83%** (92.4 s, replay exact). Labels: 2,435 node / 534
+  searched-line / 1,776 prefix rows. After distillation (acc 0.958; value mse 1.19 - run 5's critic predicts PPO's
+  return, not the tree's banked progress) the eval is **8.11%**. Round 1's greedy died at 7.6 s (4.9% banked),
+  round 2's at 4.2 s (1.7%); evals 5.75%, 5.73%.
+* **Reading:** 1,000 steps of 1,024 rows on ~6.7k rows (~150 passes) from ONE tree overwrote the policy's skill on
+  the whole map - prefix anchors included. The value head's scale mismatch adds a large gradient through the
+  shared trunk here, but the from-scratch runs had no such mismatch (value mse ~0.0002) and the same structure:
+  every round refits mostly the newest tree (4 trees kept, newest at ~53% weight, 15-100 passes a round). That is
+  catastrophic forgetting by construction, and it fits what the from-scratch runs show - greedy passes that reach
+  the landing ~half the time, round after round, with nothing accumulating past it. AlphaZero itself trains on a
+  large replay buffer of recent games (its targets for any one game are a sliver of every batch).
+* **v11** (next, from step 0): v8 + `--az-buffer 1000 --az-recency 1.0 --az-steps 300` - every tree of the run kept
+  and drawn alike, 300 steps a round instead of 1,000 (a round's tree is ~1/N of the data after N rounds). Flags
+  only: the box checkout (fe387555) already has every flag.
