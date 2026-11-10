@@ -1418,7 +1418,7 @@ Walls 1-10 ON TIME (CP6 1.28x run 5 in steps, 1.30x total; CP7 1.22x / 1.24x). B
 * Note on my own tooling: `ls traj_*.jsonl | tail` sorts 11-digit steps (>= 10B) BEFORE 10-digit
   ones; the per-episode tables from now on sort numerically.
 
-### azr1b1 - 2026-11-10 06:21 UTC: 12.12B steps - falling back again on line 30; the deadline plan
+### azr1b1 - 2026-11-10 06:18 UTC: 12.12B steps - falling back again on line 30; the deadline plan
 
 * Walls 1-10 ON TIME; best 98.08%, no finish. Chamber entry / finish due by 16.459B steps; the
   last eval before it is traj_16458973184 (~09:40 UTC).
