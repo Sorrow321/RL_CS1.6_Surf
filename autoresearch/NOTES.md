@@ -1205,3 +1205,26 @@ watchdog's extend is now+12 h, monotone: extend again on later wakeups until it 
   ramp 0.962B, window 1.113B, pit dive 3.017B - ON TIME (run 5 0.763 / 0.914 / 2.448B; deadlines
   2.000 / 2.000 / 4.897B). A search here spends ~60-80M ticks (6 min at 170-220k ticks/s beside
   the trainer on this box) against ~92M in run 5.
+
+### 00:35 UTC: cavity ON TIME at 2.718B; at the post-CP2 block (run 4's wall) since 2.87B
+
+* Ladder (steps): ... pit dive 2.492B, **cavity (CP2) 2.718B** ON TIME (run 5 2.114B, deadline
+  4.229B). Evals since: 31.6, 31.6, **32.45 (2.869B)**, 32.2, 31.7, 32.1, 32.2, 32.2% (medians
+  31.3-31.8%), CP2 - under the post-CP2 block (33%; run 5 2.341B; deadline 4.682B, ~1.4 h at
+  ~290k steps/s). Run 4 sat at 32.4-32.5% here from 4.6B to 14.16B and failed; run 5's POLICY
+  found the westward detour itself (its search 7 was stale).
+* Searches 7-9:
+
+  | k | start | waves | cells | greedy | best banked | raw | mean P/E/R | wins/child G P E R | outcome |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 7 | 2.492B quorum | 741 | 45,401 | 25.77% | 27.71% | 29.34% | 0.18/0.32/0.50 | .0148 .0015 .0047 .0063 | adopted 2.572B (the gate line again, G1 P1 E3 R1) |
+  | 8 | 2.718B quorum | 825 | 28,326 | 29.87% | 29.97% | 31.16% | 0.14/0.32/0.54 | .0072 .0006 .0023 .0036 | no line (+64 u over the greedy's banked 30.0%) |
+  | 9 | 3.171B quorum | 786 | 40,949 | 25.73% | 29.30% | 29.30% | 0.18/0.32/0.50 | .0115 .0013 .0038 .0056 | no line: its own greedy replay died at the pit (25.7% banked) while the eval's median banked 30.0% |
+
+  Search 9 is the known failure mode of run 5's loop (one greedy replay as the roots; NOTES
+  "Known weak points"); not part of this slot's change. The curriculum still trains on search 7's
+  line (6-9 of 9 greedy episodes pass its success line, so searches keep firing on the quorum).
+* The rule's shares have been steady across the pit and the block: R 0.50-0.54, E 0.31-0.32, P
+  0.14-0.19; per child R > E > P every time, child 0 above all.
+* Other slots (status.md 00:29): slot 1 (one pool) walls 1-7 ON TIME, CP4 at 3.55B; slot 3 at
+  28.2% before CP2; slot 4 v1 failed the first ramp.
