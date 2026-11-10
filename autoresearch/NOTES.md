@@ -1389,3 +1389,14 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   they reach their deadlines, the plan is the protocol's slot-4 bench (run 5's 4.90B checkpoint inside its
   CP6 creep: do tree labels alone teach a SKILLED policy the tree's detour, against PPO's 0.35B steps?)
   and then the release of the box, so the slots that are progressing get the credit.
+
+### azr1b4 - 2026-11-10 04:52 UTC: **v8 FAILED the first ramp at 2.031B; stopped**
+* **v8 = azr1b4_tree8** (f7d53224: v7 + root chain + the whole greedy prefix labelled): 59 evals, newest
+  2,030,877,674 ticks; **first ramp FAILED, window FAILED**; best eval 2.673 at 1.31B. Stopped 04:51 UTC.
+* **What the two fixes did:** of v8's 480 greedy passes (8 spawns x 60 rounds), **198 (41%) banked a
+  contact in the landing area** (d < 98,100; the tree's first landing is 97,914), against v7's 14 of 192
+  (7%) without them - the labels that keep the greedy on its own line up to the tree's root work. But
+  **0 of 480 banked past the landing** (d < 97,800): every pass that touches the ramp dies within ~0.5 s
+  of the contact, so the evals stay at ~2% (a fall's raw depth). Surviving on the ramp after the touch
+  is the next skill, and the trees' labels for it have not produced it in 60 rounds.
+* Running: v9 (v8 + 2,000 steps; ~1.1B), v10 (v8 + dense macro labels; ~0.65B). Failed: v1-v8.
