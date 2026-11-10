@@ -601,89 +601,118 @@ def run_mcts(ctx: dict, a) -> dict:
             pol.greedy = np.ones(core.num_envs, bool)
         return pol, SideState(pol, xfe, fstate, lf)
 
-    # ---- the greedy pass: the roots ----------------------------------------------------------
-    core1 = ctx["build_sim"](ctx["cfg"], ctx["map_path"], 1, ctx["ep_cap"], tick=ctx["TICK"])
-    ctx["arm"](core1)
-    obs1 = np.array(core1.reset(int(ctx["gate_seed"])))
-    core1.set_state(0, ctx["row0"])
-    obs1[0] = np.asarray(ctx["obs_start"], np.float32)
+    # ---- the greedy pass(es): the roots ---------------------------------------------------------
+    # --mcts-spawns K (azr1b4): K greedy passes from K spawns of the map start - the caller's, and
+    # K-1 more drawn by the core's own reset with derived seeds (the start's yaw jitter, which every
+    # eval episode has) - each contributing max_roots // K of the roots. K = 1 is the single pass.
     g_step = float(ctx["g_step"])
-    vmax = float(core1.config.phys.sv_maxvelocity)
     tol = float(a.mcts_contact_tol)
-    pol1, side1 = mk_wrapper(core1, True)
-    with torch.inference_mode():
-        # allocate the lazily-built side arrays at tick 0, so the spawn itself can be a root (every
-        # feed reads tick 0 as an episode start, so the decision's own call sees the same state)
-        pol1._obs(obs1)
     every = max(1, int(a.mcts_root_every))
     stall_ticks = int(round(float(a.mcts_stall_secs) * tps))
-    G_acts, G_view = [], []
-    snaps = []                  # (decision index, tick, state row, obs row, side rows)
-    gbest, gbest_t, bank_best, g_bank_t = np.inf, 0, np.inf, 0
-    g_mark = np.inf             # the best d when the stall clock last re-armed
-    g_end, g_why = 0, "cap"
-    t0 = time.time()
-    dec = 0
-    tick = 0
-    while tick < max_ticks:
-        if dec % every == 0:
-            s = core1.get_states()[0:1].copy()
-            snaps.append((dec, tick, s, obs1[0:1].copy(), side1.gather([0]),
-                          bank_best, g_bank_t))
-        act = pol1.act(obs1)
-        view = pol1.view
-        G_acts.append(act[0].copy())
-        G_view.append(view[0].copy())
-        dead = False
-        for _k in range(K):
-            if _k:
-                act = pol1.act(obs1)
-            vz0 = float(core1.states_view["velocity"][0, 2])
-            obs1, _r, dn, tr, _t = core1.step(act, view=np.ascontiguousarray(view, np.float32))
-            obs1 = np.array(obs1)
-            tick += 1
-            if bool(np.asarray(dn)[0]) or bool(np.asarray(tr)[0]):
-                dead = True
-                g_why = "finish" if bool(core1.goal_hits[0]) else ("trunc" if bool(
-                    np.asarray(tr)[0]) else "death")
+    K_sp = max(1, int(getattr(a, "mcts_spawns", 1) or 1))
+    spawns = [(int(ctx["gate_seed"]), ctx["row0"], np.asarray(ctx["obs_start"], np.float32))]
+    if K_sp > 1:
+        _cs = ctx["build_sim"](ctx["cfg"], ctx["map_path"], 1, ctx["ep_cap"], tick=ctx["TICK"])
+        ctx["arm"](_cs)
+        for j in range(1, K_sp):
+            sj = int(ctx["gate_seed"]) + 104729 * j
+            oj = np.array(_cs.reset(sj))
+            spawns.append((sj, _cs.get_states()[0:1].copy(), oj[0].copy()))
+    passes = []
+    vmax = None
+    for k_sp, (seed_k, row_k, obs_k) in enumerate(spawns):
+        core1 = ctx["build_sim"](ctx["cfg"], ctx["map_path"], 1, ctx["ep_cap"], tick=ctx["TICK"])
+        ctx["arm"](core1)
+        obs1 = np.array(core1.reset(int(seed_k)))
+        core1.set_state(0, row_k)
+        obs1[0] = np.asarray(obs_k, np.float32)
+        vmax = float(core1.config.phys.sv_maxvelocity)
+        pol1, side1 = mk_wrapper(core1, True)
+        with torch.inference_mode():
+            # allocate the lazily-built side arrays at tick 0, so the spawn itself can be a root
+            # (every feed reads tick 0 as an episode start, so the decision's own call sees the
+            # same state)
+            pol1._obs(obs1)
+        G_acts, G_view = [], []
+        snaps = []                  # (decision index, tick, state row, obs row, side rows)
+        gbest, gbest_t, bank_best, g_bank_t = np.inf, 0, np.inf, 0
+        g_mark = np.inf             # the best d when the stall clock last re-armed
+        g_end, g_why = 0, "cap"
+        t0 = time.time()
+        dec = 0
+        tick = 0
+        while tick < max_ticks:
+            if dec % every == 0:
+                s_ = core1.get_states()[0:1].copy()
+                snaps.append((dec, tick, s_, obs1[0:1].copy(), side1.gather([0]),
+                              bank_best, g_bank_t))
+            act = pol1.act(obs1)
+            view = pol1.view
+            G_acts.append(act[0].copy())
+            G_view.append(view[0].copy())
+            dead = False
+            for _k in range(K):
+                if _k:
+                    act = pol1.act(obs1)
+                vz0 = float(core1.states_view["velocity"][0, 2])
+                obs1, _r, dn, tr, _t = core1.step(act, view=np.ascontiguousarray(view, np.float32))
+                obs1 = np.array(obs1)
+                tick += 1
+                if bool(np.asarray(dn)[0]) or bool(np.asarray(tr)[0]):
+                    dead = True
+                    g_why = "finish" if bool(core1.goal_hits[0]) else ("trunc" if bool(
+                        np.asarray(tr)[0]) else "death")
+                    break
+                st = core1.states_view
+                d = float(field_d(gf, st["origin"][0:1])[0])
+                if d < g_mark - 32.0:
+                    g_mark, gbest_t = d, tick
+                if d < gbest:
+                    gbest = d
+                if contact_mask([vz0], [float(st["velocity"][0, 2])], g_step, tol, vmax)[0] \
+                        and d < bank_best:
+                    bank_best, g_bank_t = d, tick
+            dec += 1
+            if dead:
                 break
-            st = core1.states_view
-            d = float(field_d(gf, st["origin"][0:1])[0])
-            if d < g_mark - 32.0:
-                g_mark, gbest_t = d, tick
-            if d < gbest:
-                gbest = d
-            if contact_mask([vz0], [float(st["velocity"][0, 2])], g_step, tol, vmax)[0] \
-                    and d < bank_best:
-                bank_best, g_bank_t = d, tick
-        dec += 1
-        if dead:
-            break
-        if tick - gbest_t > stall_ticks:
-            g_why = "stall"
-            break
-    g_end = tick
-    G_acts = np.asarray(G_acts, np.int8)
-    G_view = np.asarray(G_view, np.float32)
-    print(f"mcts: greedy line {g_why} at tick {g_end} ({ctx['secs'](g_end):.2f}s), best d "
-          f"{gbest:,.0f} (banked {bank_best:,.0f} at tick {g_bank_t}), {len(snaps)} snapshots "
-          f"in {time.time() - t0:.0f}s", flush=True)
-    # roots end where the line ended: a STALL at its last banked contact, a DEATH at the death
-    # itself (--mcts-roots-flight 1: a fatal flight after the last contact can still be steered -
-    # air control - so its states are roots too; 0 = stop at the last contact, as before)
-    if g_why == "stall" or (g_why == "death" and not int(a.mcts_roots_flight)):
-        end_ref = g_bank_t
-    else:
-        end_ref = g_end
-    lo_t = max(0, end_ref - int(round(float(a.mcts_roots_secs) * tps)))
-    roots = [s for s in snaps if lo_t <= s[1] <= end_ref and s[4] is not None]
-    if not roots:
-        roots = [s for s in snaps if s[4] is not None][-1:]
-    if not roots:
-        raise SystemExit("--mcts: the greedy line ended before its first root")
-    if len(roots) > int(a.mcts_max_roots):
-        pick = np.unique(np.linspace(0, len(roots) - 1, int(a.mcts_max_roots)).round().astype(int))
-        roots = [roots[i] for i in pick]
+            if tick - gbest_t > stall_ticks:
+                g_why = "stall"
+                break
+        g_end = tick
+        G_acts = np.asarray(G_acts, np.int8)
+        G_view = np.asarray(G_view, np.float32)
+        print(f"mcts: greedy line {g_why} at tick {g_end} ({ctx['secs'](g_end):.2f}s), best d "
+              f"{gbest:,.0f} (banked {bank_best:,.0f} at tick {g_bank_t}), {len(snaps)} snapshots "
+              f"in {time.time() - t0:.0f}s"
+              + (f" [spawn {k_sp}: seed {seed_k}, yaw {float(row_k['yaw'][0]):.2f}]"
+                 if K_sp > 1 else ""), flush=True)
+        # roots end where the line ended: a STALL at its last banked contact, a DEATH at the death
+        # itself (--mcts-roots-flight 1: a fatal flight after the last contact can still be
+        # steered - air control - so its states are roots too; 0 = stop at the last contact)
+        if g_why == "stall" or (g_why == "death" and not int(a.mcts_roots_flight)):
+            end_ref = g_bank_t
+        else:
+            end_ref = g_end
+        lo_t = max(0, end_ref - int(round(float(a.mcts_roots_secs) * tps)))
+        roots_k = [s_ for s_ in snaps if lo_t <= s_[1] <= end_ref and s_[4] is not None]
+        if not roots_k:
+            roots_k = [s_ for s_ in snaps if s_[4] is not None][-1:]
+        if not roots_k:
+            raise SystemExit("--mcts: the greedy line ended before its first root")
+        mr = max(1, int(a.mcts_max_roots) // K_sp)
+        if len(roots_k) > mr:
+            pick = np.unique(np.linspace(0, len(roots_k) - 1, mr).round().astype(int))
+            roots_k = [roots_k[i] for i in pick]
+        passes.append({"G_acts": G_acts, "G_view": G_view, "g_end": g_end, "g_why": g_why,
+                       "gbest": gbest, "bank_best": bank_best, "g_bank_t": g_bank_t,
+                       "roots": [r + (k_sp,) for r in roots_k], "spawn": spawns[k_sp]})
+    roots = [r for P in passes for r in P["roots"]]
+    # the first pass's numbers carry the single-pass names (the summary, the prints)
+    P0 = passes[0]
+    G_acts, G_view = P0["G_acts"], P0["G_view"]
+    g_end, g_why, gbest = P0["g_end"], P0["g_why"], P0["gbest"]
+    bank_best, g_bank_t = P0["bank_best"], P0["g_bank_t"]
+    g_end_all = int(sum(P["g_end"] for P in passes))
     d_ref = float(field_d(gf, np.asarray(ctx["row0"]["origin"]).reshape(-1, 3))[0])
     if not np.isfinite(d_ref) or d_ref <= 0:
         d_ref = float(gbest) if np.isfinite(gbest) else 1.0
@@ -740,7 +769,7 @@ def run_mcts(ctx: dict, a) -> dict:
     r_bank = np.asarray([r[5] for r in roots], np.float64)
     r_bank = np.where(np.isfinite(r_bank), r_bank, d_ref)
     r_h = energy_h(r_states)
-    tree.add_children(0, prog(r_bank) + e_score(r_h), np.ones(len(roots), bool), slot=r_slots,
+    r_ids = tree.add_children(0, prog(r_bank) + e_score(r_h), np.ones(len(roots), bool), slot=r_slots,
                       cell=r_cells, h_bank=r_h,
                       tick=np.asarray([r[1] for r in roots], np.int64),
                       bank_d=r_bank, end_d=field_d(gf, r_states["origin"]),
@@ -748,6 +777,7 @@ def run_mcts(ctx: dict, a) -> dict:
                       bank_t=np.asarray([r[6] for r in roots], np.int64), ndec=0, wave=-1,
                       ox=r_states["origin"][:, 0], oy=r_states["origin"][:, 1],
                       oz=r_states["origin"][:, 2])
+    root_sp = {int(i): int(r[7]) for i, r in zip(r_ids, roots)}     # root node -> its spawn
     print(f"mcts: {len(roots)} roots over ticks {roots[0][1]}..{roots[-1][1]} "
           f"({ctx['secs'](roots[0][1]):.1f}-{ctx['secs'](roots[-1][1]):.1f}s), d_ref {d_ref:,.0f}; "
           f"side state {namesN}", flush=True)
@@ -892,12 +922,14 @@ def run_mcts(ctx: dict, a) -> dict:
                 if tree.parent[lf] != 0:
                     continue
                 d0 = int(tree.root_dec[lf])
-                mm = min(M, len(G_acts) - d0)
+                _GA = passes[root_sp[lf]]["G_acts"]
+                _GV = passes[root_sp[lf]]["G_view"]
+                mm = min(M, len(_GA) - d0)
                 if mm <= 0:
                     continue
                 n_cmp += mm
-                n_key += int((acts_w[:mm, e] == G_acts[d0:d0 + mm]).all(axis=1).sum())
-                dv = np.abs(view_w[:mm, e, 0] - G_view[d0:d0 + mm, 0])
+                n_key += int((acts_w[:mm, e] == _GA[d0:d0 + mm]).all(axis=1).sum())
+                dv = np.abs(view_w[:mm, e, 0] - _GV[d0:d0 + mm, 0])
                 v_err = max(v_err, float(np.minimum(dv, 360.0 - dv).max()))
             print(f"mcts restore check: greedy children repeat the greedy line's engine rows on "
                   f"{n_key}/{n_cmp} decisions, max yaw-target diff {v_err:.4f} deg", flush=True)
@@ -978,8 +1010,9 @@ def run_mcts(ctx: dict, a) -> dict:
     path = tree.path_to(b)
     root = path[0]
     rdec = int(tree.root_dec[root])
-    acts = [G_acts[:rdec]]
-    views = [G_view[:rdec]]
+    k_root = root_sp.get(int(root), 0)            # the spawn whose greedy pass the line starts on
+    acts = [passes[k_root]["G_acts"][:rdec]]
+    views = [passes[k_root]["G_view"][:rdec]]
     for j, nid in enumerate(path[1:]):
         nd = int(tree.ndec[nid])
         acts.append(E_acts[nid, :nd])
@@ -996,7 +1029,8 @@ def run_mcts(ctx: dict, a) -> dict:
         f_tick = len(acts) * K
     n_dec = (f_tick + K - 1) // K
     frontier = {"acts": acts[:n_dec], "view": views[:n_dec], "tick": int(f_tick),
-                "d": float(tree.bank_d[b]) if not finished else 0.0, "finished": finished}
+                "d": float(tree.bank_d[b]) if not finished else 0.0, "finished": finished,
+                "spawn": int(k_root)}
     dt = time.time() - t_loop
     depths = tree.depth[1:tree.n]
     summary = {"mode": "mcts", "waves": wave, "nodes": int(tree.n - 1),
@@ -1031,12 +1065,18 @@ def run_mcts(ctx: dict, a) -> dict:
           f"({ctx['secs'](f_tick):.2f}s), depth {int(tree.depth[b])}"
           + (" FINISHED" if finished else "") + f", {dt:.0f}s", flush=True)
     # EVERY simulator tick this call spent: the greedy pass (1 env) + every wave's copies
-    summary["ticks_greedy"] = int(g_end)
+    summary["ticks_greedy"] = int(g_end_all)
     summary["ticks_waves"] = int(sim_ticks) * int(N)
-    summary["ticks_total"] = int(g_end) + int(sim_ticks) * int(N)
+    summary["ticks_total"] = int(g_end_all) + int(sim_ticks) * int(N)
+    if K_sp > 1:
+        summary["spawns"] = K_sp
+        summary["spawn_greedy_pct"] = [round(100.0 * float(prog(P["bank_best"])), 3)
+                                       for P in passes]
+        summary["best_spawn"] = int(k_root)
     labels = None
     if LAB:
         labels = _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec,
+                              passes[k_root]["spawn"],
                               lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K)
         summary["ticks_line"] = int(labels.pop("ticks"))
         summary["ticks_total"] += summary["ticks_line"]
@@ -1049,7 +1089,7 @@ def run_mcts(ctx: dict, a) -> dict:
             "labels": labels}
 
 
-def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec,
+def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec, spawn,
                  lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K) -> dict:
     """--mcts-labels: the finished tree as training rows (azr1b4, the tree-only loop).
 
@@ -1102,9 +1142,10 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     cfg = ctx["cfg"]
     core1 = ctx["build_sim"](cfg, ctx["map_path"], 1, ctx["ep_cap"], tick=ctx["TICK"])
     ctx["arm"](core1)
-    o = np.array(core1.reset(int(ctx["gate_seed"])))
-    core1.set_state(0, ctx["row0"])
-    o[0] = np.asarray(ctx["obs_start"], np.float32)
+    # the line starts on its root's spawn (--mcts-spawns: one of several; else the caller's)
+    o = np.array(core1.reset(int(spawn[0])))
+    core1.set_state(0, spawn[1])
+    o[0] = np.asarray(spawn[2], np.float32)
     pol, _side = mk_wrapper(core1, True)
     pol.capture = True
     pol.record_policy_act = True

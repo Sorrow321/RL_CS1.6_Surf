@@ -2323,6 +2323,11 @@ def main():
                     help="--mcts: 1 = return the tree's training rows (every expanded node's "
                          "row and its best children; every decision of the best line), "
                          "tools/mcts_search._tree_labels. Set by --az-loop; 0 = untouched")
+    ap.add_argument("--mcts-spawns", type=int, default=1,
+                    help="--mcts: K greedy passes from K spawns of the map start (the gate's, and "
+                         "K-1 drawn by the core's own reset with derived seeds: the start's yaw "
+                         "jitter, which every eval episode has), each giving max-roots // K of the "
+                         "roots. 1 = the one pass (as before)")
     ap.add_argument("--mcts-labels-cut", type=float, default=0.0,
                     help="--mcts-labels: the best line's searched rows stop at the first decision "
                          "whose banked d is within U of the line's final banked d (the rest is time "
@@ -2850,6 +2855,9 @@ def main():
                             bank_d=tr.bank_d[:_n], end_d=tr.end_d[:_n], h=tr.h[:_n],
                             cell=tr.cell[:_n], wave=tr.wave[:_n], cell_seen=ar.seen[:ar.n],
                             ox=tr.ox[:_n], oy=tr.oy[:_n], oz=tr.oz[:_n], raw_d=tr.raw_d[:_n])
+        if args.save_frontier and len(fr["acts"]) and int(fr.get("spawn", 0)) != 0:
+            raise SystemExit("--save-frontier: the best line starts on spawn "
+                             f"{fr['spawn']} of --mcts-spawns, which this replay does not rebuild")
         if args.save_frontier and len(fr["acts"]):
             save_frontier_line(fr, cfg, map_path, ep_cap, TICK, arm, row0, obs_start,
                                gate_seed, K, out_dir, ogf, finished=bool(fr["finished"]))
