@@ -1360,3 +1360,19 @@ all-random children): same flags apart from the child mix, another box and seed 
   runs/azr1b2_pool_snaps/): it copies every new ckpt_latest into a ring of 8 and keeps the copy at or
   before each new best eval. For the evals before it started it can only keep the first copy after
   them (ckpt_2013790208, 50M after the 1.963B best). Run 2's search ticks: 7 searches, 499M by 1.96B.
+
+### 04:40 UTC: run 2 - CP4 2.114B, CP5 2.416B ON TIME (run 5 3.624 / 3.851B); plateau at 71.4%
+
+* Ladder (steps): ... CP3 1.888B, **CP4 2.114B, CP5 2.416B** - eight walls ON TIME, CP4/CP5 ~1.5B
+  earlier than run 5. Evals 2.04-2.87B: 48.8, 56.3 (CP4), 56.8, 27.8, 61.1, 63.9 (CP5), 69.6, then
+  71.4% x5 (best **71.426 at 2.794B**). Medians swing 15.8-54%: early-death episodes (as in run 5 after
+  CP5). Next wall CP6 (deadline 12.23B; run 5 crept at 84-86% for 1.9B before it).
+* Searches 7 (1.888B) and 8 (2.341B) came back STALE (the policy passed their lines). **Search 9**
+  (2.794B, greedy root 69.4%, best 72.45% banked): the rule moved to **P 0.38 / E 0.40 / R 0.23**
+  (final 0.45 / 0.40 / 0.15) - per child P 0.0069, E 0.0073, R 0.0050: here the policy flies and its
+  own samples win. Until now the shares sat at R 0.39-0.50. The rule shifts toward the policy where
+  the policy flies, and toward random-held where it is stuck (the last program's slot-4 explorer
+  tests found the same split: mix = all-policy where the policy could fly, mix > both ends where it
+  was stuck).
+* Keeper (runs/azr1b2_pool_snaps/, md5 not yet pulled): ckpt_2765619200.pt is the copy for the
+  71.426 eval (-28M), ckpt_2722627584 (71.411, +4M), ckpt_2565865472 (71.387), ckpt_2486173696.

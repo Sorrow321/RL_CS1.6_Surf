@@ -4,11 +4,11 @@
  "final": false,
  "slot": 2,
  "best": {
-  "score": 42.008,
-  "eval_file": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool/traj_1963458560.jsonl",
+  "score": 71.426,
+  "eval_file": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool/traj_2793930752.jsonl",
   "run": "azr1b2_pool",
-  "step": 1963458560,
-  "ckpt": null,
+  "step": 2793930752,
+  "ckpt": "box:/root/RL_Surf/runs/azr1b2_pool_snaps/ckpt_2765619200.pt (not pulled yet)",
   "recipe": [
    "--envs",
    "1024",
@@ -114,7 +114,7 @@
   "cavity (CP2)": 1736966144,
   "post-CP2 block": 1812463616,
   "CP3": 1887961088,
-  "verdict": "alive: 6 walls ON TIME (run 1 azr1b2_sib FAILED the post-CP2 block)",
+  "verdict": "alive: 8 walls ON TIME (run 2 azr1b2_pool); run 1 azr1b2_sib FAILED the post-CP2 block",
   "total": {
    "first ramp": 861463244,
    "window (CP1)": 1239242893,
@@ -122,9 +122,11 @@
    "cavity (CP2)": 2167234358,
    "post-CP2 block": 2242731830,
    "CP3": 2387346333
-  }
+  },
+  "CP4": 2114453504,
+  "CP5": 2416443392
  },
- "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 (run 5 + the rule) cleared 4 walls ON TIME and FAILED the post-CP2 block (flat 32.4%), like run 4's fixed mixed tree. Run 2 azr1b2_pool (slot 1's one pool + the rule, from step 0 at 01:58 UTC): walls 1-6 ON TIME - pit 1.586B, cavity 1.737B, post-CP2 1.812B, CP3 1.888B, each earlier than run 5 (1.812/2.114/2.341/2.643B); its policy found the post-CP2 detour itself. Best 42.0% (CP3). The rule sits near R 0.45 / E 0.35 / P 0.2 and its perturbed children thread the pit gate in search.",
+ "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 (run 5 + the rule) cleared 4 walls ON TIME and FAILED the post-CP2 block, like run 4's fixed mixed tree. Run 2 azr1b2_pool (slot 1's one pool + the rule, from step 0 at 01:58 UTC): walls 1-8 ON TIME, CP4 2.114B and CP5 2.416B vs run 5's 3.624/3.851B; best 71.4% (CP5). The rule leans random-held where the policy is stuck (R ~0.45-0.5) and toward policy samples where it flies (search 9: P 0.38 / E 0.40 / R 0.23). Next: CP6 (deadline 12.23B).",
  "runs": [
   {
    "run": "azr1b2_sib",
@@ -241,14 +243,16 @@
    "one_recipe": true,
    "from_scratch_step0": true,
    "resume_from": null,
-   "verdict": "running: walls 1-6 ON TIME (post-CP2 block 1.812B, CP3 1.888B)",
+   "verdict": "running: walls 1-8 ON TIME (CP5 2.416B); at 71.4%",
    "ladder_steps": {
     "first ramp": 680001536,
     "window (CP1)": 981991424,
     "pit dive": 1585971200,
     "cavity (CP2)": 1736966144,
     "post-CP2 block": 1812463616,
-    "CP3": 1887961088
+    "CP3": 1887961088,
+    "CP4": 2114453504,
+    "CP5": 2416443392
    },
    "ladder_total": {
     "first ramp": 861463244,
