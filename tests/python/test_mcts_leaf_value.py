@@ -92,3 +92,44 @@ def test_run_mcts_reads_the_flag_and_off_passes_no_qv():
     assert "tree.use_qv = LEAFV" in src
     # off: the value read never runs and no qv reaches add_children
     assert "        _kv = {}\n        if LEAFV:" in src
+
+
+# ---- the labels of sampled and perturbed children (used once --mcts-mix-rule draws them) -------
+def test_exec_view_z_is_the_flown_view_for_the_masked_rows_only():
+    from surfgym.view import view_from_z_abs
+    rng = np.random.default_rng(0)
+    pz = rng.normal(0.0, 0.5, (6, 2)).astype(np.float32)
+    view = view_from_z_abs(pz, "velocity")
+    mask = np.array([False, True, False, True, True, False])
+    delta = np.array([0.0, 12.0, 0.0, -7.5, 3.0, 0.0])
+    flown = view.copy()
+    flown[:, 0] = ((flown[:, 0] + delta + 180.0) % 360.0) - 180.0
+    z = mcts_search.exec_view_z(pz, flown, mask, "velocity", 1.33)
+    assert np.array_equal(z[~mask], pz[~mask])               # every other child: its own draw
+    back = view_from_z_abs(z, "velocity")
+    assert np.allclose(back[mask, 0], flown[mask, 0], atol=1e-3)   # the yaw it FLEW
+    assert np.allclose(back[mask, 1], flown[mask, 1], atol=1e-3)   # pitch untouched
+    # nothing masked: the draw itself, unchanged
+    assert mcts_search.exec_view_z(pz, flown, np.zeros(6, bool), "velocity", 1.33) is not None
+    assert np.array_equal(mcts_search.exec_view_z(pz, flown, np.zeros(6, bool), "velocity",
+                                                  1.33), pz)
+
+
+def test_line_decisions_walks_the_prefix_then_each_macro():
+    ndec = np.zeros(10, np.int64)
+    kinds = np.zeros(10, np.int8)
+    ndec[5], kinds[5] = 3, 1            # a random-held macro
+    ndec[7], kinds[7] = 2, 2            # a sampled one (cut short: a finish or the replay's end)
+    node_d, kind_d, m_d = mcts_search.line_decisions([5, 7], ndec, kinds, root=3, rdec=4,
+                                                     r_first=2, n_dec=8)
+    assert node_d == [3, 3, 3, 3, 5, 5, 5, 7]
+    assert kind_d == [-1, -1, -2, -2, 1, 1, 1, 2]
+    assert m_d == [0, 1, 2, 3, 0, 1, 2, 0]
+
+
+def test_run_mcts_keeps_per_decision_draws_only_with_labels():
+    src = inspect.getsource(mcts_search.run_mcts)
+    assert "E_pact = np.zeros((tree._cap if LAB else 0, M, 6), np.int16)" in src
+    assert "            if LAB:\n                # every env's policy-space draw" in src
+    lab = inspect.getsource(mcts_search._tree_labels)
+    assert "elif kind_d[d] == 2:" in lab and "E_pact[node_d[d], m_d[d]]" in lab

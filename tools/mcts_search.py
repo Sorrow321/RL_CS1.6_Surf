@@ -783,6 +783,37 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     return out
 
 
+def exec_view_z(pz, view, mask, mode, pitch_max: float) -> np.ndarray:
+    """(N, n_z) the policy's drawn z, (N, 2) the EXECUTED view row, (N,) bool -> (N, n_z) z with
+    the masked rows replaced by the z of the view they flew (surfgym.view.z_from_view_any: exact
+    in the velocity frame). A perturbed child's yaw is its draw plus a held steer offset, so its
+    label must be the flown view, not the draw; every other child flies its own draw."""
+    pz = np.asarray(pz, np.float32)
+    mask = np.asarray(mask, bool)
+    if not mask.any():
+        return pz
+    from surfgym.view import z_from_view_any
+    out = pz.copy()
+    zi = z_from_view_any(np.asarray(view, np.float32)[mask], mode, float(pitch_max))
+    out[mask] = np.asarray(zi, np.float32)[:, :out.shape[1]]
+    return out
+
+
+def line_decisions(path, ndec, kinds, root: int, rdec: int, r_first: int, n_dec: int):
+    """The best line's decisions -> (node, kind, m) per decision: the greedy prefix belongs to the
+    ``root`` (kind -1 before ``r_first``, -2 after it), then each path node's ``ndec`` decisions
+    with that node's child kind and the decision's index m inside its macro."""
+    node_d = [int(root)] * int(rdec)
+    kind_d = [-1 if d < int(r_first) else -2 for d in range(int(rdec))]
+    m_d = list(range(int(rdec)))
+    for nid in path:
+        nd = int(ndec[nid])
+        node_d += [int(nid)] * nd
+        kind_d += [int(kinds[nid])] * nd
+        m_d += list(range(nd))
+    return node_d[:n_dec], kind_d[:n_dec], m_d[:n_dec]
+
+
 def onehot_rows(pact, nvec, npad: int, n_view: int = 2) -> np.ndarray:
     """(n, n_heads) policy-space rows -> (n, n_heads, npad) one-hot targets on the categorical
     heads (view heads 0): a line row's single action as the same layout node_targets writes."""
@@ -1052,6 +1083,10 @@ def run_mcts(ctx: dict, a) -> dict:
     C_pact = np.zeros((tree._cap if LAB else 0, 6), np.int16)
     C_pz = np.zeros((tree._cap if LAB else 0, n_z), np.float32)
     C_kind = np.zeros(tree._cap if LAB else 0, np.int8)
+    # ... and EVERY decision's policy-space draw and flown view z (a sampled child's later
+    # decisions are fresh draws: the best line's replay labels them from here)
+    E_pact = np.zeros((tree._cap if LAB else 0, M, 6), np.int16)
+    E_pz = np.zeros((tree._cap if LAB else 0, M, n_z), np.float32)
 
     Kc = max(2, int(a.mcts_k))
     sigma = float(a.mcts_yaw_sigma)
@@ -1136,6 +1171,9 @@ def run_mcts(ctx: dict, a) -> dict:
         cell_keys = []
         n_new = np.zeros(N, np.float64)
         tt = 0
+        if LAB:
+            wpa_m = np.zeros((M, N, 6), np.int16)
+            wpz_m = np.zeros((M, N, n_z), np.float32)
         for m in range(M):
             polN.hold_store = m == 0
             if LAB:
@@ -1148,14 +1186,21 @@ def run_mcts(ctx: dict, a) -> dict:
                 lab_leaf.append(own[e0].copy())
                 lab_scal.append(np.asarray(polN.last_scal, np.float32)[e0].copy())
                 lab_pose.append(np.asarray(polN.last_pose, np.float32)[e0].copy())
-                w_pact = np.asarray(polN.policy_act, np.int16).copy()
-                w_pz = np.asarray(polN.view_z, np.float32).copy()
             view = np.array(polN.view, np.float32)
             if sigma > 0:
                 if VIEW_ABS:
                     view[:, 0] = ((view[:, 0] + delta + 180.0) % 360.0) - 180.0
                 else:
                     view[:, 0] = view[:, 0] + delta
+            if LAB:
+                # every env's policy-space draw and the z of the view it FLIES (a perturbed
+                # child's held steer included); m == 0 is its child's first move
+                wpa_m[m] = np.asarray(polN.policy_act, np.int16)
+                wpz_m[m] = exec_view_z(polN.view_z, view, explore & (delta != 0.0), VIEW_ABS,
+                                       polN._pitch_max)
+                if m == 0:
+                    w_pact = wpa_m[0].copy()
+                    w_pz = wpz_m[0].copy()
             act = np.ascontiguousarray(act, np.int32)
             view = np.ascontiguousarray(view, np.float32)
             acts_w[m] = act
@@ -1286,8 +1331,14 @@ def run_mcts(ctx: dict, a) -> dict:
                     C_pact = np.concatenate([C_pact, np.zeros((_g, 6), np.int16)])
                     C_pz = np.concatenate([C_pz, np.zeros((_g, n_z), np.float32)])
                     C_kind = np.concatenate([C_kind, np.zeros(_g, np.int8)])
+                if tree._cap > len(E_pact):
+                    _g = tree._cap - len(E_pact)
+                    E_pact = np.concatenate([E_pact, np.zeros((_g, M, 6), np.int16)])
+                    E_pz = np.concatenate([E_pz, np.zeros((_g, M, n_z), np.float32)])
                 C_pact[ids] = w_pact[ch]
                 C_pz[ids] = w_pz[ch]
+                E_pact[ids] = np.transpose(wpa_m[:, ch], (1, 0, 2))
+                E_pz[ids] = np.transpose(wpz_m[:, ch], (1, 0, 2))
                 C_kind[ids] = np.where(rank[ch] == 0, 0, np.where(rnd[ch], 1, 2))
         tree.end_wave()
         b = tree.best_node()
@@ -1398,7 +1449,7 @@ def run_mcts(ctx: dict, a) -> dict:
         labels = _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec,
                               passes[k_root]["spawn"], root_sp,
                               dict(store=store, coreN=coreN, polN=polN, sideN=sideN,
-                                   E_acts=E_acts, E_view=E_view),
+                                   E_acts=E_acts, E_view=E_view, E_pact=E_pact, E_pz=E_pz),
                               lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K)
         summary["ticks_line"] = int(labels.pop("ticks"))
         summary["ticks_total"] += summary["ticks_line"]
@@ -1562,18 +1613,14 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     # tree found the way off the platform)
     _c0, _n0 = int(tree.cstart[0]), int(tree.ncld[0])
     r_first = int(np.min(tree.root_dec[_c0:_c0 + _n0])) if _n0 else int(rdec)
-    node_d = [int(root)] * int(rdec)
     if int(getattr(a, "mcts_labels_prefix_all", 0) or 0):
         # --mcts-labels-prefix-all: the WHOLE greedy prefix up to the line's root is labelled with
         # the policy's own moves - the path that reaches the root the tree's line starts from (with
         # --mcts-root-chain the roots' own node rows agree with it)
         r_first = int(rdec)
-    kind_d = [-1 if d < r_first else -2 for d in range(int(rdec))]
-    for nid in path[1:]:
-        nd = int(tree.ndec[nid])
-        node_d += [int(nid)] * nd
-        kind_d += [int(C_kind[nid])] * nd
-    node_d, kind_d = node_d[:n_dec], kind_d[:n_dec]
+    node_d, kind_d, m_d = line_decisions(path[1:], tree.ndec, C_kind, root, rdec, r_first,
+                                         n_dec)
+    E_pact, E_pz = pop.get("E_pact"), pop.get("E_pz")
     cfg = ctx["cfg"]
     core1 = ctx["build_sim"](cfg, ctx["map_path"], 1, ctx["ep_cap"], tick=ctx["TICK"])
     ctx["arm"](core1)
@@ -1597,15 +1644,19 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     bank_now = np.inf
     for d in range(int(n_dec)):
         pol.act(o)
-        # a decision of a SAMPLED / perturbed child (kind 2: none at --mcts-random-frac 1) has no
-        # label here - its executed move was a draw this replay cannot rebuild - and nor has the
-        # prefix inside the search window (-2); both are stepped
-        if kind_d[d] not in (2, -2):
+        # a decision of a SAMPLED / perturbed child (kind 2: none at --mcts-random-frac 1) is
+        # labelled with the draw it executed and the view it flew, stored per decision during the
+        # search (E_pact / E_pz); the prefix inside the search window (-2) is stepped unlabelled
+        if kind_d[d] != -2:
             l_scal.append(np.asarray(pol.last_scal, np.float32)[0].copy())
             l_pose.append(np.asarray(pol.last_pose, np.float32)[0].copy())
             if kind_d[d] == 1:
                 l_pact.append(np.asarray(C_pact[node_d[d]], np.int64).copy())
                 l_pz.append(np.asarray(C_pz[node_d[d]], np.float32).copy())
+                n_held += 1
+            elif kind_d[d] == 2:
+                l_pact.append(np.asarray(E_pact[node_d[d], m_d[d]], np.int64).copy())
+                l_pz.append(np.asarray(E_pz[node_d[d], m_d[d]], np.float32).copy())
                 n_held += 1
             else:
                 l_pact.append(np.asarray(pol.policy_act, np.int64)[0].copy())
