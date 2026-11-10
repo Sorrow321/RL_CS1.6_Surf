@@ -2300,6 +2300,14 @@ def main():
                          "win decays the old points and children by exp(-1/H)")
     ap.add_argument("--mcts-mix-warm", type=int, default=2,
                     help="--mcts-mix-rule sib: waves at equal shares before the rule speaks")
+    # --mcts-leaf-value (azr1b4, 2026-11-10): the network IN the search, AlphaZero-style - its
+    # value at each live child's end state guides selection (mcts_search.Tree.qv); off = unchanged
+    ap.add_argument("--mcts-leaf-value", type=int, default=0, choices=(0, 1),
+                    help="--mcts: 1 = a live child's selection value is max(its banked score, "
+                         "the network's value at its end state, capped at 1 = the goal), and an "
+                         "expanded node's is the max of its children's (it can fall); the "
+                         "labels, the value targets and the best line read the real banked "
+                         "score. 0 = off (default, unchanged)")
     ap.add_argument("--mcts-hold-p", type=float, default=0.5,
                     help="--mcts: a sampled child keeps its parent's held yaw offset with this "
                          "probability (coherent steering over several macros), else draws one")

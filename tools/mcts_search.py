@@ -467,7 +467,14 @@ class Tree:
     Node 0 is the virtual root. Children of a node are added in one contiguous block. A node is
     EXPANDABLE when it holds a stored state (alive), has no children yet and is not pending in
     the current wave; DEAD / FINISHED nodes are terminal; EXHAUSTED marks a subtree with no
-    expandable node left (never descended into again)."""
+    expandable node left (never descended into again).
+
+    ``use_qv`` (--mcts-leaf-value, azr1b4): selection reads ``qv`` instead of ``q``. A new child's
+    ``qv`` is the caller's (the network's value at its end state, never below its own score); an
+    expanded node's ``qv`` is the max of its children's, recomputed up the path on every expansion
+    (so an optimistic guess is replaced by what its children show, and can go DOWN - unlike ``q``,
+    the real banked max, which only rises and which every label and the best line read). Off
+    (False, the default): ``qv`` is filled and never read."""
 
     def __init__(self, cap: int = 4096):
         self.n = 1
@@ -476,6 +483,7 @@ class Tree:
         self.q[0] = -np.inf
         self.score[0] = -np.inf
         self.qlo, self.qhi = np.inf, -np.inf
+        self.use_qv = False
 
     _F = (("parent", np.int64, -1), ("cstart", np.int64, -1), ("ncld", np.int64, 0),
           ("depth", np.int64, 0), ("visits", np.float64, 0.0), ("vloss", np.float64, 0.0),
@@ -488,7 +496,7 @@ class Tree:
           ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0),
           ("nov", np.float64, 0.0), ("ox", np.float32, 0.0), ("oy", np.float32, 0.0),
           ("oz", np.float32, 0.0), ("raw_d", np.float64, np.inf),
-          ("h_bank", np.float64, np.nan), ("kind", np.int8, -1))
+          ("h_bank", np.float64, np.nan), ("kind", np.int8, -1), ("qv", np.float64, -np.inf))
 
     def _alloc(self, cap: int):
         for name, dt, fill in self._F:
@@ -529,6 +537,7 @@ class Tree:
         self.alive[ids] = al & ~fin
         self.finished[ids] = fin
         self.exhausted[ids] = ~(al & ~fin)
+        self.qv[ids] = score
         for k, v in fields.items():
             getattr(self, k)[ids] = v
         self.cstart[parent] = ids[0]
@@ -550,6 +559,22 @@ class Tree:
             if best > self.q[p]:
                 self.q[p] = best
             p = int(self.parent[p])
+        if self.use_qv:
+            self.qv[ids] = np.maximum(self.qv[ids], score)
+            fin_v = self.qv[ids][np.isfinite(self.qv[ids])]
+            if len(fin_v):
+                self.qlo = min(self.qlo, float(fin_v.min()))
+                self.qhi = max(self.qhi, float(fin_v.max()))
+            # the expanded node's guess is replaced by its children's values, and every ancestor
+            # takes the max of its children again (stop where nothing changed)
+            p = int(parent)
+            while p >= 0:
+                cs, nc = int(self.cstart[p]), int(self.ncld[p])
+                new = float(self.qv[cs:cs + nc].max()) if nc else float(self.qv[p])
+                if new == float(self.qv[p]) and p != int(parent):
+                    break
+                self.qv[p] = new
+                p = int(self.parent[p])
         if not self.alive[ids].any():
             self._exhaust_up(int(parent))
         return ids
@@ -603,7 +628,8 @@ class Tree:
                         self._exhaust_up(node)
                     break
                 ch = ch[selm]
-                qn = (np.where(np.isfinite(self.q[ch]), self.q[ch], lo) - lo) * inv
+                _qs = self.qv[ch] if self.use_qv else self.q[ch]
+                qn = (np.where(np.isfinite(_qs), _qs, lo) - lo) * inv
                 npar = self.visits[node] + self.vloss[node]
                 nch = self.visits[ch] + self.vloss[ch]
                 if cell_w is not None:
@@ -989,6 +1015,12 @@ def run_mcts(ctx: dict, a) -> dict:
                          f"({names1} vs {namesN})")
     store = RowStore(STATE_DTYPE, obsN.shape[1], cap=max(4096, 8 * N))
     tree = Tree(cap=max(4096, 8 * N))
+    # --mcts-leaf-value (azr1b4): the network's value at every live child's end state guides
+    # SELECTION (Tree.qv = max(its banked score, V), V capped at 1 = the goal); the labels, the
+    # value targets and the best line keep reading the real banked q
+    LEAFV = bool(int(getattr(a, "mcts_leaf_value", 0) or 0))
+    tree.use_qv = LEAFV
+    lv_n, lv_up, lv_gap = 0, 0, 0.0
     arch = CellArchive(float(a.mcts_cell), float(a.mcts_cell_energy))
     r_states = np.concatenate([r[2] for r in roots])
     r_obs = np.concatenate([r[3] for r in roots])
@@ -1206,6 +1238,19 @@ def run_mcts(ctx: dict, a) -> dict:
         c_bank_t = np.where(own_better, tree.tick[own] + bank_t, tree.bank_t[own])
         c_h_bank = np.where(own_better, h_bk, tree.h_bank[own])
         sc = np.where(fin, 2.0, prog(c_bank_d) + e_score(c_h_bank))
+        _kv = {}
+        if LEAFV:
+            # one more read of the network, at every child's end state: AFTER the store took the
+            # children's side state (the read advances the feeds; the next wave scatters every
+            # env's side state back from the store)
+            with torch.inference_mode():
+                _vv = polN._net(polN._obs(obsN))[1]
+            vh = np.minimum(np.asarray(_vv.float().reshape(-1).cpu().numpy(), np.float64), 1.0)
+            _lv = al & ~fin
+            _kv = {"qv": np.where(_lv, np.maximum(sc, vh), sc)}
+            lv_n += int(_lv.sum())
+            lv_up += int((_lv & (vh > sc)).sum())
+            lv_gap += float(np.where(_lv, _kv["qv"] - sc, 0.0).sum())
         ntick = tree.tick[own] + np.where(fin, fin_t, M * K)
         n_before = tree.n
         if mix is not None:
@@ -1227,7 +1272,7 @@ def run_mcts(ctx: dict, a) -> dict:
                                     ox=stN["origin"][ch, 0], oy=stN["origin"][ch, 1],
                                     oz=stN["origin"][ch, 2], raw_d=raw_d[ch],
                                     h_bank=c_h_bank[ch],
-                                    **{k: v[ch] for k, v in _kx.items()})
+                                    **{k: v[ch] for k, v in {**_kx, **_kv}.items()})
             if tree._cap > len(E_acts):
                 E_acts = np.concatenate([E_acts, np.zeros((tree._cap - len(E_acts), M, 6),
                                                           np.int8)])
@@ -1324,6 +1369,15 @@ def run_mcts(ctx: dict, a) -> dict:
               f"{summary['mix_share_mean']['R']:.2f}, final {mix.text()}; wins G/P/E/R "
               + "/".join(f"{summary['mix_wins'][k]:.0f}" for k in "GPER")
               + f"; best line's macros {_pk or '-'}", flush=True)
+    if LEAFV:
+        # how often the network's value raised a live child above its banked score, and by how
+        # much on average (in the tree's units: progress over the start distance)
+        summary["leaf_value"] = {"children": lv_n,
+                                 "share_raised": round(lv_up / max(1, lv_n), 4),
+                                 "mean_raise": round(lv_gap / max(1, lv_n), 5)}
+        print(f"mcts: leaf value raised {summary['leaf_value']['share_raised']:.1%} of {lv_n:,} "
+              f"live children, by {summary['leaf_value']['mean_raise']:.4f} on average",
+              flush=True)
     print(f"mcts: deepest RAW d any live tick reached {summary['raw_best_pct']}% (greedy raw "
           f"{100.0 * float(prog(gbest)):.2f}%)", flush=True)
     print(f"mcts: {wave} waves, {tree.n - 1:,} nodes, {arch.n:,} cells, best "
