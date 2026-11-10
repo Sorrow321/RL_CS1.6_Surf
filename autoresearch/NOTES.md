@@ -1376,3 +1376,15 @@ all-random children): same flags apart from the child mix, another box and seed 
   was stuck).
 * Keeper (runs/azr1b2_pool_snaps/, md5 not yet pulled): ckpt_2765619200.pt is the copy for the
   71.426 eval (-28M), ckpt_2722627584 (71.411, +4M), ckpt_2565865472 (71.387), ckpt_2486173696.
+
+### 05:35 UTC: run 2 at 3.78B - at the CP6 gap, best 86.24% (past run 5's 84.4% creep level)
+
+* Evals 2.94-3.78B: 71.4, 70.9, 70.9, 81.8, 84.35, 84.0, 32.1, 84.3, 84.4, **86.24 (3.624B)**, 84.3,
+  60.7% (CP5); medians 15.8-68.9% (early-death modes: 1/3-2/3 of the episodes die at the first
+  ramp, the pit or the cavity). CP6 not yet (deadline 12.23B, ~13:20 UTC at ~298k steps/s).
+* Search 9 (2.794B) was adopted at 2.886B (end d 27,462 = 72.45%). Searches 10 (3.247B) and 11
+  (3.700B) were wasted on bad roots: the search tool's own greedy replay died at the pit (27.2% /
+  25.8% banked) while the evals' best episodes flew to 84%: run 5's known one-replay weakness, not
+  this slot's change. Their trees still show the rule's pit mix (R 0.46-0.48 / E 0.35 / P 0.16-0.19).
+* Box extended at 05:31 to 17:31 UTC (fleet credit $30.85, 13.2 h to the reserve at 1.58 $/h).
+  The finish deadline (16.46B) falls near 17:20 UTC at this speed.
