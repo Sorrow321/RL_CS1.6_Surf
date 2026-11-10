@@ -2323,6 +2323,10 @@ def main():
                     help="--mcts: 1 = return the tree's training rows (every expanded node's "
                          "row and its best children; every decision of the best line), "
                          "tools/mcts_search._tree_labels. Set by --az-loop; 0 = untouched")
+    ap.add_argument("--mcts-labels-cut", type=float, default=0.0,
+                    help="--mcts-labels: the best line's searched rows stop at the first decision "
+                         "whose banked d is within U of the line's final banked d (the rest is time "
+                         "spent for the last few units, e.g. a ledge it wiggles on); 0 = off")
     import az_loop as _azl
     _azl.add_args(ap)
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))

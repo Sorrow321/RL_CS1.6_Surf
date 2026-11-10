@@ -81,13 +81,16 @@ def add_args(ap) -> None:
                          "the tree's Q range; mcts_search.node_targets): a node where the named "
                          "move beat its siblings by much teaches more than one where a random "
                          "child won by a hair. 0 = every node row alike (as before)")
-    ap.add_argument("--az-sigma-fit", type=int, default=0, choices=(0, 1),
+    ap.add_argument("--az-sigma-fit", type=int, default=0, choices=(0, 1, 2),
                     help="--az-loop: 1 = the YAW head's log sigma is fitted to the tree's targets "
                          "(maximum likelihood, mu detached, never above its init 0.3): sigma becomes "
                          "the spread of the tree's preferred steers around the policy's own, and "
                          "the search's random children (drawn at a multiple of it) narrow as the "
                          "policy learns - in run 5 PPO narrowed it (0.30 -> 0.07 by 0.57B steps). "
-                         "0 = sigma frozen at the init (the trainer's BC convention; as before)")
+                         "0 = sigma frozen at the init (the trainer's BC convention; as before). "
+                         "2 = fitted on the best lines' SEARCHED rows only (the path the tree "
+                         "chose, which the policy reproduces closely; node rows are best-of-K "
+                         "random draws whose spread says little about the policy's precision)")
     ap.add_argument("--az-spawn-rotate", type=int, default=0, choices=(0, 1),
                     help="--az-loop: 1 = every round's search starts from a NEW spawn of the map "
                          "start, drawn by the core's own reset with a per-round seed (the start's "
@@ -139,7 +142,8 @@ def _git_head() -> str:
 # the supervised loss (train_fast.bc_loss_fn's form for --view-continuous + --bc-target dist)
 # --------------------------------------------------------------------------------------------
 def distil_loss(policy, packer, scal, img, probs, vmu, vsd, value_t, w, view_w,
-                value_coef: float, view_sigma: float, sigma_fit: bool = False):
+                value_coef: float, view_sigma: float, sigma_fit: bool = False,
+                sigma_rows=None):
     """-> (loss, stats dict of floats). ``probs`` (B, NACT, NPAD): the categorical targets on
     heads N_VIEW.. (view columns ignored); ``vmu`` / ``vsd`` (B, n_z): the view target moments in
     pre-tanh z; ``value_t`` (B,): the tree's Q; ``w`` (B,) row weights; ``view_w`` (n_z,) the
@@ -149,7 +153,8 @@ def distil_loss(policy, packer, scal, img, probs, vmu, vsd, value_t, w, view_w,
     adds the maximum-likelihood term of the YAW head's own log sigma on the same targets with mu
     detached - log s + ((vmu - mu)^2 + vsd^2) / (2 s^2), minimised at s^2 = the mean squared gap
     between the policy's steer and the tree's preferred steer - so sigma only measures, and the
-    fixed-sigma term above stays the one that moves mu."""
+    fixed-sigma term above stays the one that moves mu. ``sigma_rows`` (B,) bool: fit it on those
+    rows only (--az-sigma-fit 2: the best lines' searched rows)."""
     import train_fast as _tf
     logits, value = policy.forward_split(scal, img)
     cat, mu = _tf.split_view(logits.float())
@@ -169,7 +174,8 @@ def distil_loss(policy, packer, scal, img, probs, vmu, vsd, value_t, w, view_w,
     if sigma_fit:
         gap2 = (vmu[:, 0] - mu[:, 0].detach()).pow(2) + vsd[:, 0].pow(2)
         sig_nll = ls_y + gap2 * torch.exp(-2.0 * ls_y) * 0.5
-        loss = loss + (sig_nll * w).sum() / wsum
+        ws = w if sigma_rows is None else w * sigma_rows.float()
+        loss = loss + (sig_nll * ws).sum() / ws.sum().clamp_min(1e-6)
     with torch.no_grad():
         agree = (padded[:, nv:].argmax(-1) == probs[:, nv:].argmax(-1)).float()
         stats = torch.stack([loss.detach(), (ce_cat * w).sum() / wsum, agree.mean(),
@@ -285,7 +291,8 @@ def distil(policy, packer, lidar, opt, buf: LabelBuffer, a, gen, view_w) -> dict
         img = render_img(lidar, b["pose"])
         loss, st = distil_loss(policy, packer, b["scal"], img, b["probs"], b["vmu"], b["vsd"],
                                b["value"], b["w"], view_w, float(a.az_value_coef),
-                               float(_tf.BC_VIEW_SIGMA), sigma_fit=bool(int(a.az_sigma_fit)))
+                               float(_tf.BC_VIEW_SIGMA), sigma_fit=bool(int(a.az_sigma_fit)),
+                               sigma_rows=(b["kind"] == 1) if int(a.az_sigma_fit) == 2 else None)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(policy.parameters(), 0.5)

@@ -280,3 +280,31 @@ def test_sigma_fit_narrows_the_yaw_sigma_to_the_targets_spread_and_never_widens(
     l2.backward()
     gr = pol2.view_std.log_std.grad
     assert gr is None or float(gr.abs().sum()) == 0.0
+
+
+def test_sigma_fit_on_selected_rows_ignores_the_others(keys_hold):
+    import az_loop
+    from surfgym.view import LOG_STD_INIT
+    W, H, extra = 8, 4, 11
+    pol = _policy(W, H, extra)
+    packer = tf.HeadPacker(torch.device("cpu"))
+    n = 256
+    g = torch.Generator().manual_seed(5)
+    scal = torch.randn(n, tf.N_SCALAR + extra, generator=g)
+    img = torch.rand(n, W * H * 2, generator=g)
+    probs = torch.as_tensor(onehot_rows(np.tile([[7, 3, 1, 1, 0, 0]], (n, 1)), tf.NVEC, tf.NPAD))
+    vmu = torch.zeros(n, 2)
+    sel = torch.arange(n) % 2 == 0
+    vmu[:, 0] = torch.where(sel, 0.5 + 0.05 * torch.randn(n, generator=g),
+                            3.0 * torch.randn(n, generator=g))   # wild targets on the others
+    vsd, val, w, vw = torch.zeros(n, 2), torch.zeros(n), torch.ones(n), torch.tensor([1.0, 0.0])
+    opt = torch.optim.Adam(pol.parameters(), lr=3e-3)
+    for _ in range(400):
+        loss, _st = az_loop.distil_loss(pol, packer, scal, img, probs, vmu, vsd, val, w, vw,
+                                        0.25, tf.BC_VIEW_SIGMA, sigma_fit=True, sigma_rows=sel)
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        with torch.no_grad():
+            pol.view_std.log_std[0].clamp_(max=LOG_STD_INIT)
+    assert float(pol.log_std()[0].detach().exp()) < 0.2

@@ -1112,8 +1112,13 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
         pol._obs(o)               # the greedy pass's own tick-0 call (its feeds' first read)
     keys = bool(ctx["KEYS"])
     l_scal, l_pose, l_pact, l_pz, l_val, l_rk = [], [], [], [], [], []
+    l_bank = []                  # the replay's banked d when each labelled decision was taken
     ticks = 0
     n_held = 0
+    g_step = float(ctx["g_step"])
+    vmax = float(core1.config.phys.sv_maxvelocity)
+    tol = float(a.mcts_contact_tol)
+    bank_now = np.inf
     for d in range(int(n_dec)):
         pol.act(o)
         # a decision of a SAMPLED / perturbed child (kind 2: none at --mcts-random-frac 1) has no
@@ -1132,6 +1137,7 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
             l_val.append(float(tree.q[node_d[d]]))
             # row kind: 1 = the line's SEARCHED part (the tree's choices), 2 = its greedy prefix
             l_rk.append(2 if kind_d[d] == -1 else 1)
+            l_bank.append(bank_now)
         row = np.ascontiguousarray(np.asarray(acts[d], np.int32).reshape(1, -1))
         vw = np.ascontiguousarray(np.asarray(views[d], np.float32).reshape(1, -1))
         if keys and getattr(pol, "keys", None) is not None:
@@ -1142,14 +1148,41 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
         for _k in range(K):
             if _k:
                 pol.act(o)
+            vz0 = float(core1.states_view["velocity"][0, 2])
             o, _r, dn, tr, _t = core1.step(row, view=vw)
             o = np.array(o)
             ticks += 1
             if bool(np.asarray(dn)[0]) or bool(np.asarray(tr)[0]):
                 ended = True
                 break
+            _sv = core1.states_view
+            if contact_mask([vz0], [float(_sv["velocity"][0, 2])], g_step, tol, vmax)[0]:
+                bank_now = min(bank_now, float(field_d(ctx["gf"], _sv["origin"][0:1])[0]))
         if ended:
             break
+    # --mcts-labels-cut U: the searched rows stop at the first decision whose banked d is within U
+    # of the line's final banked d - the rest of such a line is time spent for a last few units
+    # (a ledge the line wiggles on for a minute to bank a deeper contact) and would flood the
+    # line rows with it. Rows taken before the cut decision are kept; the prefix is untouched.
+    cut_u = float(getattr(a, "mcts_labels_cut", 0.0) or 0.0)
+    n_cut = 0
+    if cut_u > 0.0 and l_scal and np.isfinite(bank_now):
+        lb = np.asarray(l_bank, np.float64)
+        rk = np.asarray(l_rk)
+        reach = np.flatnonzero((lb <= bank_now + cut_u) & (rk == 1))
+        if len(reach):
+            keep_n = int(reach[0]) + 1
+            drop = np.zeros(len(l_scal), bool)
+            drop[keep_n:] = rk[keep_n:] == 1
+            n_cut = int(drop.sum())
+            if n_cut:
+                sel = np.flatnonzero(~drop)
+                l_scal = [l_scal[i] for i in sel]
+                l_pose = [l_pose[i] for i in sel]
+                l_pact = [l_pact[i] for i in sel]
+                l_pz = [l_pz[i] for i in sel]
+                l_val = [l_val[i] for i in sel]
+                l_rk = [l_rk[i] for i in sel]
     nl = len(l_scal)
     d_end = float(field_d(ctx["gf"], core1.states_view["origin"][0:1])[0])
     if nl:
@@ -1172,7 +1205,8 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     out["n_expanded"] = len(L)
     out["replay_d"] = d_end
     print(f"mcts labels: {int(k.sum()):,} node rows (of {len(L):,} expanded nodes), {nl:,} line "
-          f"rows ({n_held} on random-held macros); line replay "
+          f"rows ({n_held} on random-held macros, {n_cut} cut past the last {cut_u:g} u); "
+          f"line replay "
           f"{ticks} ticks, ends at d {d_end:,.0f} (search said {float(tree.bank_d[b]):,.0f})",
           flush=True)
     return out
