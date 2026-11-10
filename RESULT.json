@@ -4,10 +4,10 @@
  "final": false,
  "slot": 1,
  "best": {
-  "score": 97.927,
-  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_8380743680.jsonl",
+  "score": 98.075,
+  "eval_file": "/home/steam/ar_az/runs/azr1b1/azr1b1_pool1/traj_9135718400.jsonl",
   "run": "azr1b1_pool1",
-  "step": 8380743680,
+  "step": 9135718400,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -128,12 +128,12 @@
   "CP6": 7852261376,
   "CP7": 8229748736
  },
- "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~356k steps/s): first ramp 0.680B steps (run 5 0.529B), CP1 1.057B (0.680B), pit dive 1.359B (1.812B), CP2 2.341B (2.114B), post-CP2 block 2.492B (2.341B), CP3 2.643B (2.643B), CP4 3.549B (3.624B), CP5 4.304B (3.851B), CP6 7.852B (6.116B), CP7 8.230B (6.720B): walls 1-10 ON TIME in steps and in total ticks (0.75-1.55x run 5). Best eval 97.93% (CP7) at 8.381B, no finish yet. With one pool every line replacement moves 90% of the starts: a line ending 25 points past the greedy's failure point (6.45B) let the greedy fall back to the CP2 block for ~1B steps, and a line ending AT the failure (7.50B) repaired it within one eval. Next: chamber entry and finish, due by 16.459B steps.",
+ "summary": "Slot 1 (one pool): run 5 with October's spawn sources off, so 10% of training starts are the map start and 90% come from the search's backward curriculum; PPO, the search and run 5's search cadence unchanged. Run azr1b1_pool1 (from scratch 20:48 UTC, RTX 4080, ~356k steps/s): first ramp 0.680B steps (run 5 0.529B), CP1 1.057B (0.680B), pit dive 1.359B (1.812B), CP2 2.341B (2.114B), post-CP2 block 2.492B (2.341B), CP3 2.643B (2.643B), CP4 3.549B (3.624B), CP5 4.304B (3.851B), CP6 7.852B (6.116B), CP7 8.230B (6.720B): walls 1-10 ON TIME in steps and in total ticks (0.75-1.55x run 5). Best eval 98.08% (CP7) at 9.136B, no finish yet. With one pool every line replacement moves 90% of the starts: a line ending 25 points past the greedy's failure point (6.45B) let the greedy fall back to the CP2 block for ~1B steps, and a line ending AT the failure (7.50B) repaired it within one eval. Next: chamber entry and finish, due by 16.459B steps.",
  "box": {
   "id": 59950838,
   "gpu": "RTX_4080",
   "cpu": "AMD Ryzen 9 9950X (32 threads)",
   "dph": 0.417,
-  "steps_per_s": "~353k (03:33 UTC)"
+  "steps_per_s": "~354k (04:30 UTC)"
  }
 }
