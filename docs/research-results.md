@@ -37370,3 +37370,85 @@ d 55,342 against a greedy frontier of 55,378, 200 needed). Transfer arm `m2warm_
 
 **Budget.** Credit 41.23 $ after the user's top-up (about 24.5 $ between 17:46 and 18:29 UTC),
 reserve 10 $, burn 1.00 $/h with three boxes, 31.2 h above the reserve.
+
+## 2026-11-10 21:15 UTC - second-map test, interim: the first seed replicate on the FIXED simulator finds a line past the pit; the diagnostic arm's search leaves the room every time but its policy has not (the line is replaced every ~450M steps)
+
+Operator entry (m2/sib). Two measurements, neither a recipe result (0b): a search-only bench on
+the droplet and the state of the DIAGNOSTIC search-swap arm `m2ge_pb1` at 2.30B steps.
+
+**1. Seed replicate f1: today's code + the FIXED simulator, seed 1, finds the way past the pit.**
+Same command as benches 3 and 4 of the 20:05 entry (`tools/explore_phase1.py --envs 4096
+--cell 64 --cell-energy 32 --decisions 100 --act-every 4 --exact-chains --roots-spine
+<October's 7 exit roots> --goals 1 --maxvel 3500`, 420 iterations), only `--seed 1`; droplet CPU,
+pristine worktree at 5201ee03 (entity tables 512). Roots and line are the search's own states of
+October's run (measurement only, nothing here trains anything).
+
+| run | simulator | seed | best distance (explorer's field) | first below 52,582 | cells over the pit / east ledge / end zone |
+|---|---|---|---|---|---|
+| bench 4 | old (tables 128), October's code | 0 | 52,203u | iteration 260 | 58 / 166 / 79 |
+| bench 3 | FIXED, today's code | 0 | 52,582u | never in 420 | 0 / 0 / 0 |
+| **f1** | **FIXED, today's code** | **1** | **52,260u** | **iteration 270** | **29 / 174 / 42** |
+
+f1: 4,736,796 runs, 15,777 cells, best cell at (572,-3355,3379), depth 2,308 ticks; best
+distance 52,583 through iteration 260, then 52,311 (270), 52,278 (280), 52,272 (300), 52,260
+(340). So the 20:05 entry's open question has its first answer: **the simulator fix does not
+put the line out of the search's reach; with another seed the same search finds it on the fixed
+simulator.** Whether the fix makes it less likely is NOT settled by one run per cell; o1 (old
+simulator, seed 1), f2 and o2 follow (about 70 min each on the droplet).
+
+**The line f1 found is the same trick by another passage.** Its best chain (29 cells) does not
+use the north tunnel of October's line: it goes into the SOUTH corridor (y about -3,115..-3,135),
+east to x 720, turns back west and gains speed along the corridor (283 u/s at x 696 -> 399 u/s
+at x 342, 345-360 u/s at x 215..88), leaves it at the west end, falls (vz -446 at (154,-3000,
+3625), 388 u/s), and comes off the ridge at (603,-3007,3437) at 463 u/s going UP at 321 u/s; it
+is over the pit at z 3,493 (x 705) and on the east ledge at (951,-3147,3429) by tick 1,072.
+October's line: back up the north tunnel, west through it to 414 u/s, fall, launch at +450 u/s.
+In both, about 400 u/s of horizontal speed is built in a level passage BEFORE the drop, by first
+moving away from the goal; arm A's line and all five lines of the diagnostic arm drop at
+250-290 u/s and stop on the pit floor. f1's chain has not been replayed against the trainer's
+field yet (the field file lives on the boxes), so its d on the trainer's scale is not stated;
+the 42 cells are in the box where October's line ends (d 54,901 there, 3.93%).
+
+**2. The diagnostic arm `m2ge_pb1` at 2,300,575,744 steps (21:02 UTC): search out of the room 5 of
+5, greedy still at the spawn.** Greedy evals 0.0-0.4%, 0/9 finishes, greedy frontier d about
+57,139 (the spawn). Its searches:
+
+| search | triggered at | adopted at | source | states | end d | search time |
+|---|---|---|---|---|---|---|
+| 1 | 524,288 | 17,301,504 | beam | 4,497 | 56,724 (in the room) | 66 s |
+| 2 | 378,011,648 | 390,594,560 | beam | 4,200 | 55,302 | 47 s |
+| 3 | 755,499,008 | 886,571,008 | beam + Go-Explore | 3,111 | 55,306 | 340 s |
+| 4 | 1,208,483,840 | 1,340,080,128 | beam + Go-Explore | 3,693 | 55,309 | 340 s |
+| 5 | 1,661,468,672 | 1,790,967,808 | beam + Go-Explore | 3,820 | 55,315 | 336 s |
+| 6 | 2,114,453,504 | 2,243,428,352 | beam + Go-Explore | 2,365 | 55,312 | 337 s |
+
+In searches 3-6 the policy-guided beam made only 100-200 states near the spawn (best d 57,084 /
+57,115 / 57,097 / 56,936); the Go-Explore stage (5 minutes, rooted at the spawn) found the way
+out of the room and down to the pit 4 of 4 times. None of the five lines gets past the pit (end
+d 55,302-55,315, floor z about 3,377); all five leave by the south side and crawl (max speed
+246-294 u/s; 23.6-42.0 s long against the 10.9-12.6 s of arm A's two tree lines).
+
+Why the policy has not followed: the recipe's rule is "search again 300M steps after the last
+new line" (`--auto-spine-patience 3e8`) and "adopt any line whose end beats the GREEDY frontier
+by 200 u; the backward curriculum restarts at its end". With the greedy still at the spawn,
+every search's line qualifies, so the line is replaced every 450M steps and the curriculum
+starts over. Curriculum reach just before each replacement: on search 2's line the 60% decile;
+on search 3's the 90% decile (80% success); on search 4's the 90% decile (88%); on search 5's
+the 80% decile (65%); search 6's line is at the 90% decile now. Arm A ran the same rule, but its
+tree returned a line in only 2 of its first 7 searches (5 and 7; the transfer arm's tree 0 of
+9), so its first line stood for 900M steps; its greedy left the room 135M steps after the second
+line (2/9 at 2,944,925,696). So on this arm the more reliable search makes the from-start
+policy SLOWER, through the adoption rule, not through the lines' quality alone. This is an
+observation for the design discussion (a line in progress should be compared with the current
+line's end, not with the greedy frontier); nothing is changed on the running arm.
+
+**The other arms at 21:02 UTC.** Arm A `m2sib_pb1`: 10,450,632,704 steps, greedy 3.2%, 0/9
+finishes, in the pit for about 7.4B steps, searches 8-24 no line (search 24: beam frontier
+d 55,343 against a greedy frontier of 55,374, 200 needed); `ckpt_latest.pt` pulled and verified
+(md5 6ef69ce4c8f1e6980f72488967e4c01a); watchdog deadline 23:46 UTC, to be released then (the
+user was told at 20:05 UTC). Transfer arm `m2warm_pb1`: 3,795,320,832 steps, greedy 0.40%, 0/9,
+still in the start room and now PAST the step at which arm A left it (2.945B); searches 1-9 no
+line (d about 56,918 every time).
+
+**Budget.** Credit 40.14 $, reserve 10 $, burn 1.00 $/h with three boxes, 30.2 h above the
+reserve.
