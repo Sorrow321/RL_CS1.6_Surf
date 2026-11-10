@@ -1242,3 +1242,31 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 1
   --az-spawn-rotate 1`. Running on the box now: v2 (5064f01c, /root/t2), v3 (77466653, /root/t3),
   v4 (7fcfb706, /root/t4); /root/RL_Surf stays at 153e08d7 (v1's commit).
+
+### azr1b4 - 2026-11-10 00:01 UTC: the missing skill is surviving the drop; v5 launched (line-only sigma fit + line cut)
+* State at 23:55: v2 round 23 (1.62B), v3 round 16 (1.09B, best 2.58%), v4 round 5 (0.33B). Of 405
+  eval episodes across v2/v3/v4, **6 lived more than 3 s after dropping off the spawn platform**; every
+  other one died on the kill floor at z ~13,850 (x 8,000-9,700), 1,200 u under the platform.
+* The trees DO find the way through: v4 round 3's best line leaves the platform at (8,081, -95),
+  lands at (9,148, -156, 13,959) - a surface ~110 u above the kill floor - surfs north-east up to
+  z 14,586 and reaches (9,868, 925, 13,844) at ~6.5 s: the start of the route run 1's policy found
+  by itself (its 4 s point (9,878, 974), then east to the ramps, 8% at 9 s). So the search finds
+  the first-ramp route's beginning; the network cannot fly the landing.
+* **Two more things against the labels.** (1) A best line is the DEEPEST-banked node's path, and
+  ~15% of rounds pick a line that lands and then wiggles on a ledge for up to a minute to bank a
+  few more units (v4 round 4: 1,998 line rows, of which the drop and landing are ~50); those rows
+  fill the 25% line share of every batch. (2) Run 5's random children steered with 5 x PPO's yaw
+  sigma, 0.07-0.13 in the first-ramp phase (spread 0.35-0.65 in z: offsets of a few degrees);
+  mine with 5 x 0.3 (spread 1.5: offsets of 20-180 deg, where tanh saturates and a z error of 0.05
+  is ~5 deg of steer). Lines made of near-saturated turns are the hardest to imitate precisely.
+  v3's all-rows sigma fit stays pinned at 0.3: on node rows (best-of-16 random draws) the network
+  is ~0.3 off, so the likelihood wants sigma >= 0.3.
+* **v5 = azr1b4_tree5** (commit **6f629101**, checkout /root/t5, launched 00:01 UTC from step 0) = v4 +
+  two changes: `--az-sigma-fit 2` (the yaw sigma fitted on the best lines' SEARCHED rows only - the
+  path the tree chose, which the network reproduces to ~0.05 in z; that sigma narrows the next
+  trees' random children the way PPO's did in run 5) and `--mcts-labels-cut 32` (the searched
+  line rows stop at the first decision whose banked d is within 32 u - the eval's own patience
+  step - of the line's final bank). Command (cd /root/t5): `bash tools/az_launch.sh azr1b4_tree5
+  --mcts-minutes 10 --mcts-max-waves 700 --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1
+  --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32`. Four runs share the box now (CPU ~30 of
+  the 30.7-core quota); v2 reaches its first-ramp deadline in ~6 rounds.
