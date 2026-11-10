@@ -1314,3 +1314,11 @@ azr1b1's RESULT.json, commit da7981e5) with the child-mix rule string as the las
 confirmed), no NOVEL / GREEDY / FRONT-PERTURB / BACKWARD-MIX lines; run.json `auto_spine_mcts_args`
 = the rule string. Record gate passed (44 s). It pairs with slot 1's azr1b1_pool1 (one pool +
 all-random children): same flags apart from the child mix, another box and seed path.
+
+### 02:30 UTC: run 2 azr1b2_pool at 0.57B - spawn trap, search 2 running
+
+* Evals 0.08-0.53B: 1.7-1.8% (CP0), the spawn trap (run 1 1.6-1.7% to 0.53B; slot 1's one-pool
+  run cleared the first ramp at 0.680B). Search 1 adopted at 97M (end d 97,914, the 1.77% landing
+  every run finds); 0-1/9 greedy past its line since; search 2 fired on patience at 0.453B (2.83%
+  by wave 450, shares P 0.25 / E 0.36 / R 0.39). ~311k steps/s average (run 1: ~282k; no October
+  spawn sources to build).
