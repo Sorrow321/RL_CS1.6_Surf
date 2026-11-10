@@ -1288,7 +1288,7 @@ this run is on time or faster (the line gets 3.6x the starts).
 * Reservoir min depth 14,986 (~85.5%): training episodes reach the line's end, the greedy does not
   yet. Box extended to 13:29 UTC; fleet credit 37.3 $, 17.2 h to the reserve.
 
-### azr1b1 - 2026-11-10 03:00 UTC: 7.30B steps - a SHORTER line replaced the curriculum's, the greedy fell back to CP2
+### azr1b1 - 2026-11-10 02:36 UTC: 7.30B steps - a SHORTER line replaced the curriculum's, the greedy fell back to CP2
 
 * Walls 1-8 ON TIME, best 84.92% (5.361B), CP6 due by 12.232B steps (~06:15 UTC at ~1.28B/h).
 * **What happened at 6.45B.** Search 17 started on the patience at 6.342B, when that eval's

@@ -4137,6 +4137,15 @@ def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
     return float(end_d) <= float(greedy_med) - float(gain)
 
 
+def spine_moves_on(end_d: float, cur_end_d, gain: float) -> bool:
+    """--auto-spine-no-retreat: a new spine whose end lies at field distance ``end_d`` replaces
+    the curriculum's current spine (its end at ``cur_end_d``; None = none yet) only when it goes
+    further by ``gain`` u: end_d <= cur_end_d - gain. The line never moves backwards."""
+    if cur_end_d is None:
+        return True
+    return float(end_d) <= float(cur_end_d) - float(gain)
+
+
 def _eval_energy_h(core, sl):
     """--energy-stall: energy height h = z + |v|^2 / (2 g) of the eval core's envs ``sl``."""
     st = core.states_view
@@ -5259,6 +5268,18 @@ def main() -> None:
                          "steps). A stale spine is discarded and the loop retries after "
                          "--auto-spine-retry. Off = adopt as before; config only when on; never "
                          "restored")
+    ap.add_argument("--auto-spine-no-retreat", action="store_true",
+                    help="--auto-spine: a search's spine is ADOPTED only if its end also beats "
+                         "the CURRENT spine's end by --auto-spine-gain, so the curriculum's line "
+                         "never moves backwards (azr1b1, 2026-11-10; unr1b1's --ge-line rule). "
+                         "The frontier the search and --auto-spine-recheck read is the MEDIAN "
+                         "greedy episode, which a bimodal eval drags back: azr1b1_pool1's search "
+                         "17 started from a median of 52k while 4/9 episodes were at 84%%, and "
+                         "its line to 57%% replaced a line to 85%%; with one pool that moved 90%% "
+                         "of the training starts back 28 points of course and the greedy fell "
+                         "back to CP2. A shorter spine is discarded and the loop retries after "
+                         "--auto-spine-retry. Off = adopt as before, byte-identical; config only "
+                         "when on; never restored")
     ap.add_argument("--auto-spine-energy", type=float, default=None,   # None = off
                     help="--auto-spine: G > 0 adds an ENERGY stage to the search (auto_spine "
                          "--energy-gain G): when no deeper line exists, a line keeping >= G u "
@@ -12325,6 +12346,8 @@ def main() -> None:
         raise SystemExit("--auto-spine needs --demo-file (the first spine) and --demo-success-d")
     if args.auto_spine_recheck and not args.auto_spine:
         raise SystemExit("--auto-spine-recheck needs --auto-spine")
+    if args.auto_spine_no_retreat and not args.auto_spine:
+        raise SystemExit("--auto-spine-no-retreat needs --auto-spine")
     if args.auto_spine_mcts_args and args.auto_spine_explorer != "mcts":
         raise SystemExit("--auto-spine-mcts-args passes flags to the MCTS explorer: give "
                          "--auto-spine-explorer mcts")
@@ -15482,6 +15505,8 @@ def main() -> None:
             meta["config"]["auto_spine_async"] = 1
         if args.auto_spine_recheck:
             meta["config"]["auto_spine_recheck"] = 1
+        if args.auto_spine_no_retreat:
+            meta["config"]["auto_spine_no_retreat"] = 1
         if args.auto_spine_energy is not None:
             meta["config"]["auto_spine_energy"] = float(args.auto_spine_energy)
         if args.auto_spine_scratch:
@@ -16945,6 +16970,19 @@ def main() -> None:
                       f"frontier {float(AUTO['med']):,.0f} by {float(args.auto_spine_gain):g} u "
                       f"(the search started at {med:,.0f}); next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
+                return
+        if args.auto_spine_no_retreat:
+            # --auto-spine-no-retreat: the curriculum's line never moves backwards
+            _de_new = float(_f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0])
+            _de_cur = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
+            if not spine_moves_on(_de_new, _de_cur, float(args.auto_spine_gain)):
+                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
+                AUTO["last"] = int(global_step)
+                print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: SHORTER spine "
+                      f"discarded - its end d {_de_new:,.0f} does not beat the current "
+                      f"spine's end d {_de_cur:,.0f} by {float(args.auto_spine_gain):g} u "
+                      f"(--auto-spine-no-retreat); next try at step {AUTO['retry_at']:,}",
+                      flush=True)
                 return
         demo.reset_spine(sp)
         if DEMO_KEYS[0] is not None:
