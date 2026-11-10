@@ -443,7 +443,7 @@ class Tree:
 # --mcts-labels: the tree's own training targets (azr1b4, the tree-only loop)
 # --------------------------------------------------------------------------------------------
 def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
-                 tol: float = 1e-9, prefer_first: bool = True) -> dict:
+                 tol: float = 1e-9, prefer_first: bool = True, first_floor=None) -> dict:
     """AlphaZero-style targets at EXPANDED nodes, read off the finished tree (pure numpy).
 
     The policy target of a node is the set of its children that BEAT THEIR SIBLINGS: the ones
@@ -457,6 +457,10 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     4.53B checkpoint: the greedy child is the best at ~70% of the nodes whose children differ).
     Every number here is a rank or a value normalised inside the tree (the tree's own score:
     banked progress / the start distance), never a constant of a map.
+    ``first_floor`` ({node id: value}, --mcts-root-chain): a lower bound on the FIRST child's Q of
+    those nodes - for a root, the best Q of the later roots on its own greedy line, which the
+    policy's own move reaches by flying on (roots are siblings in the tree, so nothing else backs
+    that value up to the earlier root).
 
     ``nodes``: node ids (one label row each); ``c_pact`` (n_nodes_total, n_heads): each child's
     FIRST decision in policy space; ``c_pz`` (n_nodes_total, n_z): its view z; ``nvec``: the
@@ -487,7 +491,10 @@ def node_targets(tree, nodes, c_pact, c_pz, nvec, npad: int, n_view: int = 2,
     cs = np.asarray(tree.cstart[nd], np.int64)
     offs = np.cumsum(cnt) - cnt
     idx = np.repeat(cs - offs, cnt) + np.arange(int(cnt.sum()))     # child ids, block by block
-    q = np.asarray(tree.q[idx], np.float64)
+    q = np.asarray(tree.q[idx], np.float64).copy()
+    if first_floor:
+        fl = np.asarray([first_floor.get(int(x), -np.inf) for x in nd], np.float64)
+        q[offs] = np.maximum(q[offs], fl)
     qmax = np.maximum.reduceat(q, offs)
     best = q >= np.repeat(qmax, cnt) - 1e-12
     if prefer_first:
@@ -1076,7 +1083,7 @@ def run_mcts(ctx: dict, a) -> dict:
     labels = None
     if LAB:
         labels = _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec,
-                              passes[k_root]["spawn"],
+                              passes[k_root]["spawn"], root_sp,
                               lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K)
         summary["ticks_line"] = int(labels.pop("ticks"))
         summary["ticks_total"] += summary["ticks_line"]
@@ -1090,6 +1097,7 @@ def run_mcts(ctx: dict, a) -> dict:
 
 
 def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_dec, spawn,
+                 root_sp,
                  lab_leaf, lab_scal, lab_pose, C_pact, C_pz, C_kind, M, K) -> dict:
     """--mcts-labels: the finished tree as training rows (azr1b4, the tree-only loop).
 
@@ -1119,7 +1127,22 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
         L = np.zeros(0, np.int64)
         LS = np.zeros((0, 0), np.float32)
         LP = np.zeros((0, 6), np.float32)
-    nt = node_targets(tree, L, C_pact, C_pz, nvec, npad, n_view)
+    floor = None
+    if int(getattr(a, "mcts_root_chain", 0) or 0):
+        # --mcts-root-chain: a root's own (greedy) move reaches every LATER root of its greedy
+        # line, so its Q is at least theirs; per spawn, the suffix max over later roots
+        floor = {}
+        by_sp = {}
+        for rid, k in root_sp.items():
+            by_sp.setdefault(int(k), []).append(int(rid))
+        for k, rids in by_sp.items():
+            rids.sort(key=lambda r_: int(tree.root_dec[r_]))
+            best_after = -np.inf
+            for r_ in reversed(rids):
+                if np.isfinite(best_after):
+                    floor[r_] = best_after
+                best_after = max(best_after, float(tree.q[r_]))
+    nt = node_targets(tree, L, C_pact, C_pz, nvec, npad, n_view, first_floor=floor)
     k = nt["keep"]
     rows = {"scal": [LS[k]], "pose": [LP[k]], "probs": [nt["probs"][k]], "vmu": [nt["vmu"][k]],
             "vsd": [nt["vsd"][k]], "value": [nt["value"][k]],
@@ -1133,6 +1156,11 @@ def _tree_labels(ctx, a, mk_wrapper, tree, b, path, root, rdec, acts, views, n_d
     _c0, _n0 = int(tree.cstart[0]), int(tree.ncld[0])
     r_first = int(np.min(tree.root_dec[_c0:_c0 + _n0])) if _n0 else int(rdec)
     node_d = [int(root)] * int(rdec)
+    if int(getattr(a, "mcts_labels_prefix_all", 0) or 0):
+        # --mcts-labels-prefix-all: the WHOLE greedy prefix up to the line's root is labelled with
+        # the policy's own moves - the path that reaches the root the tree's line starts from (with
+        # --mcts-root-chain the roots' own node rows agree with it)
+        r_first = int(rdec)
     kind_d = [-1 if d < r_first else -2 for d in range(int(rdec))]
     for nid in path[1:]:
         nd = int(tree.ndec[nid])

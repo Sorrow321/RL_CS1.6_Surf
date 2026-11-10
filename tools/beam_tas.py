@@ -2328,6 +2328,14 @@ def main():
                          "K-1 drawn by the core's own reset with derived seeds: the start's yaw "
                          "jitter, which every eval episode has), each giving max-roots // K of the "
                          "roots. 1 = the one pass (as before)")
+    ap.add_argument("--mcts-root-chain", type=int, default=0, choices=(0, 1),
+                    help="--mcts-labels: 1 = a root's FIRST child (the policy's own move) takes at "
+                         "least the best Q of the later roots on the same greedy line (they are "
+                         "siblings in the tree, so nothing else credits flying on); 0 = off")
+    ap.add_argument("--mcts-labels-prefix-all", type=int, default=0, choices=(0, 1),
+                    help="--mcts-labels: 1 = label the best line's WHOLE greedy prefix (up to its "
+                         "root) with the policy's own moves, not only the part before the earliest "
+                         "root; 0 = off")
     ap.add_argument("--mcts-labels-cut", type=float, default=0.0,
                     help="--mcts-labels: the best line's searched rows stop at the first decision "
                          "whose banked d is within U of the line's final banked d (the rest is time "

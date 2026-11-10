@@ -308,3 +308,19 @@ def test_sigma_fit_on_selected_rows_ignores_the_others(keys_hold):
         with torch.no_grad():
             pol.view_std.log_std[0].clamp_(max=LOG_STD_INIT)
     assert float(pol.log_std()[0].detach().exp()) < 0.2
+
+
+def test_node_targets_first_floor_credits_the_policys_own_move():
+    t = Tree(cap=16)
+    r = t.add_children(0, [0.2], [True], tick=[0])
+    kids = t.add_children(int(r[0]), [0.2, 0.3, 0.25], [True, True, True], tick=[48] * 3)
+    pact = np.zeros((t.n, 6), np.int16)
+    pact[kids, 2] = [0, 1, 2]
+    pz = np.zeros((t.n, 2), np.float32)
+    nvec = (15, 7, 4, 4, 2, 3)
+    nt0 = node_targets(t, [int(r[0])], pact, pz, nvec, 15)
+    assert nt0["probs"][0, 2, 1] == 1.0                 # the random child 0.3 wins without it
+    # a later root on the same greedy line reached 0.5: the policy's own move (child 0) is best
+    nt1 = node_targets(t, [int(r[0])], pact, pz, nvec, 15, first_floor={int(r[0]): 0.5})
+    assert nt1["keep"][0] and nt1["n_best"][0] == 1 and nt1["probs"][0, 2, 0] == 1.0
+    assert float(t.q[kids[0]]) == 0.2                   # the tree itself is not changed
