@@ -1279,3 +1279,20 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   a label batch carries a policy row.
 * Next: CP3, deadline 5.286B steps (the deciding eval 5,285,347,328, ~03:04 UTC); run 5 2.643B.
   Box 59952494: age 4.8 h, deadline 08:58 UTC; credit $36.77 at 01:47.
+
+### 02:42 UTC: CP3 ON TIME at 4.606B (run 5 2.643B); the policy now climbs by itself (54.3% at 4.908B)
+
+| wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
+|---|---|---|---|---|---|---|
+| CP3 | 4.606B | 2.643B | 5.286B | 5.785B | 3.554B | 7.108B |
+
+* Evals after the post-CP2 block: 33.3-33.4% (4.23-4.38B), 34.13, 35.54, then CP3 at 4.606B
+  (41.96%), 42.20, 43.97, 48.36, **54.31%** (4.908B). Seven walls of run 5's ladder are behind it
+  in the score; CP4 (deadline 7.249B steps / 9.855B total) next.
+* Search 12 (4.379B -> 4.464B): STALE (the policy had passed its line: 66,664 vs 66,473). Search
+  13 (4.832B -> 4.918B): NO new spine - its greedy replay ended at d 72,508 while the eval's
+  frontier was 52,366 (the one-replay rooting weakness run 5's notes describe). The policy is
+  climbing CP3 -> 54% on its own and the curriculum's last line (search 11).
+* Labels: searches 12/13 beat the policy at 3.2% / 4.9% of nodes (81% / 89% tied); 4% of a label
+  batch carries a policy row; label fit keys NLL 1.71, yaw 0.19, agreement 0.47.
+* Box 59952494 extended to 10:42 UTC (8 h, accepted).
