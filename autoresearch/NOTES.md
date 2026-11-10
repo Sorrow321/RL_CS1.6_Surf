@@ -1521,3 +1521,47 @@ round while the box was shared); a late start (budget pacer, 21:22 UTC rent); my
 several launched before the previous one had failed (a deviation from the protocol's sequential recipes, made
 because the box had spare capacity and the credit ends ~18:40 UTC); the ladder is decided at the first wall for
 all of them, so nothing here says how a tree-only learner would do past it.
+
+### azr1b4 - 2026-11-10 10:01 UTC: **v12 built: the network IN the search (the protocol's second version); waiting for a box the budget pace allows**
+
+Eleven recipes of "the tree as it is" (an expert that does not use the network's value) failed the
+first wall. PROTOCOL.md's slot 4 guidance names the next step: "then let the network into the search
+(its policy as the prior over children, its value at the leaves)". None of the eleven tested it -
+their trees drew every non-greedy child random-held and never read the value head. v12 does, as ONE
+package (two code changes, both stated here), on top of v8's loop (root chain + whole prefix
+labelled, one of my two best: 2.673, 198/480 passes at the landing):
+
+* **The policy as the prior over children: slot 2's child-mix rule**, taken from
+  origin/ar/azr1b2 (commits 96f81053, 8c606b5f, 8cb13c12, cherry-picked; their test
+  tests/python/test_mcts_mix.py comes with it). Each expansion's 15 sampled children are the
+  network's own samples (P), perturbed samples (E: a held steer + hotter keys) or random-held (R),
+  in shares that follow which kind beat its siblings (floor 5%, memory 256 wins, 2 warm waves) -
+  AlphaZero's prior with its exploration noise set by the search's own results. This is the change
+  that is ALIVE on the ladder in slot 2 (its run 2, one pool + the rule, finished the map at 7.25B
+  steps). `--mcts-mix-rule sib`, defaults as slot 2 ran them.
+* **The value at the leaves: `--mcts-leaf-value 1`** (new, commit 252b2dc7). After each macro the
+  network reads every live child's end state once more; the child's SELECTION value is
+  max(its banked score, V capped at 1 = the goal), and an expanded node's is the max of its
+  children's, recomputed up the path (so an optimistic guess falls back to what its children show).
+  The labels, the value targets and the best line keep reading the real banked q: the value only
+  decides where the tree spends its waves (no bootstrapped targets, so no max-over-guesses
+  inflation). Off = unchanged (tests/python/test_mcts_leaf_value.py).
+* **A label fix the mix needs** (commit b7305d68): with sampled children in the tree, (a) a perturbed
+  child's view label is now the view it FLEW (its draw plus the held steer), not the draw; (b) the
+  best line's sampled macros are labelled at every decision with the draw they executed (stored per
+  decision during the search), as random-held macros always were. While every sampled child is
+  random-held (v1-v11) nothing changes.
+
+**v12's command** (az_launch.sh, as v8 plus the two search flags):
+`bash tools/az_launch.sh azr1b4_tree12 --mcts-minutes 10 --mcts-max-waves 350 --mcts-roots-secs 300
+--mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1 --mcts-labels-cut 32
+--mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1 --mcts-mix-rule sib --mcts-leaf-value 1`
+(az_launch.sh's fixed `--mcts-random-frac 1.0 --mcts-perturb-frac 0` are ignored under the rule.)
+Deadline: the first ramp by 2.0B total ticks, as every slot-4 run.
+
+**Money and the box.** The pace left ~0.30 $/h at 09:43 (three boxes burn 1.174 $/h; the pace's
+limit 1.47). Rented box 60050681 (RTX 5070 Ti, 0.281 $/h, Ryzen 9 7945HX): the deploy's
+gpu_health said UNHEALTHY (power limit 250 W of the card's 300 W default, and no reference for the
+model), so it was blocklisted (machine 154768, gpu_capped) and released at 09:50 after ~7 minutes.
+The 4080 offer at 0.31 $/h left the market before the pace reached it; the next offers are 0.356
+(3090) and 0.38 (5080). I retry each wakeup; the pace's room grows ~0.02 $/h per hour.
