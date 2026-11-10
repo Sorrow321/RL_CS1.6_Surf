@@ -4,11 +4,11 @@
  "final": false,
  "slot": 2,
  "best": {
-  "score": 86.242,
-  "eval_file": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool/traj_3624402944.jsonl",
+  "score": 89.953,
+  "eval_file": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool/traj_4756865024.jsonl",
   "run": "azr1b2_pool",
-  "step": 3624402944,
-  "ckpt": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool_snaps/ckpt_3612344320.pt",
+  "step": 4756865024,
+  "ckpt": "/home/steam/ar_az/runs/azr1b2/azr1b2_pool_snaps/ckpt_4747952128.pt",
   "recipe": [
    "--envs",
    "1024",
@@ -104,7 +104,7 @@
   "box": 59951396,
   "ckpt_latest": null,
   "no_recipe": true,
-  "ckpt_md5": "269582f21d7b155bdbd86574ed90357f"
+  "ckpt_md5": "ab0422cf952e1b065e98daec04802dfe"
  },
  "ladder": {
   "unit": "steps",
@@ -115,19 +115,23 @@
   "cavity (CP2)": 1736966144,
   "post-CP2 block": 1812463616,
   "CP3": 1887961088,
-  "verdict": "alive: 8 walls ON TIME (run 2 azr1b2_pool); run 1 azr1b2_sib FAILED the post-CP2 block",
+  "verdict": "alive: 9 walls ON TIME (run 2 azr1b2_pool, CP6 4.379B vs run 5 6.116B); run 1 azr1b2_sib FAILED the post-CP2 block",
   "total": {
    "first ramp": 861463244,
    "window (CP1)": 1239242893,
    "pit dive": 1926183113,
    "cavity (CP2)": 2167234358,
    "post-CP2 block": 2242731830,
-   "CP3": 2387346333
+   "CP3": 2387346333,
+   "CP4": 2613838749,
+   "CP5": 2992211925,
+   "CP6": 5371947935
   },
   "CP4": 2114453504,
-  "CP5": 2416443392
+  "CP5": 2416443392,
+  "CP6": 4379377664
  },
- "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 (run 5 + the rule) cleared 4 walls ON TIME and FAILED the post-CP2 block, like run 4's fixed mixed tree. Run 2 azr1b2_pool (slot 1's one pool + the rule, from step 0 at 01:58 UTC): walls 1-8 ON TIME (CP5 2.416B vs run 5 3.851B); best 86.24% at 3.62B, at the CP6 gap (run 5 crept at 84-86% there to 5.96B; deadline 12.23B). The rule leans random-held where the policy is stuck and toward policy samples where it flies.",
+ "summary": "Slot 2 (a balanced tree): the MCTS child mix set by a rule (sibling wins per kind -> shares, floor 5%, memory 256 wins). Run 1 (run 5 + the rule) cleared 4 walls ON TIME and FAILED the post-CP2 block, like run 4's fixed mixed tree. Run 2 azr1b2_pool (slot 1's one pool + the rule, from step 0 at 01:58 UTC): walls 1-9 ON TIME (CP6 4.379B vs run 5 6.116B); best 89.95% at 4.757B; next CP7 (deadline 13.44B), finish deadline 16.46B. The rule leans random-held where the policy is stuck and toward policy samples where it flies.",
  "runs": [
   {
    "run": "azr1b2_sib",
@@ -244,7 +248,7 @@
    "one_recipe": true,
    "from_scratch_step0": true,
    "resume_from": null,
-   "verdict": "running: walls 1-8 ON TIME; at the CP6 gap, best 86.24% at 3.624B",
+   "verdict": "running: walls 1-9 ON TIME (CP6 4.379B); best 89.95% at 4.757B; CP7 pending (deadline 13.44B)",
    "ladder_steps": {
     "first ramp": 680001536,
     "window (CP1)": 981991424,
@@ -253,7 +257,8 @@
     "post-CP2 block": 1812463616,
     "CP3": 1887961088,
     "CP4": 2114453504,
-    "CP5": 2416443392
+    "CP5": 2416443392,
+    "CP6": 4379377664
    },
    "ladder_total": {
     "first ramp": 861463244,
@@ -261,7 +266,10 @@
     "pit dive": 1926183113,
     "cavity (CP2)": 2167234358,
     "post-CP2 block": 2242731830,
-    "CP3": 2387346333
+    "CP3": 2387346333,
+    "CP4": 2613838749,
+    "CP5": 2992211925,
+    "CP6": 5371947935
    }
   }
  ]

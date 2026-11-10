@@ -1388,3 +1388,23 @@ all-random children): same flags apart from the child mix, another box and seed 
   this slot's change. Their trees still show the rule's pit mix (R 0.46-0.48 / E 0.35 / P 0.16-0.19).
 * Box extended at 05:31 to 17:31 UTC (fleet credit $30.85, 13.2 h to the reserve at 1.58 $/h).
   The finish deadline (16.46B) falls near 17:20 UTC at this speed.
+
+### 06:45 UTC: run 2 - CP6 4.379B ON TIME (run 5 6.116B); best 89.95% at 4.757B; search 14 adopted deep
+
+* Ladder (steps): **CP6 4.379B** (total ticks 5.372B; run 5 6.116B / 8.220B) - nine walls ON TIME,
+  CP6 1.7B steps earlier than run 5. Evals 3.85-4.83B: 84.5, 32.1, 84.0, 84.3, 84.5, 86.0, 86.1,
+  **89.7 (4.379B, median 86.1)**, 60.2, 32.1, 86.1, 89.9, **89.95 (4.757B, best)**, 60.1. Next wall CP7
+  (deadline 13.44B, ~14:20 UTC at 301k steps/s); finish deadline 16.46B (~17:10 UTC).
+* Units: a search's "%" (mix_searches.py) is field progress 1 - d/d0 (d0 ~99.7k), not the score's
+  route progress: search 12's 42.29% = end d 57,545; the 84.5% evals ended at d ~69.8k (30% field).
+* Search 12 (4.153B, root 30.0%, best 42.29%, line G7 P12 E11 R2) ADOPTED at 4.244B (end d 57,545);
+  the next eval (4.379B) passed CP6. Search 13 (4.379B) wasted again on a bad root: the eval's greedy
+  reached d 16,410 (CP6), the search's own greedy replay died at 32.2% field (d ~67.6k).
+* **Search 14** (4.832B, root 59.67% field, 102,620 cells, best **85.37% banked / 86.11% raw**, the
+  deepest line of the run) ADOPTED at 4.924B: 9,757 states, end d 14,588 against the eval greedy's
+  69,824; the curriculum restarted at its end and steps back 40 states per pass (90-98% success).
+  Its line: G21 P7 E19 R9 of 56 macros; mean shares P 0.21 / E 0.36 / R 0.44, final 0.32/0.34/0.33.
+* Keeper copy for the 89.953 eval: ckpt_4747952128.pt (-9M), pulled, md5 ab0422cf952e1b065e98daec04802dfe
+  (verified on the box). Also kept: ckpt_4366270464 (89.699), ckpt_4668784640 (89.86).
+* Search ticks: 14 searches, 1,061M ticks. Budget at 06:31: credit $29.25, burn 1.584 $/h, 12.2 h to
+  the reserve (~18:40 UTC); box deadline 17:31 UTC covers the finish deadline.
