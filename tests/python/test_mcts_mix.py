@@ -47,11 +47,16 @@ def test_log_mode_draws_the_legacy_knob():
     assert (k == kinds_from_masks(rank, e, n)).all()
     assert (k[rank == 0] == MODE_GREEDY).all() and (k[rank > 0] == MODE_RANDOM).all()
     assert np.array_equal(r1.random(4), r2.random(4))
-    # 'log' never moves the shares (the knob stays fixed); it only keeps the books
+    # 'log' never moves the shares (the knob stays fixed at its own shares); it keeps the books
+    assert np.allclose(mr.share, [0, 0, 1])
+    mr.update(k, np.where(k == MODE_POLICY, 1.0, 0.0), np.ones(len(k), np.int8),
+              np.ones(len(k), bool), np.zeros(len(k)))
+    assert np.allclose(mr.share, [0, 0, 1])
     mr.update(k, np.where(k == MODE_RANDOM, 1.0, 0.0), np.ones(len(k), np.int8),
               np.ones(len(k), bool), np.zeros(len(k)))
-    assert np.allclose(mr.share, 1 / 3)
     assert mr.tot_wins[MODE_RANDOM] > 0
+    assert np.allclose(MixRule("log", perturb_frac=0.5, random_frac=0.5).share,
+                       [0.25, 0.25, 0.5])
 
 
 def test_off_path_in_run_mcts_is_the_legacy_call():
@@ -139,6 +144,35 @@ def test_rule_moves_toward_the_winning_kind_and_keeps_the_floor():
     s = mr.summary("GRRP")
     assert s["best_path_kinds"] == "GRRP" and s["mix_rule"] == "sib"
     assert set(s["mix_share_mean"]) == {"P", "E", "R"} and len(s["mix_share_by_wave"]) <= 61
+
+
+def test_memory_counted_in_wins_holds_through_a_drought():
+    """Per-child win rates P 1%, E 2%, R 3% -> probability matching puts the shares at
+    0.05 + 0.85 x (1/6, 1/3, 1/2); a long stretch with NO wins (the tree's tail) leaves them
+    there instead of letting them drift or swing; the next wins move them again."""
+    rng = np.random.default_rng(3)
+    rank = np.arange(2048) // 128
+    lam = np.array([0.0, 0.01, 0.02, 0.03])
+    mr = MixRule("sib", floor=0.05, horizon=256, warm=2)
+    for _ in range(80):
+        k = mr.draw(rng, rank)
+        cr = lam[k] * (k > 0)
+        mr.update(k, cr, (cr > 0).astype(np.int8), np.ones(len(k), bool), np.zeros(len(k)))
+    want = 0.05 + 0.85 * np.array([1, 2, 3]) / 6.0
+    assert np.allclose(mr.share, want, atol=0.02)
+    before = mr.share.copy()
+    w_before = mr.w.copy()
+    for _ in range(400):                       # the drought: 400 waves, not one win
+        k = mr.draw(rng, rank)
+        mr.update(k, np.zeros(len(k)), np.zeros(len(k), np.int8), np.ones(len(k), bool),
+                  np.zeros(len(k)))
+    assert np.array_equal(mr.w, w_before)       # no win, no decay of the points
+    assert np.allclose(mr.share, before, atol=0.02)
+    # one burst of R wins after the drought moves the shares toward R
+    k = mr.draw(rng, rank)
+    cr = np.where(k == MODE_RANDOM, 0.2, 0.0)
+    mr.update(k, cr, (cr > 0).astype(np.int8), np.ones(len(k), bool), np.zeros(len(k)))
+    assert mr.share[2] > before[2] + 0.05
 
 
 def test_warm_waves_hold_equal_shares():

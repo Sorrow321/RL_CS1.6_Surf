@@ -2295,8 +2295,9 @@ def main():
                          "beside it (diagnostic); 'off' = the fixed knob (default)")
     ap.add_argument("--mcts-mix-floor", type=float, default=0.05,
                     help="--mcts-mix-rule sib: the least share of each kind")
-    ap.add_argument("--mcts-mix-horizon", type=float, default=16.0,
-                    help="--mcts-mix-rule: waves over which old evidence decays by 1/e")
+    ap.add_argument("--mcts-mix-horizon", type=float, default=256.0,
+                    help="--mcts-mix-rule: the memory in WINS (expansions with a winner): each "
+                         "win decays the old points and children by exp(-1/H)")
     ap.add_argument("--mcts-mix-warm", type=int, default=2,
                     help="--mcts-mix-rule sib: waves at equal shares before the rule speaks")
     ap.add_argument("--mcts-hold-p", type=float, default=0.5,
