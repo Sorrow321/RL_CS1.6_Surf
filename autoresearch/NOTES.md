@@ -1223,3 +1223,38 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
   parts of the user's endpoint that keep PPO (one pool of spawns, the tree teaching the
   network), and slot 1's run is its paired control (same flags, no labels, seed 0). Not built
   yet: the same commit runs it.
+
+### 00:54 UTC: cavity (CP2) ON TIME at 2.794B (run 5 2.114B, run 4 2.718B); now before the post-CP2 block
+
+| wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.600B | 0.977B | 0.763B | 2.000B |
+| window (CP1) | 1.284B | 0.680B | 1.600B | 1.668B | 0.914B | 2.000B |
+| pit dive | 1.812B | 1.812B | 3.625B | 2.285B | 2.448B | 4.897B |
+| cavity (CP2) | 2.794B | 2.114B | 4.229B | 3.552B | 2.887B | 5.774B |
+
+* Evals: 28.19% to 2.49B, 27.8-29.8% (2.57-2.72B), 31.78% CP2 at 2.794B, then 32.12-32.35% (CP2)
+  to 3.247B: in front of the post-CP2 block (33%; run 4 sat at 32.4-32.5% from 2.7B to 14B and
+  failed it; run 5 passed at 2.341B, the policy's own find). Deadline 4.682B steps; the deciding
+  eval is the one at 4,681,367,552 (~02:26 UTC). Best 32.347 at 3.247B.
+* Searches 7-9 all adopted: 7 (2.49B -> 2.578B) end d 72,056; 8 (2.718B -> 2.804B) end d 69,702;
+  9 (3.020B -> 3.105B, quorum 6/9) end d 67,463 (4,002 states; the curriculum's walk is at tau
+  ~3,820 of 4,001). Their labels:
+
+  | search | at step | expanded | beaten | all tied | rows |
+  |---|---|---|---|---|---|
+  | 6 | 2.114B | 128,426 | 6.0% | 86.6% | 48,149 |
+  | 7 | 2.492B | 105,129 | 2.2% | 88.6% | 15,830 |
+  | 8 | 2.718B | 137,514 | 1.3% | 94.8% | 12,726 |
+  | 9 | 3.020B | 139,306 | 14.5% | 46.9% | 101,526 |
+
+  The tree teaches when a new region opens (search 9 rooted past the cavity: 14.5% beaten, half
+  the nodes untied) and goes almost silent on a shelf (1-6%). Only 6% of a label batch carries a
+  policy row now; label fit keys NLL 2.22, yaw 0.39, agreement 0.31.
+* Other slots at 00:52: slot 1 (one pool) 8 walls on time, CP5 at 4.304B (post-CP2 block 2.492B);
+  slot 2 (balanced tree) at the post-CP2 block too (32.45%).
+* **Fallback ready** (only if this run misses the post-CP2 deadline): `--no-recipe` + slot 1's
+  85 flags (built from run 5's list minus the 41 elements slot 1 dropped; checked equal to its
+  NOTES list) + `--tree-labels 0.1`, same commit 2a4f8edd (the box's checkout). Harvest first:
+  `pull --ckpt --snapshot 3001024512`, search_ticks.json, and the auto/ bundle tarred on the box
+  without the per-search ckpt copies (fetched as a `ckpt_<name>.pt` snapshot for box.py's md5).

@@ -4,10 +4,10 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 28.201,
-  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_2265448448.jsonl",
+  "score": 32.347,
+  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_3246915584.jsonl",
   "run": "azr1b3_tl1",
-  "step": 2265448448,
+  "step": 3246915584,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -149,13 +149,15 @@
   "first ramp": 680001536,
   "window (CP1)": 1283981312,
   "pit dive": 1812463616,
-  "cavity (CP2)": null,
-  "verdict": "alive: 3 walls ON TIME (first ramp 0.680B, window 1.284B, pit dive 1.812B = run 5's step); cavity PENDING (deadline 4.229B)",
+  "cavity (CP2)": 2793930752,
+  "post-CP2 block": null,
+  "verdict": "alive: 4 walls ON TIME (0.680B, 1.284B, 1.812B, 2.794B); post-CP2 block PENDING (deadline 4.682B)",
   "total": {
    "first ramp": 977379793,
    "window (CP1)": 1667960905,
-   "pit dive": 2285322089
+   "pit dive": 2285322089,
+   "cavity (CP2)": 3551987010
   }
  },
- "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~246k steps/s): first ramp 0.680B steps (run 5 0.529B), window 1.284B (0.680B), pit dive 1.812B (1.812B) - all ON TIME; in total ticks 0.977B / 1.668B / 2.285B (run 5 0.763B / 0.914B / 2.448B). Since 1.89B on 28.2% before the cavity (CP2, deadline 4.229B steps, run 5 2.114B). The trees teach less as the policy improves (nodes where a child beats the policy's own: 24% -> 41% -> 16% -> 16% -> 6% -> 6%; on the shelf ~90% of nodes have all children tied)."
+ "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~247k steps/s): 4 walls ON TIME - first ramp 0.680B steps (run 5 0.529B), window 1.284B (0.680B), pit dive 1.812B (1.812B), cavity 2.794B (2.114B); total ticks 0.977 / 1.668 / 2.285 / 3.552B (run 5 0.763 / 0.914 / 2.448 / 2.887B). Best 32.347 at 3.247B, before the post-CP2 block (deadline 4.682B; run 4 failed it, run 5 2.341B). The trees teach less as the policy improves (nodes where a child beats the policy's own: 24% -> 41% -> 16% -> 6% on a shelf, 14% when a new region opens)."
 }
