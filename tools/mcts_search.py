@@ -48,6 +48,19 @@ u, energy height h = z + |v|^2/1600 / --cell-energy u): C_seen counts visits (th
 weight), and the summary reports how many cells the search found - the coverage number to compare
 explorers with. Nothing in this file names a map, a place, a speed or a progress value; every
 constant is a search budget, a cell size or a tolerance and ships unchanged to a new map.
+
+THE CHILD MIX (azr1b2, 2026-11-09). Each expansion's SAMPLED children (ranks 1..K-1; child 0 is
+always the policy's mode) are of three kinds: P = a plain policy sample (temperature 1), E = a
+perturbed policy sample (--mcts-keys-temp + a held steer), R = random-held (the first decision
+drawn at --mcts-random-temp on every head, held for the macro). Runs 4/5 fixed the shares
+(--mcts-perturb-frac / --mcts-random-frac). --mcts-mix-rule sib sets them by ONE rule from the
+search's own results (MixRule): after every wave, in each expansion the child that did better
+than all its siblings (child 0 included) earns its kind one point - "better" on the tree's own
+value (the backed-up banked score) when some child improved on its parent's value, else (nobody
+went deeper) on the new archive cells a LIVE child opened; ties split the point; a win of child 0
+is credited to no kind. Each kind's share of the next wave's sampled children is probability
+matching on its points per child (decayed over --mcts-mix-horizon waves), with a floor
+(--mcts-mix-floor) so that no kind dies out. Off (the default) draws the kinds exactly as before.
 """
 from __future__ import annotations
 
@@ -57,6 +70,198 @@ import time
 import numpy as np
 
 G_ENERGY = 800.0           # sv_gravity: h = z + |v|^2 / (2 g)
+
+# the kinds of child: 0 = child 0 (the policy's mode), 1 = P (policy sample), 2 = E (perturbed),
+# 3 = R (random-held); MODE_CHARS[k] names them in logs and in the best line's composition
+MODE_GREEDY, MODE_POLICY, MODE_PERTURB, MODE_RANDOM = 0, 1, 2, 3
+MODE_CHARS = "GPER"
+
+
+# --------------------------------------------------------------------------------------------
+# the child mix: the fixed knob of runs 4/5, and the rule (--mcts-mix-rule)
+# --------------------------------------------------------------------------------------------
+def legacy_child_kinds(rng, rank, perturb_frac: float, random_frac: float):
+    """The fixed knob of runs 4/5, draw for draw (two uniform draws over the whole batch, the
+    perturb draw first): -> (explore, rnd) masks. Kept verbatim so that --mcts-mix-rule off
+    consumes the same random stream as before (tests/python/test_mcts_mix.py)."""
+    n = len(rank)
+    explore = (rank > 0) & (rng.random(n) < float(perturb_frac))
+    rnd = (rank > 0) & (rng.random(n) < float(random_frac))
+    explore &= ~rnd
+    return explore, rnd
+
+
+def kinds_from_masks(rank, explore, rnd) -> np.ndarray:
+    """-> per-env kind (MODE_*) from the legacy masks."""
+    k = np.where(np.asarray(rnd, bool), MODE_RANDOM,
+                 np.where(np.asarray(explore, bool), MODE_PERTURB, MODE_POLICY))
+    return np.where(np.asarray(rank) > 0, k, MODE_GREEDY).astype(np.int8)
+
+
+def mix_shares(wins, children, floor: float, prev=None) -> np.ndarray:
+    """Probability matching with a floor: the (P, E, R) shares from each kind's points per child.
+    share_k = floor + (1 - 3 floor) * y_k / sum(y), y_k = wins_k / children_k (0 for a kind with
+    no children). No evidence at all (sum y = 0) keeps ``prev`` (equal shares if None)."""
+    w = np.asarray(wins, np.float64)
+    c = np.asarray(children, np.float64)
+    y = np.where(c > 0, w / np.maximum(c, 1e-12), 0.0)
+    s = float(y.sum())
+    if s <= 0.0 or not np.isfinite(s):
+        return (np.full(3, 1.0 / 3.0) if prev is None else np.asarray(prev, np.float64).copy())
+    fl = float(floor)
+    return fl + (1.0 - 3.0 * fl) * y / s
+
+
+def sibling_credit(own, sc, par_sc, alive, n_new, tol: float = 1e-9):
+    """One wave's tournament. ``own`` (N,) the leaf each env expanded, ``sc`` (N,) each child's
+    score (the tree's value), ``par_sc`` (N,) its leaf's score, ``alive`` (N,) alive at the macro's
+    end, ``n_new`` (N,) new archive cells its macro opened. Per leaf: if some child's score beats
+    the leaf's own by more than ``tol``, the best-scoring children win (a dead child that banked
+    deeper counts: its line exists up to the banked tick); else the LIVE children that opened the
+    most new cells win (none if no live child opened one). Ties split the point.
+    -> (credit (N,) float, how (N,) int8: 1 = won on value, 2 = won on new cells, 0 = no win)."""
+    own = np.asarray(own, np.int64)
+    sc = np.asarray(sc, np.float64)
+    par_sc = np.asarray(par_sc, np.float64)
+    alive = np.asarray(alive, bool)
+    n_new = np.asarray(n_new, np.float64)
+    N = len(own)
+    credit = np.zeros(N, np.float64)
+    how = np.zeros(N, np.int8)
+    if N == 0:
+        return credit, how
+    order = np.argsort(own, kind="stable")
+    own_s = own[order]
+    starts = np.flatnonzero(np.r_[True, own_s[1:] != own_s[:-1]])
+    ends = np.r_[starts[1:], N]
+    for s, e in zip(starts.tolist(), ends.tolist()):
+        ch = order[s:e]
+        v = sc[ch]
+        best = float(np.max(v))
+        if np.isfinite(best) and best > float(par_sc[ch[0]]) + tol:
+            win = ch[v >= best - tol]
+            credit[win] = 1.0 / len(win)
+            how[win] = 1
+            continue
+        nn = np.where(alive[ch], n_new[ch], 0.0)
+        m = float(nn.max())
+        if m > 0.0:
+            win = ch[nn >= m]
+            credit[win] = 1.0 / len(win)
+            how[win] = 2
+    return credit, how
+
+
+class MixRule:
+    """--mcts-mix-rule: the (P, E, R) shares of the sampled children.
+
+    ``mode`` 'sib' = the rule (draw from the shares, update them every wave); 'log' = the legacy
+    fixed knob (``legacy_child_kinds``, the same random stream as 'off') with the rule's
+    bookkeeping beside it, so a run at the fixed knob reports which kinds won (a diagnostic).
+    ``floor``: the least share of each kind; ``horizon``: waves over which old evidence decays by
+    1/e; ``warm``: waves at equal shares before the rule speaks. Every constant is a search
+    budget: nothing here reads a map, a place or a progress value."""
+
+    def __init__(self, mode: str = "sib", floor: float = 0.05, horizon: float = 16.0,
+                 warm: int = 2, perturb_frac: float = 0.5, random_frac: float = 0.5):
+        if mode not in ("sib", "log"):
+            raise ValueError(f"MixRule mode {mode!r}")
+        if not 0.0 <= float(floor) < 1.0 / 3.0:
+            raise ValueError("--mcts-mix-floor must be in [0, 1/3)")
+        self.mode = mode
+        self.floor = float(floor)
+        self.horizon = float(horizon)
+        self.decay = math.exp(-1.0 / max(1.0, float(horizon)))
+        self.warm = int(warm)
+        self.pf, self.rf = float(perturb_frac), float(random_frac)
+        self.share = np.full(3, 1.0 / 3.0)            # (P, E, R)
+        self.w = np.zeros(3)                          # decayed points
+        self.c = np.zeros(3)                          # decayed children
+        self.waves = 0
+        self.tot_children = np.zeros(3, np.int64)
+        self.tot_wins = np.zeros(4)                   # (G, P, E, R)
+        self.tot_wins_value = np.zeros(4)
+        self.tot_wins_cells = np.zeros(4)
+        self.tot_new_cells = np.zeros(4)
+        self.tot_alive = np.zeros(4)
+        self.tot_n = np.zeros(4)
+        self.hist = []                                # (wave, P, E, R) after each update
+        self.share_sum = np.zeros(3)
+
+    def draw(self, rng, rank) -> np.ndarray:
+        """-> per-env kind (MODE_*); rank 0 is always child 0 (the policy's mode)."""
+        rank = np.asarray(rank)
+        if self.mode == "log":
+            ex, rn = legacy_child_kinds(rng, rank, self.pf, self.rf)
+            return kinds_from_masks(rank, ex, rn)
+        u = rng.random(len(rank))
+        cum = np.cumsum(self.share)
+        k = np.minimum(np.searchsorted(cum, u * cum[-1], side="right"), 2)
+        return np.where(rank > 0, 1 + k, MODE_GREEDY).astype(np.int8)
+
+    def update(self, kinds, credit, how, alive, n_new) -> None:
+        """One wave's evidence (``sibling_credit``'s output for its children)."""
+        kinds = np.asarray(kinds, np.int64)
+        credit = np.asarray(credit, np.float64)
+        how = np.asarray(how)
+        alive = np.asarray(alive, bool)
+        n_new = np.asarray(n_new, np.float64)
+        wins = np.zeros(4)
+        for k in range(4):
+            m = kinds == k
+            wins[k] = float(credit[m].sum())
+            self.tot_wins_value[k] += float(credit[m & (how == 1)].sum())
+            self.tot_wins_cells[k] += float(credit[m & (how == 2)].sum())
+            self.tot_new_cells[k] += float(n_new[m].sum())
+            self.tot_alive[k] += float(alive[m].sum())
+            self.tot_n[k] += float(m.sum())
+        self.tot_wins += wins
+        ch = np.array([(kinds == k).sum() for k in (1, 2, 3)], np.float64)
+        self.tot_children += ch.astype(np.int64)
+        self.w = self.w * self.decay + wins[1:]
+        self.c = self.c * self.decay + ch
+        self.waves += 1
+        if self.mode == "sib" and self.waves >= self.warm:
+            self.share = mix_shares(self.w, self.c, self.floor, prev=self.share)
+        self.share_sum += self.share
+        self.hist.append((self.waves - 1, *[float(x) for x in self.share]))
+
+    def text(self) -> str:
+        p, e, r = self.share
+        return f"mix P/E/R {p:.2f}/{e:.2f}/{r:.2f}"
+
+    def summary(self, path_kinds: str = "") -> dict:
+        """The summary.json block (only written when the flag is on)."""
+        n = max(1, len(self.hist))
+        pick = (np.unique(np.linspace(0, len(self.hist) - 1, min(len(self.hist), 60))
+                          .round().astype(int)) if self.hist else [])
+        names = "GPER"
+
+        def per(a, ks=(0, 1, 2, 3), nd=3):
+            return {names[k]: round(float(a[k]), nd) for k in ks}
+
+        return {"mix_rule": self.mode, "mix_floor": self.floor, "mix_horizon": self.horizon,
+                "mix_warm": self.warm,
+                "mix_share_mean": {k: round(float(v) / n, 4) for k, v in
+                                   zip("PER", self.share_sum)},
+                "mix_share_final": {k: round(float(v), 4) for k, v in zip("PER", self.share)},
+                "mix_share_by_wave": [[int(self.hist[i][0])] + [round(x, 3)
+                                                                for x in self.hist[i][1:]]
+                                      for i in pick],
+                "mix_children": {k: int(v) for k, v in zip("PER", self.tot_children)},
+                "mix_wins": per(self.tot_wins, nd=1),
+                "mix_wins_value": per(self.tot_wins_value, nd=1),
+                "mix_wins_cells": per(self.tot_wins_cells, nd=1),
+                "mix_wins_per_child": {names[k]: round(float(self.tot_wins[k])
+                                                       / max(1.0, float(self.tot_n[k])), 4)
+                                       for k in range(4)},
+                "mix_new_cells_per_child": {names[k]: round(float(self.tot_new_cells[k])
+                                                            / max(1.0, float(self.tot_n[k])), 4)
+                                            for k in range(4)},
+                "mix_alive_end": {names[k]: round(float(self.tot_alive[k])
+                                                  / max(1.0, float(self.tot_n[k])), 4)
+                                  for k in range(4)},
+                "best_path_kinds": path_kinds}
 
 
 # --------------------------------------------------------------------------------------------
@@ -269,7 +474,7 @@ class Tree:
           ("root_dec", np.int64, -1), ("wave", np.int64, -1), ("delta", np.float64, 0.0),
           ("nov", np.float64, 0.0), ("ox", np.float32, 0.0), ("oy", np.float32, 0.0),
           ("oz", np.float32, 0.0), ("raw_d", np.float64, np.inf),
-          ("h_bank", np.float64, np.nan))
+          ("h_bank", np.float64, np.nan), ("kind", np.int8, -1))
 
     def _alloc(self, cap: int):
         for name, dt, fill in self._F:
@@ -806,6 +1011,18 @@ def run_mcts(ctx: dict, a) -> dict:
     sigma = float(a.mcts_yaw_sigma)
     cpuct = float(a.mcts_cpuct)
     cell_w = arch.weight if float(a.mcts_cell_w) > 0 else None
+    # --mcts-mix-rule (azr1b2): off = the fixed knob, exactly as before; sib = the rule sets the
+    # (P, E, R) shares; log = the fixed knob with the rule's bookkeeping beside it (diagnostic)
+    _mr = str(getattr(a, "mcts_mix_rule", "off") or "off")
+    mix = None
+    if _mr != "off":
+        mix = MixRule(_mr, floor=float(a.mcts_mix_floor), horizon=float(a.mcts_mix_horizon),
+                      warm=int(a.mcts_mix_warm), perturb_frac=float(a.mcts_perturb_frac),
+                      random_frac=float(a.mcts_random_frac))
+        print(f"mcts: child mix rule {_mr} (floor {mix.floor:g}, horizon {mix.horizon:g} waves, "
+              f"warm {mix.warm}); " + ("--mcts-perturb-frac / --mcts-random-frac are the rule's "
+                                       "to set" if _mr == "sib" else "the fixed knob draws"),
+              flush=True)
     wave, sim_ticks = 0, 0
     t_loop = time.time()
     log_every = max(1, int(a.mcts_log_every))
@@ -830,12 +1047,17 @@ def run_mcts(ctx: dict, a) -> dict:
         polN.greedy = rank == 0
         # the knob: of the SAMPLED children, --mcts-perturb-frac explore (the held steer and the
         # keys / view temperatures), the rest are the policy's own samples at temperature 1 (the
-        # Nature paper's policy-based explorer commits 50/50 to random or policy per step)
-        explore = (rank > 0) & (rng.random(N) < float(a.mcts_perturb_frac))
+        # Nature paper's policy-based explorer commits 50/50 to random or policy per step);
         # random children (--mcts-random-frac of the sampled ones, before the explore draw): the
         # first decision drawn at --mcts-random-temp on every head and HELD for the macro
-        rnd = (rank > 0) & (rng.random(N) < float(a.mcts_random_frac))
-        explore &= ~rnd
+        if mix is None:
+            explore, rnd = legacy_child_kinds(rng, rank, float(a.mcts_perturb_frac),
+                                              float(a.mcts_random_frac))
+            kinds = None
+        else:
+            kinds = mix.draw(rng, rank)
+            explore = kinds == MODE_PERTURB
+            rnd = kinds == MODE_RANDOM
         polN.hold = rnd if rnd.any() else None
         if sigma > 0:
             # coherent steering: an explore child keeps its parent's held offset with
@@ -972,6 +1194,13 @@ def run_mcts(ctx: dict, a) -> dict:
         sc = np.where(fin, 2.0, prog(c_bank_d) + e_score(c_h_bank))
         ntick = tree.tick[own] + np.where(fin, fin_t, M * K)
         n_before = tree.n
+        if mix is not None:
+            # the rule's evidence: which kind's child beat its siblings in each expansion (on the
+            # tree's value, else on new cells opened by a live child); before add_children, so
+            # the leaf's score is its own (a backup only ever raises q, never score)
+            _cr, _how = sibling_credit(own, sc, tree.score[own], al, n_new)
+            mix.update(kinds, _cr, _how, al, n_new)
+        _kx = {} if mix is None else {"kind": kinds}
         for l, leaf in enumerate(leaves):
             ch = np.flatnonzero(own == leaf)
             ch = ch[np.argsort(rank[ch])]
@@ -983,7 +1212,8 @@ def run_mcts(ctx: dict, a) -> dict:
                                     wave=wave, delta=delta[ch], nov=n_new[ch] / float(M),
                                     ox=stN["origin"][ch, 0], oy=stN["origin"][ch, 1],
                                     oz=stN["origin"][ch, 2], raw_d=raw_d[ch],
-                                    h_bank=c_h_bank[ch])
+                                    h_bank=c_h_bank[ch],
+                                    **{k: v[ch] for k, v in _kx.items()})
             if tree._cap > len(E_acts):
                 E_acts = np.concatenate([E_acts, np.zeros((tree._cap - len(E_acts), M, 6),
                                                           np.int8)])
@@ -1010,7 +1240,8 @@ def run_mcts(ctx: dict, a) -> dict:
                   f"alive {int(al.sum())}/{N}, fin {int(fin.sum())}, cells {arch.n:,} "
                   f"(+{new_cells}), best {_bp:.2f}% "
                   f"(d {tree.bank_d[b]:,.0f}, depth {int(tree.depth[b])}), "
-                  f"{sim_ticks * N / max(dt, 1e-9):,.0f} env-steps/s", flush=True)
+                  f"{sim_ticks * N / max(dt, 1e-9):,.0f} env-steps/s"
+                  + ("" if mix is None else ", " + mix.text()), flush=True)
         wave += 1
         if fin.any() and bool(a.mcts_stop_on_finish):
             break
@@ -1068,6 +1299,17 @@ def run_mcts(ctx: dict, a) -> dict:
                "env_steps_per_s": round(sim_ticks * N / max(dt, 1e-9)),
                "best_by_wave": [round(100 * x, 3) for x in best_hist[::max(1, len(best_hist)
                                                                           // 50)]]}
+    if mix is not None:
+        # the kinds of child along the best line's macros (G child 0, P sample, E perturbed,
+        # R random-held), and the rule's trajectory and totals
+        _pk = "".join(MODE_CHARS[int(tree.kind[i])] if int(tree.kind[i]) >= 0 else "?"
+                      for i in path[1:])
+        summary.update(mix.summary(_pk))
+        print(f"mcts: child mix ({mix.mode}) mean P/E/R "
+              f"{summary['mix_share_mean']['P']:.2f}/{summary['mix_share_mean']['E']:.2f}/"
+              f"{summary['mix_share_mean']['R']:.2f}, final {mix.text()}; wins G/P/E/R "
+              + "/".join(f"{summary['mix_wins'][k]:.0f}" for k in "GPER")
+              + f"; best line's macros {_pk or '-'}", flush=True)
     print(f"mcts: deepest RAW d any live tick reached {summary['raw_best_pct']}% (greedy raw "
           f"{100.0 * float(prog(gbest)):.2f}%)", flush=True)
     print(f"mcts: {wave} waves, {tree.n - 1:,} nodes, {arch.n:,} cells, best "

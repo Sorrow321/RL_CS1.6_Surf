@@ -2285,6 +2285,20 @@ def main():
                          "whole macro (coherent random actions in the policy's frame). 0 = off")
     ap.add_argument("--mcts-random-temp", type=float, default=5.0,
                     help="--mcts-random-frac: the temperature of the random children's draw")
+    # --mcts-mix-rule (azr1b2, 2026-11-09): the child mix by a rule from the search's own results
+    # (tools/mcts_search.py, "THE CHILD MIX"); off = the fixed knob above, draw for draw
+    ap.add_argument("--mcts-mix-rule", default="off", choices=("off", "sib", "log"),
+                    help="--mcts: 'sib' = the shares of the sampled children's kinds (policy "
+                         "sample / perturbed / random-held) follow each kind's wins against its "
+                         "siblings (on the tree's value, else on new cells), probability "
+                         "matching with a floor; 'log' = the fixed knob with that bookkeeping "
+                         "beside it (diagnostic); 'off' = the fixed knob (default)")
+    ap.add_argument("--mcts-mix-floor", type=float, default=0.05,
+                    help="--mcts-mix-rule sib: the least share of each kind")
+    ap.add_argument("--mcts-mix-horizon", type=float, default=16.0,
+                    help="--mcts-mix-rule: waves over which old evidence decays by 1/e")
+    ap.add_argument("--mcts-mix-warm", type=int, default=2,
+                    help="--mcts-mix-rule sib: waves at equal shares before the rule speaks")
     ap.add_argument("--mcts-hold-p", type=float, default=0.5,
                     help="--mcts: a sampled child keeps its parent's held yaw offset with this "
                          "probability (coherent steering over several macros), else draws one")
@@ -2861,12 +2875,15 @@ def main():
         (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         tr, ar = res["tree"], res["archive"]
         _n = tr.n
+        _kx = ({"kind": tr.kind[:_n]}
+               if str(getattr(args, "mcts_mix_rule", "off") or "off") != "off" else {})
         np.savez_compressed(out_dir / "mcts_tree.npz", parent=tr.parent[:_n], depth=tr.depth[:_n],
                             score=tr.score[:_n], q=tr.q[:_n], visits=tr.visits[:_n],
                             alive=tr.alive[:_n], finished=tr.finished[:_n], tick=tr.tick[:_n],
                             bank_d=tr.bank_d[:_n], end_d=tr.end_d[:_n], h=tr.h[:_n],
                             cell=tr.cell[:_n], wave=tr.wave[:_n], cell_seen=ar.seen[:ar.n],
-                            ox=tr.ox[:_n], oy=tr.oy[:_n], oz=tr.oz[:_n], raw_d=tr.raw_d[:_n])
+                            ox=tr.ox[:_n], oy=tr.oy[:_n], oz=tr.oz[:_n], raw_d=tr.raw_d[:_n],
+                            **_kx)
         if args.save_frontier and len(fr["acts"]) and int(fr.get("spawn", 0)) != 0:
             raise SystemExit("--save-frontier: the best line starts on spawn "
                              f"{fr['spawn']} of --mcts-spawns, which this replay does not rebuild")
