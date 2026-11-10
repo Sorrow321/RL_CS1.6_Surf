@@ -1400,3 +1400,10 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   of the contact, so the evals stay at ~2% (a fall's raw depth). Surviving on the ramp after the touch
   is the next skill, and the trees' labels for it have not produced it in 60 rounds.
 * Running: v9 (v8 + 2,000 steps; ~1.1B), v10 (v8 + dense macro labels; ~0.65B). Failed: v1-v8.
+
+### azr1b4 - 2026-11-10 06:03 UTC: **v9 FAILED the first ramp at 2.032B; stopped**
+* **v9 = azr1b4_tree9** (f7d53224: v8 + 2,000 distil steps a round): 59 evals, newest 2,031,618,436 ticks;
+  **first ramp FAILED, window FAILED**; best eval 2.255 at 0.86B. Greedy passes: 248 of 480 (52%) banked a
+  contact in the landing area, **0 past it** - the tighter fit raised the share reaching the ramp a little
+  over v8's 41% and did nothing for staying on it. Stopped 06:02 UTC. v10 (dense labels) is 2 rounds from
+  its deadline.
