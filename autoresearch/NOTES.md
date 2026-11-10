@@ -1337,3 +1337,8 @@ flag list (the SCRATCH preset + config.incumbent_recipe), so the architecture is
   --mcts-roots-secs 300 --mcts-max-roots 128 --az-node-adv 1 --az-sigma-fit 2 --az-spawn-rotate 1
   --mcts-labels-cut 32 --mcts-spawns 8 --mcts-root-chain 1 --mcts-labels-prefix-all 1`.
 * Running: v5 (~1.3B), v6 (~0.8B), v7 (~0.4B), v8 (new). Failed: v1-v4 (first ramp at 2.0B).
+* 02:34 UTC: v8 (8 greedy passes a round, one per jittered spawn) - passes that bank a
+  contact in the landing area (d ~97,920-98,020; the tree's first landing is 97,914 = 1.77%) by round:
+  0, 0, 2, 4, 4, 4, 1, 5 of 8; every one of them still dies within a few seconds (it touches the ramp
+  and falls to the kill floor instead of surfing north-east on it). v7 over 24 rounds: 14 of 192 passes.
+  Evals: v5 ~2.0% at 1.97B (deadline next eval), v6 ~2.1% at 1.34B, v7 ~1.9% at 0.79B, v8 best 2.15%.
