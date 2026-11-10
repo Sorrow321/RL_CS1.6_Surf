@@ -1317,3 +1317,19 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
 * Next: CP6, deadline 12.232B steps / 16.440B total (run 5 6.116B, opened there by a search
   line). At ~250k steps/s that is ~10:50 UTC. Box 59952494 runs to 10:42 UTC; credit $33.76,
   fleet burn $1.58/h (reserve reached ~18:40 UTC).
+
+### 04:37 UTC: flat at CP5 (64.9%) for 0.8B steps; search 16 adopted a line 3,744 u past it at 6.279B
+
+* Evals 5.81-6.64B: best episode 64.84-64.97% at every eval except one (6.040B, 43.86%; a CP3
+  fall), medians 64.7-64.8% with a few at 43.9-60.7%. **Best 64.97% at 6.267B.** The policy sits
+  at one place after CP5; in run 5 the CP6 loop was opened by a search line (search 15 there).
+* Search 15 (5.738B -> 5.827B): NO new spine - its greedy replay died at d 72,039 while the eval
+  frontier was 37,830 (the one-replay rooting weakness; the third such miss here). Search 16
+  (6.191B -> 6.279B): **NEW SPINE**, 8,209 states, end d 34,061 against the greedy frontier
+  37,805; the curriculum restarted at its end and is at tau ~7,370 of 8,208 (band success
+  59-69%, step 40). Search 17 started at 6.644B.
+* Labels: searches 15/16 beat the policy at 5.0% / 6.4% of nodes (85% / 77% tied); 4% of a label
+  batch carries a policy row; fit keys NLL 1.7-1.8, yaw 0.17-0.23, value MSE 0.045, agreement
+  0.43-0.46.
+* 17 searches = 1.628B search ticks. Throughput 250k steps/s; CP6's deadline (12.232B) is ~10:50
+  UTC, eight minutes after the box's current end (10:42): extend in a small step before then.

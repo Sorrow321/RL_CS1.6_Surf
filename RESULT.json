@@ -4,10 +4,10 @@
  "final": false,
  "slot": 3,
  "best": {
-  "score": 64.841,
-  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_5813829632.jsonl",
+  "score": 64.966,
+  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_6266814464.jsonl",
   "run": "azr1b3_tl1",
-  "step": 5813829632,
+  "step": 6266814464,
   "ckpt": null,
   "recipe": [
    "--envs",
@@ -167,5 +167,5 @@
    "CP5": 6888634858
   }
  },
- "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~250k steps/s): 8 walls ON TIME - steps 0.680 / 1.284 / 1.812 / 2.794 / 3.926 / 4.606 / 4.983 / 5.512B vs run 5 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643 / 3.624 / 3.851B (1.0-1.9x); total ticks 0.98 / 1.67 / 2.29 / 3.55 / 5.00 / 5.78 / 6.25 / 6.89B. Best 64.84 at 5.814B (CP5). CP3-CP5 came without a new search line (searches 12-14 stale or empty). The trees teach when a new region opens and go almost silent on a shelf (1-7% of nodes beat the policy)."
+ "summary": "Slot 3 (the tree teaches beside PPO): run 5 + labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run azr1b3_tl1 (from step 0, 21:09 UTC, RTX 5080, ~250k steps/s): 8 walls ON TIME - steps 0.680 / 1.284 / 1.812 / 2.794 / 3.926 / 4.606 / 4.983 / 5.512B vs run 5 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643 / 3.624 / 3.851B (1.0-1.9x); total ticks 0.98 / 1.67 / 2.29 / 3.55 / 5.00 / 5.78 / 6.25 / 6.89B. Best 64.97 at 6.267B (CP5; flat at 64.9% from 5.8B, search 16's new line adopted at 6.279B). CP3-CP5 came without a new search line (searches 12-14 stale or empty). The trees teach when a new region opens and go almost silent on a shelf (1-7% of nodes beat the policy)."
 }
