@@ -1296,3 +1296,24 @@ gate passed (4 recordings in 29 s). Search 1 started at the first eval (524k ste
 * Labels: searches 12/13 beat the policy at 3.2% / 4.9% of nodes (81% / 89% tied); 4% of a label
   batch carries a policy row; label fit keys NLL 1.71, yaw 0.19, agreement 0.47.
 * Box 59952494 extended to 10:42 UTC (8 h, accepted).
+
+### 03:38 UTC: CP4 ON TIME at 4.983B and CP5 ON TIME at 5.512B (run 5 3.624B / 3.851B); best 64.84%
+
+| wall | tl1 steps | run 5 steps | deadline steps | tl1 total | run 5 total | deadline total |
+|---|---|---|---|---|---|---|
+| CP4 | 4.983B | 3.624B | 7.249B | 6.253B | 4.928B | 9.855B |
+| CP5 | 5.512B | 3.851B | 7.702B | 6.889B | 5.293B | 10.586B |
+
+* Evals: CP4 at 4.983B (56.19%), then 55.94, 56.26, 56.18, 59.05, 59.78, 59.87, CP5 at 5.512B
+  (62.51%), 62.32, 63.61, 64.83, **64.84%** (5.814B; median episode 64.66%). Eight walls on time;
+  the steps ratio to run 5 is 1.38x (CP4) and 1.43x (CP5), in total ticks 1.27x and 1.30x.
+* Neither wall came from a new search line: search 12 STALE, 13 found nothing, 14 (5.285B ->
+  5.370B) STALE by 8 u (end d 40,822 against the greedy frontier 40,830). The policy climbed
+  CP3 -> CP5 by itself on the curriculum of search 11's line, which has walked back to tick
+  ~340-360 of 3,814 (band success swinging 2-70%).
+* Labels: search 14 beat the policy at 2.8% of nodes (88% tied); 3-4% of a label batch carries a
+  policy row; fit keys NLL 1.5-2.0, yaw 0.15-0.35, value MSE 0.04, agreement 0.34-0.49.
+* Search 15 started at 5.738B (greedy d 37,830). 15 searches = 1.441B search ticks.
+* Next: CP6, deadline 12.232B steps / 16.440B total (run 5 6.116B, opened there by a search
+  line). At ~250k steps/s that is ~10:50 UTC. Box 59952494 runs to 10:42 UTC; credit $33.76,
+  fleet burn $1.58/h (reserve reached ~18:40 UTC).
