@@ -37062,3 +37062,54 @@ localhost:8601 (A) and 8602 (B) on the droplet.
 **First minutes.** A: 213k steps/s at 100M; its first search (at 76M) returned no line 200 u deeper
 than the greedy. B: 186k steps/s at 37M, first search running. Both greedy lines stop at 0.4% (the
 spawn room), as expected at this age.
+
+## 2026-11-10 14:45 UTC - second-map test, interim: arm A leaves the start room from the true start at 2.945B steps; arm B has no line at 3.40B
+
+Operator-run, both arms unchanged since launch (one seed, RTX 4080 each, see the launch entry
+above). Interim measurement, not a verdict: neither arm has finished the map.
+
+**Arm A `m2sib_pb1` (one pool + sibling-yield child mix).**
+
+| event | trainer step |
+|---|---|
+| searches 1-4 (0.5M, 454M, 906M, 1.36B): no line, tree inside 6-7 archive cells, raw depth 0.422% | - |
+| search 5 triggered (patience) | 1,812,463,616 |
+| search 5 adopted: NEW SPINE, 1,262 states, end d 55,311 (3.22%), md5 8a04ac5365ec6ad19bdf14aad1a90843 | 1,903,689,728 |
+| curriculum start walks back 1,256 -> 480 of 1,261 | 1.906B -> 2.129B |
+| curriculum start hovers at 456-476 (standing on the upper conveyor slab), success 12-26% | 2.13B -> 2.81B |
+| search 6 (patience): no line | 2,265,448,448 |
+| search 7 triggered (patience) | 2,718,433,280 |
+| search 7 adopted: NEW SPINE, 1,089 states, end d 55,345 (3.16%), md5 628b8b83dd012b4355db26559ae3c6f9; the curriculum restarts at its end | 2,810,183,680 |
+| greedy from the true start: 2/9 past the success line d <= 55,445 (score 3.217) | 2,944,925,696 |
+| greedy from the true start: 8/9 | 3,020,423,168 |
+| greedy from the true start: 9/9, frontier d 55,361 | 3,095,920,640 |
+| search 8 (rooted on the new greedy line, 42 roots over 1.4-21.1 s): no line, 124 cells, raw depth 3.236% | 3,020,423,168 -> 3,111,124,992 |
+
+* Search 5's tree: 704 waves, 1,441,796 nodes, 156 cells, depth 32, best line's macros
+  `PERRRRGPEEEEPPGPEREEPEEPEPERRRP`. Search 7's: 714 waves, 1,462,276 nodes, 203 cells, depth 22,
+  macros `PEEGGPEPPGPPPEEEEPGPG`. Both lines take the doorway staircase (floor -> slab *249 ->
+  slab *250 -> the south gap), run west along y ~-3,110, drop a level at x ~80 and come back east
+  under the room (measured from the spine's own states; the map's entities are used for reading
+  the line only).
+* Time from the first line to the first greedy exit: 1.04B steps; from the second line: 135M.
+  The first line carried a 3.4 s wander in the south-west corner before the staircase and its
+  curriculum stalled on the upper slab for ~680M steps; the second line did not.
+* The greedy now stops at 3.2%: the pit under the start room, gate 2 of the October lineage
+  (a field local optimum plus an energy gate, `autoresearch/NOTES.md` of ar/pbfr1b2). Search 8
+  found nothing past it; the next try is at 3,411,124,992.
+* For reference only (different weights, different core, not a control): in October no lineage
+  left this room by training alone; a reward-free explorer's line plus a backward curriculum on
+  warm sidistic weights cleared it 680M steps into `pbr1b1_bcur5`, and ~730M steps into the
+  corrected-core curriculum.
+
+**Arm B `m2pool_pb1` (one pool, tree at the random end).** 3,397,910,528 steps, 0.40%, 0/9, the
+greedy line still walks to the south-west corner and waits. Eight searches, no line: 13 archive
+cells, raw depth 0.422% every time. Its non-greedy children are all random-held (one decision
+held for a 12-decision macro), which cannot express the staircase's jump-then-duck sequence; arm
+A's two winning lines are made mostly of policy and perturbed children.
+
+**Provenance (section 0).** Both spines are the search's own lines from arm A's own checkpoints
+(`runs/m2sib_pb1/auto/k05/spine.npy`, `.../k07/spine.npy` on the box); no demo, no record, no
+warm start, no flag changed.
+
+**Budget.** Credit 20.17 $, reserve 10 $, burn 0.70 $/h, 14.5 h above the reserve.
