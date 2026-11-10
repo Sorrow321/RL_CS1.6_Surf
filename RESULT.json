@@ -1,13 +1,13 @@
 {
  "agent": "azr1b3",
  "round": 1,
- "final": false,
+ "final": true,
  "slot": 3,
  "best": {
-  "score": 82.287,
-  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_11929124864.jsonl",
+  "score": 82.308,
+  "eval_file": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/traj_12382109696.jsonl",
   "run": "azr1b3_tl1",
-  "step": 11929124864,
+  "step": 12382109696,
   "ckpt": "/home/steam/ar_az/runs/azr1b3/azr1b3_tl1/ckpt_latest.pt",
   "recipe": [
    "--envs",
@@ -155,7 +155,7 @@
   "CP4": 4983357440,
   "CP5": 5511839744,
   "CP6": null,
-  "verdict": "FAILED at CP6: 8 walls ON TIME (0.680, 1.284, 1.812, 2.794, 3.926, 4.606, 4.983, 5.512B steps); CP6 not cleared by its deadline 12.232B - the deciding eval 12,231,114,752 reached 82.28% (CP5; the greedy's best episode stops at d ~17,700, 5.6k u before the CP6 curtain at d ~12,160) - so the run was stopped at ~12.42B steps (10:59 UTC). Total ticks at the deciding eval ~15.03B (CP6 total deadline 16.44B; steps decide for slot 3).",
+  "verdict": "FAILED at CP6. 8 walls ON TIME (steps 0.680 / 1.284 / 1.812 / 2.794 / 3.926 / 4.606 / 4.983 / 5.512B = 1.00-1.89x run 5); CP6 not cleared by its deadline 12.232B steps: the deciding eval 12,231,114,752 reached 82.28% (CP5; the greedy stops ~5.6k u before the CP6 curtain). Stopped at ~12.42B steps. In total ticks CP6 was still PENDING (15.18B of a 16.44B deadline), but slot 3 is judged in steps.",
   "total": {
    "first ramp": 977379793,
    "window (CP1)": 1667960905,
@@ -165,7 +165,10 @@
    "CP3": 5784971615,
    "CP4": 6252513781,
    "CP5": 6888634858
-  }
+  },
+  "CP7": null,
+  "chamber entry": null,
+  "finish": null
  },
- "summary": "Slot 3 (the tree teaches beside PPO): labels from EVERY MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd): the children that beat the policy's own greedy child (sibling-rank weights) as the policy target, the node's score as its percentile rank in the tree on a separate value head (PPO's critic untouched). Run 1 azr1b3_tl1 = run 5 + labels (from step 0, RTX 5080, ~250k steps/s): 8 walls ON TIME - steps 0.680 / 1.284 / 1.812 / 2.794 / 3.926 / 4.606 / 4.983 / 5.512B vs run 5 0.529 / 0.680 / 1.812 / 2.114 / 2.341 / 2.643 / 3.624 / 3.851B (1.0-1.9x); total ticks 0.98 / 1.67 / 2.29 / 3.55 / 5.00 / 5.78 / 6.25 / 6.89B - then FAILED CP6 (deadline 12.232B steps) at 82.3%. After CP5 every gain came from a search line: 16 -> 69.7% (6.795B), 19+20 -> 72.3% (8.230B), flat 3B steps while lines 23-25 ended ~2.5-3k u past the policy, lines 26/27 (8.4k and 11.9k u past it) -> 81.8% at 11.325B, best 82.29% at 11.929B; lines 27-29 then all ended at the same place ~2k u past the greedy and the curriculum on them went back only ~180-1,000 ticks. Six searches were lost to a dead greedy replay. The trees beat the policy's own child at 2-19% of nodes (most where a new region opens) and the labels never moved the greedy across a shelf by themselves. Run 2 azr1b3_tl2 (launched 11:00 UTC, same box and commit) = slot 1's finishing recipe (azr1b1_pool1, 85 flags) + --tree-labels 0.1, so slot 1's run is its paired control; its ladder is PENDING."
+ "summary": "Slot 3 kept run 5's two threads and made the tree TEACH: labels from every MCTS tree as an extra loss next to PPO's (--tree-labels 0.1, commit 2a4f8edd) - policy target = the children that beat the policy's own greedy child (sibling-rank weights), value target = the node's percentile rank in its tree on a separate head (PPO's critic untouched). Run azr1b3_tl1 (run 5 + labels, from step 0, RTX 5080 ~250k steps/s): 8 walls ON TIME at 1.00-1.89x run 5 in steps (0.93-1.82x in total ticks), then FAILED CP6 (deadline 12.23B steps) at 82.3%, best eval 82.31%. After CP5 every rise came from a search line learned through the curriculum ~0.5B steps later (64.9 -> 69.7 -> 72.3 -> 82.2%); the labels were active (2-19% of nodes informative, ~11% of a label batch) but never moved the greedy by themselves, and 6 of 8 walls came >30% slower than run 5 (one seed each). For the user's question: teaching the policy from the tree's sibling ranks did not replace or speed up the line -> spawn path; what the tree should teach is still open. Run 2 azr1b3_tl2 (slot 1's finishing recipe + the labels, paired with azr1b1_pool1) was stopped by ROUND OVER at 0.56B steps (first ramp pending; 6.1% at 529M vs slot 1's 1.8% - one early mark, not a wall). Next: finish tl2 against slot 1, and if labels stay, teach per decision only where the tree's margin is large."
 }

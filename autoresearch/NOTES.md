@@ -1473,3 +1473,88 @@ A gap under ~30% at a wall is not an answer (one seed each).
 **Money:** credit $23.08, fleet burn $1.174/h (3 boxes), reserve in 11.1 h. Box extended to
 15:01 UTC. At ~250k steps/s tl2 reaches ~8-9B steps by the budget end (~20:40), so CP6/CP7 come
 into reach only if it keeps slot 1's pace.
+
+### 11:44 UTC: ROUND OVER (operator message at ~11:33) - wrap-up and the round's lesson
+
+**Wrap-up done.** tl2 was stopped at ~0.56B steps (pid 27295; no search child; GPU at 0%). Pulled
+with md5 checks:
+* **tl1, the reported run:** ckpt_latest.pt (final, ~12.42B, md5 244f48f632feeb71573afa7fafad4fcf);
+  ckpt_12004098048.pt (the snapshot before the best eval, md5 ea70c9152a3e8eb8cccafbd2f7e897b0);
+  ckpt_11003756544.pt and ckpt_8002732032.pt; all 165 evals, the launch log, progress.csv and
+  run.json; search_ticks.json (29 searches, 2.796B ticks); auto_bundle.tgz (md5 efa65abc...).
+* **tl2:** ckpt_latest.pt (md5 92291e57c886d26c5a4280801fe99dd5), 8 evals, search_ticks.json (2
+  searches, 0.164B ticks) and auto_bundle.tgz (24 files, md5
+  4235d5783b9f9718d409bf68af817c57).
+
+Final best: 82.308 at 12,382,109,696, an eval after the CP6 deadline (the score is a diagnostic;
+the ladder is the verdict).
+
+**What slot 3 changed in run 5.** Both threads were kept, and the tree was made to TEACH
+(`--tree-labels 0.1`, commit 2a4f8edd). Every MCTS tree, the last 4 kept, gives labels that join
+PPO's minibatch step (1,024 rows per step):
+* the policy target at each expanded node is the children whose backed-up Q beats the policy's
+  own greedy child, weighted by sibling rank;
+* the value target is the node's percentile rank in its tree, learned by a separate head
+  (`tree_vhead`, coef 0.25, its own Adam).
+
+PPO's loss, critic, spawns and search are unchanged, and the flags are bit-identical when off.
+
+**The ladder beside run 5 (azr1b3_tl1, one seed, RTX 5080 ~250k steps/s):**
+
+| wall | tl1 steps | run 5 steps | x | tl1 total | run 5 total | x |
+|---|---|---|---|---|---|---|
+| first ramp | 0.680B | 0.529B | 1.29 | 0.977B | 0.763B | 1.28 |
+| window (CP1) | 1.284B | 0.680B | 1.89 | 1.668B | 0.914B | 1.82 |
+| pit dive | 1.812B | 1.812B | 1.00 | 2.285B | 2.448B | 0.93 |
+| cavity (CP2) | 2.794B | 2.114B | 1.32 | 3.552B | 2.887B | 1.23 |
+| post-CP2 block | 3.926B | 2.341B | 1.68 | 5.000B | 3.252B | 1.54 |
+| CP3 | 4.606B | 2.643B | 1.74 | 5.785B | 3.554B | 1.63 |
+| CP4 | 4.983B | 3.624B | 1.37 | 6.253B | 4.928B | 1.27 |
+| CP5 | 5.512B | 3.851B | 1.43 | 6.889B | 5.293B | 1.30 |
+| CP6 | FAILED (deadline 12.232B; 82.28% at the deciding eval) | 6.116B | - | PENDING at 15.18B (deadline 16.44B) | 8.220B | - |
+
+All eight walls through CP5 were ON TIME, at 1.00-1.89x run 5's steps; six of the eight were
+more than 30% slower. CP6 failed in steps, the unit that decides slot 3.
+
+**What it says about the user's question.**
+1. **Search lines did the work after CP5, the labels did not.** Every rise came from a search
+   line that the curriculum taught, about 0.5B steps after the line arrived: 64.9 -> 69.7 ->
+   72.3 -> 82.2%. The labels were present and fitted, and they never moved the greedy by
+   themselves:
+   * 2-19% of nodes carried a better-than-own child, most where a new region opened;
+   * a policy row was in ~11% of a label batch;
+   * keys NLL fell to 1.8-2.4, agreement rose to 0.24-0.49, value MSE was ~0.055.
+
+   So at coef 0.1 beside PPO, sibling-rank labels from a near-random tree do not replace the
+   line -> spawn path, and they do not speed it up. One seed cannot say whether they slowed the
+   walls, though six of eight walls >30% behind run 5 lean that way.
+2. **Why the labels stay weak, probably.** The tree's non-own children hold one random action for
+   a 12-decision macro, so "this child beat yours" is a statement about a held macro. The 25 Hz
+   policy can only partly imitate that, which fits the keys NLL that stayed near 2.
+3. **The run was capped by where the search lines end.** Lines 20/23/24/25 all ended at d
+   ~27.3-27.8k, and lines 27/28/29 all ended at d ~18.0-18.4k (search field). Each time the
+   curriculum went back only ~180-1,000 ticks from the end. It then flipped between a start that
+   succeeds ~30-60% and one 5 ticks earlier that succeeds ~2-20%: a sharp skill cliff that 0.5-1B
+   steps of PPO did not cross. In the user's terms, a tree that would teach must teach the
+   decisions at that cliff, and these labels did not reach it.
+4. **On "one thread or two".** This slot kept two threads, so it is evidence only on what the
+   tree should teach: a direct policy/value channel built this way is not enough. Slot 1's one
+   pool of spawns (azr1b1_pool1) finished the map with all 12 walls ON TIME. It is the stronger
+   base for any tree-teaching change.
+
+**What I would run next.**
+1. tl2 to its end: slot 1's finishing recipe + `--tree-labels 0.1`, paired with azr1b1_pool1 (the
+   same code, the same flags plus the labels). It was stopped by ROUND OVER at 0.56B steps, with
+   the first ramp pending (6.1% at 529M against slot 1's 1.8%: one early mark, not a wall).
+2. If labels stay, teach per decision rather than per held macro. Only where the tree's margin
+   over the policy's own child is large and repeated across visits, and with the label weight
+   rising when the greedy is on a shelf.
+3. Use the tree's value to choose spawn states (which nodes become starts) instead of only
+   regressing it on a side head.
+
+**Caveats.**
+* One seed against one reference (run 5, a different and faster box). Walls are in steps, so
+  the box speed changes only the wall-clock.
+* Six searches (13, 15, 17, 18, 21, 22) were lost to a single greedy replay that died early.
+  That is run 5's mechanism, not the labels, but it cost this run search time.
+* The round ended early (ROUND OVER at ~11:33 instead of 22:00), so run 2 has no wall.
