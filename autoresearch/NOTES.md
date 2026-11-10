@@ -1235,3 +1235,32 @@ this run is on time or faster (the line gets 3.6x the starts).
   55.9%, CP4, greedy median deepest d ~47.0k (0/9 past line 10's mark).
 * Box extended to 2026-11-10 11:36 UTC. Fleet credit 40.2 $, 19.1 h to the reserve (~18:40 UTC).
 * Next: CP5, due by 7.702B steps (run 5 cleared it 0.23B after CP4), ~3 h from now.
+
+### azr1b1 - 2026-11-10 00:38 UTC: 4.91B steps, walls 1-8 ON TIME, best 83.96% (CP5)
+
+| wall | this run, steps | run 5, steps | deadline | this run, total | run 5, total | deadline |
+|---|---|---|---|---|---|---|
+| CP4 | 3.549B | 3.624B | 7.249B | 4.804B | 4.928B | 9.855B |
+| CP5 | 4.304B | 3.851B | 7.702B | 5.836B | 5.293B | 10.586B |
+| CP6 | - | 6.116B | 12.232B | - | 8.220B | 16.440B |
+
+(walls 1-7 as in the 23:42 table.) CP5 at 1.12x run 5 in steps, 1.10x in total ticks.
+
+* **Fourth time the policy flew past the line by itself, and the longest.** The only line in the
+  pool from 3.51B to 4.87B was line 10 (ends d 43,883, ~57.5%). The greedy sat at ~56% to 3.85B,
+  then 59-62% (3.93-4.23B), CP5 at 4.30B (65.8%), then 70.9, 70.8, 75.3, 78.7, 82.1, 81.8 and
+  83.96% (4.83B): about 26 points of course past the end of every start the pool offered.
+  Training episodes led it, as before: reservoir min depth 16.2k (~84%) at 4.83B.
+* **The search lagged twice more.** Search 11 (patience, 3.85B) was STALE: it started when that
+  eval's MEDIAN deepest d read 74,061 (most episodes fell early that eval, the best one was at
+  56%), found a line to 72,049, and by its end the greedy was at 44,043. Search 12 (patience,
+  4.38B) returned NO line: its beam from the map start died at d 67,837 (tick 3,309), the same
+  place search 9's beam died (68,775, tick 3,372), while the greedy policy was at 44k. So far
+  3 of 13 searches found nothing and 3 were stale.
+* **Search 13** (quorum 6/9, started 4.76B) gave line 13: 9,667 rows to d 18,092 (~82.5%),
+  adopted 4.869B. Its curriculum moves fast (100% band success, step 40; tau 9351 by 4.91B). The
+  4.91B eval: 4/9 past its mark, greedy median deepest d 18,245.
+* Search ticks: 13 searches, 1.638B ticks. Box extended to 2026-11-10 12:34 UTC (fleet credit
+  38.7 $, 18.1 h to the reserve).
+* Next: CP6, due by 12.232B steps (run 5 cleared it 2.27B after its CP5; ~5.8 h of steps left to
+  the deadline at ~1.28B steps/h).
