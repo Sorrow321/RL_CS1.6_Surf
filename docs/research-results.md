@@ -39828,3 +39828,107 @@ trainer's field.
 
 **Release.** `box.py release --agent m6sib` at 21:12:00 UTC; `vastai show instances` empty on
 two looks, fleet registry empty, tunnel 8601 stopped. No box is up. Credit $28.56.
+
+## 2026-11-11 21:22 UTC: second-map program WRAP-UP - the frozen sidistic recipe on six maps: three finish, three nulls, one cause
+
+Program wrap-up. No run and no box: a summary of the entries from 2026-11-10 11:52 UTC to
+2026-11-11 21:16 UTC on m2/sib, m3/sib, m4/sib, m5/sib and m6/sib. Every number is from those
+entries; nothing new was measured for this one.
+
+**Question.** Does the recipe that finished surf_src_sidistic (one search pool + the
+sibling-yield mix rule: first finish at 7.248B steps; "run 5" of the program before: 8.230B)
+finish other maps from scratch with no flag or constant changed? (`--maxvel` follows the map's
+server: 3500 on princessburglar and unitfarmer2, 4000 elsewhere. Not a recipe constant.)
+
+**Scoreboard (one seed per map, greedy evals from the true start, finish on the clip hull).**
+
+| map | result | steps | what happened |
+|---|---|---|---|
+| surf_src_sidistic | finished | 7.248B | the map the recipe was built on |
+| surf_src_cannonball | finished | first finish 2.718B, 9/9 at 3.247B | 61% of episodes after, best 76.52 s |
+| surf_petrus_lite | finished | first finish and 9/9 at 3.247B | 97.9% of episodes after, best 33.10 s |
+| surf_princessburglar_b26 | null | 12.86B | out of the start room at 2.95B, then at the pit (3.2%) for 9.8B steps |
+| surf_edgeflow_blue200 | null | 4.14B | 62.5% from 0.98B on, falls into the void 1,090 u short |
+| surf_unitfarmer2 | null | 3.42B | dies 6 s after the spawn from 1.21B on, never enters the start pit |
+
+Three of six. The recipe repeats on a second and a third map (rule 0b's test for "not a
+one-map accident"), and it does not beat any map.
+
+**The four princessburglar arms.**
+
+| arm | what it was | steps | result |
+|---|---|---|---|
+| A `m2sib_pb1` | the frozen recipe, from scratch | 12.86B | left the room at 2.95B (search 5 found the staircase); at the pit to the end; 22 searches from the pit, 0 lines |
+| B `m2pool_pb1` | sidistic's other finisher (random-end tree), from scratch | 6.02B | never left the start room; 14 searches, 0 lines |
+| transfer `m2warm_pb1` | arm A + sidistic's weights as the initialisation | 11.21B | never left the start room; 26 searches, 0 lines |
+| diagnostic `m2ge_pb1` | arm A with October's search loop (beams + Go-Explore stages) | 15.06B | search left the room in 13 of 15 tries; greedy left it at 6.12B-6.27B (2.1x later than A); at the pit: 0 lines in 12 searches = 149M runs |
+
+* Sidistic's weights bought nothing on a new map (the transfer arm did worse than random
+  weights).
+* The October search loop finds the room exit far more reliably than the tree (13 of 15 against
+  2 of 7) and was still slower end to end: it returned long lines and the 3e8 patience clock
+  replaced each one before the curriculum had walked it back.
+* Nobody passed the pit in training.
+
+**The pit, measured search-only on the droplet (fixed simulator, about 5M runs per seed).**
+
+| roots | cell key and view | seeds that cross |
+|---|---|---|
+| October's hand-picked tunnel-exit roots | October's (no heading key, free view) | 1 of 3 |
+| the policy's OWN roots (diagnostic arm, search 18) | October's | 4 of 6 |
+| October's roots | the packaged stage's (`--cell-heading 1 --view-follow`) | 0 of 6 |
+| the packaged stage inside training | the packaged stage's | 0 of 36 stages |
+
+* October's crossing was seed luck, not a property of the old simulator: old core 2 of 3
+  seeds, fixed core 1 of 3, and the same seed flips between the cores.
+* Hand-picked roots are not needed: the policy's own states cross on 4 of 6 seeds.
+* The two packaged flags are a SUSPICION, not a finding: pooled 5 of 9 against 0 of 6
+  (Fisher one-sided p 0.042), like for like 1 of 3 against 0 of 6 (p 0.33). The settling cell
+  (the policy's roots + the two flags) was never run.
+* A replayed crossing gains 344 u on the trainer's field (the adoption test asks 200), after
+  8.5 s with no progress on d. The tree search, which ranks branches by d, never held it.
+
+**One cause for the three nulls.** On each of the three maps the route has a stretch that
+goes AGAINST the field for longer than the policy stumbles through by itself:
+
+* princessburglar: the pit is crossed by a launch off a ridge that needs speed built first
+  (8.5 s with no progress on d; October's line ran 640 u back up the tunnel);
+* blue200: the detour around the void gives back 82% of d0;
+* unitfarmer2: the first move is south and down into a pit, +2,840 u of d.
+
+The recipe has two explorers, the policy and the tree search, and both are steered by that
+same field: the policy is paid on it, the tree ranks its branches by it and returns a line
+only when it ends 200 u lower. So both stop where d is locally lowest (the pit floor, the
+void's edge, the fall north-east of the unitfarmer2 start). On cannonball and petrus the
+unpaid stretches were short (about 6 s of flight that keeps the speed the policy already
+has; a 770 u dip), and there the loop worked as designed: a search line, even one that is
+itself a dead end, serves as start states behind a gate, and the policy flies on from them.
+
+What HAS crossed each of the three places before is a search that ignores the field: the
+count-based archive explorer at the princessburglar pit (4 of 6 seeds from the policy's own
+states, above), an edge-archive search from the start on blue200 (ledger 2026-09-27 02:01),
+and the hand-run searches of October's unitfarmer2 lineage. That explorer is
+weak where the tree is strong (it froze at 6.7% of cannonball), so neither replaces the
+other.
+
+**Fix candidates. All generic, none carries a map constant, none is built or tested.**
+
+1. A field-free stage in the search loop (count / cell novelty over the policy's own states,
+   the plain cell key with no heading key and no view tie), run when the tree returns no line
+   or the same end again, and an adoption test that can take its line.
+2. Compare a new line with the CURRENT line's end, not with the greedy frontier (cannonball
+   lines 6 and 7, unitfarmer2 line 8, the diagnostic arm's churn).
+3. Do not let the patience search replace a line the curriculum is still walking back
+   (petrus line 6, unitfarmer2 line 5, the diagnostic arm).
+4. Count a finish as "past the line" in the quorum, and stop or re-purpose the search after a
+   finishing quorum (cannonball: 61% reliability with the search still swapping lines).
+5. The curriculum's blind band where a line stands still (`respawn.py` `_key`; petrus line 2).
+6. Search memory beside trainer + recorder on big maps (cannonball, search 11: CUDA OOM).
+
+Item 1 is the one the three nulls ask for; items 2-5 cost steps on every map (an upper bound
+of about 0.9B at one petrus gate) and reliability on cannonball.
+
+**What this does not show.** One seed per map. Two of the nulls were stopped at 3.4B and
+4.1B steps (princessburglar ran 12.86B), on the strength of nothing moving for 2-3B steps
+and no search holding a state past the gate. Under rule 0b a changed recipe has to be re-run
+on all six maps with one set of constants, sidistic included, before any of it counts.
