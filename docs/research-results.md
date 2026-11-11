@@ -40041,3 +40041,109 @@ on all six maps with one set of constants, sidistic included, before any of it c
   if every search ends in the void as the field points, the run stops at 29-30% like the plain
   recipes. NULL RULE: best greedy progress not moving over about 1.5-2B steps with searches
   bringing nothing new past it.
+
+## 2026-11-11 23:39 UTC: m7sib_cel INTERIM - the greedy passes the fork at 0.76B-0.83B steps and is 434 u from the finish at 1.21B; 0 finishes yet
+
+Interim entry (the run is live; box 60270811, RTX 4080 16 GB, one seed, flags unchanged since the
+launch entry of 22:33 UTC; 1.277B steps at 23:37 UTC, about 313k steps/s = 1.12B steps per hour).
+
+**The event.** The frozen sidistic recipe passes celestial's start-side gate, "the fork", from
+scratch: the greedy policy from the true start is past it between 755,499,008 and 830,996,480
+steps. The plain and cross-map recipes of September never passed it (28-30% from 0.75B to 3B
+steps, 0 finishes). 77M steps later the greedy is at 74%, and at 1,208.5M eight of nine greedy
+episodes fly to within 434-572 u of the finish curtain at about 45 s. **0 finishes so far.**
+
+**Evals (greedy, true start, 9 episodes; grader `autoresearch/score.py`; all 0 / 9 finishes,
+every episode ends "fail"; there is no route ruler for this map, so the last column is the
+physical read of the last recorded rows; "banked" = the trainer's greedy frontier, the median
+deepest contact-banked d, of d0 61,069).**
+
+| step | best / median | banked d | where the greedy ends |
+|---|---|---|---|
+| 0.5M | 3.4 / 2.0% | 60,465 | untrained |
+| 76.0M | 14.8 / 14.4% | 55,646 | |
+| 151.5M | 30.1 / 30.0% | 48,865 | at the fork |
+| 227.0M-453.5M (4 evals) | 29.2-29.8 / 29.1-29.2% | 48,865-48,900 | at the fork |
+| 529.0M | 30.0 / 29.1% | 48,868 | void floor z 535-549, 12.7-13.3 s |
+| 604.5M | 31.6 / 30.1% | 43,354 | void floor z 535-562, 13.9-16.8 s |
+| 680.0M | 32.1 / 29.4% | 43,341 | void floor z 536-558, 12.7-17.3 s |
+| 755.5M | 30.0 / 29.3% | 43,342 | 8 on the void floor z 539-565 at 12.6-13.9 s |
+| **831.0M** | 49.5 / 49.4% | 31,667 | **past the fork**: 7 at (4002..4779, 1372..2139, -2115..-2136) at 24.1-38.6 s; 1 on the void floor of the mirrored side at 15.7 s |
+| 906.5M | 74.3 / 74.3% | 15,848 | all 9 at (6615..6745, -5966..-5979, -3178..-3184) at 31.3-35.4 s |
+| 982.0M | 75.0 / 75.0% | 15,397 | 4 at (4069..4210, 520..711, -99..242) at 19.5-19.8 s; 5 at the 906.5M place at 35.8-38.9 s |
+| 1,057.5M | 77.2 / 75.0% | 15,352 | (4876..7215, -5342..-6962, -3156..-3296) at 30.7-42.1 s; two crawl to 58-61 s |
+| 1,133.0M | 92.6 / 91.8% | 6,458 | 8 at (3811..5026, 889..2127, -5613..-5629) at 41.9-42.2 s; 1 at 62.7 s |
+| **1,208.5M** | 99.3 / 99.2% | 2,948 | 8 at (3827..5419, 2253..5318, -5626..-5632) at 48.0-65.3 s; 1 at (7353, 170, -2109) at 24.6 s |
+
+* The fork is a mirror-symmetric room (mirror plane y = 552; round 40 anatomy, measurement
+  only). From 151.5M to 755.5M every greedy episode ends on the floor of its void (z about 540)
+  at 12.6-17.3 s, the same place and time as the older recipes' greedy (jt3ANCHU: 12.6-13.0 s
+  near (-935, -774, 545)). At 831.0M seven of nine episodes fly 24-39 s and end far past the
+  room; from 906.5M on no episode ends in the room.
+* **The grader's percentage is NOT the read past 90%.** At 1,133.0M (92.6%) the eight long
+  episodes end falling at z -5,613..-5,629, about 2,100 u BELOW the finish box's lowest z
+  (-3,524.8); their closest approach to the finish box is 3,289-3,305 u, at 22 s, on the way
+  past. The field's low values lie in the open air around the finish, as on cannonball and
+  unitfarmer2. The banked frontier (d 6,458 = 89.4% of d0) and the physical read are the honest
+  pair.
+* **At 1,208.5M the approach is real.** Closest approach to the finish box (east curtain,
+  `trigger_multiple` *142, mins (6960.9, 5007.14, -3524.8), maxs (6968.0, 6594.74, -2209.36)):
+  434, 441, 463, 478, 485, 510, 511 and 572 u in eight episodes, at 44.8-45.3 s, at
+  (6631..6748, 4835..4926, -3839..-3964), moving at 1,882-1,927 u/s and climbing at
+  99-192 u/s: 315-440 u under the curtain's lowest z, 81-172 u short of its y range and
+  213-330 u short in x. They miss, circle for another 3-20 s and fall to the kill level
+  z -5,630. Petrus read the same one eval before its first 9/9 (100-120 u under its curtain).
+* The game's second stop trigger *143 (the west curtain, x 1568..1593; the simulator does not
+  count it) is not approached: closest 2,548-3,326 u at 1,208.5M.
+
+**Searches (MCTS beside the trainer, about 366-368 s each).**
+
+| search | trigger, step | ended | greedy banked d | line: states, end d | outcome |
+|---|---|---|---|---|---|
+| 1 | launch, 0.5M | 105.4M | 60,465 | end d 56,732 | STALE (the greedy was at 55,646) |
+| 2 | retry clock, 453.5M | 546.8M | 48,882 | 1,281, 43,338 | ADOPTED (d <= 43,438): the y-negative side, ends in the air at the room's mouth (-2328, -813, 1225) at 12.81 s; greedy 8/9 past it at 604.5M, and still on the void floor |
+| 3 | quorum, 604.5M | 701.5M | 43,354 | 1,538, 42,103 | ADOPTED (d <= 42,203): the MIRRORED side (y up to 4,678), ends ON THE GROUND past the room at (-857, 1712, 1619) at 15.38 s moving at 1,507 u/s; greedy 0/9 past it at 755.5M, 8/9 at 831.0M, 9/9 from 906.5M |
+| 4 | quorum, 831.0M | 925.9M | 31,667 | 2,213, 30,910 | STALE (the greedy was at 15,848 by then); next try at 1,225.9M |
+
+* Line 3 is the line that carried the policy through the fork. Line 2 took the side the field
+  points to and ended in the air over the void; the greedy "passed" its success line by falling
+  deeper into the same void. Line 3 gains only 1,235 u of banked d on line 2 but lands on the
+  far side. Its curriculum walked back to [0,1537], and the greedy was 8/9 past its success
+  line 129M steps after the adoption. One seed: whether line 3 alone did it, or line 2's 155M
+  steps of training before it helped, is not separated.
+* From 831.0M on no search line carried the policy: the banked frontier went 31,667 -> 15,848
+  -> 15,397 -> 15,352 -> 6,458 -> 2,948 with line 3 (42,103) as the current line throughout and
+  search 4 stale. The policy flew from 49% to the finish area by itself, as on petrus (59% to
+  100%) and cannonball (the last descent).
+* The 1.1B steps/h on this RTX 4080 are not comparable in wall clock with the other maps' cards
+  (5080 / 5090); everything here is step-matched.
+
+**Training win rate, with the reservoir minimum depth beside it.** win 0.00% in every step line
+so far. Reservoir minimum depth ("mind"): 65-67% from 0.57B to 0.78B (the fork), 50% at 0.84B,
+25% at 0.92B-1.01B, 19% at 1.05B-1.09B, 9.1% at 1.13B, 3.2% at 1.15B, 0.72-1.3% from 1.19B on:
+the reservoir holds states within about 450-800 u of the goal and no episode has won yet, which
+agrees with the greedy read (close under the curtain, not in it).
+
+**Beside the bars on this map** (never constants; other cards, step-matched only; all at
+maxvel 4000): `celDCcur` 29.0% at 600M and 32.1% at 1B; `celDCcur3B` 28-29% from 0.75B to 3B,
+0 finishes; `jt3ANCHU` 30% from 1.6B on. September's champion-free but hand-staged lineage
+`gsCELunstuck`..`gsCELunstuck6` (pre-fork spawn windows, six resumes: not one recipe) had its
+first greedy finish after 2.5B steps (43.39 s; best 42.04 s). This run: past the fork at
+0.76B-0.83B, 434 u from the finish at 1.21B, with no map-specific term, window or resume.
+
+**Health.** Alive at 1,276.6M steps at 23:37 UTC; GPU 6.4 GiB of 16 with a search running, 4.8
+without; no CUDA OOM and no traceback in the log; bus inbox empty.
+
+**Files.** Search lines k01-k04 (spine.npy, spine.keys.npy, spine.json, auto_spine.log,
+beam.log) and `spine0.npy` copied to /home/steam/ar_m2/runs/m7sib/cel_auto/ and md5-checked
+against the box: k02 spine 18460d92a3530c2e7cc8e0b03aa1888a, k03 spine
+a40e4fefdceceeafac629f5add4a6632, k04 spine 0e7b2502c46c603c2bc949f90bc2fec3, spine0
+0e62cd2ddd03163cb8b752bffd61e574. All lines are the policy's own search output on the trainer's
+field; no record-derived file, old celestial checkpoint, window or line is in the run.
+
+**Plan.** Watch for the first finishing eval (east curtain only; a finish counts only inside
+the trigger). On a finish: run on to a stable read (several evals after the first 9/9: finish
+rate and best time), re-record a finish at `--maxvel 3500` before it is put beside the human
+record, then bundle and release. Deadline 10:20:44 UTC on 2026-11-12; no constant has been
+touched. A finish here would be one seed on one map: the scoreboard stands at three of six
+(sidistic, cannonball, petrus finished; princessburglar, blue200, unitfarmer2 null) until then.
