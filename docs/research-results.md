@@ -39410,3 +39410,101 @@ banked d and prefers creeping in contact (details in the entries of 17:30 and 18
 **Next (the user, about 18:35 UTC): "let's try unitfarmer2 now. This is also a very hard map, in
 the beginning".** Same recipe, unchanged, from scratch, one seed, on surf_unitfarmer2; its own
 branch and launch entry follow.
+
+## 2026-11-11 18:59 UTC: m6sib_uf2 LAUNCHED - the frozen sidistic recipe from scratch on surf_unitfarmer2 (sixth map)
+
+* WHY: the user, at about 18:35 UTC, after the petrus finish (entries 18:07 and 18:46 UTC):
+  "let's try unitfarmer2 now. This is also a very hard map, in the beginning". Read as: the SAME
+  frozen sidistic recipe, from scratch, one seed, on surf_unitfarmer2 (the project's exploration
+  benchmark, CLAUDE.md section 0: the start is a dive into a pit that raises the goal distance
+  by about 2,840 u before anything pays). Rule 0b as before: the recipe's flags and constants
+  are untouched; a finish here would be one more map on the scoreboard, not a recipe win.
+* THE ONE TOKEN THAT DIFFERS from the blue200 / cannonball / petrus runs: `--maxvel 3500`
+  instead of 4000. It is the map's SERVER PHYSICS, not a recipe constant: the record on this map
+  was set under sv_maxvelocity 3500 (airaccelerate 100, gravity 800 = the core's defaults),
+  October's unitfarmer2 program ran 3500, and the princessburglar arms of this program ran their
+  server's 3500 the same way. The other 82 tokens are byte-identical (asserted by the config
+  script). run_arm.sh's own base line still prints `--maxvel 4000`; the recipe's later token
+  wins, and run.json reads maxvel 3500.0.
+* CHECKS BEFORE RENTING (droplet CPU, seconds each, under nice):
+  - the finish. The finish trigger (*23) is NOT a box: three 1 u curtains; its bounding box
+    holds an empty triangle (the 2026-10-31 finding: 85% of October's box finishes were not
+    finishes in the game). m6/sib carries the clip-hull finish in the core (src/env.c, the brush
+    model whose bounds are the goal box is matched by default), the trainer, the recorder and
+    the grader (score.py). tests/python/test_goal_hull.py, test_goal_models.py,
+    test_entity_tables.py: 11 passed, 5 skipped (the 5 need surf_za_loop, not on the droplet).
+    A core built on the droplet arms goal_model 23 by the default rule.
+  - the grader, under the new config: October's evals uf2r2b4_x10 traj_15018229760 score 9/9
+    (best 36.88 s) and traj_14942732288 3/9 (best 37.49 s), as October's ledger has them.
+    Measurement of old files only; nothing of that run is used.
+  - the map: ONE spawn point (-2176, -2272, 1192), yaw 270; zones.json md5 218902fd (tracked,
+    equal to October's); end box (3328, -2592, -640) .. (3936, -1888, 96).
+* THE FIELD: goalc_32 (no corner cutting, what --race-no-corner-cut 1 shapes on) and the five
+  other caches come from October's tarball, baked 2026-10-30 on a box by the smoke launch
+  uf2op_bake on a core that already loads every brush entity (6bd7f931). The field builder is
+  unchanged for a single-box zone since (the one change adds a signature suffix for zones of
+  several boxes), so nothing was re-baked. Grid 256 x 257 x 104 = 6.84M voxels (any card);
+  reach_max 34,596 u; the field reads 30,660 u at the spawn point and 30,647.5 where the player
+  comes to rest (config start_d 30647.5, start_d_span [30647.5, 30660.0], grader only; the
+  trainer printed "kill-aware start geodesic 30648u (standard 30343u)"). The field is seeded
+  from the trigger's bounding box while the finish is tested on the hull, as October's real
+  finishers ran. Tarball ~/ar_m2/maps/uf2_maps.tar.gz md5 84e7daa0016b4b998e1e3bc6bd424849;
+  on the box: bsp 9834c24c, goalc_32 bfd4e79b, faceid_32 73fc2a55 (md5 equal to the droplet's),
+  the bsp's stamp 2266303 / 1793394690000000000 equals every cache's signature, and the launch
+  log has NO bake line (goal field and face-id grid both read from their caches).
+* CONFIG (m6/sib f4601d3b, branched off m5/sib 48c7ccda; no trainer code changed: the diff is
+  autoresearch/config.json): map, field, start_d, start_d_span, tarball, agent prefix m6, the
+  maxvel token, docs. gpu_tiers, the offer query, price caps, reserve: unchanged.
+* BOX 60247203: RTX 5080 16,303 MiB, $0.311/h (cap 0.45 for this tier; the cheaper of two
+  tier-0 offers), machine 153021 (The Netherlands), Ryzen 9 9950X3D, nproc 32. Rented 18:54:05
+  UTC, ready in 29 s, deployed 18:55:42 (deploy_box.sh's gpu_health gate passed). Fleet before
+  the rent: empty; credit $29.28, reserve $10. Watchdog: 12 h from the rent (deadline 06:53:54
+  UTC on 2026-11-12, at most about $3.7), re-registered after the launch with owner
+  autoresearch, the harvest spec "22330 86.90.93.40 m6sib_uf2" and pid file
+  runs/m6sib_uf2.pid. Dashboard on the box port 8600, tunnel http://localhost:8601/ (up
+  18:58 UTC).
+* LAUNCH 18:56:02 UTC through box.py -> tools/run_arm.sh (SCRATCH=1); run.json is stamped
+  18:56:05:
+  MAP=maps/surf_unitfarmer2.bsp BUDGET=60000000000 RECORD_EVERY=75e6 SCRATCH=1 bash
+  tools/run_arm.sh m6sib_uf2 --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --unstuck
+  --unstuck-reach eval --respawn-margin 2 --unstuck-max 0.2 --unstuck-temp-heads keys --obs-surf 1
+  --surf-bonus 0 --obs-compass 1 --obs-pot-rate 1 --race-ratchet --race-no-corner-cut 1 --time-pen
+  0.001 --stall-eps 5 --pitch-sigma-min 0.05 --eval-patience 30 --eval-parallel 1 --front-temp 1
+  --front-band 0.01 --energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1 --maxvel 3500
+  --auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck --auto-spine-banked
+  --auto-spine-explorer mcts --auto-spine-mcts-minutes 6 --auto-spine-envs 2048
+  --auto-spine-ge-minutes 0 --auto-spine-patience 3e8 --auto-spine-retry 3e8 --demo-success-d 100
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50
+  --demo-front-frac 0.5 --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'
+* PROVENANCE: from scratch, no warm start, no checkpoint. The only "demo" file is the run's own
+  runs/m6sib_uf2/auto/spine0.npy = the map's spawn state (md5 ae85a3d4a6174704dfff197bef84a0d1),
+  and every later line is this run's own search. No route_file, bc_file or race_arc (all None
+  in run.json). Nothing of October's unitfarmer2 program enters the run: no checkpoint, no pit
+  state, no search line, no tick ramp (the run is at the 10 ms tick). No record-derived file is
+  named by any flag.
+* run.json AGAINST THE PETRUS RUN'S, key by key: 281 keys, 8 differ: map, label, started, git
+  commit, demo_file (each run's own spine0.npy), maxvel (3500.0 against 4000.0) and the per-map
+  obs_potential_d0 entry (30,647.5 u here). Nothing else. run.json md5 at the launch
+  5938c649b063a61917569be02d17e84d.
+* GATES: liveness passed (pid 3148); record gate PASSED at about 18:57 UTC: 4 recordings in 15 s
+  (POV render of the greedy, greedy, stochastic, mixed).
+* FIRST NUMBERS (not a result): 201k steps/s at 33.0M steps and still rising, with the first
+  search running beside the trainer; eval at 524k steps (untrained): best 2.9%, median 2.3%,
+  0/9.
+* BARS ON THIS MAP (never constants; other cards, so step-matched only): September's eight
+  champion-free arms, 1B steps each, never passed the pit. October (2026-10-30/31), the
+  fork-and-flush program: its control = sidistic's then recipe from scratch: 5.6%, 0/9, a null.
+  Its agent-built lineage (pit-state respawns, a tick ramp 10 -> 7.63 ms, a hand-run Monte
+  Carlo search with a backward curriculum on its own line: map-specific steps, not one recipe)
+  had the greedy out of the pit at 2.94B steps (8.8%), then 38% / 50% / 69% by 6.7B, the first
+  REAL 9/9 (clip hull) at 15.018B (36.88 s), best policy 35.31 s from the spawn = 34.54 s on the
+  game clock at 17.27B; the human record is 35.15 s on that clock.
+* THE READ-OUT: the step at which the greedy policy leaves the start pit (best progress past
+  about 9%), greedy finishes from the true start on the clip hull, the step of the first
+  finishing eval. The training win rate only with the reservoir minimum depth beside it.
+* EXPECTATION, written before any result: this is the map where the frozen recipe is most
+  likely to stop at the start, as it did at the princessburglar pit (3.2% from 3.0B to 12.86B)
+  and the blue200 void: a stretch the field does not pay for, which a search ranked by banked
+  progress on d does not keep. NULL RULE: best greedy progress not moving over about 1.5B steps
+  with searches returning no line.
