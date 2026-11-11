@@ -1,0 +1,29 @@
+{
+ "map": "surf_edgeflow_blue200",
+ "source": "manual",
+ "note": "type 1: the finish is the trigger_multiple 'edgeflow_finish' brush (its targetname, not its target, names it - detect_zones only reads target); start = the info_player_start slab",
+ "start": {
+  "mins": [
+   1600.0,
+   -1424.0,
+   592.0
+  ],
+  "maxs": [
+   2112.0,
+   -1184.0,
+   608.0
+  ]
+ },
+ "end": {
+  "mins": [
+   1552.0,
+   1232.0,
+   296.0
+  ],
+  "maxs": [
+   2160.0,
+   1600.0,
+   416.0
+  ]
+ }
+}
