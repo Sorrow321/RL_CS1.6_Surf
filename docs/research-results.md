@@ -39932,3 +39932,112 @@ of about 0.9B at one petrus gate) and reliability on cannonball.
 4.1B steps (princessburglar ran 12.86B), on the strength of nothing moving for 2-3B steps
 and no search holding a state past the gate. Under rule 0b a changed recipe has to be re-run
 on all six maps with one set of constants, sidistic included, before any of it counts.
+
+## 2026-11-11 22:33 UTC: m7sib_cel LAUNCHED - the frozen sidistic recipe, from scratch, on surf_src_celestial (seventh map)
+
+* WHY: the user, at about 22:08 UTC, after the unitfarmer2 null (entry 21:16 UTC) and the
+  program write-up (21:22 UTC): "Let's try celestial". Read as: the SAME frozen sidistic recipe,
+  from scratch, one seed, on surf_src_celestial, the seventh map. Rule 0b as before: the
+  recipe's flags and constants are untouched; a finish here would be one more map on the
+  scoreboard, not a recipe win. None of the six fix candidates of the write-up is applied.
+* NO TOKEN DIFFERS from the blue200 / cannonball / petrus runs: all 83 recipe tokens are
+  byte-identical to the petrus run's (asserted by the config script), `--maxvel 4000` included.
+  Every earlier celestial run in this ledger ran the launcher's 4000, so the bars below compare
+  like for like; by the ledger's own convention a finish is re-recorded at `--maxvel 3500`
+  before it is put beside the human record (34.76 s, spriggan).
+* CHECKS BEFORE RENTING (droplet CPU, seconds each, under nice):
+  - the finish. The zones file is a manual one (tracked on m7/sib, byte-identical to the user's
+    tarball copy): end box mins (6960.9, 5007.14, -3524.8), maxs (6968.0, 6594.74, -2209.36),
+    a 7.1 u curtain. It is `trigger_multiple` *142 (target counter_stop_button) and its clip
+    hull is a plain box (`GoalHull.match(...).plain_box()` True, `for_zone` None, goal_model 0):
+    the box test IS the game's test.
+  - a SECOND stop trigger exists in the game: `trigger_multiple` *143, bounds (1568.0, 5007.14,
+    -3524.8) .. (1593.3, 6594.74, -2209.36), same target. The last stage is mirror-symmetric
+    (centre x about 4,312) and the last corridor (y 5,007..6,595) holds both curtains. The
+    simulator counts only *142, the east one: a finish in the simulator is a finish in the game,
+    nothing is easier; a finish through the west curtain would not be counted. Measurement
+    only: no flag, reward or spawn rule knows about it.
+  - the map loads on the fixed core (510 entities, 196 brush models: no table overflow);
+    tests/python/test_goal_hull.py, test_goal_models.py, test_entity_tables.py: 11 passed,
+    5 skipped (the 5 need surf_za_loop, not on the droplet).
+  - ONE spawn point (-7479.8, 289.7, 5003.3), yaw 0, on a slope the player slides down.
+* THE FIELD: the user's celestial_maps.tar.gz (md5 3cb6edd0) carries bsp, zones, goal_32,
+  occ_32, sdf_32 and slabocc_32 but no goalc_32 (what --race-no-corner-cut 1 shapes on). It was
+  baked ON THE BOX before the launch (tools/bake_nocut_field.py --device cuda: 268 s, 2,896 MiB
+  of GPU memory, 1,792 sweeps, 7,824 seed voxels, 15,866,520 reachable voxels; grid 374 x 447 x
+  509 = 85.09M voxels; reach_max 62,150 u against goal_32's 61,738), pulled back md5-verified
+  (f9fc1ac1d3bf4b550e0fba2654f17d39) and added to ~/ar_m2/maps/celestialc_maps.tar.gz (md5
+  a17afe75e41a8ec7f7032b4c2f3cdb92) for a later box. The field reads 61,052 u at the spawn point
+  (goal_32: 60,624) and 61,220 u after the 1 s slide (config start_d 61052.0, start_d_span
+  [61052.0, 61220.0], grader only); the trainer printed "kill-aware start geodesic 61069u
+  (standard 60638u)". The launch log has ONE bake line, the expected one: the face-id grid of
+  --obs-normal (2,570,499 surface voxels; faceid_32 md5 on the box 577fa4f4), baked by the
+  trainer at startup because no tarball carries it. The goal field was read from its cache.
+* CONFIG (m7/sib, branched off m6/sib e8abb93f; no trainer code changed: the diff is
+  autoresearch/config.json and the tracked zones file): 48138d5c (map, field, tarball, agent
+  prefix m7, the maxvel token back to the recipe's 4000, docs) and 6f4a31a9 (start_d,
+  start_d_span and the tarball after the bake). gpu_tiers, the offer query, price caps,
+  reserve: unchanged.
+* BOX 60270811: RTX 4080 16,376 MiB, $0.2833/h (the cheapest tier-0 offer; cap 0.45), machine
+  148127 (Panama), i9-13900K, nproc 32. Rented 22:20:42 UTC, ready in 42 s, deployed 22:23:52
+  (deploy_box.sh's gpu_health gate passed), bake about 22:24 to 22:28:31, launch 86 s later.
+  Fleet before the rent: empty; credit $28.55, reserve $10. Watchdog: 12 h from the rent
+  (deadline 10:20:44 UTC on 2026-11-12, at most about $3.4), re-registered after the launch
+  with owner autoresearch, the harvest spec "20054 190.14.206.149 m7sib_cel" and pid file
+  runs/m7sib_cel.pid. Dashboard on the box port 8600, tunnel http://localhost:8601/ (up
+  22:25 UTC). Not the card of the petrus / unitfarmer2 runs (RTX 5080) or of cannonball
+  (RTX 5090): every comparison with them is step-matched, never on wall clock.
+* LAUNCH 22:29:57 UTC through box.py -> tools/run_arm.sh (SCRATCH=1); run.json is stamped
+  22:30:04:
+  MAP=maps/surf_src_celestial.bsp BUDGET=60000000000 RECORD_EVERY=75e6 SCRATCH=1 bash
+  tools/run_arm.sh m7sib_cel --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --unstuck
+  --unstuck-reach eval --respawn-margin 2 --unstuck-max 0.2 --unstuck-temp-heads keys --obs-surf 1
+  --surf-bonus 0 --obs-compass 1 --obs-pot-rate 1 --race-ratchet --race-no-corner-cut 1 --time-pen
+  0.001 --stall-eps 5 --pitch-sigma-min 0.05 --eval-patience 30 --eval-parallel 1 --front-temp 1
+  --front-band 0.01 --energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1 --maxvel 4000
+  --auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck --auto-spine-banked
+  --auto-spine-explorer mcts --auto-spine-mcts-minutes 6 --auto-spine-envs 2048
+  --auto-spine-ge-minutes 0 --auto-spine-patience 3e8 --auto-spine-retry 3e8 --demo-success-d 100
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50
+  --demo-front-frac 0.5 --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'
+* PROVENANCE: from scratch, no warm start, no checkpoint. The only "demo" file is the run's own
+  runs/m7sib_cel/auto/spine0.npy = the map's spawn state (md5 0e62cd2ddd03163cb8b752bffd61e574),
+  and every later line is this run's own search. No route_file, bc_file or race_arc (all None
+  in run.json). Nothing of September's celestial work enters the run: no checkpoint, no
+  pre-fork window (`celestial_pregate.npy`), no line, no gate box. The demo-trained
+  `gbCELwrflight` / `gsCELwrflight` are not touched. No record-derived file is named by any
+  flag.
+* run.json AGAINST THE PETRUS RUN'S, key by key: 281 keys, 7 differ: map, label, started, git
+  commit, demo_file (each run's own spine0.npy) and the per-map obs_potential_d0 entry (two
+  keys: petrus's 35,938.4 absent, celestial's 61,068.6 present). Nothing else; maxvel is 4000.0
+  in both. run.json md5 at the launch 9d170cc235e5b963f20160deb27c53e3.
+* GATES: liveness passed (pid 3412); record gate PASSED at about 22:31 UTC: 4 recordings in 30 s
+  (POV render of the greedy, greedy, stochastic, mixed).
+* GPU MEMORY on the 16 GB card at 22:32 UTC: trainer 4,752 MiB + search 1,600 MiB = 6,367 MiB
+  of 16,376. It fits with room to spare (cannonball's 671M voxels did not fit 16 GB).
+* FIRST NUMBERS (not a result): 118k steps/s at 16.8M steps and still rising, with the first
+  search running beside the trainer; eval at 524k steps (untrained): best 3.4%, median 2.0%,
+  0/9.
+* BARS ON THIS MAP (never constants; other cards, so step-matched only; all at maxvel 4000):
+  the plain and cross-map recipes of September stop at the start-side gate, "the fork", at
+  about 29-30%: `celDCcur` 29.0% at 600M and 32.1% at 1B, `celDCcur3B` 28-29% from 0.75B to 3B
+  with 0 finishes, `jt3ANCHU` 30% from 1.6B on. September's champion-free but hand-staged
+  lineage gsCELunstuck .. gsCELunstuck6 (spawn windows before the fork, six resumes: not one
+  recipe) had its first greedy finish after 2.5B steps (43.39 s), best 42.04 s; its greedy
+  failures died at the room's exit (d about 39.4k, at 16.7 s).
+* WHAT THE FORK IS (round 40's gate anatomy, 2026-09-12; measurement only): a mirror-symmetric
+  room; the way on is about 2 s of flight sideways along a contour of the field (a plateau, not
+  a dip) to the mirrored ramp, and a policy that follows the field's arrows flies into a void.
+* THE READ-OUT: the step at which the greedy passes the fork (best progress clearly past 30%),
+  then the room's exit (d about 39k on September's field, roughly 35% here), greedy finishes
+  from the true start in the east curtain, and the step of the first finishing eval. The training win rate only with its
+  "@ seconds" and the reservoir minimum depth beside it; the grader's progress beside a
+  physical read of where the greedy stops (the unitfarmer2 lesson).
+* EXPECTATION, written before any result: open. The fork is the kind of stretch the three nulls
+  share (the field does not pay for it), but it is short and level: about 2 s on a plateau at
+  speed, closer to cannonball's unpaid 6 s than to a pit that needs a run-up away from the
+  goal. If a search line crosses it, the curriculum can teach it as on cannonball and petrus;
+  if every search ends in the void as the field points, the run stops at 29-30% like the plain
+  recipes. NULL RULE: best greedy progress not moving over about 1.5-2B steps with searches
+  bringing nothing new past it.
