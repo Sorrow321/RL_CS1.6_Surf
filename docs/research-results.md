@@ -38738,3 +38738,147 @@ The 14:26 entry opens with "one hour and a half after the first finish". Wrong: 
 finishing eval (2,718,433,280 steps) ran at about 14:01 UTC (computed from the step rate, 387k
 steps/s, training since 12:03:15 UTC), i.e. about 25 minutes and 0.53B steps before the 9/9
 eval. No number of that entry changes.
+
+## 2026-11-11 15:34 UTC: m2 droplet queue 2 ENDED - of5 did not cross (October's roots with the two packaged flags 0 of 6); final rates 1 of 3 / 4 of 6 / 0 of 6; the flags stay a suspicion (pooled p 0.042, like for like 0.33)
+
+Measurement only (droplet CPU, search only, fixed simulator). Nothing here trains anything, and no
+line or root of this entry may enter a training run. The queue's last line is "14:59:46 seeds2
+done"; no CPU job of this program runs on the droplet any more.
+
+| run | roots | flags | seed | runs | cells | best distance (tool's field) | over the pit / east ledge / end zone | crossed |
+|---|---|---|---|---|---|---|---|---|
+| of5 | October's | + `--cell-heading 1 --view-follow` | 5 | 5,408,719 | 30,666 | 52,570 u | 0 / 0 / 0 | no |
+
+* of5 (13:42:31 to 14:59:46 UTC, 77.2 min, 420 iterations): no crossing; best cell at
+  (815,-3281,3377), depth 536 ticks, no cell on the east ledge or in the end zone, 0 goal hits,
+  like of0-of4.
+* Final rates (fixed simulator, the dedicated command, 4.6-5.4M runs per run, one seed per run):
+
+| cell | crossed |
+|---|---|
+| October's roots + October's flags | 1 of 3 |
+| policy's roots + October's flags | 4 of 6 (pr0 no, pr1 no, pr2 YES, pr3 YES, pr4 YES, pr5 YES) |
+| October's roots + the two packaged flags | 0 of 6 (of0-of5) |
+| in training: the packaged stage (policy's roots, both flags, boosts, 5-minute stages) | 0 of 36 stages |
+
+* The two comparisons, both Fisher exact, one sided:
+  * pooled over the roots: October's flags 5 of 9 against the two packaged flags 0 of 6,
+    p = 126/3003 = 0.042;
+  * like for like (October's roots only): 1 of 3 against 0 of 6, p = 3/9 = 0.33.
+* What that does and does not say. The pooled number is under 0.05, but it is not a clean
+  comparison: the flags cell was only ever run from October's roots, the pooled group mixes two
+  root sets, four of its five crossings leave from one and the same root state
+  ((142,-3019,3608), the policy's own fall out of the south passage), and the one-sided test was
+  chosen after the direction was seen. On the same roots the two flag sets are NOT separated
+  (0.33). So: the dedicated October command crosses the pit on about every second seed whichever
+  roots it gets (5 of 9); that the heading key and the view-follow hurt at the pit (they double
+  the archive: 27,871-30,666 cells against 14,035-16,166) stays a suspicion. The cell that would
+  settle it (policy's roots + the two packaged flags, the same six seeds) was not run.
+* What is settled for the design discussion: the packaged search stage as it ran in training (0 of
+  36 five-minute stages) is far below the dedicated command (5 of 9 runs of about 70 minutes), and
+  even the dedicated command is a coin flip per seed. The one crossing replayed on the trainer's
+  field (f1, entry 05:30) clears the adoption rule's gain (344 u against the 200 u it asks for),
+  but only after 8.5 s with no net progress on d: a line the rule would accept and a search
+  ranked on banked progress rarely keeps.
+
+## 2026-11-11 15:34 UTC: m4sib_cb FINAL - the frozen sidistic recipe FINISHES surf_src_cannonball from scratch: first finish 2.718B, 9/9 at 3.247B and 4.304B, 77 of 126 greedy episodes in between, best 76.52 s; box released 15:13:53 UTC
+
+Final entry for the run (the frozen sidistic recipe, unchanged, from scratch, one seed, on
+surf_src_cannonball; launch entry 12:18 UTC, first finishes 14:15, 9/9 at 14:26). The box was
+released at 15:13:53 UTC, before its 17:06:45 deadline: the open questions of the 14:26 entry are
+answered below, and the user (about 15:00 UTC) called the result good and ordered the next map
+(surf_petrus_lite), which needs the one checkout's config. Bundle first, then the release.
+
+**Evals after the first 9/9 (greedy, true start, 9 episodes; finishes by tools/eval_honesty.py
+--order-only 16 and by the grader, which agree on every row; times from the episode ticks).**
+
+| step | finishes | finish times (s) | route max | past 205,440 u | dives-below |
+|---|---|---|---|---|---|
+| 3,246,915,584 | 9/9 | 78.70 .. 80.04 (entry 14:26) | 231,680 | 9/9 | 0/9 |
+| 3,322,413,056 | 3/9 | 78.83 .. 79.78 | 231,680 | 3/9 | 0/9 |
+| 3,397,910,528 | 3/9 | 78.06 .. 78.46 | 231,680 | 4/9 | 5/9 |
+| 3,473,408,000 | 6/9 | 77.85 .. 78.89 | 231,492 | 6/9 | 0/9 |
+| 3,548,905,472 | 8/9 | 78.62 .. 79.25 | 231,659 | 8/9 | 0/9 |
+| 3,624,402,944 | 7/9 | 77.29 .. 78.48 | 231,680 | 7/9 | 0/9 |
+| 3,699,900,416 | 4/9 | 77.04 .. 78.23 | 231,680 | 4/9 | 1/9 |
+| 3,775,397,888 | 7/9 | 77.90 .. 78.82 | 231,680 | 7/9 | 0/9 |
+| 3,850,895,360 | 5/9 | 77.64 .. 78.49 | 231,680 | 5/9 | 2/9 |
+| 3,926,392,832 | 0/9 | - | 198,528 | 0/9 | 5/9 |
+| 4,001,890,304 | 8/9 | 76.95 .. 78.48 | 231,680 | 8/9 | 0/9 |
+| 4,077,387,776 | 6/9 | 76.52 .. 77.33 | 231,680 | 6/9 | 3/9 |
+| 4,152,885,248 | 8/9 | 76.61 .. 77.09 | 231,680 | 8/9 | 0/9 |
+| 4,228,382,720 | 3/9 | 77.07 .. 77.66 | 230,809 | 3/9 | 0/9 |
+| 4,303,880,192 | 9/9 | 76.88 .. 77.39 | 231,680 | 9/9 | 0/9 |
+
+* **The 9/9 does not hold from eval to eval.** The 14 evals after it read 3, 3, 6, 8, 7, 4, 7, 5,
+  0, 8, 6, 8, 3, 9 of 9: 77 finishes in 126 episodes (61%), with one eval at 0/9 and a second 9/9
+  at 4.304B. The policy is a finisher that is not yet reliable, 1.06B steps after its first 9/9.
+* **Where the other 49 episodes end** (route column, order-only): 5 at 0-10% of the route, 2 at
+  10-20%, 8 at 20-30%, 13 at 30-40%, 2 at 50-60%, 9 at 60-70%, 5 at 70-80%, 4 at 80-90%, 1 at
+  94%. They are falls spread over the route (the largest group is 13 episodes at 30-31%, 27-29 s
+  into the flight; then 6 at 68-69%, 56-57 s), not the old wall at 88.8%: only the three episodes
+  of the 0/9 eval stop just short of it (85.7%).
+* **The finish time went down**: best 78.50 s at the 14:26 entry, 76.52 s at 4,077,387,776; the
+  second 9/9 eval is 76.88-77.39 s (mean 77.15 s) against 78.70-80.04 s for the first. The
+  finishing flights stay on the reference route (median 121-196 u from the nearest route vertex,
+  max 1,116-2,307 u; route file = measurement only).
+* Greedy frontier printed by the trainer on finishing evals: 10,550-10,864 (the last contact before
+  the final climb), and "0/9 greedy episodes past the success line d <= 100" on every eval, the two
+  9/9 ones included (bookkeeping defect 1 of the 14:26 entry).
+
+**Searches 9-11 (all by the patience clock; the quorum can never be met on a finishing line).**
+
+| search | from step | --greedy-d | outcome |
+|---|---|---|---|
+| 9 | 3,246,915,584 | 10,610.8 | no line: 381 s, the tree's best line ends at d 112,126 after 3,539 states, beam_finished 0 |
+| 10 | 3,699,900,416 | 51,910.6 | no line: 382 s, best line ends at d 102,541 after 3,934 states, beam_finished 0 |
+| 11 | 4,152,885,248 | 10,550.1 | DIED at start-up: CUDA out of memory in beam_tas.py (GpuLidar texture map asked for 5.00 GiB with 1.72 GiB free of 31.36; the trainer held 10.24 GiB), exit 1 after 109 s; the trainer logged "NO new spine", next try at 4,514,751,232 |
+
+* No search after 8 returned a line, so line 8 (the policy's own finishing line, 7,916 states, md5
+  aedce4b6...) stayed the current line to the end and no adoption disturbed the finisher. The
+  curriculum on it had walked its earliest start back to tick 1,125 of 7,915 (success 82.4% over
+  352 episodes at the last step back); it had not reached the line's start when the run ended.
+* A six-minute tree search from the true start does not reach the finish on this map (its lines
+  end at 44-48% of d0); every finishing line here came from the policy (search 8 replays the
+  policy's own finish).
+* Search 11's out-of-memory is a THIRD operational defect of the recipe on a big map: on a 32 GB
+  card the search fits beside the trainer only when the recorder is not rendering at the same
+  moment (searches 1-10 fitted). It did not change the result (no search after 8 found a line),
+  and nothing was re-tuned.
+
+**Totals.** Training 12:03:15 to 15:13:53 UTC (3 h 11 min), about 4.4B steps at 385k-388k steps/s
+(last pulled log line: 4,337,958,912 at 15:10). First greedy finish 2,718,433,280; first 9/9
+3,246,915,584; second 9/9 4,303,880,192; best finish 76.52 s. Box 60199572 (RTX 5090, 0.536 USD/h)
+11:07:32 to 15:13:53 UTC = 4.11 h = about 2.20 USD; released through box.py, `vastai show
+instances` and the fleet registry both empty afterwards; tunnel 8601 stopped. Credit 30.52 USD at
+15:10.
+
+**Bundle on the droplet (~/ar_m2/runs/m4sib).** m4sib_cb/: 58 eval trajectories (to
+traj_4303880192.jsonl), run.json (md5 ea21ee35457c5192f9e193542ee6c2e8), progress.csv, the launch
+log, ckpt_latest.pt pulled 15:10 UTC at about 4.337B steps (187,703,807 bytes, md5
+7a9875f75f8dd76112834879a83347da, verified by box.py pull). cb_ckpt_4001M.pt = the box's
+ckpt_4001366016.pt (md5 a59eb5a06d5f6fee7c5c69d878e93bb5, equal on the box; the eval beside it is
+the 8/9 at 4,001,890,304). cb_ckpt_3200M_17af60a9.pt (14:22 UTC) and cb_ckpt_2860M_ddf70e46.pt.
+cb_auto_1319/: k01-k08 with their lines, k09-k11 logs (no line), current_1510.json (md5
+dbd7aa47d7bd66e55765443fc1a9e02b), spine0.npy. No checkpoint was opened on the droplet.
+
+**Frozen-recipe scoreboard (one seed per map, no flag or constant changed).**
+
+| map | result | steps |
+|---|---|---|
+| surf_src_sidistic | finishes | first finish 7.248B (run 5 of the earlier program: 8.230B) |
+| surf_princessburglar_b26 | null (3.2%, the pit) | 12.86B |
+| surf_edgeflow_blue200 | null (62.5%, the void) | 4.14B |
+| surf_src_cannonball | finishes | first finish 2.718B, 9/9 at 3.247B and 4.304B, 61% of episodes in between |
+
+Reference for cannonball from scratch (CLAUDE.md, round 32, the same from-scratch defaults without
+the search loop): 0 finishes in 2.0B steps in every cell, the wall at 205,440 u reached at
+1.0-1.75B. This run passed the wall (first episodes past 205,440 u) and finished at 2.72B. Not
+step-matched beyond 2.0B and a different card, so it is a bar, not a paired control.
+
+**What stays open (not fixed in this run; generic, no map constant).** (1) the quorum counts
+contact-banked depth, so a finish is never "past the line"; (2) a new line is compared with the
+greedy frontier at the search's start, not with the current line's end; (3) the search runs out of
+GPU memory beside the trainer and the recorder on a 671M-voxel map; (4) reliability: 61% of greedy
+episodes finish, the falls are spread over the first 80% of the route. The next map, on the user's
+order of about 15:00 UTC, is surf_petrus_lite with the same recipe (its own launch entry follows).
