@@ -37605,3 +37605,40 @@ map from scratch (10 of 12 searches found the exit), later than the tree-search 
 (2.1x in steps, because of the restarts). Neither arm has anything past the pit. The
 question this arm was launched for - does October's search find the pit crossing from the
 policy's own states - is 0 of 1 search (3 Go-Explore stages) so far.
+
+## 2026-11-11 00:40 UTC - second-map test, the pit crossing: six seed replicates of October's search command, 3 of 6 cross (old simulator 2 of 3, fixed simulator 1 of 3) - seed luck, not the simulator fix
+
+**What was run.** Measurement only, nothing here trains anything. October's exact Go-Explore
+command (`tools/explore_phase1.py --envs 4096 --cell 64 --cell-energy 32 --decisions 100
+--act-every 4 --exact-chains --roots-spine <October's exit roots> --goals 1 --seed <s>
+--maxvel 3500`, 420 iterations) on surf_princessburglar_b26, on the OLD simulator (entity
+tables 128, October's code a3f34715) and on the FIXED one (tables 512, m2/sib 5201ee03),
+seeds 0, 1, 2. Seeds 1 and 2 ran on the droplet CPU (nice 19, 3 threads, 68-73 min each;
+`/home/steam/ar_m2/runs/m2ge/seeds/`); seed 0 on a box (entries "2026-11-10 20:05 UTC" and
+"21:15 UTC"). Progress is read in the explorer's own field: the pit floor is 52,575-52,583u,
+a line past the pit 52,2xx u.
+
+| run | simulator | seed | best distance | cells over the pit / east ledge / end zone | runs | crossed |
+|---|---|---|---|---|---|---|
+| bench 4 | OLD | 0 | 52,203u | 58 / 166 / 79 | - | yes (iteration 260) |
+| o1 | OLD | 1 | 52,583u | 0 / 0 / 0 | 5,109,214 | no |
+| o2 | OLD | 2 | 52,228u | 41 / 209 / 47 | 4,380,940 | yes (first below the floor at iteration 210, 52,274u at 230) |
+| bench 3 | FIXED | 0 | 52,582u | 0 / 0 / 0 | - | no |
+| f1 | FIXED | 1 | 52,260u | 29 / 174 / 42 | 4,736,796 | yes (iteration 270) |
+| f2 | FIXED | 2 | 52,575u | 0 / 0 / 0 | 5,663,221 | no |
+
+**Reading.** 3 of 6 cross: 2 of 3 on the old simulator, 1 of 3 on the fixed one, and the same
+seed gives opposite answers on the two (seed 0: old yes, fixed no; seed 1: old no, fixed yes;
+seed 2: old yes, fixed no). With three seeds a side, 2 of 3 against 1 of 3 is no difference.
+The October crossing was not an artefact of the dropped slab, and it was not a sure thing
+either: the same command finds it about every second seed, late (iterations 210-270 of 420),
+and a run that has not found it sits on the pit floor to the end. Nothing in this table says
+how often it would be found from the policy's own states; the diagnostic arm's first search
+from the pit (three stages, about 4.0M runs each) found none.
+
+**Correction to the entry "2026-11-11 00:15 UTC".** Its verdict says the diagnostic arm's
+search found the room exit in 10 of 12 searches. That was the count through search 13;
+through search 16 it is 13 of 15 (searches 2-16, all but 8 and 11).
+
+**Housekeeping.** The two throwaway worktrees used for these runs (`ar_m2/wt/ge_old`,
+`ar_m2/wt/ge_new`) are removed; the archives and logs stay in `runs/m2ge/seeds/`.
