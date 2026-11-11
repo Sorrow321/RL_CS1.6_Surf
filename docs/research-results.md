@@ -38731,3 +38731,10 @@ record recording as 81.35 s on this clock (a human's line under human constraint
 clock starts at spawn and its line is its own; not re-measured here). Plan: let the run go on to
 its deadline (17:06:45 UTC, no extension planned) to see whether 9/9 holds, what search 9 does
 and whether the time moves; then bundle and release.
+
+## 2026-11-11 14:26 UTC: correction to the 14:26 entry (m4sib_cb) - the time since the first finish
+
+The 14:26 entry opens with "one hour and a half after the first finish". Wrong: the first
+finishing eval (2,718,433,280 steps) ran at about 14:01 UTC (computed from the step rate, 387k
+steps/s, training since 12:03:15 UTC), i.e. about 25 minutes and 0.53B steps before the 9/9
+eval. No number of that entry changes.
