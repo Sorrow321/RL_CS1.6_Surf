@@ -38408,3 +38408,88 @@ line or root of this entry may enter a training run.
   movement of the best progress for 3B steps with no line adopted = a null, bundle and release.
 * COST: $0.536/h; credit $32.14 at 12:09 UTC, reserve $10 (about 41 h of this box above the
   reserve). Different card and CPU from every other run of this recipe: compare in steps only.
+
+## 2026-11-11 13:24 UTC: m4sib_cb at 1.81B steps - past the 205k wall (5 of 9 greedy episodes at 1.737B, honest frontier 213,760 u = 92.2% of the route); three search lines adopted and learned in a row; 0 finishes
+
+Interim entry (the run is live; box 60199572, RTX 5090, one seed, flags unchanged since the launch
+entry of 12:18 UTC). Throughput 387k-390k steps/s (about 1.4B steps per hour); trainer on the GPU
+since 12:03:15 UTC, step 1.854B at 13:23 UTC.
+
+**Evals (greedy, true start, 9 episodes each).** "d best / median" is the grader's progress on
+the field (autoresearch/score.py). "route" is tools/eval_honesty.py --route
+maps/surf_src_cannonball.route.npz --order-only 16 (ORDER-ONLY max; MEASUREMENT ONLY - the route
+file is the champion-derived reference line and never enters the run: the search runs with
+`--route-file none`, the trainer reads a route only under `--heldout-maps`, which is not passed).
+
+| step | d best / median | route max (order-only) | past 205,440 u | end below the finish | finishes |
+|---|---|---|---|---|---|
+| 0.5M | 0.9 / 0.5% | 2,432 u | 0/9 | 0/9 | 0/9 |
+| 76.0M | 5.0 / 4.7% | 10,563 u | 0/9 | 0/9 | 0/9 |
+| 151.5M | 15.0 / 13.2% | 30,976 u | 0/9 | 0/9 | 0/9 |
+| 227.0M | 24.9 / 24.1% | 52,279 u | 0/9 | 0/9 | 0/9 |
+| 302.5M | 27.8 / 27.7% | 57,561 u | 0/9 | 0/9 | 0/9 |
+| 378.0M | 27.4 / 27.4% | 57,055 u | 0/9 | 0/9 | 0/9 |
+| 453.5M | 27.9 / 27.8% | 58,087 u | 0/9 | 0/9 | 0/9 |
+| 529.0M | 47.4 / 34.4% | 97,617 u | 0/9 | 0/9 | 0/9 |
+| 604.5M | 49.2 / 49.2% | 105,174 u | 0/9 | 0/9 | 0/9 |
+| 680.0M | 49.0 / 48.9% | 104,730 u | 0/9 | 0/9 | 0/9 |
+| 755.5M | 49.8 / 46.4% | 106,404 u | 0/9 | 0/9 | 0/9 |
+| 831.0M | 26.9 / 24.4% | 55,588 u | 0/9 | 0/9 | 0/9 |
+| 906.5M | 59.1 / 59.0% | 125,922 u | 0/9 | 0/9 | 0/9 |
+| 982.0M | 68.9 / 68.8% | 147,236 u | 0/9 | 0/9 | 0/9 |
+| 1.057B | 68.8 / 34.4% | 146,875 u | 0/9 | 0/9 | 0/9 |
+| 1.133B | 78.2 / 59.1% | 166,784 u | 0/9 | 1/9 | 0/9 |
+| 1.208B | 93.2 / 75.3% | 198,016 u | 0/9 | 7/9 | 0/9 |
+| 1.284B | 98.6 / 47.4% | 205,440 u | 0/9 | 3/9 | 0/9 |
+| 1.359B | 85.0 / 84.6% | 180,982 u | 0/9 | 8/9 | 0/9 |
+| 1.435B | 85.1 / 50.6% | 181,228 u | 0/9 | 4/9 | 0/9 |
+| 1.510B | 74.5 / 74.3% | 158,590 u | 0/9 | 6/9 | 0/9 |
+| 1.586B | 98.3 / 74.3% | 205,440 u | 0/9 | 5/9 | 0/9 |
+| 1.661B | 47.5 / 46.4% | 100,454 u | 0/9 | 0/9 | 0/9 |
+| 1.737B | 97.9 / 97.8% | 213,709 u | **5/9** | 5/9 | 0/9 |
+
+* The 302.5M and 453.5M evals read 113,664 / 113,152 u on the corridor rule WITHOUT --order-only:
+  the fold-back credit this file warns about. Order-only is the column above.
+* THE GRADER'S d IS FLATTERED PAST ABOUT 88% OF THE ROUTE, as documented for this map: the eval
+  that reads 98.6% on d (1.284B) has a route max of 205,440 u (88.7%), and the one that reads
+  97.9% (1.737B) has 213,7xx u (92.2%). An
+  episode that leaves the route at the wall falls through goal-adjacent air where the field is
+  low. Past the wall only the route column and finishes count.
+* 1.737B, the five crossing episodes (77.9-78.9 s): all within 0-3 u of the reference line up to
+  213,632-213,760 u, then they end falling at about (-12,200, 4,700, z -5,380), vz about -1,900,
+  about 4,160-4,440 u from the finish box (x -14,720..-8,064, y 7,487, z -1,824..-352). The other
+  four end at 98.7k-101.1k u (the 97k gate, z about 770) after 38-40 s.
+* The trainer's own count at the next eval, 1.812B: 9/9 greedy episodes past search 4's success
+  line (d <= 14,940), greedy frontier d 11,407 (trajectory not yet scored here).
+
+**Searches (tree search "mcts" beside the training, 6 minutes each; flags of the launch entry).**
+
+| search | from step | greedy frontier d | line | adopted at | line's last state, nearest route vertex | learned (greedy past its success line) |
+|---|---|---|---|---|---|---|
+| 1 | 0.5M | 198,848 | end d 193,450 | - (STALE at 182.5M, discarded) | - | - |
+| 2 | 529.0M | 132,792 | 4,257 states, end d 100,372 | 675.8M | 826 (about 105.7k u, 45.6%), 100 u away | 0/9 at 680M-831M, 9/9 at 906M |
+| 3 | 906.5M | 83,068 | 5,758 states, end d 58,658 | 1,052.2M | 1173 (about 150.1k u, 64.8%), 282 u away | 0/9, 1/9, 4/9, 4/9, 8/9 at 1.359B |
+| 4 | 1,359.5M | 31,443 | 6,765 states, end d 14,840 | 1,498.9M | 1534 (about 196.4k u, 84.8%), 147 u away | 0/9, 0/9, 0/9, 5/9 at 1.737B, 9/9 at 1.812B |
+| 5 | 1,737.0M | 12,104 | running (13:17 UTC; best d 4,465, 0 finishes in the tree at wave 1,400) | | | |
+
+* Each adopted line was learned from the true start in 230M-310M steps, and each line ends about
+  20% of the route beyond the one before. Every line's states are the search's own
+  (spine files copied to the droplet: /home/steam/ar_m2/runs/m4sib/cb_auto_1319/k0*/spine.*,
+  md5 of k04/spine.npy fa794813e97793dddbfc1abb70cd27b8); `demo_file` = the run's own auto spine.
+* The dips in the eval table (831M, 1.057B, 1.661B) each come within three evals of an adoption: the
+  curriculum restarts at the new line's end and the greedy falls back to an earlier gate for a
+  few evals before it holds the new line.
+
+**Against the references (step-matched, other runs on other 5090s, one seed each: no ranking).**
+The 97k gate: first at 529M here (references 0.5-1.0B). The 205k wall: first touched at 1.284B
+(round 32's four cells: never / 1.755B / 1.254B / 1.003B). Past the wall: 5/9 at 1.737B (round
+32's best cell 4/9 inside 2.0B; xMARGIN from the stuck checkpoint 6/72, max 208,640 u). 0 finishes
+here, as in round 32. So far this run is inside the band of the from-scratch default, not beyond
+it; what is new is the frontier past the wall held by 5/9 and then 9/9 (on the trainer's count)
+of the greedy episodes, 8.2k u beyond it.
+
+**What decides it now.** Whether search 5 (from d 12,104, about 92% of the route) returns a line
+that climbs to the finish box, or a line that dives: the field is lowest in the air under the
+finish, and a search ranked by d may bank a fall. The next entries read the route column and
+finishes only. No constant has been touched. Budget: credit $31.57 at 13:13 UTC, $0.536/h,
+watchdog deadline 17:06:45 UTC (harvest registered).
