@@ -38493,3 +38493,54 @@ that climbs to the finish box, or a line that dives: the field is lowest in the 
 finish, and a search ranked by d may bank a fall. The next entries read the route column and
 finishes only. No constant has been touched. Budget: credit $31.57 at 13:13 UTC, $0.536/h,
 watchdog deadline 17:06:45 UTC (harvest registered).
+
+## 2026-11-11 13:30 UTC: m4sib_cb at 1.96B steps - search 5's line is adopted (1,876.4M) and it is a fall toward the finish, not the route; 9 of 9 past the wall at 1.812B; 0 finishes
+
+Interim entry (the run is live; box 60199572, RTX 5090, one seed, flags unchanged since the launch
+entry of 12:18 UTC). The route file is used here for MEASUREMENT only; it never enters the run.
+
+**Evals since the 13:24 entry (greedy, true start, 9 episodes).**
+
+| step | d best / median | route max (order-only) | past 205,440 u | end below the finish | finishes |
+|---|---|---|---|---|---|
+| 1.812B | 96.9 / 96.9% | 213,775 u (92.3%) | 9 / 9 | 9 / 9 | 0 / 9 |
+| 1.888B | 85.6 / 46.1% | 182,115 u | 0 / 9 | 4 / 9 | 0 / 9 |
+
+* 1.812B: all nine episodes reach 213.6k-213.8k u of the route, then end in a fall at z about
+  -5,380 on the EAST side (x -9,000 .. -10,200; five near y 500-900, four near y -4,500 .. -5,150)
+  after 73.5-85.0 s. Closest approach to the finish box 5.9k-6.0k u.
+* 1.888B is the first eval after search 5's line was adopted: the dip that followed every
+  adoption so far (831M, 1.057B, 1.661B).
+
+**Search 5** (mcts, from 1,737.0M, greedy frontier d 12,104): line of 7,820 states, end d 4,488,
+ADOPTED at 1,876,426,752 (success line d <= 4,588; spine.npy md5
+42862b6a6115246de360fd68e20e2941; 1,614 waves, 3.3M nodes, 3.85M cells, 0 finishes in the tree;
+"cut at 7819 (last contact 7410)").
+
+**Where that line goes.** It stays 38-440 u from the reference route down the last descent, at
+3,3xx-3,712 u/s, to the south end: tick 7380 at (-9515,-4801,-5081), 119 u from vertex 1662; last
+contact at tick 7410, (-9216,-5799,-4763), 603 u from vertex 1669 (92.2% of the route). From
+there:
+
+| | the reference route | search 5's line |
+|---|---|---|
+| at the south end | turns WEST: vertex 1680 (-10914,-6236,-5007), 1695 (-12710,-5653,-5105) | turns EAST and back north: tick 7460 (-8140,-5496,-4058) vel (503,3051,1209) |
+| then | north along x about -13,100, climbing 4,500 u: vertex 1710 z -5,144, 1740 z -2,812, 1785 z -649 | north along x -8,100 .. -9,500 at z -3,100 .. -3,600; from tick 7700 free fall (vx, vy constant, vz -8 u/s per tick) |
+| ends | the finish, (-12734,7435,-1300) | cut at (-9098,4192,-4872) vel (-631,2740,-1663): 4,489 u from the finish box, 3,048 u below its lower edge, 5.4k u from the nearest late route vertex |
+
+* The line's end d (4,488) equals its straight distance to the finish box (4,489 u): the field
+  pays for flight through open air under the finish. CLAUDE.md documents this for the old field
+  ("the deception is free flight through open space"); the no-corner-cut field keeps it.
+* Straight distance from the reference route to the finish box: 13,530 u at vertex 1669, max
+  14,088 u at vertex 1680, 11,844 at 1710, 6,788 at 1755, and below 4,288 (the 200 u the next
+  adoption needs past this line) only from vertex 1777 on = 98.2% of the route, 13,824 u of route
+  past the turn. The field's own d along the route was not measured here.
+
+**Reading (not a verdict).** Four adoptions in a row moved the policy along the real route
+(45.6% -> 64.8% -> 84.8% -> 92.2%). The fifth teaches the fall under the finish: the search ranks
+by banked progress on d, and at this place d falls fastest through the air. To be adopted now, a
+line must end below d 4,288, i.e. carry about 13.8k u of the real route (the west turn and most of
+the 4,500 u climb) with no banked progress on the way, or reach the finish. Same class as the
+princessburglar pit and the blue200 void (a stretch the field does not pay for). What decides it:
+the evals after the line is learned (finishes, or the route column past 213.8k u), and searches
+6 onward (a line or none). No constant is touched.
