@@ -39078,3 +39078,116 @@ steps with one a few tens of units deeper, and the curriculum starts again at it
 is asked for. Scoreboard of the frozen recipe (one seed per map, no constant changed): sidistic
 finished (7.248B), princessburglar null (12.86B), blue200 null (4.14B), cannonball finished (first
 finish 2.718B, 9/9 at 3.247B), petrus: no finish at 1.63B, run live.
+
+## 2026-11-11 17:30 UTC: m5sib_pl at 2.58B steps - petrus: the greedy PASSED gate B at 1.81B-1.89B (search line 4 was learned), flew on by itself to 56% and now stops in a dip at 54-58% of the route; CORRECTION to the 16:54 entry; line 6 adopted and walked back, the greedy not past it yet; 0 finishes
+
+Interim entry (the run is live; box 60226641, RTX 5080, one seed, flags unchanged since the launch
+entry of 15:46 UTC). Throughput 399k-402k steps/s (about 1.44B steps per hour). Read at
+17:28 UTC, step 2,582.6M. 0 finishes so far.
+
+**CORRECTION to the 16:54 UTC entry.** That entry read the adopted search lines as dead ends ("the
+lines do not carry the skill the gate needs") and said none was learned. At 1.63B that was the
+state; as a forecast it was WRONG. Line 4 was learned and the greedy passed gate B:
+
+* Line 4 (adopted 1,484.8M; 3,925 states): the curriculum walked from state 3,924 back to state 0
+  in 333M steps (start band [0,3924] at 1,818.2M; 116 advances, 12 backoffs). The backoffs sit in
+  two places: seven at states 2,614-2,624 (inside the hang, 1,577M-1,603M) and five at states
+  779-869 (1,726M-1,760M), which is the flight into the gate (7.8-8.7 s of the line), the place
+  the greedy used to fall.
+* Evals: 24.2% at 1,812.5M (the first movement since 0.15B), then 7/9 greedy episodes past the
+  success line at 1,888.0M and 9/9 at 1,963.5M.
+* What changed in the flight (measurement, eval 2,340.9M ep0 against eval 1,435.0M ep0): at 8.0 s
+  the greedy is at (653,3123,-299) where it used to be at (259,2844,-134): it takes the turn about
+  400 u further east, the way the ruler does, and rides the next ramp south along x about
+  1,060-1,085 at 970-1,000 u/s ((1085,2114,-336) at 9.0 s, (1059,1632,-270) at 9.5 s). The line
+  itself never did that (it hangs at the ramp foot for about 30 of its 39 s). So the line
+  supplied START STATES
+  on the far side of the gate, not the technique; the policy found its own way in while the
+  curriculum walked back through the flight-in.
+* What stands from that entry: the three bookkeeping observations (the adoption test mixes banked
+  and raw depth; the blind band that kept line 2's curriculum silent for 405M steps; a patience
+  search replacing the current line every 3e8 steps). Their cost here is bounded, not measured:
+  line 2 (adopted 587.7M) already ended at the same ramp foot, and line 4 needed 333M steps from
+  adoption to the start, so gate B could have been passed near 0.9B-1.0B instead of 1.81B-1.89B.
+  One seed, and lines 2, 3 and 4 differ in length (1,729 / 5,169 / 3,925 states): an upper bound
+  on the loss, not a controlled figure.
+* Luck in the timing: patience search 5 fired at 1,812.5M (greedy frontier 28,220) and returned a
+  line ending at d 27,155 (1,052 states, md5 ae4af2fe9a5cc9a4650af3da0bef8003). It was discarded
+  as STALE only because the greedy had reached 22,617 by 1,888.0M. Had the greedy moved one eval
+  later, line 5 would have replaced line 4 with the curriculum at state 0.
+
+**Evals since the 16:54 entry (greedy, true start, 9 episodes; grader `autoresearch/score.py`).**
+
+| step | best | median | finishes | ruler: corridor max (of 38,784 u) |
+|---|---|---|---|---|
+| 1,661.5M | 20.6% | 20.5% | 0 / 9 | 8,448 u |
+| 1,737.0M | 20.7% | 20.6% | 0 / 9 | 8,448 u |
+| 1,812.5M | 24.2% | 24.2% | 0 / 9 | 9,984 u |
+| 1,888.0M | 45.4% | 40.5% | 0 / 9 | 17,920 u |
+| 1,963.5M | 49.2% | 48.4% | 0 / 9 | 19,072 u |
+| 2,039.0M | 54.6% | 53.0% | 0 / 9 | 22,016 u |
+| 2,114.5M | 55.7% | 54.8% | 0 / 9 | 22,400 u |
+| 2,190.0M | 55.8% | 52.6% | 0 / 9 | 22,400 u |
+| 2,265.4M | 56.0% | 55.8% | 0 / 9 | 22,400 u |
+| 2,340.9M | 55.9% | 52.7% | 0 / 9 | 22,400 u |
+| 2,416.4M | 56.1% | 55.9% | 0 / 9 | 22,400 u |
+| 2,491.9M | 56.2% | 56.1% | 0 / 9 | 22,400 u |
+| 2,567.4M | 56.2% | 56.0% | 0 / 9 | 22,528 u |
+
+35 evals, 315 greedy episodes, 0 finishes, 0 dives below the route. The ruler
+(`tools/eval_honesty.py --route maps/surf_petrus_lite.wrroute.npz --order-only 16`) is
+record-derived: measurement only. From 24% to 56% (ruler 8,448 u to 22,400 u) the policy went
+with NO search line: 0.3B steps, search 5 stale, line 4's end is at 22%.
+
+**Where the greedy stops now (evals 2,265.4M to 2,567.4M): the dip at 54-58% of the ruler.** The
+ruler drops from (-2812,-2659,-1104) (vtx 156, arc 19,875) to the bottom (-2160,-2916,-1872)
+(vtx 165, arc 21,023) and climbs 955 u out of it: (-1539,-2799,-1523) vtx 171, (-1290,-2675,-1259)
+vtx 174, (-1141,-2414,-1029) vtx 177, (-1107,-2063,-917) vtx 180 (arc 22,941). The greedy
+(eval 2,340.9M ep0, 22.74 s): (-2748,-2740,-995) at 19.0 s with vz -906, (-2479,-2503,-1548) at
+19.5 s with vz -1,306, the bottom (-2053,-2673,-1920) at 20.0 s at 1,116 u/s, up to
+(-1084,-2572,-1348) at 21.5 s with vz +11, then back down; it dies at (-1013,-3084,-1940). It
+tops out about 430 u under the ruler's exit. Of the 18 episodes of the two evals: 10 climb to
+about z -1,350 and fall back (22.5-28.7 s), 6 hit the bottom at (-2190..-2240,-2550..-2605,
+-1936..-1945) at 18.8-19.7 s with vz about -1,525 without catching the ramp, 2 die earlier at
+(-3098..-3179,-355..-1832) at 15.7-17.6 s. In the newest eval (2,567.4M) three episodes swing
+through the dip twice: ep0 tops out at z -1,239 at 20.0 s (about 110 u higher than at 2,340.9M,
+about 320 u under the ruler's exit), slides back through the bottom ((-1898,-2692,-1880) at
+21.5 s), turns at the entry side, climbs again to z about -1,450 at 24.0 s and dies at 24.95 s;
+2 end at 21.8 s on the way back up the entry side, 3 hit the bottom at 18.4-18.5 s, 1 misses
+the ramp into the dip (17.8 s). Trainer's line: win 0.00% with reservoir minimum depth 43.9% at
+2,379M and 43.7% at 2,583M; T 0.20 and 0.06.
+
+**Searches 5 and 6 (tree search "mcts", 6 min, 2,048 envs; `beam_finished` 0 in both).**
+
+| search | from step | ended | greedy frontier d (banked) | cells | search best banked / deepest raw | greedy in search banked / raw | line states, end d | outcome |
+|---|---|---|---|---|---|---|---|---|
+| 5 (patience) | 1,812.5M | 1,946.7M | 28,220 | 843 | 24.45% / 24.45% | 21.49% / 24.21% | 1,052, 27,155 | STALE, discarded (greedy at 22,617 by then) |
+| 6 (quorum 9/9) | 2,265.4M | 2,379.7M | 16,498 | 2,737 | 55.27% / 56.06% | 54.46% / 54.89% | 2,067, 16,047 | ADOPTED; success line d <= 16,147 |
+
+Line 6 (md5 3ccc7a60c9c27923e80a7247bf9e48d8; keys 19fca89692c8f3ff33b2fce0af429e4c) is the
+greedy's own flight (20.67 s, mean 963 u/s, 0.1 s under 100 u/s: no hang this time) and ends a
+little higher on the climb, (-1501,-2551,-1362) with vz +288 after the bottom at
+(-1851,-2681,-1884) at 19.72 s: 450 u of banked d past the greedy frontier, 1.2% of d0 in raw
+depth. Its curriculum walked from starts [2061,2066] back to [0,2066] in 139M steps (there at
+2,519.2M; 54 advances, 0 backoffs; band success 100% over the last 150 states, 82-96% through
+the middle, one 38.2% at states 831-871 = the flight into gate B again, 57-85% over the first
+800 states). The greedy from the true start has not followed so far: 0/9 past the success line
+at 2,416.4M, 2,491.9M and 2,567.4M (the last is the only eval after the walk ended), frontier
+16,495-16,498, unchanged to 3 u. A band success rate is an average over starts drawn along the
+whole line at the training temperature; it is not the greedy from state 0. Next search: no
+quorum, so the patience clock (3e8 steps after the adoption, about 2.68B).
+Copies of k05 and k06 (spine.npy, spine.keys.npy, spine.json, auto_spine.log, beam.log) are in
+/home/steam/ar_m2/runs/m5sib/pl_auto/, md5-checked against the box.
+
+**Reading (not a verdict).** The recipe's cycle (search, adopt, learn, policy runs on by itself)
+has now worked once on this map, at about three times the steps the project's September
+finishers needed for the whole map (first finishes at 0.50B-1.01B, other cards, step-matched).
+The new stop is a second place of the same kind as gate B, larger: a drop the agent must leave
+with enough speed to climb 955 u, where the field pays the same whatever the speed. The run goes
+on to its deadline (21:36:34 UTC, about 8.4B steps in all at this rate) unless the user stops
+it; no constant has been touched, and nothing from the ruler or from this read-out goes into the
+run.
+
+**Frozen-recipe scoreboard (one seed per map, no constant changed).** sidistic finished (7.248B);
+princessburglar null (12.86B); blue200 null (4.14B); cannonball finished (first finish 2.718B,
+9/9 at 3.247B); petrus: no finish at 2.58B, greedy at 56%, run live.
