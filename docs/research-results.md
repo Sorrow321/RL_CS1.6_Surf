@@ -39311,3 +39311,102 @@ in the run.
 9/9: finish rate and best time, and whether the curriculum on the finishing line disturbs the
 greedy as it did on cannonball), then bundle and release ahead of the 21:36:34 UTC deadline. No
 constant has been touched.
+
+## 2026-11-11 18:46 UTC: m5sib_pl FINAL - petrus FINISHED, 141 of 144 greedy episodes after the first 9/9, best 33.10 s
+
+FINAL entry for the petrus run (box 60226641, RTX 5080 16 GB, one seed, the frozen sidistic
+recipe with no flag or constant changed; launch entry 15:46 UTC, finish entry 18:07 UTC).
+
+**Result.** The run FINISHES surf_petrus_lite from the true start and keeps finishing. First
+greedy finish and first 9/9 at 3,246,915,584 steps. In the 16 evals from there to the end
+(4,379.4M) **141 of 144 greedy episodes finish (97.9%)**; best finish **33.10 s** (4,228.4M). The
+43 evals before it: 0 of 387.
+
+**Evals from the first 9/9 on** (greedy, true start, 9 episodes; grader `autoresearch/score.py`;
+ruler = `tools/eval_honesty.py --route maps/surf_petrus_lite.wrroute.npz --map surf_petrus_lite
+--order-only 16`, a record-derived file used for measurement only; route 38,784 u; the two tools
+agree on the finish count of every eval, 0 dives).
+
+| step | finishes | best time (s) | ruler mean / max (u) |
+|---|---|---|---|
+| 3,246.9M | 9 / 9 | 33.13 | 38,784 / 38,784 |
+| 3,322.4M | 9 / 9 | 33.12 | 38,784 / 38,784 |
+| 3,397.9M | 9 / 9 | 33.40 | 38,784 / 38,784 |
+| 3,473.4M | 9 / 9 | 33.67 | 38,784 / 38,784 |
+| 3,548.9M | 7 / 9 | 33.62 | 35,243 / 38,784 |
+| 3,624.4M | 9 / 9 | 33.46 | 38,784 / 38,784 |
+| 3,699.9M | 9 / 9 | 33.35 | 38,784 / 38,784 |
+| 3,775.4M | 9 / 9 | 33.31 | 38,784 / 38,784 |
+| 3,850.9M | 9 / 9 | 33.19 | 38,784 / 38,784 |
+| 3,926.4M | 9 / 9 | 33.17 | 38,784 / 38,784 |
+| 4,001.9M | 9 / 9 | 33.29 | 38,784 / 38,784 |
+| 4,077.4M | 8 / 9 | 33.14 | 38,315 / 38,784 |
+| 4,152.9M | 9 / 9 | 33.13 | 38,784 / 38,784 |
+| 4,228.4M | 9 / 9 | 33.10 | 38,784 / 38,784 |
+| 4,303.9M | 9 / 9 | 33.19 | 38,784 / 38,784 |
+| 4,379.4M | 9 / 9 | 33.24 | 38,784 / 38,784 |
+
+**Searches after the finish.** A finish is still not a quorum event (the trainer prints "0/9
+greedy episodes past the success line d <= 100; greedy frontier 997-1,002" on 9/9 evals), so the
+patience clock went on firing a search every 3e8 steps, and each one returned the policy's own
+finishing line in about 10 s and replaced the line before it:
+
+| search | trigger, step | line: states (= time) | outcome |
+|---|---|---|---|
+| 9 | quorum, 3,397.9M | 3,469 (34.69 s) | adopted 3,402.1M, curriculum restarted at its end |
+| 10 | patience, 3,775.4M | 3,348 (33.48 s) | adopted 3,779.6M, curriculum restarted |
+| 11 | patience, 4,152.9M | 3,338 (33.38 s) | adopted 4,157.1M, curriculum restarted |
+
+Unlike cannonball (61% of greedy episodes finishing after the first 9/9 while the curriculum ran
+on its finishing line), the greedy here stayed at 7-9 of 9 through all three restarts. One seed
+per map: the difference is an observation, not a measured effect.
+
+**Training win rate, with the reservoir minimum depth beside it** (curriculum spawns flatter it;
+the greedy evals above are the read): 92.79% @ 11.7 s, mind 5.08% (4.25B); 88.21% @ 20.9 s, mind
+5.43% (4.36B); 82.58% @ 22.1 s, mind 5.37% (4.39B, the last step line).
+
+**Beside the bars on this map** (ledger round 40, 2026-09-11; other cards, step-matched only;
+never constants): pnANCH first finish 504.4M (9/9, best 32.28 s), pnFRONT3Bs 554.7M, pnANCHU
+1,007.7M (9/9, best 31.93 s); plain control pnCTL 0 finishes. This run: first finish 3,246.9M =
+3.2x to 6.4x the older finishers' steps; best 33.10 s against 31.93 s. It is the cross-map recipe
+with nothing tuned for petrus; the older finishers were built on this map.
+
+**Run totals.** Last step line 4,391,960,576 steps (18:40 UTC), 59 evals, about 410k steps/s late
+in the run (1.44B-1.47B steps per hour). Box rented 15:36:47 UTC, launched 15:41:41, released
+18:41:41 UTC through box.py (0 instances and an empty registry on two looks, 18:41 and 18:45) =
+3.08 h at $0.387/h = about $1.19.
+
+**Bundle on the droplet (md5-checked against the box before the release).**
+/home/steam/ar_m2/runs/m5sib/m5sib_pl/: `ckpt_latest.pt` md5 29012b4d4118e41cf4802638f7f79acb
+(61,843,327 bytes, pulled 18:40:41 UTC, about 4.39B steps), `run.json` md5
+e72bd3e950f122f042300f56a2b89d13, `progress.csv`, the launch log, all 59 `traj_*.jsonl`.
+/home/steam/ar_m2/runs/m5sib/pl_auto/: k01..k11 (spine.npy, spine.keys.npy, spine.json,
+auto_spine.log, beam.log), `current_1838.json` md5 82f282997b1c1a221df55cb71c490c17, `spine0.npy`
+md5 c2737ccc1e679be1d8dbd2deb6f24373. Finishing lines: k09 58fa4acac9e7841b8849a54c15ce57c8, k10
+0789030d48ce3c4ad3408fb5be029133, k11 6fb7f5239e8820f97d5676a78b3cd374. Every line is the
+policy's own search output on the trainer's field; no record-derived file is in the run.
+
+**Scoreboard of the frozen recipe (one seed per map, no flag or constant changed).**
+
+| map | result | steps |
+|---|---|---|
+| surf_src_sidistic (where it was built) | finished | 7.248B (run 5: 8.230B) |
+| surf_princessburglar_b26 | null | 12.86B |
+| surf_edgeflow_blue200 | null | 4.14B |
+| surf_src_cannonball | finished | first finish 2.718B, 9/9 at 3.247B, 61% of episodes after |
+| surf_petrus_lite | finished | first finish and 9/9 at 3.247B, 97.9% of episodes after |
+
+Three of five. Both nulls need a long stretch the field does not pay for. Petrus is the easy end
+of the suite, so the finish says the recipe's loop works where the unpaid gaps are short; it
+does not say the recipe beats any map.
+
+**Generic defects seen in this run (no map constant; NOT fixed, the run is the frozen recipe):**
+a finish is not a quorum event; a new line is compared with the greedy frontier and not with the
+current line's end; the adoption test mixes banked and raw depth; the curriculum's blind band
+where a line stands still; a patience search every 3e8 steps replaces a line before it is
+learned; "walked back to state 0" is a band average at training temperature; the search ranks by
+banked d and prefers creeping in contact (details in the entries of 17:30 and 18:07 UTC).
+
+**Next (the user, about 18:35 UTC): "let's try unitfarmer2 now. This is also a very hard map, in
+the beginning".** Same recipe, unchanged, from scratch, one seed, on surf_unitfarmer2; its own
+branch and launch entry follow.
