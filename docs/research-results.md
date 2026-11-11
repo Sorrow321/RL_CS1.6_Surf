@@ -38060,3 +38060,38 @@ line or root of this entry may enter a training run.
   (7.5% of d0 here, 0.2% on sidistic), --demo-success-d 100, the plateau detector's 500 u. They are
   not touched (0b); if the run fails on one of them, that is a finding about the recipe (constants
   in absolute units do not carry across map sizes), not a reason to tune them for this map.
+
+## 2026-11-11 07:36 UTC: m3sib_b200 - grader start test fixed for a map with spread spawn points; first evals; search 1 found a line and it was discarded as stale
+
+**Grader fix (2ad19f8a, grader only, training untouched).** `autoresearch/score.py` rejected the
+run's first eval: "an episode starts at d 2,840, not the map start (2,672 +- 2%)". The map has 16
+spawn points in four rows and the field reads 2,506 / 2,616 / 2,728 / 2,840 u at them (mean
+2,672.5, the trainer's "start geodesic"); every eval episode draws one of them. On sidistic and
+princessburglar the spawn points sat within the 2% and the test never fired. The config now
+carries `start_d_span: [2506.0, 2840.0]` and the test accepts a start inside the span +- 2% of
+`start_d`; without the key the old behaviour is unchanged. Progress stays per episode,
+`100 * (d0 - dmin) / d0` with the episode's own d0. For any later map: measure the spread of d
+over the spawn points before the first scoring.
+
+**First evals (greedy, from the true start, RTX 5080, one seed).**
+
+| step | best progress | median | finishes |
+|---|---|---|---|
+| 524,288 | 20.6% | 9.8% | 0 / 9 |
+| 76,021,760 | 54.1% | 49.2% | 0 / 9 |
+
+Throughput 265k-307k steps/s (about 1.0-1.1B steps per hour on this card). Training log at 146M:
+win 0.00%, episode length 410 decisions, "best 1,536u" unchanged for 69.7M steps.
+
+**Search 1 (tree search beside the training, 6 minutes, from the 524k checkpoint).** Started with
+the greedy frontier at d 2,433. It ended at step 126,353,408 with a replayable line of 3,280
+states, end d 2,017 (416 u beyond the frontier it started from, no finish). By then the policy's
+own greedy frontier was d 1,981 (eval at 76.0M), so the trainer discarded the line: "STALE spine
+discarded - its end d 2,017 does not beat the latest greedy frontier 1,981 by 200 u". Next search
+at step 426,353,408 (`--auto-spine-retry 3e8`, the recipe's constant).
+
+**Reading so far.** The policy learned the first half of the field's descent by itself in 76M
+steps, faster than the search line was produced. That is the easy half: September's measurement
+on this map says the route then has to give back 2,204 u of the field (82.5% of d0), and that
+is where the recipe is tested. Nothing is concluded yet. The caveat from the launch entry
+stands: the 200 u adoption gain is 7.5% of this map's start distance and was not touched.
