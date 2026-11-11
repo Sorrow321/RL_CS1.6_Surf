@@ -37642,3 +37642,61 @@ through search 16 it is 13 of 15 (searches 2-16, all but 8 and 11).
 
 **Housekeeping.** The two throwaway worktrees used for these runs (`ar_m2/wt/ge_old`,
 `ar_m2/wt/ge_new`) are removed; the archives and logs stay in `runs/m2ge/seeds/`.
+
+## 2026-11-11 00:55 UTC - second-map test, DIAGNOSTIC search-swap arm m2ge_pb1: second search from the pit finds nothing; the Go-Explore root sets compared; the packaged stage is NOT October's pit command (two explorer flags differ)
+
+Measurement and bookkeeping only; nothing here enters a training run. Arm m2ge_pb1 is a
+DIAGNOSTIC arm (the frozen sidistic recipe with the search loop swapped for October's packaged
+one), never a from-scratch 0b result.
+
+**Search 18** (triggered 6,946,291,712, ended 7,349,469,184, 1,096 s; greedy_d 55,307.2, gain
+200): NO new spine. Policy-guided beam 700 ticks, end d 55,300.5; three branched beams (forks
+513, 413, 313) end d 55,300.5-55,301.6; `beam_stall` 542; three Go-Explore stages of 5 minutes
+from 40 roots at ticks 142-699 of the beam line (boosts [1.0, 1.04], [1.08], [1.12]): 335 / 335 /
+333 iterations, 4,069,676 / 4,208,787 / 4,199,301 runs, 28,320 / 28,259 / 29,924 cells, best
+52,564u at depth 0 in all three (= a root; a crossing reads 52,2xx u). The arm stands at
+7,689,732,096 steps, greedy 3.2%, 0/9, d 55,303 (evals at 7.40B-7.63B: 3.234-3.235). So the
+packaged search is 0 lines past the pit in 2 searches = 6 stages = 24.9M runs. Search 19 is
+running. The k17 / k18 logs and the stages' `roots.npy`, `line.npy`, `archive.meta.json` are in
+`/home/steam/ar_m2/runs/m2ge/m2ge_pb1/auto_lines/` (md5 equal to the box).
+
+**The root sets** (`scratchpad m2/roots/roots_cmp.py`; g = 800, "energy height" = z + speed^2 / 2g):
+
+| root set | states | where | horizontal speed | energy height |
+|---|---|---|---|---|
+| October's exit roots (`pbr1b1/_entry/exit_roots.npy`) | 64 | all on the upper level, NORTH passage: x 106..234, y -2,910..-2,880, z 3,708..3,736, moving west | 187-332 u/s, median 266 | 3,744-3,786, median 3,766 |
+| search 17, stage 1 (48 states x boosts 1.0, 1.04) | 96 | 36 upper level (SOUTH passage), 12 mid air, 48 on the pit floor at a standstill (x 809, y -2,717, z 3,332) | 0-427, median 46 | 3,332-3,854, median 3,445 |
+| search 18, stage 1 (40 states x boosts 1.0, 1.04) | 80 | 48 upper level (SOUTH passage, y -3,288..-3,019), 12 mid air, 20 pit floor | 44-581, median 348 | 3,371-3,839, median 3,752 |
+
+The policy's upper-level roots are not poorer than October's: they carry as much speed and as
+much energy height, in the other passage (the south one, which is where the fixed-simulator
+replicate f1 took its run-up, starting from October's north roots). What they add is a tail of
+slow states on the pit floor. So the root positions alone do not explain 0 of 6 stages against
+3 of 6 replicates.
+
+**The packaged stage is not the command that crossed the pit in October.** The six replicates
+(entry "2026-11-11 00:40 UTC") ran October's dedicated pit search: `explore_phase1.py --envs 4096
+--cell 64 --cell-energy 32 --decisions 100 --act-every 4 --exact-chains --roots-spine <roots>
+--goals 1 --maxvel 3500`. The packaged stage `tools/auto_spine.py` runs on the box is that plus
+`--cell-heading 1 --view-follow=-90,-60,-30,-15,0,15,30,60,90` (and `--roots-keep-all` on the
+mixed-boost stage, and the 1.04-1.12 velocity boosts on the roots): the cell key also holds
+"rising or not", and every burst holds its view within 90 degrees of the velocity heading, the
+policy's `--view-absolute velocity` frame. Both were added in October's later rounds for later
+gates. October's crossing line first goes BACK up the passage, away from the goal, for 7 s; a
+view tied to the velocity heading is the obvious suspect for a search that never does that. A
+suspect, not a finding: 0 of 6 against 3 of 6 has two differences in it (roots, flags).
+
+**Queued (droplet CPU, nice 19, one job at a time, fixed simulator, 420 iterations each, about
+70 min each; `scratchpad m2/roots/run_2x2.sh`, out `/home/steam/ar_m2/runs/m2ge/roots2x2/`):**
+`pr1`, `pr0` = the POLICY's roots (search 18's 40 unboosted states) with October's flags, seeds
+1 and 0; `of1`, `of0` = October's roots with the packaged stage's two flags, seeds 1 and 0. A
+crossing in `pr*` says the policy's own states are good enough to cross from; a crossing in
+`of*` says the two flags do not block it. The check run `chk10` (10 iterations, seed 1,
+October's roots, the operator checkout) repeats f1 exactly: archive 7,900, runs 73,845, deaths
+35,270, so the checkout runs the same simulator and explorer as the replicates.
+
+**Transfer arm m2warm_pb1** (arm A's recipe + sidistic weights; a transfer arm): 7,352,090,624
+steps, greedy 0.40%, 0/9, still in the start room; 18 searches, 0 lines. Checkpoint re-pulled
+(md5 85d49b800d06c111ae6e82e1fb6f080d).
+
+Budget 00:44 UTC: credit $36.87, burn $0.716/h, 37.5 h above the reserve.
