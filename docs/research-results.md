@@ -39617,3 +39617,214 @@ Null rule as written at launch: no movement of the greedy (now read physically) 
 steps with searches returning no useful line; the 3B check stands. Deadline 06:53:54 UTC on
 2026-11-12, no extension without the user. No constant has been touched. Cost so far about
 $0.36 (1.17 h at $0.311/h).
+
+## 2026-11-11 21:16 UTC: m6sib_uf2 FINAL - NULL: 0 finishes in 3.42B steps, the greedy dies 6 s after the spawn and never enters the pit
+
+FINAL entry for the unitfarmer2 run (box 60247203 released 21:12:00 UTC; one seed; flags as in
+the launch entry of 18:59 UTC, nothing changed during the run).
+
+**Result: NULL.** The frozen sidistic recipe, from scratch, does not get off the start of
+surf_unitfarmer2. 0 finishes in 46 greedy evals (414 episodes) over 3.42B steps. From 1,208.5M
+to the last eval at 3,397.9M (2.19B steps) the greedy flies the same flight: it jumps off the
+start platform, glides north, turns east and dies on the kill level (z 180-183) 5.7-6.0 s after
+the spawn. It never enters the pit the route starts with. Eight searches, 17.3M nodes, no
+finishing rollout and no state below z 196; seven lines were adopted, and every one ends in
+that same fall or on a ledge beside it. The null was called by the rule written at launch (no
+movement of the greedy over about 1.5B steps; the 3B check), not by the deadline: 9.7 h of the
+12 h budget were not used.
+
+**Run facts.** RTX 5080 16 GB, $0.311/h, machine 153021. Rented 18:54:05, launched 18:56:02,
+released 21:12:00 UTC on 2026-11-11 = 2.30 h = about $0.72. Last step line seen on the box
+3,423,076,352 (21:11:21 UTC); the pulled log ends at 3,409,444,864; about 422k steps/s = 1.52B
+steps per hour. Recipe byte-identical to the blue200 / cannonball / petrus runs except
+`--maxvel 3500` (the map's server physics, not a recipe constant). From scratch; the only
+spawn-state file is the run's own `auto/spine0.npy`. Nothing record-derived and nothing of
+October's unitfarmer2 program entered the run.
+
+**Evals (greedy, true start, 9 episodes; grader `autoresearch/score.py`, finish on the clip
+hull; the last four columns are read from the eval trajectories: episode length, the range of
+the nine end positions, the lowest z any episode reached). Every episode of every eval ends
+"fail".**
+
+| step | best / median progress | finishes | episode length (s) | end x | end y | lowest z |
+|---|---|---|---|---|---|---|
+| 0.5M | 2.9% / 2.3% | 0/9 | 10.34-33.39 | -2376..-1705 | -2798..-2325 | 507 |
+| 76.0M | 5.8% / 5.7% | 0/9 | 2.35-4.56 | -1810..-1579 | -2631..-1986 | 181 |
+| 151.5M | 6.0% / 5.8% | 0/9 | 3.16-4.44 | -1648..-1529 | -2209..-1946 | 180 |
+| 227.0M | 6.2% / 5.9% | 0/9 | 3.20-4.56 | -1692..-1486 | -2180..-1889 | 181 |
+| 302.5M | 6.2% / 6.0% | 0/9 | 3.78-4.56 | -1579..-1518 | -1978..-1884 | 180 |
+| 378.0M | 6.2% / 6.0% | 0/9 | 3.16-4.56 | -1700..-1530 | -2184..-1872 | 180 |
+| 453.5M | 6.4% / 6.2% | 0/9 | 3.81-4.40 | -1554..-1487 | -1946..-1835 | 180 |
+| 529.0M | 6.5% / 6.4% | 0/9 | 3.84-3.89 | -1562..-1503 | -1862..-1814 | 180 |
+| 604.5M | 6.5% / 6.5% | 0/9 | 3.88-3.91 | -1523..-1502 | -1854..-1810 | 180 |
+| 680.0M | 6.5% / 6.4% | 0/9 | 3.88-3.93 | -1515..-1460 | -1873..-1812 | 180 |
+| 755.5M | 6.5% / 6.4% | 0/9 | 3.88-3.99 | -1553..-1493 | -1856..-1814 | 180 |
+| 831.0M | 6.5% / 6.5% | 0/9 | 3.88-3.96 | -1524..-1494 | -1829..-1808 | 180 |
+| 906.5M | 6.5% / 6.3% | 0/9 | 3.92-4.02 | -1609..-1514 | -1902..-1806 | 180 |
+| 982.0M | 9.1% / 9.0% | 0/9 | 5.51-5.60 | -1493..-1380 | -1088..-1031 | 180 |
+| 1057.5M | 9.7% / 9.6% | 0/9 | 5.56-5.75 | -1291..-1241 | -991..-944 | 180 |
+| 1133.0M | 9.9% / 9.8% | 0/9 | 5.68-5.93 | -1235..-1183 | -933..-884 | 181 |
+| 1208.5M | 10.1% / 10.0% | 0/9 | 5.83-5.98 | -1179..-1150 | -886..-853 | 181 |
+| 1284.0M | 10.1% / 10.1% | 0/9 | 5.80-5.96 | -1161..-1140 | -869..-839 | 181 |
+| 1359.5M | 10.2% / 10.1% | 0/9 | 5.91-5.94 | -1146..-1128 | -852..-832 | 181 |
+| 1435.0M | 10.2% / 10.2% | 0/9 | 5.94-5.97 | -1142..-1125 | -852..-830 | 180 |
+| 1510.5M | 10.2% / 10.2% | 0/9 | 5.89-6.79 | -1307..-1123 | -996..-831 | 180 |
+| 1586.0M | 10.2% / 10.2% | 0/9 | 5.97-6.01 | -1133..-1118 | -839..-822 | 182 |
+| 1661.5M | 10.2% / 10.2% | 0/9 | 5.97-6.00 | -1127..-1117 | -833..-821 | 180 |
+| 1737.0M | 10.2% / 10.2% | 0/9 | 5.97-6.00 | -1134..-1116 | -838..-819 | 182 |
+| 1812.5M | 10.2% / 10.2% | 0/9 | 5.98-6.03 | -1123..-1116 | -833..-826 | 180 |
+| 1888.0M | 10.2% / 10.2% | 0/9 | 5.99-6.02 | -1126..-1113 | -825..-815 | 181 |
+| 1963.5M | 10.2% / 10.2% | 0/9 | 6.00-6.01 | -1123..-1113 | -829..-816 | 180 |
+| 2039.0M | 10.2% / 10.2% | 0/9 | 6.01-6.04 | -1140..-1110 | -839..-816 | 180 |
+| 2114.5M | 10.2% / 10.2% | 0/9 | 6.01-6.04 | -1123..-1116 | -827..-818 | 181 |
+| 2190.0M | 10.2% / 10.2% | 0/9 | 6.01-6.02 | -1127..-1118 | -832..-821 | 181 |
+| 2265.4M | 10.1% / 10.1% | 0/9 | 5.89-5.94 | -1152..-1139 | -858..-845 | 180 |
+| 2340.9M | 10.0% / 10.0% | 0/9 | 5.83-5.89 | -1178..-1151 | -888..-863 | 180 |
+| 2416.4M | 9.9% / 9.9% | 0/9 | 5.78-5.81 | -1195..-1170 | -896..-859 | 180 |
+| 2491.9M | 9.9% / 9.9% | 0/9 | 5.78-5.82 | -1189..-1175 | -895..-878 | 180 |
+| 2567.4M | 9.9% / 9.9% | 0/9 | 5.75-5.80 | -1201..-1184 | -897..-875 | 181 |
+| 2642.9M | 9.9% / 9.9% | 0/9 | 5.76-5.79 | -1201..-1180 | -898..-877 | 180 |
+| 2718.4M | 9.9% / 9.9% | 0/9 | 5.72-5.78 | -1200..-1184 | -899..-882 | 180 |
+| 2793.9M | 9.9% / 9.8% | 0/9 | 5.74-5.76 | -1206..-1192 | -905..-884 | 180 |
+| 2869.4M | 9.8% / 9.8% | 0/9 | 5.73-5.74 | -1206..-1198 | -909..-892 | 182 |
+| 2944.9M | 10.1% / 10.0% | 0/9 | 5.85-5.91 | -1168..-1147 | -874..-849 | 180 |
+| 3020.4M | 10.1% / 10.1% | 0/9 | 5.92-5.94 | -1150..-1137 | -856..-848 | 181 |
+| 3095.9M | 10.2% / 10.2% | 0/9 | 5.93-5.97 | -1150..-1127 | -859..-835 | 180 |
+| 3171.4M | 10.2% / 10.1% | 0/9 | 5.93-5.97 | -1158..-1134 | -856..-833 | 183 |
+| 3246.9M | 10.2% / 10.2% | 0/9 | 5.96-5.97 | -1136..-1128 | -853..-836 | 180 |
+| 3322.4M | 10.2% / 10.2% | 0/9 | 5.97-5.98 | -1138..-1127 | -844..-831 | 181 |
+| 3397.9M | 10.2% / 10.2% | 0/9 | 5.96-5.97 | -1143..-1125 | -848..-829 | 182 |
+
+* The grader's progress % is NOT a pit exit on this map (entry of 20:06 UTC). It is the raw
+  field value at the deepest point of a death dive: the field keeps falling in the air past
+  the kill level's edge. The trainer's own frontier (median deepest d banked on contact) reads
+  28,558-28,575 at every eval from 1,359.5M to 3,397.9M: 6.8% of d0 30,647.5, a spread of 17 u
+  over 2.04B steps. The trainer's unstuck clock said the same at the end: "stuck 2,426.9M".
+* Three stages, all deaths on the same kill level: from 76.0M to 906.5M a fall north-east of
+  the start after 2.4-4.6 s (ends near x -1,500, y -1,850); at 982.0M the flight lengthens to
+  5.5 s and ends further north (y -1,060); from 1,208.5M it is the flight above (ends at
+  x -1,110..-1,206, y -815..-909), which then does not change. The small drift between 2.27B
+  and 2.87B (5.72-5.94 s, 9.8-10.1%) is the same flight landing 50-80 u shorter.
+* Newest eval (3,397.9M): nine episodes of 5.96-5.97 s. At 3,246.9M the nine reach their top
+  speed of 1,082 u/s at 2.93 s (z 533) and end falling at about 650 u/s. Over all 414 eval
+  episodes: none below z 180, none south of y -2,798 (the untrained first eval; y -2,775 from
+  76.0M on, a short hop on the platform side; the start is at y -2,272).
+
+**Measurement only: where the record goes** (`~/ar_uf2/wr/surf_unitfarmer2_wr.jsonl`; never a
+training input). From the platform at z 1,188 it goes SOUTH to y -3,325 and down into the pit
+(z -876 at 6.0 s with 1,786 u/s), comes back up to z 584 at 8.5 s, passes (-2352,-1755,342) at
+9.5 s moving north at 1,123 u/s and turns WEST. The policy stays 550 u short of that southern
+point and 1,056 u above that depth. The best search line's end, the ledge at
+(-1339,-945,237), is 1,134 u from the nearest point of the record (699 u in plan view, where
+the record is 990 u lower, in the pit): it is not on the route.
+
+**Searches (each about 366 s of MCTS beside the trainer, 2,048 envs; `beam_finished` 0 in all
+eight; d values are banked d; "waves / nodes / cells" from the last line of each beam.log).**
+
+| search | trigger, start | ended | greedy frontier d | line: states, end d | where the line ends | waves / nodes / cells | outcome |
+|---|---|---|---|---|---|---|---|
+| 1 | launch, 0.5M | 122.2M | 30,155 | 1,476, 29,604 | (-1488,-2620,593), falling | 1,330 / 2.73M / 458 | STALE (greedy at 29,475 by then) |
+| 2 | retry clock, 453.5M | 597.2M | 29,447 | 3,641, 28,350 | (-1774,-1244,197), falling | 720 / 1.48M / 339 | adopted, d <= 28,450 |
+| 3 | patience, 906.5M | 1,051.2M | 29,444 | 685, 28,276 | (-1713,-1213,198), falling | 670 / 1.37M / 349 | adopted, d <= 28,376 |
+| 4 | patience, 1,359.5M | 1,482.7M | 28,571 | 481, 28,248 | (-1696,-1186,198), falling | 1,300 / 2.66M / 531 | adopted, d <= 28,348 |
+| 5 | patience, 1,812.5M | 1,954.0M | 28,573 | 5,605, 28,222 | (-1705,-1072,197), falling | 760 / 1.56M / 448 | adopted, d <= 28,322 |
+| 6 | patience, 2,265.4M | 2,401.8M | 28,568 | 1,317, 28,185 | (-1667,-1074,197), falling | 880 / 1.80M / 455 | adopted, d <= 28,285 |
+| 7 | patience, 2,718.4M | 2,831.7M | 28,559 | 593, 27,793 | (-1339,-945,237), in contact on a ledge | 1,630 / 3.34M / 502 | adopted, d <= 27,893 |
+| 8 | patience, 3,171.4M | 3,300.4M | 28,563 | 565, 27,901 | (-1395,-1079,196), falling | 1,140 / 2.34M / 352 | adopted, d <= 28,001; replaced line 7 |
+
+* The seven adopted lines start with the greedy's own flight (top speed 1,069-1,082 u/s at
+  2.93-2.97 s, z 533); none of the eight goes further south than y -2,772 or below z 196.
+  Lines 2, 5 and 6 creep for about 30 s, 52 s and 7.5 s before they fall (5 and 6 along a
+  wall at y -1,072..-1,200, z 300-423): the search gains banked d a few units at a time by
+  staying in contact.
+* Gain of each adopted line over the line before it: 74 u (3), 28 u (4), 26 u (5), 37 u (6),
+  392 u (7), and MINUS 108 u (8). The adoption test needs 200 u, but against the greedy's
+  banked frontier, not against the current line's end, so five of the six replacements would
+  not have passed against the line they replaced, and line 8 replaced a better line.
+* Line 7 is the only one that is not the fall: it ends in contact on a ledge at z 237, about
+  40 u above where the other lines end, north-east of the start. It is still not the pit and
+  not on the route (above).
+
+**Curriculum on each line** (advances / backoffs of the start band; steps from the step line
+before each event).
+
+| line | states | advances / backoffs | walked back to state 0 | greedy past its success line |
+|---|---|---|---|---|
+| 2 | 3,641 | 111 / 17 | by 930.6M (333M steps) | 0/9 in every eval |
+| 3 | 685 | 20 / 0 | by 1,101.5M (50M) | 0/9 in every eval |
+| 4 | 481 | 15 / 0 | by 1,519.9M (37M) | 0/9 in every eval |
+| 5 | 5,605 | 60 / 42 | NO: 5,604 -> 4,964 by 2,219.3M, then silent until replaced at 2,401.8M | 0/9 |
+| 6 | 1,317 | 93 / 71 | NO: oscillating at 481..566 until replaced at 2,831.7M | 0/9 |
+| 7 | 593 | 17 / 0 | by 2,874.1M (42M) | 0/9 in six evals (2,869.4M-3,246.9M) |
+| 8 | 565 | 17 / 0 | by 3,342.9M (42M) | 0/9 at 3,397.9M |
+
+The trainer printed "0/9 greedy episodes past the success line" at all 38 evals after line 2
+was adopted. On the short lines the start band reached state 0 (line 7: 73-100% band success,
+line 8: 98%) at the training temperature, and the greedy from the true start still never
+banked their depth:
+its own flight dives past them in the air (raw d 27,52x, deeper than every line's end) and
+banks nothing after 28,56x. A band walked back to state 0 is not the greedy following a line.
+
+**Training side.** Win rate 0.00% in all 6,500 step lines. Reservoir minimum depth ("mind")
+93.05-93.79% of d0 from 1.2B to the end: no reservoir state deeper than about 7%. Explained
+variance 0.998-0.999 and entropy 0.006 at the end: the policy is converged on this flight.
+
+**Beside the bars on this map** (never constants; other cards, step-matched only). September:
+eight champion-free arms, 1B each, never passed the pit. October's plain control (sidistic's
+then recipe from scratch): 5.6%, 0/9, null. October's agent-built lineage (pit-state respawns,
+tick ramp, hand-run search and backward curriculum: map-specific, not one recipe): greedy out
+of the pit at 2.94B, first real 9/9 at 15.018B, best 34.54 s; record 35.15 s. This run joins
+the champion-free nulls: at 3.42B it has not entered the pit once, in training or in search.
+
+**Reading.** Same class as the princessburglar pit and the blue200 void, and here it bites in
+the first second: the route's first move is south and down into a pit, away from the goal on
+the field (the documented dip is +2,840 u of d). A search that ranks rollouts by banked d
+keeps, every time, the place where d is lowest near the start: the fall to the north-east.
+Eight searches of 1.4M-3.3M nodes each never held a state in the pit. The policy, paid on the
+same field, converged on the same place within 1.2B steps and has no reason to leave it. The
+recipe's novelty terms did not carry anything into the pit either: the search's cell count had
+stopped growing by the end of every search (339-531 cells, "+0" in each last wave) and the
+line it returns is chosen by d; the trainer's unstuck counts were down to 274 non-zero cells.
+
+**Generic defects seen again (no map constant; observed, not fixed: the run is the frozen
+recipe).** (1) A new line is compared with the greedy frontier, not with the current line's
+end (table above; line 8). (2) The search ranks by banked d and prefers creeping in contact
+(lines 2, 5, 6: 13-56 s lines to a place the greedy's flight reaches in 5 s). (3) A patience
+search every 3e8 steps replaces a line before it is learned (line 5 had 448M steps and was
+never walked back). (4) The curriculum sticks on a line with a slow stretch (line 6: 93
+advances, 71 backoffs). (5) "Walked back to state 0" is a band average at the training
+temperature, not the greedy (lines 3, 4, 7, 8).
+
+**Scoreboard of the frozen recipe (one seed per map, no flag or constant changed).**
+
+| map | result | steps |
+|---|---|---|
+| surf_src_sidistic (where it was built) | finished | 7.248B (run 5: 8.230B) |
+| surf_princessburglar_b26 | null | 12.86B |
+| surf_edgeflow_blue200 | null | 4.14B |
+| surf_src_cannonball | finished | first finish 2.718B, 9/9 at 3.247B, 61% of episodes after |
+| surf_petrus_lite | finished | first finish and 9/9 at 3.247B, 141 of 144 after |
+| surf_unitfarmer2 | null | 3.42B (stopped by the null rule) |
+
+Three of six. The three finishes are the maps where the stretches the field does not pay for
+are short enough for the policy to find by itself; the three nulls each need a long move
+against the field (a run-up away from the goal, a detour that gives back most of d0, a dive
+into a pit), and the search, ranked on the same field, does not supply it. One seed per map.
+Caveat on this null: 3.42B steps is short beside princessburglar's 12.86B; what it rests on is
+that nothing moved for 2.19B steps and no search ever held a pit state, not on the step count.
+
+**Bundle on the droplet (md5-checked against the box before the release).**
+/home/steam/ar_m2/runs/m6sib/m6sib_uf2/: 46 eval trajectories (listing md5 equal on both
+sides), progress.csv, launch log, run.json 5938c649b063a61917569be02d17e84d, ckpt_latest.pt
+8bbea70fa8f06ab5f331fdf3e5b08cee (written 21:10 UTC, about 3.40B steps).
+/home/steam/ar_m2/runs/m6sib/uf2_auto/: k01..k08 (spine.npy, spine.keys.npy, spine.json,
+auto_spine.log, beam.log: 42 files, all md5-equal), current_2111.json, spine0.npy
+ae85a3d4a6174704dfff197bef84a0d1. Line md5s: k01 523e6fd4d2dd8a3077fa3b8780bdf0c4, k02
+560481bfb02c71cb0d74d200a600bb82, k03 6492201c55c0ffb579e15b8073e79351, k04
+c5b142d0c6cded7208918e6d0d1a6b84, k05 64058c77d67924545c35d37c62dde46b, k06
+0dc48082ba5e6a40b9b4121f08388306, k07 6af13baae4bcaf02a7ee65dc7471369e, k08
+d6e1c26aad2593c174ef8ba83010a61f. All lines are the policy's own search output on the
+trainer's field.
+
+**Release.** `box.py release --agent m6sib` at 21:12:00 UTC; `vastai show instances` empty on
+two looks, fleet registry empty, tunnel 8601 stopped. No box is up. Credit $28.56.
