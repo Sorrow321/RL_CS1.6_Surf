@@ -39191,3 +39191,123 @@ run.
 **Frozen-recipe scoreboard (one seed per map, no constant changed).** sidistic finished (7.248B);
 princessburglar null (12.86B); blue200 null (4.14B); cannonball finished (first finish 2.718B,
 9/9 at 3.247B); petrus: no finish at 2.58B, greedy at 56%, run live.
+
+## 2026-11-11 18:07 UTC: m5sib_pl FINISHES petrus - first greedy finish and first 9/9 from the true start at 3,246,915,584 steps (33.13-34.93 s), 27 of 27 in the three evals since; out of the dip after search line 7, the last 41% of the route by itself; search 9 returned the policy own finishing line; CORRECTION: the honesty tool had been run against cannonball finish box
+
+Interim entry (the run is live; box 60226641, RTX 5080, one seed, flags unchanged since the launch
+entry of 15:46 UTC; 3.42B steps at 18:03 UTC, about 402k steps/s = 1.44B steps per hour).
+
+**The result.** The frozen sidistic recipe finishes surf_petrus_lite from the true start. First
+greedy finish and first 9/9 in the SAME eval, at 3,246,915,584 steps. The two evals after it are
+9/9 too: 27 of 27 greedy episodes finish, 33.12-35.1 s. All 43 evals before it (387 episodes) are
+0 finishes.
+
+**Evals (greedy, true start, 9 episodes; grader `autoresearch/score.py`; ruler = route column of
+`tools/eval_honesty.py --route maps/surf_petrus_lite.wrroute.npz --map surf_petrus_lite
+--order-only 16`, a record-derived file used for measurement only; route 38,784 u).**
+
+| step | best / median progress | ruler mean / max (u) | finishes | finish times (s) |
+|---|---|---|---|---|
+| 2,567.4M | 56.2 / 56.0% | 21,746 / 22,528 | 0 / 9 | |
+| 2,642.9M | 56.3 / 55.7% | 22,130 / 22,528 | 0 / 9 | |
+| 2,718.4M | 56.8 / 56.3% | 22,542 / 22,656 | 0 / 9 | |
+| 2,793.9M | 57.9 / 56.4% | 22,613 / 23,040 | 0 / 9 | |
+| 2,869.4M | 57.9 / 56.6% | 22,613 / 23,040 | 0 / 9 | |
+| 2,944.9M | 59.0 / 58.8% | 23,381 / 23,552 | 0 / 9 | |
+| 3,020.4M | 66.4 / 65.9% | 25,685 / 26,240 | 0 / 9 | |
+| 3,095.9M | 69.0 / 68.5% | 27,264 / 27,520 | 0 / 9 | |
+| 3,171.4M | 99.8 / 99.0% | 37,092 / 38,784 | 0 / 9 | |
+| **3,246.9M** | 100 / 100% | 38,784 / 38,784 | **9 / 9** | 33.54 34.02 34.71 33.41 34.69 34.93 33.13 33.17 34.30 |
+| 3,322.4M | 100 / 100% | 38,784 / 38,784 | **9 / 9** | 34.3 34.4 33.1 34.4 34.5 34.4 33.6 33.5 34.4 (best 33.12) |
+| 3,397.9M | 100 / 100% | 38,784 / 38,784 | **9 / 9** | 35.1 33.8 33.9 34.9 35.0 34.7 34.5 33.7 33.4 (best 33.40) |
+
+* The finishes are inside the finish trigger. The trigger (`trigger_multiple` *21) is a plain box
+  equal to the zones `end` box, mins (-2136.0, -483.065, -2178.76), maxs (-2134.0, -173.089,
+  -2012.34): a 2 u curtain facing east. The nine episodes of 3,246.9M end "done" with last
+  recorded positions x -2,109..-2,116, y -308..-346, z -2,073..-2,095, moving west at about
+  1,250 u/s: inside the curtain's y and z, one 12.5 u tick before it.
+* The eval at 3,171.4M reached the last stretch but not the curtain: 5 episodes end at
+  x -1,577..-2,032, z -2,279..-2,298 (33.4-34.4 s), i.e. 100-120 u UNDER the curtain's lowest z
+  (-2,178.76) while still flying west at 1,160-1,290 u/s; 3 end at x 2,023..2,876, z -2,296
+  (29.8-31.3 s), further back on the same stretch. One eval (75.5M steps) later all nine arrive
+  at the right height.
+
+**How it got from the dip (54-58%) to the finish.**
+
+| search | trigger, step | ended | greedy frontier d | line: states, end d | outcome |
+|---|---|---|---|---|---|
+| 6 | quorum, 2,265.4M | 2,379.7M | 16,498 | 2,067, 16,047 | adopted (d <= 16,147); walked back by 2,519.2M; greedy 0/9 past it at 2,416M-2,718M, 2/9 at 2,793.9M |
+| 7 | patience, 2,718.4M | 2,832.7M | 16,493 | 1,964, 15,745 | ADOPTED (d <= 15,845), replaced line 6; greedy 3/9 past it at 2,869.4M, 9/9 at 2,944.9M |
+| 8 | quorum, 2,944.9M | 3,084.4M | 14,823 | 2,112, 14,585 | STALE (the greedy was at 13,105 by then) |
+| 9 | quorum, 3,397.9M | 3,402.1M | 994 | 3,469, 0 | FINISHING line (34.69 s), adopted, success line d <= 100 |
+
+* Search 7 (seed 7, 1,681 waves, 3.44M nodes, 2,488 cells, `beam_finished` 0): its line reaches
+  the bottom of the dip at 18.2 s with 1,307 u/s of horizontal speed (line 6: 19.7 s, 1,107 u/s)
+  and ends on the way up at (-1084, -2506, -1192) at 19.63 s, 748 u of banked d past the greedy.
+  Its curriculum walked back to [0,1963] in 134M steps (52 advances, 0 backoffs, band success
+  59-100%), and the greedy was 9/9 past its success line at 2,944.9M, 112M steps after the
+  adoption. Line 6 had been walked back the same way and the greedy had NOT followed it for
+  about 340M steps. One seed: whether line 7 did it, or the 565M steps of training on lines 6
+  and 7 together, is not separated.
+* From 59% to 100% no search line carried the policy: the greedy frontier read d 14,823 at
+  2,944.9M, 13,105 at 3,020.4M, 12,029 at 3,095.9M, 1,000 at 3,171.4M (under the finish), and
+  the finish at 3,246.9M. Search 8's line was behind the greedy when it came back.
+* Search 9 is the policy's own finish: wave 0 of the search already held 48 finishing rollouts of
+  2,048, and the finishing winner (macro "G" = the greedy child, 3,469 states) was returned in
+  8 s. It replaced line 7 and the curriculum restarted at its end (at [3313,3468] at 3,415.7M).
+* The trainer went on printing "9/9 greedy episodes past the success line d <= 15,845" on the
+  finishing evals: a finish is not a quorum event of its own (cannonball's open item 1), so the
+  finishing line arrived only when the 3e8 retry clock allowed search 9, 151M steps after the
+  first 9/9.
+
+**Training win rate, with the reservoir minimum depth beside it** (September's trap on this map:
+18.46% wins with 0 of 45 greedy finishes). Here the wins are full-length: 0.00% up to 3,183M
+(mind 34% at 3.10B falling to 3.4% at 3.18B as the reservoir reached the goal), first wins by
+3,189.2M (0.50% @ 34.1 s), then 60-79% @ 31.1-32.9 s with mind 3.0-5.8% from 3.21B to 3.40B: a
+mean winning episode of 31-33 s is a flight of the whole map, and the greedy evals agree. After
+line 9 was adopted the figure reads 97-98% @ 3.0-3.3 s with mind 3.0-3.5%: those are spawns at
+the end of the finishing line, next to the goal, and say nothing about the policy.
+
+**Beside the bars on this map** (ledger round 40, 2026-09-11; other cards, so step-matched only;
+never constants): the frontier-curriculum family first finished at 504.4M (pnANCH, 35.08 s; 9/9,
+best 32.28 s), 554.7M (pnFRONT3Bs; 6/9 at its stop) and 1,007.7M (pnANCHU; 9/9, best 31.93 s);
+the plain control pnCTL stayed at gate B with 0 finishes. This run: first finish at 3,246.9M =
+3.2x to 6.4x the older finishers' steps, best 33.12 s against 31.93 s. Where the steps went:
+gate B from 0.15B to 1.81B
+(the search lines there were hangs; the curriculum's blind band and the 3e8 line replacement cost
+up to about 0.9B, an upper bound, entry of 17:30 UTC), the dip from 2.11B to 2.94B.
+
+**CORRECTION to the petrus entries of 16:54 and 17:30 UTC (appended, not edited).** Their "0
+dives" and the tool's finish column came from `tools/eval_honesty.py` called WITHOUT `--map`,
+and the tool's default is `surf_src_cannonball`: its finish and dive tests were run against
+cannonball's finish box. Found when the tool printed "finishes 0/9, dives-below 6/9" on the eval
+the grader scored 9/9. Re-run on all 46 evals with `--map surf_petrus_lite`: 27 finishes (the
+three evals above), 0 dives, in agreement with the grader, so the two statements stand, now on
+the right box. The route / corridor columns never depended on `--map`. Every eval_honesty call on
+a map other than cannonball needs `--map <map>`.
+
+**Scoreboard of the frozen recipe (one seed per map, no flag or constant changed).**
+
+| map | result | steps |
+|---|---|---|
+| surf_src_sidistic (where it was built) | finished | 7.248B (run 5: 8.230B) |
+| surf_princessburglar_b26 | null | 12.86B |
+| surf_edgeflow_blue200 | null | 4.14B |
+| surf_src_cannonball | finished | first finish 2.718B, 9/9 at 3.247B, 61% of episodes after |
+| surf_petrus_lite | finished | first finish and 9/9 at 3.247B, 27 of 27 since |
+
+Three of five. One seed per map: a finish on one map with one seed is not a recipe win by
+itself, and petrus is the easy end of the suite (older recipes finish it 3-6 times sooner).
+
+**Files.** Search lines k07, k08, k09 (spine.npy, spine.keys.npy, spine.json, auto_spine.log,
+beam.log), `current.json` (as current_1805.json) and `spine0.npy` copied to
+/home/steam/ar_m2/runs/m5sib/pl_auto/ and md5-checked against the box: k07 spine
+8942d7bb3a566ec3a7937a6a23841e48, k08 spine 096060e1e9542bf88615cb000caba8d0, k09 spine (the
+finishing line) 58fa4acac9e7841b8849a54c15ce57c8, spine0 c2737ccc1e679be1d8dbd2deb6f24373. All
+three lines are the policy's own search output on the trainer's field; no record-derived file is
+in the run.
+
+**Plan.** Stable read: the run goes on to about 4.2B steps (about a dozen evals after the first
+9/9: finish rate and best time, and whether the curriculum on the finishing line disturbs the
+greedy as it did on cannonball), then bundle and release ahead of the 21:36:34 UTC deadline. No
+constant has been touched.
