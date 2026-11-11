@@ -37944,3 +37944,47 @@ single-factor cells of the pit search; pr2 started 05:28:46 UTC; ends about 14:3
 in /home/steam/ar_m2/runs/m2ge/roots2x2/queue2.out). Its result gets its own entry.
 
 **Budget.** Credit 33.66 $ (reserve 10), burn 0, 0 boxes. No new rentals without the user.
+
+## 2026-11-11 06:48 UTC: m2 droplet queue 2, first result - the pit CROSSED from the policy's OWN roots (pr2); the user's next step (edgeflow blue200, then cannonball)
+
+Measurement only (droplet CPU, search only, fixed simulator). Nothing here trains anything, and no
+line or root of this entry may enter a training run.
+
+* Queue 2 run pr2 = October's pit command (explore_phase1, cell 64, no heading key, no view-follow,
+  exact chains, 4096 envs, 100 decisions, 420 iterations) rooted at the POLICY'S OWN 40 roots
+  (`roots2x2/k18_roots_unboosted.npy`: the roots of the diagnostic arm's search 18, unboosted),
+  seed 2: 4,627,735 runs, 14,035 cells, 66.3 min, best distance 52,199 u (the tool's field) at
+  (520,-3294,3396), depth 1056 ticks. Read-out (box_counts.py): over the pit 0, east ledge 133,
+  end zone 45 cells. The two earlier crossings read f1 52,260 / 29 / 174 / 42 and o2 (old simulator)
+  52,228 / 41 / 209 / 47; the six full runs that did not cross (f2, o1, pr0, pr1, of0, of1) read
+  52,564-52,583 with east ledge 0-1 and end zone 0.
+* The chain to the best cell is 13 cells and 10.56 s long: root (142,-3019,3608) vel (387,-3,-413),
+  i.e. the policy's own fall out of the south passage -> the ridge at z 3354 (0.50 s) -> launched by
+  the ridge's rising end (vz +255 at x 556, 0.81 s) -> lands on the east ledge (936,-2856,3439) at
+  1.62 s -> 6.4 s on the ledge (x 955-1049, speed under 250 u/s) -> back west along the south side at
+  z 3493, (822,-3324) at 9.44 s -> (520,-3294,3396) at 10.56 s. No run-up back up the passage
+  (October's line spends 7 s on it) and nothing in the "over the pit" box: a different and shorter
+  route than October's, starting from a state the policy already visits.
+* On the TRAINER'S field (goalc_32, nearest-cell look-up; the same look-up reproduces the replayed f1
+  line's minimum 54,956): root 56,208; ledge 55,392 at 1.62 s; 55,388-55,488 while on the ledge;
+  55,168 at 9.44 s; 54,960 at 10.25 s; end 54,924 = a gain of about 376 over the greedy frontier
+  55,300.4 (200 required for adoption). This is a look-up, not a replay: ge_replay on the trainer's
+  field waits for the queue's end (one CPU job at a time on the droplet).
+* Rates now (fixed simulator, the dedicated command, 4.6-5.4M runs per run): October's roots +
+  October's flags 1 of 3; the policy's roots + October's flags 1 of 3 (pr0 no, pr1 no, pr2 YES);
+  October's roots + the packaged stage's two extra flags (--cell-heading 1, --view-follow) 0 of 2;
+  in training, the packaged stage (the policy's roots, both flags, boosts) 0 of 36 stages = 148.7M
+  runs. So hand-picked roots are NOT needed for the crossing. The two extra flags are the open
+  suspect, but the cells are rates, not pairs: 2 of 6 against 0 of 2 separates nothing yet, and the
+  36 training stages differ in more than the two flags (roots of each search, boosts). Queue 2 goes
+  on: of2 (started 06:35:05), pr3, of3, pr4, of4, pr5, of5; end about 14:35 UTC.
+* THE USER (about 06:38 UTC), after the answer on October's pit crossing (two hand-made steps, never
+  one recipe; component table in the m2 memory, 06:35): "we can try other maps ... simpler maps like
+  Cannonball, or Celestial, or Petrus ... there's also my benchmark map for exploration ... Surf Edge
+  Flow /200 ... Let's try our method on this map. See how it goes. After that, if it finishes, let's
+  try Cannonball." The map is surf_edgeflow_blue200 (the edgeflow dip ladder, entry 2026-09-15 23:55:
+  d0 2,672 u, the detour gives back 2,204 u = 82.5%). NOT LAUNCHED: no edgeflow BSP or zones file is
+  on the droplet or in any git ref (BSPs are gitignored; all 194 remote heads are fetched); the user
+  was asked for the file. The planned launch is the frozen recipe of arm A (m2sib_pb1's flag list,
+  nothing changed; --maxvel is the server's, an environment value), from scratch, one seed, one box;
+  cannonball only after edgeflow finishes. Credit 33.66 USD at 06:00 UTC, reserve 10, no box up.
