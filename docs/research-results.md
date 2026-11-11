@@ -38192,3 +38192,89 @@ at 1.97B; the planner-free pipeline 9/9 at 303M. Stand-still rule: best progress
 since about 0.98B; if nothing moves by about 4.0B steps (a finish, an adopted line or progress
 clearly beyond 62.5%), the run is called a null and released, and cannonball is NOT started
 (the user ordered it only for a finish). No constant has been touched.
+
+## 2026-11-11 10:26 UTC: m3sib_b200 FINAL - NULL on surf_edgeflow_blue200: the frozen sidistic recipe stops at the edge of the void (62.5%), 0 finishes in 4.14B steps; box released, cannonball NOT started
+
+The run: the frozen sidistic recipe (flags of the launch entry, 07:30 UTC; no token and no
+constant changed), from scratch, true start, one seed, box 60179848 (RTX 5080), 07:26:37 to
+10:24:48 UTC, 4,135,583,744 steps at the last log line, 382k-390k steps/s. Box time 3.00 h, about
+$0.85. Tables up to 2.11B are in the interim entry of 09:03 UTC; this entry adds the rest.
+
+**Verdict: null.** The stand-still rule written at 09:03 UTC (best progress frozen since about
+0.98B; call it at about 4.0B steps unless a finish, an adopted line or progress clearly beyond
+62.5% shows up) ran out at 4.0B with none of the three. The user ordered cannonball only for a
+finish here, so cannonball was NOT started.
+
+**Evals after the interim table (greedy, true start, 9 episodes each).**
+
+| step | best progress | median | finishes |
+|---|---|---|---|
+| 2.190B .. 2.567B (6 evals) | 61.1-62.8% | 58.7-62.4% | 0 / 9 |
+| 2.643B .. 3.020B (6 evals) | 62.4-62.8% | 59.2-61.2% | 0 / 9 |
+| 3.096B .. 3.549B (7 evals) | 61.1-62.7% | 58.9-60.8% | 0 / 9 |
+| 3.624B .. 4.077B (7 evals) | 62.6-62.9% | 58.8-61.3% | 0 / 9 |
+
+Whole run: 55 evals, 495 greedy episodes, 0 finishes. The trainer's greedy frontier (median
+deepest banked d) reads 1,725 at every eval from 831M to 4.077B. The best single reading, 62.9%
+at 3.775B, is about 10 u beyond the 62.5% of 1.435B: eval-to-eval scatter, not movement.
+
+**Searches after the interim table (tree search "mcts", 6 minutes each, every 3e8 steps).**
+
+| search | from step | greedy frontier d | cells | search's best banked d | line end d | beyond the frontier | outcome |
+|---|---|---|---|---|---|---|---|
+| 7 | 2.492B | 1,725 | 1,024 | 1,719 | 1,638 | 87 u | no line (ended 2.607B) |
+| 8 | 2.945B | 1,725 | 1,053 | 1,719 | 1,674 | 51 u | no line (ended 3.057B) |
+| 9 | 3.398B | 1,725 | 642 | 1,718 | 1,711 | 14 u | no line (ended 3.509B) |
+| 10 | 3.851B | 1,725 | 945 | 1,718 | 1,657 | 68 u | no line (ended 3.963B) |
+
+* Ten searches in all: search 1 stale, search 2 ADOPTED (574.6M, +271 u, learned by 680.0M),
+  searches 3-10 no line, eight in a row over 3.3B steps. The adoption rule asks for 200 u past
+  the greedy frontier; the best any of the eight got is 87 u.
+* Searches 7-10 ran 1,218-1,376 waves and 2.49M-2.82M nodes each and stopped finding cells
+  early (at most one new cell over the last 40 waves of every one). Deepest RAW d a live
+  tick reached: 57.6-58.8% of the search's reference, against the greedy line's own raw
+  57.4-57.9%: the search gets about one point past the greedy, in free fall over the void.
+  Child mix (mean P/E/R) 0.11-0.13 / 0.35-0.42 / 0.47-0.52.
+
+**Where the greedy stops (eval at 4.077B, all 9 episodes alike, unchanged since 0.98B).** Straight
+north from the spawn rows, x between 1,387 and 2,048 the whole way, last tick at about
+(1515, 124..152, z 275..280) falling at vz about -610, about 1,090 u short of the finish box
+(x 1552..2160, y 1232..1600, z 296..416). Training log at the end: win 0.00%, unstuck T at its
+cap 0.20, "stuck 4,059.0M best 1,536u", reservoir min-depth 61.5%, 38 halvings of the novelty
+counts with about 260 cells non-zero.
+
+**Reading.**
+* What worked: the recipe's cycle (search, adopt, learn) ran once, early, exactly as on
+  sidistic: search 2's line was adopted at 574.6M and the greedy was 9/9 past its success line
+  105M steps later.
+* What did not: the next step of the route is not downhill on the field. The no-corner-cut
+  field flies straight across the void; the real route (September's dip probe: 9,280 u long, x
+  from -1,648 to 1,680) turns sideways and gives back 2,204 u of the field (82.5% of d0). The
+  search ranks by banked progress on d, saturates at 642-1,053 cells around the edge and never
+  ends 200 u past the frontier; the policy's own exploration (T cap 0.20, count novelty) did
+  not leave the x 1,387..2,048 band in any eval either.
+* This is the same class of failure as the princessburglar pit (m2, arm A 3.2% from 3.0B to
+  12.86B): the route needs a long stretch with no progress on d, and nothing in the frozen
+  recipe keeps such a stretch. The frozen sidistic recipe now stands at: sidistic finished
+  (7.248B), princessburglar null, blue200 null. One seed per map.
+* Against this map's own history (ledger 2026-09-15/16): September's recipe 2/18 at 1.51B and
+  0/9 at 1.97B; the planner-free pipeline 8/9 at 228M and 9/9 at 303M (15.05-15.36 s). The
+  frozen recipe is behind both here.
+* No constant was touched (rule 0b): the 200 u adoption gain, `--demo-success-d 100`, the
+  500 u plateau, the 3e8 retry and the 6-minute search are the sidistic values.
+
+**Provenance and bundle (before the release).** Nothing but the policy's own states entered
+training: search 2's line was grown from the policy's own roots; no record, no demo, no warm
+start. Kept on the droplet:
+* `/home/steam/ar_m2/runs/m3sib/m3sib_b200/`: 55 eval trajectories, `run.json`, `progress.csv`,
+  the launch log, `ckpt_latest.pt` (md5 80af642a1b59605966ec2e21047d93be, verified against the
+  box at 10:24 UTC, about 4.13B steps).
+* `/home/steam/ar_m2/runs/m3sib/b200_box_final/m3sib_auto.tgz` (557 MB, md5
+  a14f8027af4b94fb73c7976bacfedc04, same on the box): `auto/` without the per-search `ckpt.pt`:
+  `spine.*` of k01 and k02, every search's `auto_spine.log`, `beam.log`, `beam_frontier.npz`,
+  `mcts_tree.npz`, `summary.json`, plus `current.json`, `field.npz`, `spine0.npy`.
+* `/home/steam/ar_m2/runs/m3sib/b200_box_final/surf_edgeflow_blue200.faceid_32.npz` (md5
+  0678cbf52c053f7dd384ec793ce0b6ae), the box-baked face-id cache.
+
+**Release.** `box.py release --agent m3sib` at 10:24:48 UTC; `vastai show instances` empty at
+10:25:10 and again at 10:25:30; fleet registry empty; the 8601 tunnel stopped. No box is up.
