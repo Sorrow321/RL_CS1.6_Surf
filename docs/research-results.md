@@ -38278,3 +38278,40 @@ start. Kept on the droplet:
 
 **Release.** `box.py release --agent m3sib` at 10:24:48 UTC; `vastai show instances` empty at
 10:25:10 and again at 10:25:30; fleet registry empty; the 8601 tunnel stopped. No box is up.
+
+## 2026-11-11 11:41 UTC: m2 droplet queue 2 - a THIRD crossing from the policy's own roots (pr4); October's roots with the packaged stage's two flags now 0 of 4 (of3)
+
+Measurement only (droplet CPU, search only, fixed simulator). Nothing here trains anything, and no
+line or root of this entry may enter a training run.
+
+| run | roots | flags | seed | runs | cells | best distance (tool's field) | over the pit / east ledge / end zone | crossed |
+|---|---|---|---|---|---|---|---|---|
+| of3 | October's | + `--cell-heading 1 --view-follow` | 3 | 5,291,579 | 29,683 | 52,581 u | 0 / 0 / 0 | no |
+| pr4 | policy's own (k18, unboosted) | October's | 4 | 4,600,285 | 14,868 | 52,193 u | 26 / 176 / 103 | YES |
+
+* pr4 (10:06:24 to 11:18:28 UTC, 72.0 min): best cell at (512,-2710,3401), depth 945 ticks. Its
+  chain is 11 cells and 9.45 s long and starts at the SAME root as pr2's and pr3's,
+  (142,-3019,3608) vel (387,-3,-413), the policy's own fall out of the south passage: -> the
+  ridge at z 3318 (0.59 s) -> launched by the ridge's rising end (vz +359 at x 619, 0.90 s) ->
+  the east ledge at (932,-2800,3436) at 1.59 s, this time its NORTH part -> about 6.5 s on the
+  ledge (x 897-988, y -2708..-2789, z 3493-3522) -> west along the NORTH side ->
+  (512,-2710,3401) at 9.45 s. pr3 left the ledge along the south side; the take-off (root,
+  ridge, launch, ledge) is the same in all three crossings.
+* of3 (08:53:34 to 10:06:24 UTC, 72.8 min): no crossing; its best 52,581 u at (814,-3256,3377)
+  is a root-level cell, like of0, of1 and of2.
+* Rates now (fixed simulator, the dedicated command, 4.6-5.4M runs per run):
+
+| cell | crossed |
+|---|---|
+| October's roots + October's flags | 1 of 3 |
+| policy's roots + October's flags | 3 of 5 (pr0 no, pr1 no, pr2 YES, pr3 YES, pr4 YES) |
+| October's roots + the two packaged flags | 0 of 4 (of0, of1, of2, of3) |
+| in training: the packaged stage (policy's roots, both flags, boosts, 5-minute stages) | 0 of 36 stages |
+
+* Reading. With October's flags the dedicated command crosses on 4 of 8 runs whichever roots it
+  gets; with the two packaged flags it is 0 of 4 from October's roots. 4 of 8 against 0 of 4 is
+  still short of a separation (Fisher exact, one sided, p about 0.14), and the flags cell has
+  only been run from October's roots: a suspicion that the heading key and the view-follow
+  dilute the archive at the pit (the four flag runs hold 27,871-30,494 cells, the five runs
+  without the flags from the policy's roots 13,549-15,565), not a finding. The queue goes on: of4 (started
+  11:18:28), pr5, of5; end about 14:55 UTC.
