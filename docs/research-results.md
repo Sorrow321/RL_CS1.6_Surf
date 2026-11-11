@@ -39508,3 +39508,112 @@ branch and launch entry follow.
   and the blue200 void: a stretch the field does not pay for, which a search ranked by banked
   progress on d does not keep. NULL RULE: best greedy progress not moving over about 1.5B steps
   with searches returning no line.
+
+## 2026-11-11 20:06 UTC: m6sib_uf2 interim - progress 6.5% -> 10.2% is a longer fall, not a pit exit; three lines, one end
+
+Interim entry (the run is live; box 60247203, RTX 5080, one seed, flags unchanged since the launch
+entry of 18:59 UTC; 1.709B steps at 20:03 UTC, about 420k steps/s = 1.5B steps per hour).
+
+**What happened, in one line.** The grader's progress rose from 6.5% to 9.1% at 982.0M steps and
+to 10.2% by 1.36B, but the flight behind the number is the same death about 1,100 u further on:
+every greedy episode still ends on the kill level at z 180-186. 0 finishes in 23 evals. The policy
+does not enter the pit at all.
+
+**Evals (greedy, true start, 9 episodes; grader `autoresearch/score.py`, finish on the clip hull;
+best / median progress on raw d, d0 30,647.5).**
+
+| step | best / median | finishes | episode length (s) | where the nine end |
+|---|---|---|---|---|
+| 0.5M | 2.9 / 2.3% | 0 / 9 | | |
+| 76.0M | 5.8 / 5.7% | 0 / 9 | | |
+| 151.5M - 378.0M (4 evals) | 6.0-6.2 / 5.8-6.0% | 0 / 36 | | |
+| 453.5M - 906.5M (7 evals) | 6.4-6.5 / 6.2-6.5% | 0 / 63 | 3.92-4.02 | x -1,514..-1,609, y -1,806..-1,902, z 180-183 |
+| **982.0M** | 9.1 / 9.0% | 0 / 9 | 5.51-5.60 | x -1,380..-1,493, y -1,031..-1,088, z 180-184 |
+| 1,057.5M | 9.7 / 9.6% | 0 / 9 | | |
+| 1,133.0M | 9.9 / 9.8% | 0 / 9 | | |
+| 1,208.5M | 10.1 / 10.0% | 0 / 9 | 5.83-5.98 | x -1,150..-1,179, y -853..-886, z 181-186 |
+| 1,284.0M | 10.1 / 10.1% | 0 / 9 | | |
+| 1,359.5M - 1,661.5M (5 evals) | 10.2 / 10.1-10.2% | 0 / 45 | 5.89-5.96, one 6.79 | x -1,123..-1,136, y -831..-853, z 180-186 |
+
+* Read from the eval trajectories (rows are `[tick, x, y, z, vx, vy, vz, yaw, ...]`): episode
+  lengths and end positions are given for 906.5M, 982.0M, 1,208.5M and 1,510.5M. All 36 episodes
+  of those four evals end "fail" while falling (vz -467..-764); the lowest z of any of them is
+  180. The spawn is at (-2176, -2272, 1192).
+* The newest flight (1,510.5M, episode 0): a short run on the start platform, a jump, a fall to
+  z 296 at (-1969, -1700) by 4.0 s, a glide north at z 296 with 914-922 u/s to y -1,333 (4.4 s),
+  a turn EAST, a rise to z 432 at (-1583, -1083) at 5.2 s with 770 u/s, and the fall to the kill
+  level at (-1132, -842, 182) at 5.88 s. Its first 4.4 s repeat search line 4 to within a few
+  units.
+
+**The number is flattered by the fall, and the launch entry's read-out needs a correction
+(appended, not edited).** The launch entry took "the greedy leaves the pit" to be "best progress
+past about 9%", after October's lineage (8.8% at 2.94B). On this run that test is wrong: raw d
+keeps falling during a death dive to the north-east, so 9-10% is reached without the pit and
+without landing anywhere. The trainer's banked frontier (median deepest d banked in contact)
+says the same with less flattery: 29,444-29,475 (3.9%) up to 906.5M, 28,534 at 982.0M, 28,549-
+28,575 (6.8%) from 1,057.5M to 1,661.5M. This is the death-dive defect CLAUDE.md records for
+`race/eval_progress` on cannonball. From here the read on this map is physical: episode length,
+end position and lowest z of the greedy episodes, beside finishes.
+
+**Measurement only: where the record goes** (`~/ar_uf2/wr/surf_unitfarmer2_wr.jsonl`, read for
+positions; never a training input). From the platform at z 1,188 it goes SOUTH to y -3,325 and
+down into the pit, z -876 at 6.0 s with 1,786 u/s, climbs back to z 584 at 8.5 s, passes
+(-2352, -1755, 342) at 9.5 s moving north at 1,123 u/s, rises to (-2493, -1356, 492) at 10.0 s
+and turns WEST (x -2,969 at 10.5 s, -3,465 at 11.0 s). The policy crosses the same area 380 u
+east of that line at 4.0 s, 46 u lower and 209 u/s slower (z + v^2/2g: 818 against 1,130), and
+then turns east where the record turns west. So the policy has not left the pit: it has skipped
+it, and it arrives at the next section without the speed the pit gives and facing the way the
+field points.
+
+**Searches (the MCTS explorer of the recipe, 6 minutes each, beside the trainer).**
+
+| search | trigger, start | ended | greedy frontier d | line: states, end d | outcome |
+|---|---|---|---|---|---|
+| 1 | launch, 0.5M | 122.2M | 29,475 | 1,476, 29,604 | STALE (needs 200 u of gain) |
+| 2 | retry clock, 453.5M | 597.2M | 29,447 | 3,641 (36.41 s), 28,350 | adopted, success line d <= 28,450 |
+| 3 | patience, 906.5M | 1,051.2M | 29,444 | 685 (6.85 s), 28,276 | adopted, d <= 28,376 |
+| 4 | patience, 1,359.5M | 1,482.7M | 28,571 | 481 (4.81 s), 28,248 | adopted, d <= 28,348 |
+
+* All three adopted lines end in the SAME fall: (-1774, -1244, 197), (-1713, -1213, 198) and
+  (-1696, -1186, 198), vz -395..-420. They differ in how long they take to get there: line 2
+  drops to z 300-440 near (-2000, -1100..-1700) and creeps there in contact for 30 s (speeds
+  29-345 u/s) before the fall; lines 3 and 4 fly it in 6.85 s and 4.81 s (line 4: 913-922 u/s
+  northward at z 292-295).
+* Lines 3 and 4 are 74 u and 28 u of banked d past the line before them. Both passed the
+  adoption test because a new line is compared with the greedy frontier (29,444; 28,571), not
+  with the current line's end (open item 2 of the cannonball entry, seen again).
+* The curriculum on line 4 walked back to state 0 by 1,519.9M (band [0,480], success 98.8%).
+  At 1,510.5M-1,661.5M the greedy is 0/9 past d <= 28,348 on banked d.
+* The 6.5% -> 9.1% step at 982.0M came while line 2 was the current line (adopted 597.2M, 385M
+  steps earlier), before line 3 arrived.
+* `beam_finished` 0 in all four searches. No state of the three adopted lines is below z 197.
+
+**Training side.** Win rate 0.00% in every step line up to 1.709B; reservoir minimum depth
+("mind") 93.2-93.8% of d0 since 1.2B, i.e. no reservoir state deeper than about 6.8%; training
+episodes last about 5 s (`ep_len_mean` 481-506 ticks in the last readings).
+
+**Beside the bars on this map** (never constants; other cards, step-matched only). October's
+plain control: 5.6%, 0/9, null. October's agent-built lineage (pit-state respawns, tick ramp,
+hand-run search and backward curriculum; map-specific): greedy out of the pit at 2.94B, first
+real 9/9 at 15.018B. This run at 1.7B: 10.2% on the grader, which is NOT comparable with the
+lineage's 8.8% (reported there as out of the pit; this policy dives past the pit). On the physical read
+this run is where the control was: a death within 6 s of the spawn.
+
+**Reading, not a verdict (the run is live).** Three searches in a row returned the place where
+banked d is lowest near the start, a fall to the east, each a little faster. The route needs d
+to rise first (south into the pit) and later a turn against the field (west). A search ranked
+on banked d has not kept such a line here, as on the princessburglar pit and the blue200 void.
+Best progress has been 10.1-10.2% since 1,208.5M.
+
+**Files.** Search lines k01-k04 (spine.npy, spine.keys.npy, spine.json, auto_spine.log,
+beam.log), `current.json` (as current_2000.json) and `spine0.npy` are in
+/home/steam/ar_m2/runs/m6sib/uf2_auto/, md5-checked against the box: k02 spine
+560481bfb02c71cb0d74d200a600bb82, k03 spine 6492201c55c0ffb579e15b8073e79351, k04 spine
+c5b142d0c6cded7208918e6d0d1a6b84, spine0 ae85a3d4a6174704dfff197bef84a0d1. All lines are the
+policy's own search output on the trainer's field; no record-derived file is in the run.
+
+**Plan.** The run goes on. The next patience search is due at the first eval after 1,782.7M.
+Null rule as written at launch: no movement of the greedy (now read physically) over about 1.5B
+steps with searches returning no useful line; the 3B check stands. Deadline 06:53:54 UTC on
+2026-11-12, no extension without the user. No constant has been touched. Cost so far about
+$0.36 (1.17 h at $0.311/h).
