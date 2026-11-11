@@ -38095,3 +38095,100 @@ steps, faster than the search line was produced. That is the easy half: Septembe
 on this map says the route then has to give back 2,204 u of the field (82.5% of d0), and that
 is where the recipe is tested. Nothing is concluded yet. The caveat from the launch entry
 stands: the 200 u adoption gain is 7.5% of this map's start distance and was not touched.
+
+## 2026-11-11 09:03 UTC: m2 droplet queue 2 - a SECOND crossing from the policy's own roots (pr3); October's roots with the packaged stage's two flags now 0 of 3 (of2)
+
+Measurement only (droplet CPU, search only, fixed simulator). Nothing here trains anything, and no
+line or root of this entry may enter a training run.
+
+| run | roots | flags | seed | runs | cells | best distance (tool's field) | over the pit / east ledge / end zone | crossed |
+|---|---|---|---|---|---|---|---|---|
+| pr2 | policy's own (k18, unboosted) | October's | 2 | 4,627,735 | 14,035 | 52,199 u | 0 / 133 / 45 | YES (entry 06:48) |
+| of2 | October's | + `--cell-heading 1 --view-follow` | 2 | 5,381,104 | 27,871 | 52,582 u | 0 / 0 / 0 | no |
+| pr3 | policy's own (k18, unboosted) | October's | 3 | 4,820,751 | 15,565 | 52,267 u | 21 / 125 / 29 | YES |
+
+* pr3 (07:43:55 to 08:53:34 UTC, 69.6 min): best cell at (601,-3315,3409), depth 1000 ticks. Its
+  chain is 14 cells and 10.00 s long and starts at the SAME root as pr2's, (142,-3019,3608) vel
+  (387,-3,-413), the policy's own fall out of the south passage: -> the ridge at z 3318 (0.59 s)
+  -> launched by the ridge's rising end (vz +352 at x 614, 0.89 s) -> the east ledge
+  (921,-3200,3441) at 1.60 s -> about 4 s on the ledge (x 921-1024) ->
+  west along the south side at z 3493-3517 -> (601,-3315,3409) at 10.00 s. The same route as
+  pr2's (no run-up back up the passage), found a second time by a different seed.
+* of2 (06:35:05 to 07:43:55 UTC, 68.8 min): no crossing; its best 52,582 u is a root-level cell,
+  like of0 and of1.
+* Rates now (fixed simulator, the dedicated command, 4.6-5.4M runs per run):
+
+| cell | crossed |
+|---|---|
+| October's roots + October's flags | 1 of 3 |
+| policy's roots + October's flags | 2 of 4 (pr0 no, pr1 no, pr2 YES, pr3 YES) |
+| October's roots + the two packaged flags | 0 of 3 (of0, of1, of2) |
+| in training: the packaged stage (policy's roots, both flags, boosts, 5-minute stages) | 0 of 36 stages |
+
+* Reading. With October's flags the dedicated command crosses on 3 of 7 runs whichever roots it
+  gets, so the roots are not what the crossing needs. With the two packaged flags it is 0 of 3
+  from October's roots. 3 of 7 against 0 of 3 is still short of a separation (Fisher exact, one
+  sided, p about 0.29), and it is one seed per cell entry: a suspicion that the heading key and
+  the view-follow dilute the archive at the pit (of2 holds 27,871 cells against 14,035-15,565),
+  not a finding. The queue goes on: of3 (started 08:53:34), pr4, of4, pr5, of5; end about
+  14:35 UTC.
+
+## 2026-11-11 09:03 UTC: m3sib_b200 at 2.18B steps - one search line adopted and learned (62.5%), then four searches with no line; the greedy stops at the edge of the void, 0 finishes
+
+Interim entry (the run is live; box 60179848, RTX 5080, one seed, flags unchanged since the launch
+entry of 07:30 UTC). Throughput 382k-384k steps/s (about 1.37B steps per hour).
+
+**Evals (greedy, true start, 9 episodes each; progress per episode against its own spawn d).**
+
+| step | best progress | median | finishes |
+|---|---|---|---|
+| 76.0M | 54.1% | 49.2% | 0 / 9 |
+| 151.5M .. 604.5M (7 evals) | 52.8-54.9% | 48.6-52.7% | 0 / 9 |
+| 680.0M | 59.5% | 57.2% | 0 / 9 |
+| 755.5M | 61.6% | 58.1% | 0 / 9 |
+| 831.0M | 61.0% | 57.2% | 0 / 9 |
+| 906.5M | 62.1% | 58.3% | 0 / 9 |
+| 982.0M | 62.4% | 60.4% | 0 / 9 |
+| 1.057B .. 1.435B (6 evals) | 61.9-62.5% | 58.6-62.3% | 0 / 9 |
+| 1.510B .. 2.114B (9 evals) | 62.0-62.7% | 58.8-60.9% | 0 / 9 |
+
+The trainer's greedy frontier (median deepest banked d) reads 1,725 at every eval from 831M to
+2.114B. The 62.7% at 1.812B is 5 u beyond the 62.5% of 1.435B: eval-to-eval scatter, not movement.
+
+**Searches (tree search "mcts" beside the training, 6 minutes each, `--auto-spine-retry 3e8`).**
+
+| search | from step | greedy frontier d | cells | search's best banked d | line end d | outcome |
+|---|---|---|---|---|---|---|
+| 1 | 524k | 2,433 | - | - | 2,017 | line, discarded as STALE (the greedy was at 1,981 by then) |
+| 2 | 453.5M | 1,982 | 600 | 1,720 | 1,711 | ADOPTED at 574.6M (2,897 states; success line d <= 1,811) |
+| 3 | 680.0M | 1,727 | 662 | 1,719 | 1,725 | no line (needs 200 u past the frontier) |
+| 4 | about 1.133B | 1,725 | 902 | 1,719 | 1,710 | no line |
+| 5 | about 1.586B | 1,725 | 1,004 | 1,718 | 1,677 | no line |
+| 6 | 2.039B | 1,725 | 910 | 1,718 | 1,686 | no line |
+
+* Search 2's line was learned fast: 0/9 greedy episodes past its success line at 604.5M, 9/9 at
+  680.0M (about 105M steps after the adoption). That is the recipe's cycle (search, adopt, learn)
+  working once on this map, for a gain of 271 u of d.
+* Searches 3-6 each ran 1,072-1,340 waves and 2.2M-2.7M nodes and stopped finding new cells
+  early (search 4: 902 cells, flat from about wave 100). Their best banked d is 1,718-1,720, i.e.
+  the place the greedy already stops; the best line ends 0-48 u beyond the frontier, against the
+  200 u the adoption rule asks for. The deepest RAW d a live tick reached is 55.8-59.0% of the
+  search's reference (d about 1,030-1,110): states in free fall over the void, which bank nothing.
+  Child mix (mean P/E/R) 0.10-0.11 / 0.27-0.39 / 0.50-0.62: the random child wins most often.
+
+**Where the greedy stops (eval at 1.435B, all 9 episodes alike).** It runs straight north from the
+spawn rows (x 1664..2048, y -1584 / -1360, z 600) and leaves the last platform at about
+(1520, 140, z 277) falling at vz about -611, about 1,090 u short of the finish box
+(x 1552..2160, y 1232..1600, z 296..416). Training log: win 0.00%, unstuck T at its cap 0.20,
+"best 1,536u" unchanged for 2,103M steps.
+
+**Reading so far (not a verdict).** The field's descent ends at the void: the no-corner-cut field
+still flies straight across it, while the real route (September's dip probe: 9,280 u long, x
+from -1,648 to 1,680) turns sideways and gives back 2,204 u of the field (82.5% of d0) before it
+comes back. A search that ranks by progress on d and saturates at 600-1,004 cells around the
+edge does not go there, and the policy's own exploration (T cap 0.20, count novelty) has not
+either. References on this map (ledger 2026-09-15/16): September's recipe 2/18 at 1.51B and 0/9
+at 1.97B; the planner-free pipeline 9/9 at 303M. Stand-still rule: best progress has not moved
+since about 0.98B; if nothing moves by about 4.0B steps (a finish, an adopted line or progress
+clearly beyond 62.5%), the run is called a null and released, and cannonball is NOT started
+(the user ordered it only for a finish). No constant has been touched.
