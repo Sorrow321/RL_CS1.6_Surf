@@ -37885,3 +37885,62 @@ Search 28 ends about 05:51 UTC; after it the files are saved and the box is rele
 daemon's harvest (06:13Z; deadline 06:33Z). The user was told at 04:35 UTC.
 
 Budget 05:24 UTC: credit $33.87; one box (m2ge, $0.349/h).
+
+## 2026-11-11 06:00 UTC - second-map test: DIAGNOSTIC search-swap arm m2ge_pb1 RELEASED at 15.06B steps, a null at the pit (3.2% since 6.27B, 0 lines in 12 pit searches = 36 Go-Explore stages = 148.7M runs); no box is up
+
+Operator entry (m2/sib). The search-swap arm is a DIAGNOSTIC arm (arm A's frozen recipe from
+scratch with only the search loop swapped for October's packaged one), never a 0b result.
+
+**Release.** Box 60107502 (RTX 5080, 0.349 $/h) released through `box.py release --agent m2ge` at
+05:59:12 UTC ("destroyed 60107502"), 34 min before its watchdog deadline (06:33:52Z) and before
+the daemon's own harvest; `vastai show instances`: 0 instances; `fleet_watchdog.py list`: live
+(0), registry empty. The tunnel for the dashboard (8603) was stopped by pid; the port answers
+000. Not extended: decided at 05:30 UTC and told to the user at 04:35 and 05:32 UTC, no answer;
+the run was stationary at the pit for 8.8B steps.
+
+**Final numbers.**
+* 15,055,978,496 steps (last progress.csv row, pulled 05:58:49 UTC; 398k steps/s), 200 evals.
+  Newest three evals (14,873,526,272 / 14,949,023,744 / 15,024,521,216): 3.235, 0/9. Best eval
+  of the run 3.236; 0 finishes in any eval.
+* Greedy left the start room at 6,115,819,520 (2/9) and 6,266,814,464 (9/9): 2.1x later than
+  arm A step-matched (2,944,925,696 and 3.096B; different card, so steps only). At the pit
+  (d 55,300) from there to the end.
+* Search 28 (the last; started 14,496,038,912, ended 14,918,090,752, 1,148 s): NO new spine.
+  Policy-guided beam 1,900 ticks, end d 55,300.4; branched beams end d 55,300.3-55,300.6; three
+  Go-Explore stages of 5.0 min: 4,022,814 / 4,234,579 / 4,256,498 runs, 27,157 / 27,210 /
+  30,441 cells, best 52,564u (a root) in all three.
+* Searches 17-28 from the pit: NO line in all 12 = 36 Go-Explore stages = 148,682,384 runs.
+  Best cell always a root (52,564-52,566u); a crossing reads 52,2xx u.
+
+**Files on the droplet, md5 equal to the box** (`/home/steam/ar_m2/runs/m2ge/m2ge_pb1/`):
+* `ckpt_15005122560.pt` md5 42c25e9b6b90f7876b3e441ee6411e63 (the newest verified weights),
+  `ckpt_latest.pt` md5 0e6a844e4aabc3a1d86854c003e7e556 (the 05:56 pull, step 15,002,501,120;
+  a later pull at 05:58 was truncated mid-write and discarded by box.py, the earlier copy kept),
+  `ckpt_14004781056.pt` md5 82de60cd72a1799c69b1ba1dffdda374.
+* run.json, progress.csv (28,717 rows), the launch log, 200 `traj_*.jsonl`.
+* `auto_lines/k01..k28`: the spine files of searches 1-16 and, for searches 17-28, the logs and
+  each stage's roots.npy, line.npy and archive.meta.json (k28: 21 files, md5 equal);
+  `auto_field/field.npz` (the trainer's field, md5 feb3991905fe05d4083a6f8bd19e24ec).
+Provenance: every spawn state and line in this run came from the policy's own recordings and its
+own searches; nothing of October's or of a human record entered it.
+
+**The four arms of the second-map test, side by side** (one seed each; sidistic's first finish
+with the same recipe: 7.248B steps, run 5: 8.230B):
+
+| arm | what | steps | left the start room | end state | searches with a line |
+|---|---|---|---|---|---|
+| A `m2sib_pb1` | frozen sidistic recipe, from scratch | 12.86B | 2.945B (2/9), 3.096B (9/9) | 3.2% at the pit, 0 finishes | 2 of 29 (searches 5 and 7) |
+| B `m2pool_pb1` | one pool, from scratch | 6.02B | never | 0.40%, 0 finishes | 0 |
+| TRANSFER `m2warm_pb1` | arm A, weights from sidistic | 11.21B | never | 0.40%, 0 finishes | 0 of 26 |
+| DIAGNOSTIC `m2ge_pb1` | arm A, search loop = October's packaged one | 15.06B | 6.116B (2/9), 6.267B (9/9) | 3.2% at the pit, 0 finishes | 16 of 28 (all in the start room and its exit; 0 of 12 from the pit) |
+
+The frozen recipe does not repeat on the second map: no arm passed the pit, so no winner is
+called (0b). The search swap did not move the pit either; what it changed is the search's hit
+rate before the pit (a line in each of the first 16 searches against the tree's 2 of 29) at the
+price of leaving the room 2.1x later (restarts on long lines).
+
+**Still running, measurement only:** the droplet queue of the 05:30 entry (seeds 2-5 of the two
+single-factor cells of the pit search; pr2 started 05:28:46 UTC; ends about 14:35 UTC; progress
+in /home/steam/ar_m2/runs/m2ge/roots2x2/queue2.out). Its result gets its own entry.
+
+**Budget.** Credit 33.66 $ (reserve 10), burn 0, 0 boxes. No new rentals without the user.
