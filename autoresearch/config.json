@@ -183,6 +183,8 @@
     "0.5"
   ],
   "start_d": 2672.0,
+  "start_d_span": [2506.0, 2840.0],
+  "_start_d_span_doc": "score.py: the field at the map's 16 spawn points runs from 2,506 u (the y -1248 row) to 2,840 u (the y -1584 row); start_d is their mean, the trainer's start geodesic. Evals draw a spawn point per episode, so the 2% start test is taken outside this span. Measured 2026-11-11 on the goalc_32 field. Grader only: nothing in training reads it.",
   "model": "claude-opus-5-5",
   "effort": "max",
   "_offer_query_doc": "Scratch training here is CPU-bound: the trainer takes half the container's CPUs for physics. A 16-thread 3090 box ran the incumbent recipe at ~36k steps/s (2026-10-20, smoke_x1) against ~420k on the 5090 PC, so boxes need >= 32 effective threads on a fast CPU. Measured the same night on a 3090 + Ryzen 9 5950X box (32 threads, quota 30.7 CPUs, omp 15): ~194k steps/s, GPU 30% busy. gpu_ram>=12 (GB; 2026-10-25): the cheaper cards' 8 GB variants are out, every good card has 16-24 GB.",

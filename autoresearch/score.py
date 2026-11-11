@@ -28,7 +28,9 @@ One number per GREEDY eval from the TRUE map start - the trajectories the traine
 Validation - an eval that fails it scores None and is never selected:
 * the header names the map;
 * every episode starts at the map start: its first-row d within 2% of config.start_d (the
-  geodesic at the spawn), so a reservoir or novel spawn can never be passed off as an eval;
+  geodesic at the spawn), so a reservoir or novel spawn can never be passed off as an eval; a map
+  whose spawn points sit at different d (surf_edgeflow_blue200: 16 points, d 2,506 .. 2,840 around
+  the mean 2,672) names the span in config.start_d_span = [lo, hi], and the 2% is taken outside it;
 * at least 5 episodes.
 
 Also reported per eval: the furthest checkpoint curtain (sgcp_N) any episode entered, the
@@ -50,6 +52,8 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "python"))
 CFG = json.loads((REPO / "autoresearch" / "config.json").read_text(encoding="utf-8"))
 START_D = float(CFG.get("start_d", 97768.0))
+# [lo, hi] of the field at the map's own spawn points, when they differ by more than the 2%
+START_SPAN = tuple(float(x) for x in (CFG.get("start_d_span") or (START_D, START_D)))
 SCORE_EPISODES = int(CFG.get("score_episodes") or 0)
 EP_CAP_S = float(CFG.get("time_cap_s") or 300.0)   # the time term's cap (config.time_cap_s)
 _FIELD = None
@@ -159,9 +163,12 @@ def score_file(path: Path) -> dict:
         d0 = float(d[0])
         # the unreachable sentinel sits just above reach_max, which on sidistic is within 1% of
         # the start distance: an off-field first row must not pass for the map start
-        if d0 >= f.reach_max - 0.5 * f.cell or abs(d0 - START_D) > 0.02 * START_D:
+        tol = 0.02 * START_D
+        if d0 >= f.reach_max - 0.5 * f.cell or not START_SPAN[0] - tol <= d0 <= START_SPAN[1] + tol:
+            span = (f"{START_D:,.0f}" if START_SPAN[0] == START_SPAN[1] else
+                    f"{START_SPAN[0]:,.0f} .. {START_SPAN[1]:,.0f}")
             out["error"] = (f"an episode starts at d {d0:,.0f}, not the map start "
-                            f"({START_D:,.0f} +- 2%): not an eval from the true start")
+                            f"({span} +- 2%): not an eval from the true start")
             return out
         ok = d < f.reach_max - 0.5 * f.cell
         dmin = float(d[ok].min()) if ok.any() else d0
