@@ -37793,3 +37793,95 @@ command from October's roots crosses on 3 of 6 seeds within about 4.4-5.7M runs.
 not the difference.
 
 Budget 04:22 UTC: credit $34.26; one box left (m2ge, $0.349/h, watchdog deadline 06:33Z).
+
+## 2026-11-11 05:30 UTC - second-map test: roots x flags queue DONE, no crossing in any of its four runs (it does not separate the roots from the flags); the f1 crossing replayed on the trainer's field ends d 54,956 (gain 344 > 200: it would have been adopted); DIAGNOSTIC arm m2ge_pb1 at 14.24B, 0 lines in 11 pit searches (33 Go-Explore stages, 136M runs)
+
+Operator entry (m2/sib). Measurement only on the droplet (fixed simulator, CPU, nice 19, 3 threads,
+one job at a time); nothing here trains anything and October's roots and lines never enter a
+training run. The search-swap arm is a DIAGNOSTIC arm, never a 0b result.
+
+**The queue's last run.** of0 = October's 64 exit roots + the packaged stage's two extra flags
+(`--cell-heading 1 --view-follow=-90,-60,-30,-15,0,15,30,60,90`), seed 0: 420 iterations,
+5,385,801 runs, 28,214 cells, best 52,572u at depth 1160, 0 cells over the pit / on the east
+ledge / in the end zone, max H 3,992 (67.9 min, ended 05:23:02 UTC). Detail: 24,268 of its cells
+are east of x 900 (max x 2,380) and 602 have H > 3,900, so the explorer spreads far along the
+upper level and never enters the flight over the pit.
+
+**All droplet runs of the pit search, fixed simulator** (every run: `tools/explore_phase1.py
+--envs 4096 --cell 64 --cell-energy 32 --decisions 100 --act-every 4 --exact-chains --goals 1
+--maxvel 3500`, 420 iterations; "October's flags" = nothing more, "+ two flags" = the two above;
+a crossing reads 52,2xx u and has end-zone cells):
+
+| run | roots | flags | seed | runs | cells | best distance | pit / ledge / end zone | crossed |
+|---|---|---|---|---|---|---|---|---|
+| bench 3 | October's | October's | 0 | - | - | 52,582u | - | no |
+| f1 | October's | October's | 1 | 4,736,796 | - | 52,260u | 29 / 174 / 42 | YES (iteration 270) |
+| f2 | October's | October's | 2 | 5,663,221 | - | 52,575u | - | no |
+| of0 | October's | + two flags | 0 | 5,385,801 | 28,214 | 52,572u | 0 / 0 / 0 | no |
+| of1 | October's | + two flags | 1 | 5,390,116 | 30,494 | 52,573u | 0 / 0 / 0 | no |
+| pr0 | policy (search 18, 40 states, unboosted) | October's | 0 | 5,014,846 | 13,906 | 52,564u (a root) | 7 / 0 / 0 (falling states) | no |
+| pr1 | policy (same) | October's | 1 | 4,870,222 | 13,549 | 52,564u (a root) | 21 / 1 / 0 (falling states) | no |
+| the box's packaged stage | policy (each search's own, boosted 1.04-1.12) | + two flags | 33 stages of 5 min | 136,168,493 | 24,847-32,401 per stage | 52,564-52,566u (a root) | - | no, 0 of 33 |
+
+(October's command on the OLD simulator, seeds 0 / 1 / 2: yes / no / yes; with the fixed
+simulator's row above that is 3 of 6.)
+
+**Reading, with its limits.**
+1. The seed number is not a pairing: other roots or other flags give a different random walk from
+   the first iteration, so the cells are RATES. October's roots + October's flags: 1 of 3 on the
+   fixed simulator (3 of 6 with the old one). October's roots + the two flags: 0 of 2. The
+   policy's roots + October's flags: 0 of 2. Each single change lost the one crossing, so the
+   queue is equal evidence against the flags and against the roots, and weak for both: with a
+   true rate of 1/3 to 1/2, 0 of 2 happens 25-44% of the time with no effect at all. NOT
+   SEPARATED. The 04:30 entry's "one paired observation that the flags can cost the crossing"
+   stands only as that; the same sentence holds for the roots.
+2. What IS established: the packaged stage as the box runs it (policy roots, the two flags, the
+   boosts, 5-minute stages) is far below October's command. 0 of 33 stages; at a per-stage rate
+   of even 0.2 that has probability 0.06%. Budget is not the reason (4.0-4.3M runs per stage,
+   f1 crossed inside 4.7M).
+3. More seeds are the only way to turn the two single-factor cells into rates. Queued on the
+   droplet at 05:28 UTC (same command, same simulator, same roots files, one job at a time):
+   pr2, of2, pr3, of3, pr4, of4, pr5, of5 (seeds 2-5 of each cell, about 68 min each, about 9 h;
+   progress in /home/steam/ar_m2/runs/m2ge/roots2x2/queue2.out). A crossing in a cell says that
+   factor is not a hard block. 0 of 6 against October's 3 of 6 would still be only suggestive
+   (Fisher one-sided 0.09).
+
+**Would the box have adopted a crossing? Yes.** f1's crossing chain replayed exactly on the
+trainer's own field (`tools/ge_replay.py --map maps/surf_princessburglar_b26.bsp --archive
+/home/steam/ar_m2/runs/m2ge/seeds/f1/archive.npz --field
+/home/steam/ar_m2/runs/m2ge/m2ge_pb1/auto_field/field.npz --out
+.../seeds/f1/replay_trainer_field/line.npy`): deepest cell 15228, chain of 29 cells, 2,309
+states (23.1 s), links 28/28, line end d 54,956.2 at (572, -3355, 3379). The box's greedy
+frontier is d 55,300.4 and its gain is 200: the line clears it by 344. The adoption rule is not
+what stands between the packaged search and the pit; the search never produces the line.
+
+**The shape of that line on the trainer's field** (why a search ranked by progress on d drops
+it): start d 56,365 on the upper level; 261 of its 2,309 states are in cells the field marks
+unreachable (upper level, near the walls); it first gets below the greedy frontier (55,300.4) at
+state 1,406 and reaches 55,245 in states 1,300-1,499; then d RISES again to 55,311-55,596 through
+states 1,500-2,099 (6 s riding the east ledge north, up to 350 u worse than its own best), and
+it passes d 55,100.4 (the gain of 200) only at state 2,261 of 2,309. Between the first state
+below the frontier and the first state with the gain there are 855 ticks = 8.5 s with no net
+progress on d.
+
+**The DIAGNOSTIC arm m2ge_pb1** (box 60107502, RTX 5080) at 05:24 UTC: step 14,238,089,216
+(398k steps/s), greedy 3.2% (d 55,300), 0/9 in the three newest evals (14.043B, 14.119B,
+14.194B), 189 evals. Searches from the pit since the 04:30 entry, both NO new spine:
+
+| search | ended at step | 3 stages: runs | cells per stage | best |
+|---|---|---|---|---|
+| 26 | 13,394,509,824 | 12,442,613 | 27,537-30,326 | 52,565u |
+| 27 | 14,147,911,680 | 12,351,887 | 26,347-29,666 | 52,565u |
+
+Search 27's policy-guided beam ran 2,600 ticks (the earlier ones 700) and still ended d 55,300.9.
+Total from the pit: 0 lines in 11 searches = 33 stages = 136,168,493 runs. Files of searches 26
+and 27 copied to /home/steam/ar_m2/runs/m2ge/m2ge_pb1/auto_lines (40 files, md5 equal); snapshot
+ckpt_14004781056.pt pulled (md5 82de60cd72a1799c69b1ba1dffdda374), ckpt_latest at 14.238B md5
+418690892c0887f4a29e87eaf406e19d.
+
+**Decision.** The box is NOT extended: it has stood at the pit since 6.27B (8.0B steps), its
+search is 0 of 33 from there, and the question it was rented for is now a droplet measurement.
+Search 28 ends about 05:51 UTC; after it the files are saved and the box is released before the
+daemon's harvest (06:13Z; deadline 06:33Z). The user was told at 04:35 UTC.
+
+Budget 05:24 UTC: credit $33.87; one box (m2ge, $0.349/h).
