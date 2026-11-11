@@ -37521,3 +37521,87 @@ Reach of the backward curriculum on each exit line when it was replaced: 60% dec
 12's); search 13's stood at the 60% decile after 420M steps. Thirteen adoptions in 5.2B steps; the
 start of the line has not been reached once. Credit $38.05, burn $0.716/h with two boxes, 39 h above
 the $10 reserve.
+
+## 2026-11-11 00:15 UTC - second-map test, DIAGNOSTIC search-swap arm m2ge_pb1: the greedy leaves the start room at 6.12B-6.27B steps (arm A: 2.95B-3.10B) and now stands at the pit (3.2%); the first packaged search from the pit finds nothing past it; fixed-simulator seed 2 finds no crossing
+
+**Label.** `m2ge_pb1` is a DIAGNOSTIC arm (arm A's recipe with the search loop swapped for
+October's packaged one; flags in the entry "2026-11-10 20:05 UTC"). It is never a section-0b
+recipe result. From scratch, one seed, RTX 5080 (instance 60107502), 407k steps/s; read at
+step 6,866,599,936 (00:08 UTC). Arm A sat on another card: every comparison below is
+step-matched, never wall clock.
+
+**The greedy left the room.**
+
+| eval step | episodes past the line (of 9) | greedy frontier d | score |
+|---|---|---|---|
+| 6,040,322,048 | 0 | 56,944 | 0.394 |
+| 6,115,819,520 | 2 | 56,951 | 3.232 (median 0.3%) |
+| 6,191,316,992 | 8 | 55,306 | 3.235 |
+| 6,266,814,464 | 9 | 55,303 | 3.233 |
+| 6,342,311,936 - 6,795,296,768 (8 evals) | 8-9 | 55,302-55,305 | 3.233-3.235 |
+
+0 finishes in all 91 evals. Arm A (the frozen recipe, the tree search): 2/9 at 2,944,925,696
+and 9/9 at 3.096B. The diagnostic arm reached the same state 2.08x later (first episodes) and
+2.02x later (9/9), and it stands where arm A stood for 9.8B steps: at the pit, d 55,30x.
+
+**Why it was late, and why the churn ended.** Searches 2-14 each adopted a new line to the pit
+of 2,365-4,200 states and restarted the backward curriculum at its end (entry "2026-11-10
+23:15 UTC"; search 14: adopted 5,266,472,960, beam+ge, 2,406 states, end d 55,307). The
+curriculum never reached the start of such a line inside the 3e8 patience window. Then the
+policy-guided beam began to reach the pit by itself, with short lines:
+
+| search | adopted at | source | states | end d | search time |
+|---|---|---|---|---|---|
+| 15 | 5,596,250,112 | beam alone | 1,600 | 55,301 | 32 s |
+| 16 | 5,972,688,896 | beam alone | 800 | 55,301 | 28 s |
+
+On search 15's line the curriculum had reached the 10% decile (44% success) when it was
+replaced; search 16's 800-state line was learned back to the start within ~220M steps
+(deciles at 6.60B: 0%: 84%, 10%: 86%, ..., 90%: 100%), which is when the greedy left the room.
+So the policy got out through the curriculum on its own search lines, as in October, but paid
+about 3B steps for 13 restarts on long lines.
+
+**Search 17, the first one from the pit** (triggered 6,191,316,992 on the 8/9 quorum, ended
+6,604,455,936, 1,130 s; greedy d 55,305.8, gain 200): NO new spine.
+
+* beam 4,300 ticks, end d 55,300; three branched beams (forks at ticks 669, 569, 469), end d
+  55,300 each.
+* three Go-Explore stages of 5 minutes each, roots = 48 states off the branched line (ticks
+  182-582 before its stall and ticks 2,399-2,799 at its end), speed boosts 1.0/1.04, 1.08, 1.12:
+  339 / 337 / 339 iterations, 3.99M / 4.17M / 4.08M runs, 27,838 / 26,721 / 24,847 cells; best
+  distance 52,564u in the explorer's own field at depth 0 in all three, i.e. no cell better
+  than a root (a pit crossing reads 52,2xx u in that field). Replayed line: 1 state, d 55,300.
+* next try at 6,904,455,936 (search 18, running at 00:10 UTC).
+
+**A correction to an earlier note.** One 5-minute stage on the box is ~4.0M runs (1.85M
+ticks/s), the same order as a whole 70-minute droplet replicate (4.7-5.7M runs at 0.16M
+ticks/s), and the droplet replicates that cross the pit do so by iteration 230-270. So "the
+packaged 5-minute stage only reaches the pit floor" is NOT a statement about its budget. What
+differs is where it starts: the policy's own states (inside the room and crawling at the pit
+floor) against October's exit roots. The two root sets have not been compared yet (open).
+
+**Search lines saved.** `auto/k15`, `k16` (spine.npy, spine.json, spine.keys.npy; md5 equal on
+the box and the droplet) and search 17's logs are in
+`/home/steam/ar_m2/runs/m2ge/m2ge_pb1/auto_lines/` beside k01-k14.
+
+**Seed replicates of October's exact search command, 5 of 6 done.**
+
+| run | simulator | seed | best distance | cells over the pit / east ledge / end zone | found |
+|---|---|---|---|---|---|
+| bench 4 | OLD (tables 128) | 0 | 52,203u | 58 / 166 / 79 | yes |
+| o1 | OLD | 1 | 52,583u | 0 / 0 / 0 | no |
+| o2 | OLD | 2 | 52,274u at iteration 230 of 420 (running; read-out about 00:40 UTC) | pending | (yes, pending the read-out) |
+| bench 3 | FIXED (tables 512) | 0 | 52,582u | 0 / 0 / 0 | no |
+| f1 | FIXED | 1 | 52,260u | 29 / 174 / 42 | yes |
+| f2 | FIXED | 2 | 52,575u (420 iterations, 5,663,221 runs, 14,343 cells) | 0 / 0 / 0 | no |
+
+**The TRANSFER arm `m2warm_pb1`** (arm A's recipe, network from the sidistic run; a transfer
+arm, not a from-scratch result) at 6,794,772,480 steps: greedy 0.40%, 0/9, still in the start
+room (frontier d 56,974); 16 searches, 0 with a line. It is past arm B's release point
+(6.02B) in the same state.
+
+**Verdict so far.** The October search loop gets the policy out of the start room on this
+map from scratch (10 of 12 searches found the exit), later than the tree-search recipe did
+(2.1x in steps, because of the restarts). Neither arm has anything past the pit. The
+question this arm was launched for - does October's search find the pit crossing from the
+policy's own states - is 0 of 1 search (3 Go-Explore stages) so far.
