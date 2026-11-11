@@ -37700,3 +37700,96 @@ steps, greedy 0.40%, 0/9, still in the start room; 18 searches, 0 lines. Checkpo
 (md5 85d49b800d06c111ae6e82e1fb6f080d).
 
 Budget 00:44 UTC: credit $36.87, burn $0.716/h, 37.5 h above the reserve.
+
+## 2026-11-11 04:30 UTC - second-map test: TRANSFER arm m2warm_pb1 RELEASED at 11.21B steps, never left the start room (0.40%); DIAGNOSTIC arm m2ge_pb1 at the pit, 0 lines in 9 pit searches (27 Go-Explore stages, 111M runs); roots x flags queue 3 of 4 done, no crossing
+
+**Transfer arm `m2warm_pb1`, RELEASED 04:26:09 UTC (a transfer arm, never a from-scratch 0b
+result).** Arm A's recipe flag for flag plus `--init-weights` = policy + Adam of the sidistic
+run `azr1b2_pool` (provenance: that run trained from scratch on sidistic with its own search
+lines only, no demo). Box 60097464, RTX 5080, launched 2026-11-10 17:05 UTC, one seed.
+
+| | arm A `m2sib_pb1` (from scratch) | arm B `m2pool_pb1` (from scratch) | transfer arm `m2warm_pb1` |
+|---|---|---|---|
+| steps at release | 12,861,833,216 | 6.02B | 11,211,374,592 |
+| greedy at release | 3.2% (at the pit) | 0.40% (start room) | 0.40% (start room) |
+| left the start room | 2.945B (2/9), 3.096B (9/9) | never | never |
+| searches / with a line | 29 / 2 | - | 26 / 0 |
+| finishes | 0 in 171 evals | 0 | 0 in 149 evals |
+
+All 149 evals score 0.347-0.412% with 0/9 finishes; the greedy frontier sat at d 56,975-56,980
+against the in-room success line d <= 57,249 for the whole run. Every one of its 26 tree
+searches ended "NO new spine" in about 372 s with a frontier of d 56,931-56,933: a gain of
+about 45 u against the required 200. The sidistic weights therefore did not help on this map:
+arm A, the same recipe from random weights, was out of the room at 2.95B steps; the transfer
+arm was still in it at 11.21B (3.8x that step count, step-matched; the cards differ, so no
+wall-clock comparison). One seed, and arm B (also from scratch) shows the room can hold a
+from-scratch run for 6B steps too, so "the sidistic weights hurt" is not shown either - only
+that they bought nothing.
+
+Files on the droplet, `/home/steam/ar_m2/runs/m2warm/m2warm_pb1/`: `ckpt_latest.pt` (md5
+9846d3801ee965049334180923b10c3c, verified pull at step 11.21B), `ckpt_11003756544.pt` (md5
+aac07375ed94781d70823f3ef3581819), `run.json`, `progress.csv`, the launch log, 149 eval
+trajectories, and `auto_lines/` = every search folder's `auto_spine.log`, `beam.log`,
+`beam/summary.json`, `beam/greedy_baseline.jsonl`, `beam/beam_frontier.npz`,
+`beam/mcts_tree.npz` for k01-k26 plus `spine0.npy` (157 files, 625 MB, md5 equal to the box;
+the per-search `ckpt.pt` copies were not taken). Release verified with `vastai show instances`
+and `fleet_watchdog.py list`; tunnel 8602 stopped.
+
+**Diagnostic search-swap arm `m2ge_pb1` (a diagnostic arm, never a 0b result):** 12,794,200,064
+steps at 04:22 UTC, greedy 3.235%, 0/9, at the pit (frontier d 55,300) since 6.27B. Its
+packaged searches from the pit:
+
+| search | ended at step | beam end d | 3 Go-Explore stages: runs | cells per stage | best distance (explorer's field) | line |
+|---|---|---|---|---|---|---|
+| 17 | 6,604,455,936 | 55,30x | 12,243,727 | 24,847-27,838 | 52,564u (a root) | none |
+| 18 | 7,349,469,184 | 55,30x | 12,477,764 | 28,259-29,924 | 52,564u | none |
+| 19 | 8,101,298,176 | 55,30x | 12,163,329 | 25,434-28,073 | 52,565u | none |
+| 20 | 8,854,175,744 | 55,30x | 12,427,831 | 25,844-31,419 | 52,564u | none |
+| 21 | 9,612,820,480 | 55,301 | 12,504,721 | 27,553-32,110 | 52,565u | none |
+| 22 | 10,371,465,216 | 55,302 | 12,384,752 | 26,684-29,372 | 52,564u | none |
+| 23 | 11,124,342,784 | 55,302 | 12,434,340 | 28,150-29,371 | 52,565u | none |
+| 24 | 11,881,938,944 | 55,302 | 12,310,817 | 29,156-32,401 | 52,565u | none |
+| 25 | 12,637,962,240 | 55,301 | 12,426,712 | 24,861-29,484 | 52,565u | none |
+
+0 lines in 9 searches = 27 stages = 111,373,993 explorer runs, every stage's best cell a root.
+A crossing reads 52,2xx u. The roots of searches 19 and 20 look like search 18's (48 and 34
+states: 27 / 19 on the upper level, 9 / 4 in mid air, 12 / 11 on the pit floor; horizontal
+speed medians 367 / 353 u/s, energy-height medians 3,766 / 3,754). Logs, roots and archive
+metadata of k17-k25 are in `/home/steam/ar_m2/runs/m2ge/m2ge_pb1/auto_lines/` (md5 equal).
+
+**Roots x flags on the droplet** (measurement only; fixed simulator, `explore_phase1.py --envs
+4096 --cell 64 --cell-energy 32 --decisions 100 --act-every 4 --exact-chains --roots-spine
+<roots> --goals 1 --seed <s> --maxvel 3500`, 420 iterations; "two flags" = `--cell-heading 1
+--view-follow=-90,-60,-30,-15,0,15,30,60,90`, what the packaged stage adds). Next to the
+fixed-simulator rows of the six-seed table (entry "2026-11-11 00:40 UTC"):
+
+| run | roots | flags | seed | runs | cells | best distance | pit / east ledge / end zone cells | crossed |
+|---|---|---|---|---|---|---|---|---|
+| bench 3 | October's 64 | October's | 0 | - | - | 52,582u | 0 / 0 / 0 | no |
+| f1 | October's 64 | October's | 1 | 4,736,796 | - | 52,260u | 29 / 174 / 42 | YES (iteration 270) |
+| f2 | October's 64 | October's | 2 | 5,663,221 | - | 52,575u | 0 / 0 / 0 | no |
+| of1 | October's 64 | + two flags | 1 | 5,390,116 | 30,494 | 52,573u (depth 1,010) | 0 / 0 / 0 | no |
+| of0 | October's 64 | + two flags | 0 | running (ends about 05:25 UTC) | | | | |
+| pr1 | policy's 40 (search 18, unboosted) | October's | 1 | 4,870,222 | 13,549 | 52,564u (a root) | 21 / 1 / 0 (falling, see below) | no |
+| pr0 | policy's 40 | October's | 0 | 5,014,846 | 13,906 | 52,564u (a root) | 7 / 0 / 0 (falling) | no |
+
+The "over the pit" and "east ledge" cells of pr1 and pr0 are NOT the launch: they are states
+falling through the measurement boxes from the policy's mid-air roots (`scratchpad
+m2/roots/box_detail.py`): pr1's 21 + 1 cells sit at depth 148-197 ticks with vz -64..-456 and
+energy height 3,534-3,645; pr0's 7 cells at depth 137-151 ticks, vz -2..-114, energy height
+3,523-3,609, distance 52,830-52,860u; none of the 40 roots is inside either box. A crossing is
+judged by a best distance of 52,2xx u and by end-zone cells, not by those two counts.
+
+**Reading, with its limits.** (1) `of1` against `f1` is one PAIRED observation - the same
+roots, the same seed, the same simulator, only the two flags differ - and the run with the
+flags did not cross where the run without them did at iteration 270. It explored more cells
+(30,494; the heading key multiplies them) and found none over the pit. One seed, and October's
+own command fails on 3 of 6 seeds, so this says the flags CAN cost the crossing, not that they
+always do. (2) The policy's own roots with October's flags did not cross on either seed. With
+October's roots the same two seeds on the fixed simulator gave no / yes, so 0 of 2 against 1 of
+2 does not separate the root sets. (3) Together with the box: the packaged stage has now had 27
+stages and 111M runs from the policy's roots with the two flags and never crossed; October's
+command from October's roots crosses on 3 of 6 seeds within about 4.4-5.7M runs. The budget is
+not the difference.
+
+Budget 04:22 UTC: credit $34.26; one box left (m2ge, $0.349/h, watchdog deadline 06:33Z).
