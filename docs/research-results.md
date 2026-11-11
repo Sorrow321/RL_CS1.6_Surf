@@ -38673,3 +38673,61 @@ is the next thing to see (evals after the line-8 dip). Checkpoint pulled at abou
 (`ckpt_latest.pt` md5 ddf70e46a463da30c334800c2366ca29; the 2.718B weights themselves were not
 kept, the run saves `ckpt_latest` and one file per 1e9 steps); search lines k01-k08 copied to
 `/home/steam/ar_m2/runs/m4sib/cb_auto_1319`. Box deadline 17:06:45 UTC. No constant is touched.
+
+## 2026-11-11 14:26 UTC: m4sib_cb is a FINISHER - 9 of 9 greedy episodes from the true start at 3,246,915,584 steps (78.70-80.04 s); 2/9, 6/9, 4/9 on the three evals before it
+
+Interim entry, one hour and a half after the first finish (the run is live at 3.26B steps; box
+60199572, RTX 5090, one seed, the frozen sidistic recipe, no flag or constant changed; 387k
+steps/s). It continues the 14:15 entry: the finishes held and grew on line 8.
+
+| step | grader d best / median | route max (order-only) | past 205,440 u | finishes | finish times |
+|---|---|---|---|---|---|
+| 2,944,925,696 | 28.8 / 24.5% | 59,632 u | 0/9 | 0 | (the dip after line 8's adoption at 2,882.5M) |
+| 3,020,423,168 | 100.0 / 27.6% | 231,644 u | 2/9 | **2/9** | 78.88, 79.24 s |
+| 3,095,920,640 | 100.0 / 100.0% | 231,680 u | 6/9 | **6/9** | 78.50, 78.72, 78.91, 79.15, 79.20, 79.83 s |
+| 3,171,418,112 | 100.0 / 58.2% | 231,680 u | 4/9 | **4/9** | 78.51, 78.57, 78.93, 79.23 s |
+| **3,246,915,584** | 100.0 / 100.0% | 231,648 u | 9/9 | **9/9** | 78.70, 78.73, 78.76, 78.80, 78.86, 78.96, 78.99, 79.01, 80.04 s |
+
+* Finishes by `tools/eval_honesty.py` and by the grader, which agree; 0 dives-below in all four
+  evals. Every finishing flight ends 16-40 u from the finish box's plane, on the reference
+  route's last leg (median 135-183 u from the nearest route vertex over the whole flight; max
+  1,263-1,804 u where they cut the last turn inside). 24 finishing episodes in 44 evals so far
+  (3 before line 8, 21 on it); best 78.50 s.
+* The episodes that do not finish at 3.02B-3.17B fall at 20.9-52.4 s into the flight (one sits
+  near the start for 99.2 s, one stops at 75.8 s on a platform at (7984,-3068,1673)): the greedy
+  policy was two-moded for about 230M steps and the early mode is gone at 3.247B. One eval at
+  9/9 is not yet "stable": the next evals say whether it stays.
+* Line 8 (the policy's own 79.16 s finish from search 8, adopted at 2,882,535,424) was learned
+  from the true start in about 365M steps (2/9 after 138M, 9/9 after 364M). The backward
+  curriculum had moved its spawn windows from the line's end back to tick 3,815 of 7,916 by then
+  (success 51-77% per window); the first 73-92% of the route the policy already flew from lines
+  2-6. Training-side diagnostic only: win rate 80-91% at wins 29-35 s long, reservoir min depth
+  0.05-0.49% of d0 (steps 3,189M-3,258M).
+* **The quorum defect, now on a finishing line.** At 3,246,915,584 the trainer printed "0/9
+  greedy episodes past the success line d <= 100; greedy frontier (median deepest d) 10,611 ->
+  SEARCH (patience)" on an eval where all nine episodes FINISH. The contact-banked depth of a
+  finishing flight is about 10,600 u (its last map contact is before the final climb; the last
+  4-5 s are one flight into the trigger), and line 8's success line is d <= 100, so no eval can
+  meet the quorum on a finishing line; the 3e8-step patience clock fired instead and search 9
+  started from "frontier 10,611" (`--greedy-d 10610.8`). What search 9 returns and whether an
+  adoption costs the finisher a dip goes into the next entry. Fix candidates for the recipe
+  (none applied; the run is the frozen recipe): count an eval episode that ends "done" as past
+  any success line, and stop searching (or search for pace only) once the quorum finishes.
+* Checkpoints on the droplet: `ckpt_latest.pt` pulled at 14:22 UTC (187,707,839 bytes, md5
+  17af60a975246baeae55ddcbefa5ceae, about 3.2B steps, between the 4/9 and the 9/9 eval); the
+  2.86B copy of the 14:15 entry is kept as
+  `/home/steam/ar_m2/runs/m4sib/cb_ckpt_2860M_ddf70e46.pt`. On the box: periodic
+  `ckpt_3001024512.pt` and `ckpt_latest.pt`.
+
+**What it is.** The frozen sidistic recipe, from scratch, one seed, finished a second map:
+first greedy finish at 2,718,433,280 steps, 9/9 at 3,246,915,584, best 78.50 s (2 h 21 min of
+training on one RTX 5090). Scoreboard, one seed per map, no constant changed between maps:
+sidistic finished (7.248B), princessburglar null (12.86B), blue200 null (4.14B), cannonball
+finished (9/9 at 3.247B). Two of four: by rule 0b the recipe repeats on a second map, and it is
+NOT a recipe that beats any map (both nulls are the maps whose route needs a long stretch the
+field does not pay for). References on cannonball are other recipes on other cards and are not
+ranked here: round 32's from-scratch cells had 0 finishes inside 2.0B; CLAUDE.md gives the
+record recording as 81.35 s on this clock (a human's line under human constraints; the agent's
+clock starts at spawn and its line is its own; not re-measured here). Plan: let the run go on to
+its deadline (17:06:45 UTC, no extension planned) to see whether 9/9 holds, what search 9 does
+and whether the time moves; then bundle and release.
