@@ -38544,3 +38544,132 @@ the 4,500 u climb) with no banked progress on the way, or reach the finish. Same
 princessburglar pit and the blue200 void (a stretch the field does not pay for). What decides it:
 the evals after the line is learned (finishes, or the route column past 213.8k u), and searches
 6 onward (a line or none). No constant is touched.
+
+## 2026-11-11 14:15 UTC: m2 droplet queue 2 - pr5 CROSSED the pit (the fourth crossing from the policy's own roots, 4 of 6); of4 did not (October's roots with the two packaged flags 0 of 5)
+
+Measurement only (droplet CPU, search only, fixed simulator). Nothing here trains anything, and no
+line or root of this entry may enter a training run.
+
+| run | roots | flags | seed | runs | cells | best distance (tool's field) | over the pit / east ledge / end zone | crossed |
+|---|---|---|---|---|---|---|---|---|
+| of4 | October's | + `--cell-heading 1 --view-follow` | 4 | 5,331,877 | 28,769 | 52,565 u | 0 / 0 / 0 | no |
+| pr5 | policy's own (k18, unboosted) | October's | 5 | 4,886,789 | 16,166 | 52,270 u | 15 / 144 / 39 | YES |
+
+* of4 (11:18:28 to 12:29:45 UTC, 71.3 min): no crossing; best cell at (809,-2711,3377), depth
+  945 ticks, no cell on the east ledge or in the end zone, like of0-of3.
+* pr5 (12:29:46 to 13:42:31 UTC, 72.7 min): best cell at (601,-3308,3409), depth 1025 ticks, max
+  energy height 3,979. Its chain is 14 cells and 10.25 s long and starts at the SAME root as
+  pr2's, pr3's and pr4's, (142,-3019,3608) vel (387,-3,-413), the policy's own fall out of the
+  south passage: -> (293,-3023,3388) at 0.39 s -> launched by the ridge's rising end
+  ((645,-2989,3431) with vz +314 at 1.01 s) -> the east ledge (924,-2896,3472) at 1.63 s ->
+  about 4.4 s on the ledge (x 924-1054, y -2792..-2941) -> south along it ((1005,-3114,3455) at
+  6.71 s, (975,-3241,3507) at 7.25 s) -> west along the south side ((762,-3373,3492) at 8.87 s)
+  -> (601,-3308,3409) at 10.25 s. The same route as pr3's, found by a fourth seed.
+* Rates now (fixed simulator, the dedicated command, 4.6-5.4M runs per run):
+
+| cell | crossed |
+|---|---|
+| October's roots + October's flags | 1 of 3 |
+| policy's roots + October's flags | 4 of 6 (pr0 no, pr1 no, pr2 YES, pr3 YES, pr4 YES, pr5 YES) |
+| October's roots + the two packaged flags | 0 of 5 (of0-of4) |
+| in training: the packaged stage (policy's roots, both flags, boosts, 5-minute stages) | 0 of 36 stages |
+
+* Reading. With October's flags the dedicated command crosses on 5 of 9 runs whichever roots it
+  gets; with the two packaged flags it is 0 of 5 (Fisher exact, one sided, p = 126/2002 = 0.063).
+  Still a suspicion, not a finding: the flags cell has only been run from October's roots, one
+  seed per entry, and all four crossings from the policy's roots leave from one and the same
+  root state. of5 (the last run of the queue) started 13:42:31 and ends about 14:55 UTC.
+
+## 2026-11-11 14:15 UTC: m4sib_cb FIRST FINISHES - 2 of 9 greedy episodes from the true start at 2.718B steps (80.30 s, 80.80 s), 1 of 9 at 2.794B (80.67 s); search 8 then returns a FINISHING line (79.16 s), adopted at 2,882.5M
+
+Interim entry (the run is live at 3.0B steps; box 60199572, RTX 5090, one seed, the frozen
+sidistic recipe with no flag or constant changed since the launch entry of 12:18 UTC; 385k
+steps/s). No demo-derived file is in the run; the route file below is used for measurement only.
+
+**Evals since the 13:30 entry (greedy, true start, 9 episodes; route = `tools/eval_honesty.py
+--order-only 16`; finishes by eval_honesty and by the grader, which agree).**
+
+| step | grader d best / median | route max | past 205,440 u | finishes |
+|---|---|---|---|---|
+| 1.963B | 96.7 / 96.7% | 213,711 u | 5/9 | 0 |
+| 2.039B | 98.2 / 98.2% | 213,504 u | 7/9 | 0 |
+| 2.114B | 97.8 / 74.4% | 213,558 u | 3/9 | 0 |
+| 2.190B | 96.7 / 59.2% | 213,612 u | 3/9 | 0 |
+| 2.265B | 96.7 / 47.0% | 214,528 u | 1/9 | 0 |
+| 2.341B | 98.5 / 74.5% | 205,306 u | 0/9 | 0 |
+| 2.416B | 97.8 / 46.9% | 205,756 u | 3/9 | 0 |
+| 2.492B | 92.9 / 85.0% | 194,944 u | 0/9 | 0 |
+| 2.567B | 93.1 / 92.4% | 198,144 u | 0/9 | 0 |
+| 2.643B | 75.1 / 53.5% | 160,088 u | 0/9 | 0 |
+| **2,718,433,280** | 100.0 / 26.1% | **231,680 u (100%)** | 2/9 | **2 (80.30 s, 80.80 s)** |
+| 2,793,930,752 | 100.0 / 24.2% | 231,680 u (100%) | 1/9 | **1 (80.67 s)** |
+| 2.869B | 96.7 / 96.7% | 217,317 u (93.8%) | 7/9 | 0 |
+| 2.945B | 28.8 / 24.5% | 59,632 u | 0/9 | 0 (the dip after line 8's adoption) |
+
+40 evals so far, 3 finishing episodes, in two evals. The grader's d is flattered past about 88% of
+the route (98.5% at 2.341B on a route max of 205,306 u): past the wall only the route column and
+the finishes count.
+
+**The finishing flights are on the real route.** All three pass the reference route's vertices in
+order to the last one, median 164-179 u from the nearest vertex over the whole flight (max
+1,147-1,357 u, at the last turn, which they cut inside). The end, from the 80.80 s episode: south
+end of the last descent at 74.8 s ((-9865,-6852,-4991), 3,693 u/s), WEST turn, north along x
+about -13,130 at 3,700 u/s (76.3 s), the climb from z -5,218 to -1,084 (79.3 s), through the
+finish plane at (-12651,7459,-1273) at 2,614 u/s. The other two end at (-12901,7450,-1223) and
+(-12095,7460,-1378). The finish trigger is a plain box (checked at launch). The six or seven
+other episodes of those two evals fall 17-58 s into the flight: the greedy policy is two-moded
+there, not a converged finisher. For scale only: CLAUDE.md gives the record recording as 81.35 s
+on this clock (not re-measured here; another recipe, no ranking).
+
+**Searches 5-8 and what the curriculum did.**
+
+| search | from step | trigger, greedy frontier d | line | adopted at | what the line is |
+|---|---|---|---|---|---|
+| 5 | 1,737.0M | quorum, 12,104 | 7,820 states, end d 4,488 | 1,876.4M (success line d <= 4,588) | the route to 92.2%, then a free fall under the finish (entry of 13:30) |
+| 6 | 2,189.95M | patience, 83,000 (a dip) | 7,768 states, end d 4,747, md5 768e74f547405478c6bc41ca2e478ef2 | 2,322.6M (d <= 4,847) | the same fall, cut at (-9093,3928,-4858), 4,677 u from the finish box, 4.3 s after its last contact |
+| 7 | 2,642.9M | patience, 93,723 (a dip) | 6,149 states, end d 39,733, md5 4df2c5b70328028d4e37685213dd37d0 | 2,782.4M (d <= 39,833) | ends at (131,-7145,-1115), route vertex 1326 (73.3%), 391 u off the route, 2.2 s after its last contact |
+| 8 | 2,869.4M | quorum (7/9 past d <= 39,833), 12,345 | **7,916 states, end d 0: FINISHES in 79.16 s**, md5 aedce4b668e3a68b7ed78c0a20e7443c | **2,882,535,424** (success line d <= 100) | the whole real route; 49 of the 2,048 copies of the search's first wave finished, the search ended after one wave (25 s) |
+
+* Line 5 was never learned as a line: 0/9 greedy episodes past its success line at every eval
+  from 1.888B to 2.190B. Line 6, the same fall with an end 259 u WORSE than line 5's, replaced it
+  because the adoption rule compares a new line with the greedy frontier at the search's start
+  (83,000, a dip), not with the current line's end.
+* **How the finish was found (measured from the training log; the mechanism is an inference).**
+  The first non-zero training win rate is at step 2,629.8M (0.22%, wins 7.8 s long), then 25.7%
+  at 2,663.4M (11.9 s), 33-59% to 2,715.8M (11-21 s) and 76-85% from 2,726M to 2,779M (21-25 s).
+  Wins 8-12 s long start 69-73 s into an 80.5 s flight, i.e. on the last descent, where line 6 is
+  still the real route (its last contact is at 73.4 s). So: episodes spawned on the last part of
+  the policy's own search line found the west turn and the climb by themselves (unstuck
+  temperature at its cap 0.20), about 310M-340M steps after line 6's adoption, and the backward
+  curriculum then lengthened the wins to 25 s. NO search line carried the turn or the climb
+  before search 8 (`beam_finished` 0 in searches 1-7). The win rate is a harvest-dependent
+  diagnostic (reservoir min depth 0.03-0.77% of d0 in that window) and is not the result; the
+  result is the three greedy finishes from the true start.
+* The trainer's own quorum count read "0/9 greedy episodes past the success line d <= 4,847" at
+  2,718,433,280, the eval with two finishes. Read from the code (`_auto_spine_after_eval`,
+  `--auto-spine-banked 1`): the count uses the contact-banked depth, and a finishing flight
+  leaves its last contact on the climb seconds before the finish plane, while line 6's success
+  line was set by a fall's raw d. The banked depth of the finishing episodes was not measured
+  here. On such a line a finish cannot meet the quorum; only the 3e8-step patience clock fires.
+* Line 7 is a shorter line (73.3% of the route) that replaced line 6 at 2,782.4M while the
+  training win rate from line 6's windows stood at 75-85%: the same rule (frontier 93,723 from
+  the all-dead eval at 2.643B). The curriculum restarted at its end (starts [6013,6148], success
+  22.3%, then 3.4-3.5%) and the training win rate fell to 1-9% (wins 82 s long). Its shallow
+  success line is also what let the quorum fire at 2.869B (7/9), and that search finished.
+* Since line 8 (the policy's own 79.16 s finish) the curriculum walks backward along it: starts
+  [6240,7915] with 95.2% success, training win rate 90.9% at 18.7 s wins (step 2,997M). The eval
+  at 2.945B is the usual dip after an adoption (all nine fall at about 21 s).
+
+**Reading (not a verdict).** The 13:30 reading ("same class as the princessburglar pit and the
+blue200 void") did NOT hold on this map: the search never supplied the unpaid stretch, but the
+policy crossed it itself once its spawns stood on the last descent. A hypothesis, not measured:
+here the unpaid stretch is about 6 s of flight that continues the speed the policy already
+carries (the straight distance to the finish rises only about 560 u at the turn), while the pit
+needs a run-up away from the goal and the void a detour that gives back 82.5% of d0. Scoreboard
+of the frozen recipe, one seed per map: sidistic finished (7.248B), princessburglar null (12.86B),
+blue200 null (4.14B), cannonball first finishes at 2.718B. One seed on one map, 3 finishing
+episodes: not a recipe win by itself (two of four maps are nulls), and whether the finishes hold
+is the next thing to see (evals after the line-8 dip). Checkpoint pulled at about 2.86B
+(`ckpt_latest.pt` md5 ddf70e46a463da30c334800c2366ca29; the 2.718B weights themselves were not
+kept, the run saves `ckpt_latest` and one file per 1e9 steps); search lines k01-k08 copied to
+`/home/steam/ar_m2/runs/m4sib/cb_auto_1319`. Box deadline 17:06:45 UTC. No constant is touched.
