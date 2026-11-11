@@ -38315,3 +38315,96 @@ line or root of this entry may enter a training run.
   dilute the archive at the pit (the four flag runs hold 27,871-30,494 cells, the five runs
   without the flags from the policy's roots 13,549-15,565), not a finding. The queue goes on: of4 (started
   11:18:28), pr5, of5; end about 14:55 UTC.
+
+## 2026-11-11 12:18 UTC: FOURTH MAP - the frozen sidistic recipe LAUNCHED on surf_src_cannonball (m4sib_cb, from scratch, one seed, one RTX 5090 box); the map does not fit a 16 GB card
+
+* WHY: after the blue200 null (entry 10:26 UTC) the user, at about 10:38 UTC: "Let's try cannonball
+  anyway". Same rule as before (0b): the recipe's flags and constants are untouched; one seed on
+  one map; a finish here would not be a recipe win by itself.
+* CHECKS BEFORE RENTING (droplet CPU, seconds each, under nice): the map loads on the fixed core
+  (2,264 entities, every table under 512); the finish is trigger_multiple *209 and its clip hull is
+  a PLAIN BOX equal to the zones end box ([-14720,7487,-1824] .. [-8064,7488,-352]), so the box
+  test is the game's test; 4 spawn points (x -14400 .. -14224, y 3079, z 10528 / 10532), none
+  dead. The user's cannonball_maps.tar.gz (md5 394b7cd5b26f1b8a42264c6c5f460757) carries bsp,
+  zones, goal_32, occ_32, sdf_32, slabocc_32 and faceid_32 but NOT the no-corner-cut field
+  goalc_32 the recipe shapes on (--race-no-corner-cut 1). Its zones.json differs from the
+  repository's in line endings only (CRLF), which is why run.json reads git dirty = true.
+* A 16 GB CARD CANNOT HOLD THIS MAP (671,156,372 voxels at cell 32). First box 60197748 (RTX 5080,
+  16 GB, $0.282/h, rented 10:47:20 UTC):
+  - tools/bake_nocut_field.py --device cuda ran out of GPU memory at the first convergence probe
+    (goalfield.py:433: 5.00 GiB asked on top of 10.02 GiB held);
+  - a smoke run of the recipe on the shipped corner-cutting field (m4sib_smoke; a smoke, not a
+    result) had the trainer at 9.98 GiB, and tools/record_ckpt.py ran out of memory beside it and
+    the loading search (TextureMap.for_lidar, the 1.25 GiB face-id grid): the record gate REFUSED
+    the launch and killed the trainer at 9.4M steps, as it should.
+  Box 60197748 was released at 11:02:39 UTC (about $0.07; not blacklisted: the host is healthy,
+  the card is too small). Measured later on the 32 GB card: the bake holds 21.1 GiB, and trainer
+  10.49 + search 10.30 + recorder up to 3.06 GiB peak at 23.9 GiB. So 24 GB is not enough either.
+* CONFIG, this map only (m4/sib 7e27b45e, 3dbded4c, c6fc0be5; no trainer code changed: the diff
+  from the blue200 run's commit 661af7a7 is autoresearch/config.json, autoresearch/score.py and
+  this ledger): map, field, tarball, agent prefix m4, gpu_tiers [[RTX_5090]], offer query
+  cpu_cores_effective >= 24 (was 32: no 32-thread 5090 at 2.5 GHz was on offer under the 0.60 $/h
+  cap outside China) and no hosts in China (operator's judgement on reachability, not a measured
+  failure). incumbent_recipe is byte-identical to the blue200 run's.
+* BOX 60199572: RTX 5090 32,607 MiB, $0.536/h (under the 0.60 cap), machine 149895 (Indiana),
+  Threadripper 3960X, 24 effective threads (nproc 48; the trainer runs omp=11 against 15 on the
+  blue200 box). Rented 11:07:32 UTC, ready in 31 s, deployed 11:08:57. Watchdog: 6 h from the
+  rent (deadline 17:06:45 UTC), re-registered after the launch with the harvest spec
+  "17279 99.22.20.240 m4sib_cb" and pid file runs/m4sib_cb.pid. Dashboard on the box, tunnel
+  http://localhost:8601/ (up 11:09:57; the user was told).
+* THE FIELD was baked ON THE BOX (the droplet CPU is taken by the pit queue): 11:09:07 to 11:55:28
+  UTC, "fields ready in 2853 s"; the old field came from its cache (signature equal), so the time
+  is the new field's: 5,376 sweeps (cap 8,000, converged), 37,674 seed voxels, 67,887,227
+  reachable voxels, max geodesic 199,689 u (corner-cutting field 199,077 u). The start stays
+  connected: start geodesic 198,380 u old, 198,992 u new (+612 u, 0.3%). File md5
+  cb9fc817c703dc2e1f4465d6e377ed41 (pulled to the droplet, md5 equal). At the 4 spawn points the
+  new field reads 198,980 .. 199,028 u (nearest cell; mean 199,004, spread 0.024%), which is
+  config start_d 199004 and start_d_span [198980, 199028] (grader only). A later box deploys
+  ~/ar_m2/maps/cannonballc_maps.tar.gz (md5 631c375d169aa17e95264b73aaf4b200 = the user's seven
+  files + goalc_32) and does not bake again.
+* LAUNCH 11:59:52 UTC through box.py -> tools/run_arm.sh (SCRATCH=1); the trainer's run.json is
+  stamped 12:03:15 (3.4 min of map loading on one core before the first line; no bake line, every
+  cache hit):
+  MAP=maps/surf_src_cannonball.bsp BUDGET=60000000000 RECORD_EVERY=75e6 SCRATCH=1 bash
+  tools/run_arm.sh m4sib_cb --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --unstuck
+  --unstuck-reach eval --respawn-margin 2 --unstuck-max 0.2 --unstuck-temp-heads keys --obs-surf 1
+  --surf-bonus 0 --obs-compass 1 --obs-pot-rate 1 --race-ratchet --race-no-corner-cut 1 --time-pen
+  0.001 --stall-eps 5 --pitch-sigma-min 0.05 --eval-patience 30 --eval-parallel 1 --front-temp 1
+  --front-band 0.01 --energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1 --maxvel 4000
+  --auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck --auto-spine-banked
+  --auto-spine-explorer mcts --auto-spine-mcts-minutes 6 --auto-spine-envs 2048
+  --auto-spine-ge-minutes 0 --auto-spine-patience 3e8 --auto-spine-retry 3e8 --demo-success-d 100
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50
+  --demo-front-frac 0.5 --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'
+  The same token list as the blue200 run (config incumbent_recipe, 83 tokens, untouched).
+* PROVENANCE: from scratch, no warm start, no checkpoint. The only "demo" file is the run's own
+  runs/m4sib_cb/auto/spine0.npy = the map's spawn state (2 rows), and every later line is this
+  run's own search. No route_file, bc_file or race_arc (all None in run.json). The record-derived
+  files that sit in maps/ on the box (route.npz, fieldroute.npz, selfgoal.npz, selfroute.npz,
+  selfsmooth.npz) are not named by any flag; route.npz is used only by the read-out below.
+* run.json AGAINST THE BLUE200 RUN'S, key by key: 281 keys, 8 differ: map, label, started, git
+  commit, git dirty (the CRLF zones file), demo_file (each run's own spine0.npy) and the per-map
+  obs_potential_d0 entry (198,991.8 u here). Nothing else.
+* GATES: liveness passed (pid 4237); record gate PASSED at 12:07:27 UTC: 4 recordings in 140 s
+  (POV render of the greedy, greedy, stochastic, mixed) with the first search loading beside it.
+* FIRST NUMBERS (not a result): 380k steps/s with the search running beside the trainer (40 s
+  window at 133M-148M steps), 336k-380k since; about 1.3B steps per hour, close to blue200's
+  382k-384k on the 5080 box, so the 24 threads cost little. Evals (greedy, true start, 9
+  episodes; progress on d): 524k steps best 0.9%, 76.0M best 5.0% / median 4.7%, 151.5M best
+  15.0% / 13.2%, 227.0M best 24.9% / 24.1% (greedy frontier d 163,627); 0 finishes. Training
+  log at 236M: "best 49,524u", win 0.00%. Search 1 (started at 524k from frontier d 198,848)
+  ended at 182M with a line to d 193,450: discarded as STALE (the greedy was at 174,043 by
+  then); next search at step 482M.
+* WHAT WILL BE READ: finishes inside the finish box and the step of the first finishing eval;
+  without one, where the greedy stops. race/eval_progress saturates near 191,812 u at the wall
+  (the field's minimum along the route sits there), so past about 88% the read-out is
+  tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz --order-only 16 on the eval
+  trajectories (corridor MAX; measurement only, the route never enters the run). Bars to read
+  against, never constants: the 97k gate at 0.5-1.0B steps, the 205k wall (88.8% of the route)
+  at 1.0-1.75B, 0 finishes in round 32's 2.0B from scratch; the final descent raises the field by
+  about 8,400 u, the same class of obstacle (a stretch with no progress on d) that stopped the
+  recipe at the princessburglar pit and at blue200's void. Stand-still rule as on blue200: no
+  movement of the best progress for 3B steps with no line adopted = a null, bundle and release.
+* COST: $0.536/h; credit $32.14 at 12:09 UTC, reserve $10 (about 41 h of this box above the
+  reserve). Different card and CPU from every other run of this recipe: compare in steps only.
