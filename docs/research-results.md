@@ -38882,3 +38882,94 @@ greedy frontier at the search's start, not with the current line's end; (3) the 
 GPU memory beside the trainer and the recorder on a 671M-voxel map; (4) reliability: 61% of greedy
 episodes finish, the falls are spread over the first 80% of the route. The next map, on the user's
 order of about 15:00 UTC, is surf_petrus_lite with the same recipe (its own launch entry follows).
+
+## 2026-11-11 15:46 UTC: FIFTH MAP - the frozen sidistic recipe LAUNCHED on surf_petrus_lite (m5sib_pl, from scratch, one seed, one RTX 5080 box)
+
+* WHY: the user, at about 15:00 UTC, after cannonball's finish (entry 15:34 UTC): "Okay, I think
+  it's a very good result. That means that the result we got on the previous map, I mean, the
+  sidistic map, is not something random. This is actual improvement over raw policy. So now let's
+  try Unit Farmer 2 map. It's also a very hard map. Or actually, let's try to beat something
+  else. Let's beat the Petrus map. I think it's Petrus Light." Read as: surf_petrus_lite, not
+  unitfarmer2 (no launch order exists for unitfarmer2). Same rule as before (0b): the recipe's
+  flags and constants are untouched; one seed on one map; a finish here is one more map on the
+  scoreboard, not a recipe win by itself.
+* CHECKS BEFORE RENTING (droplet CPU, seconds each, under nice): the map loads on the fixed core
+  (85 entities, every table under 512); the finish is trigger_multiple *21 and its clip hull is a
+  PLAIN BOX equal to the zones end box ([-2136,-483.065,-2178.76] .. [-2134,-173.089,-2012.34], a
+  2 u curtain), so the box test is the game's test (type-1 map); 1 spawn point
+  (-3872, 3074, 592), not dead, no goal hit at rest (the player drops 57 u onto the start ramp).
+  The user's petrus_lite_maps.tar.gz (md5 3ece9fc4f8c845ed9b6b9ed7ad3e40be) carries bsp, zones,
+  goal_32, occ_32, sdf_32 and slabocc_32 but NOT the no-corner-cut field goalc_32 the recipe
+  shapes on (--race-no-corner-cut 1). Its zones.json differs from the repository's in line
+  endings only; the repository's copy was deployed, so run.json reads git dirty = false.
+* THE FIELD was baked on the droplet CPU (tools/bake_nocut_field.py --device cpu, under nice,
+  after the pit queue had ended): 828 s, 1,088 sweeps, 192 seed voxels, 282,208 reachable voxels,
+  max geodesic 36,205 u (corner-cutting field 35,902 u). Grid 263 x 265 x 126 = 8.8M voxels at
+  cell 32: it fits any card (cannonball's is 671M). The start stays connected: start geodesic
+  35,637 u old, 35,938 u new (+302 u, 0.8%). File md5 b1e6751e35864b32a5f193d896ff9278 (md5 equal
+  on the box). At the spawn cell the new field reads 35,940 u (35,916 u at the height the player
+  comes to rest), which is config start_d 35940 and start_d_span [35916, 35940] (grader only).
+  Deploy tarball ~/ar_m2/maps/petrus_litec_maps.tar.gz (md5 73f1effb2037f3f45b19ce735b8aefa8 =
+  the user's bsp and four caches, the repository's zones.json, + goalc_32). The face-id grid of
+  --obs-normal is not in it: the trainer baked it at start-up (206,801 surface voxels, seconds),
+  the only bake line in the log; the goal field came from its cache.
+* CONFIG (m5/sib b47f58f5, branched off m4/sib be9c68bb; no trainer code changed: the diff from
+  the cannonball run's commit c6fc0be5 is autoresearch/config.json and this ledger): map, field,
+  start_d, start_d_span, tarball, agent prefix m5; gpu_tiers and the offer query are back at the
+  general values the blue200 run had (cannonball's 5090-only tier is undone, this map is small).
+  incumbent_recipe is byte-identical to the cannonball and blue200 runs' (83 tokens).
+* BOX 60226641: RTX 5080 16,303 MiB, $0.387/h (under the 0.45 cap for this tier), machine 154401
+  (South Carolina), nproc 32 (the trainer runs omp=15, like the blue200 box). Rented 15:36:47
+  UTC, ready in 43 s, deployed 15:38:40. tools/gpu_health.py --all: healthy (HBM copy 817 GB/s =
+  100% of the reference, bf16 GEMM 123 TFLOPS = 110%). Fleet before the rent: empty; credit
+  $30.48, reserve $10. Watchdog: 6 h from the rent (deadline 21:36:34 UTC), re-registered after
+  the launch with owner autoresearch, the harvest spec "42148 162.213.119.141 m5sib_pl" and pid
+  file runs/m5sib_pl.pid. Dashboard on the box port 8600, tunnel http://localhost:8601/ (up
+  15:43:53 UTC).
+* LAUNCH 15:41:41 UTC through box.py -> tools/run_arm.sh (SCRATCH=1); run.json is stamped
+  15:41:47:
+  MAP=maps/surf_petrus_lite.bsp BUDGET=60000000000 RECORD_EVERY=75e6 SCRATCH=1 bash
+  tools/run_arm.sh m5sib_pl --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --unstuck
+  --unstuck-reach eval --respawn-margin 2 --unstuck-max 0.2 --unstuck-temp-heads keys --obs-surf 1
+  --surf-bonus 0 --obs-compass 1 --obs-pot-rate 1 --race-ratchet --race-no-corner-cut 1 --time-pen
+  0.001 --stall-eps 5 --pitch-sigma-min 0.05 --eval-patience 30 --eval-parallel 1 --front-temp 1
+  --front-band 0.01 --energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1 --maxvel 4000
+  --auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck --auto-spine-banked
+  --auto-spine-explorer mcts --auto-spine-mcts-minutes 6 --auto-spine-envs 2048
+  --auto-spine-ge-minutes 0 --auto-spine-patience 3e8 --auto-spine-retry 3e8 --demo-success-d 100
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50
+  --demo-front-frac 0.5 --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'
+  The same token list as the cannonball, blue200 and princessburglar arm A runs.
+* PROVENANCE: from scratch, no warm start, no checkpoint. The only "demo" file is the run's own
+  runs/m5sib_pl/auto/spine0.npy = the map's spawn state (2 rows), and every later line is this
+  run's own search. No route_file, bc_file or race_arc (all None in run.json). The record-derived
+  file that sits in maps/ on the box through git (surf_petrus_lite.wrroute.npz, a 304 x 128 u
+  ruler cut from the record) is not named by any flag; it is used only by the read-out
+  (tools/eval_honesty.py --route ... --order-only 16), never by training.
+* run.json AGAINST THE CANNONBALL RUN'S, key by key: 281 keys, 8 differ: map, label, started,
+  git commit, git dirty (false here), demo_file (each run's own spine0.npy) and the per-map
+  obs_potential_d0 entry (35,938.4 u here). Nothing else. run.json md5 at the launch
+  e72bd3e950f122f042300f56a2b89d13.
+* GATES: liveness passed (pid 3163); record gate PASSED at about 15:43 UTC: 4 recordings in 14 s
+  (POV render of the greedy, greedy, stochastic, mixed).
+* FIRST NUMBERS (not a result): 253k steps/s at 57.7M steps and still rising, with the first
+  search running beside the trainer (GPU 5.2 GiB used of 16.3). Eval at 524k steps (greedy, true
+  start, 9 episodes): best 1.7%, 0 finishes. Training log at 57.7M: win 0.00%, reservoir minimum
+  depth 86.1% of d0.
+* REFERENCES ON THIS MAP (bars, never constants; ledger 2026-09-11 round 40 and 2026-09-15). This
+  is the first map of the series that older recipes of this project already finish from
+  scratch, so the question is not only "does it finish" but "by what step":
+  plain from-scratch control pnCTL 19.3% at 0.5B-1.0B (0 finishes); the frontier-curriculum
+  family first finishes at 0.61B (pnFRONT3Bs) and 1.16B (pnANCHU), 9/9 by 1.2B-1.9B, finish times
+  about 32-33 s (best 31.93 s); the ratchet-only finisher first finish 0.75B, 9/9 by 1B. All of
+  those were on other cards: compare step-matched only, never on wall clock.
+* HOW IT WILL BE READ: greedy finishes from the true start (the grader, score.py; the finish box
+  is the trigger's clip hull) and the step of the first finish and of the first 9/9; the route
+  column of tools/eval_honesty.py --order-only 16 on the record ruler as a second look
+  (measurement only). The training win rate is reported only with the reservoir minimum depth
+  beside it (this map is where a win rate of 18.46% once came with 0 of 45 greedy finishes).
+  Stand-still rule as on the other maps: no movement of the best greedy progress over about
+  1.5B steps with searches returning no line = a null, bundle and release. On a finish: run on
+  to a stable read of the finish rate and time, bundle (checkpoint, eval trajectories, run.json,
+  auto/k*/), release.
