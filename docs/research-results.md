@@ -38973,3 +38973,108 @@ order of about 15:00 UTC, is surf_petrus_lite with the same recipe (its own laun
   1.5B steps with searches returning no line = a null, bundle and release. On a finish: run on
   to a stable read of the finish rate and time, bundle (checkpoint, eval trajectories, run.json,
   auto/k*/), release.
+
+## 2026-11-11 16:54 UTC: m5sib_pl at 1.63B steps - petrus NOT finished: the greedy sits at September's gate B (20.2-21.1%) since 0.15B; three search lines adopted, none learned; what the lines are, and a blind band in the curriculum
+
+Interim entry (the run is live; box 60226641, RTX 5080, one seed, the frozen sidistic recipe, flags
+unchanged since the launch entry of 15:46 UTC). Throughput 397k-400k steps/s (about 1.43B steps per
+hour). Trainer's own counter at 1.629B: "stuck 1,477.4M best 7,154u"; win 0.00% with reservoir
+min depth 78.5% (the reservoir has not passed the gate either); unstuck T at its cap 0.20.
+
+**Evals (greedy, true start, 9 episodes each; `autoresearch/score.py`). 22 evals, 198 episodes, 0 finishes.**
+
+| step | best progress | median | finishes |
+|---|---|---|---|
+| 524k | 1.7% | 1.6% | 0 / 9 |
+| 76.0M | 18.5% | 17.8% | 0 / 9 |
+| 151.5M | 20.2% | 20.0% | 0 / 9 |
+| 227.0M | 20.4% | 20.2% | 0 / 9 |
+| 302.5M .. 529.0M (4 evals) | 20.5-20.7% | 20.4-20.6% | 0 / 9 |
+| 604.5M .. 755.5M (3 evals) | 20.7-20.9% | 20.7% | 0 / 9 |
+| 831.0M .. 981.9M (3 evals) | 20.6-20.8% | 20.6-20.7% | 0 / 9 |
+| 1,057.5M | 21.0% | 20.6% | 0 / 9 |
+| 1,133.0M .. 1,284.0M (3 evals) | 20.6-20.7% | 20.6% | 0 / 9 |
+| 1,359.5M | 21.1% | 20.6% | 0 / 9 |
+| 1,435.0M | 21.1% | 20.6% | 0 / 9 |
+| 1,510.5M | 20.7% | 20.6% | 0 / 9 |
+| 1,586.0M | 20.6% | 20.6% | 0 / 9 |
+
+Second look (measurement only; `tools/eval_honesty.py --route maps/surf_petrus_lite.wrroute.npz
+--order-only 16`, a record-derived ruler of 38,784 u that is never a training input): corridor max
+1,536 u (524k), 7,808 u (76M), 8,320 u (151M), 8,448 u at every eval from 227M to 1,586M except
+8,576 u (1,057M) and 8,960 u (1,359M and 1,435M, one episode each); 0 finishes, 0 dives. This is
+September's gate B (`pnCTL`: 7,936-7,978 u on the same ruler, 8.5-8.7 s, end z -470..-477; ledger
+round 40, the `petrusnight` and `pnM1` entries of 2026-09-11).
+
+**Where the greedy stops (eval at 1,435.0M, all 9 episodes alike).** Every episode fails after
+8.45-9.25 s at about (570, 2390, -460) falling at vz about -790; peak horizontal speed
+1,325-1,355 u/s at 2.85 s. Path of episode 0: spawn (-3872,3074,592) -> (-2423,3107,-518) at 3.0 s
+-> (-1667,1892,-82) at 4.5 s -> back north (-1309,3060,-289) at 6.0 s -> (-372,3490,-180) at 7.0 s
+-> (-15,3246,-57) at 7.5 s -> (259,2844,-134) at 8.0 s -> (548,2440,-411) at 8.5 s. Against the
+ruler: it turns south 400-500 u west of the ruler's turn ((265,3518,-240) -> (508,3272,-359) ->
+(902,2659,-244) -> (1080,2326,-214)) and ends 475 u from the nearest ruler vertex, about 200 u
+below it: it falls short of the next ramp, which the ruler rides south along x about 1,060-1,080
+at z -214..-255.
+
+**Searches (tree search "mcts" beside the training, 6 minutes each, 2,048 envs; `beam_finished` 0 in all).**
+
+| search | from step | ended at | greedy frontier d (banked) | cells | search best (banked / deepest raw) | greedy in the search (banked / raw) | line: states, end d | outcome |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 524k | 132.1M | 35,431 | 702 | 5.76% / 5.93% | 0.82% / 0.82% | 3,721, 33,845 | STALE, discarded (the greedy was at 30,539 by then) |
+| 2 | 453.5M | 587.7M | 30,540 | 2,261 | 21.86% / 22.41% | 4.60% / 4.63% | 1,729, 28,085 | ADOPTED; success line d <= 28,185 |
+| 3 (patience) | 906.5M | 1,038.1M | 30,543 | 782 | 21.96% / 22.43% | 15.01% / 20.68% | 5,169, 28,047 | ADOPTED, replaces line 2; success line d <= 28,147 |
+| 4 (patience) | 1,359.5M | 1,484.8M | 30,545 | 789 | 22.06% / 22.49% | 15.03% / 20.70% | 3,925, 28,014 | ADOPTED, replaces line 3; success line d <= 28,114 |
+
+md5 of the lines (copies in /home/steam/ar_m2/runs/m5sib/pl_auto/k01..k04): 23fdf708184ebd4b22332cbd0eb65b4e,
+4ecd3392eac58fc324117d98ae363bf8, 9f51995234270da8a983b6d8525c76a9, 0fd23fd6c72520e06c682a812e722de8.
+Every eval from 604.5M to 1,586.0M printed "0/9 greedy episodes past the success line".
+
+**What the adopted lines are (read-out of the spine files; measurement only).** Lines 2 and 4 fly
+the greedy's own path for about 9 s, then reach the foot of the next ramp almost stopped (line 2:
+36 u/s at 9.69 s at (1079,2345,-288)) and stay within about 100 u of (1000-1080, 2290-2445,
+z -240..-476) for 7.6 s (line 2) and 29 s (line 4), off the ground the whole time (`onground` -1),
+at under 100 u/s on 497 of 1,729 and 1,761 of 3,925 ticks, while the banked d creeps down by tens
+of units; then they slide off south and fall (line 4 ends at (1063,2076,-462), vz -240). The ruler
+passes 230 u from the hang, 100-250 u higher. So the lines do not carry what the gate asks for
+(arrive on that ramp higher and with speed); they are the search's way of banking a little more d
+on a contact surface with no speed.
+
+**The "2,500 u gain" is banked against raw.** The adoption rule compares the line's banked end
+(28,014-28,085) with the greedy's BANKED frontier (30,54x = 15.0% of d0, its last contact before
+the final flight), which is where the 2,460-2,530 u come from. The greedy's raw depth in that
+flight is 20.7% (d about 28,500). In raw terms the searches reach 22.4-22.5%: about 640 u past the
+greedy at the deepest tick, about 420-490 u at the lines' ends. Lines 3 and 4 improved on the
+line they replaced by 38 u and 33 u.
+
+**Curriculum (backward along the current line; `python/surfgym/respawn.py`).**
+
+* Line 2 (adopted 587.7M): 18 advances in 45M steps to starts [1093,1728] (success 97-100%, 68.3%
+  at the last one, 632.8M), then NO advance and NO backoff for 405M steps, until line 3 replaced it.
+  Cause, measured on the spine file: the line stands almost still there (6 u/s), and all 5 states of
+  the band [1093,1097] share their position key (origin rounded to 0.1 u) with later states
+  1135-1138; the key table keeps the LATER index, so every episode spawned on the band is credited
+  outside it, the band never reaches `--demo-min-ep 50` and `_move` does nothing. 46 states of line
+  2 (1077-1134) are mis-credited this way; 27 band positions are fully blind. `--demo-match-band`
+  exists for repeated origins and is not part of the frozen recipe. Generic bookkeeping defect: any
+  line with a stretch that stands still can blind the curriculum without a word in the log.
+* Line 3 (adopted 1,038.1M): 98 advances and 73 backoffs in 447M steps; 100% down to state 5093,
+  26.9% at 5053, then flip-flops (advance at 20-62%, backoff at 0-19%); at [3993,5168] when line 4
+  replaced it. No blind band on this line (5 mis-credited states, never 5 in a row).
+* Line 4 (adopted 1,484.8M): 49 advances and 7 backoffs in 145M steps, at [2304,3924] with
+  70.7-84.6% success at 1.629B. All of this is still inside the hang; the flight in starts near
+  state 1000. No blind band on this line.
+
+**Reading so far (not a verdict).** At 1.63B steps the frozen recipe is level with September's
+plain control on this map (`pnCTL`: gate B, 0 finishes) and behind every older finisher (round 40's
+frontier family: first eval finish at 504.4M, 554.7M and 1,007.7M, 9/9 by 1.2B-1.9B; other cards,
+step-matched only). Three generic things in the search loop show here, none with a map constant in it:
+(1) the adoption test mixes banked and raw depth when the greedy dies in flight, so a line that
+hangs on a surface a few hundred units further "gains" 2,500 u; (2) the search ranks by banked d,
+saturates at 782-789 cells and prefers creeping in contact over arriving fast, which is the
+opposite of what a surf gate needs; (3) a patience search replaces the current line every 3e8
+steps with one a few tens of units deeper, and the curriculum starts again at its end
+(cannonball's open item 2); plus the blind band above. The run goes on to its deadline
+(21:36:34 UTC, about 8B steps) unless the user stops it; no constant is touched and no extension
+is asked for. Scoreboard of the frozen recipe (one seed per map, no constant changed): sidistic
+finished (7.248B), princessburglar null (12.86B), blue200 null (4.14B), cannonball finished (first
+finish 2.718B, 9/9 at 3.247B), petrus: no finish at 1.63B, run live.
