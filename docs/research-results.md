@@ -37988,3 +37988,75 @@ line or root of this entry may enter a training run.
   was asked for the file. The planned launch is the frozen recipe of arm A (m2sib_pb1's flag list,
   nothing changed; --maxvel is the server's, an environment value), from scratch, one seed, one box;
   cannonball only after edgeflow finishes. Credit 33.66 USD at 06:00 UTC, reserve 10, no box up.
+
+## 2026-11-11 07:30 UTC: THIRD MAP - the frozen sidistic recipe LAUNCHED on surf_edgeflow_blue200 (m3sib_b200, from scratch, one seed, one box)
+
+* WHY: the user (about 06:38 UTC, entry above): "there's also my benchmark map for exploration ...
+  Surf Edge Flow /200 ... Let's try our method on this map. See how it goes. After that, if it
+  finishes, let's try Cannonball." At about 07:10 UTC: "Files are brougt". Nothing here is a recipe
+  win by itself (0b: same flags, same constants; one seed, one map); cannonball follows only if this
+  finishes.
+* FILES the user brought to the droplet at 07:03 UTC (~/ar_m2/maps, written by an operator session
+  on the user's PC; md5 equal to its README): blue200_maps.tar.gz dfa594a3d60ae4947f52e186466ce837,
+  blue100_maps.tar.gz 9fe50261507beea1ca1e8864898f80f8, cannonball_maps.tar.gz
+  394b7cd5b26f1b8a42264c6c5f460757, petrus_lite_maps.tar.gz 3ece9fc4f8c845ed9b6b9ed7ad3e40be,
+  celestial_maps.tar.gz 3cb6edd036ccaa114f4c9ed64335014d. None carries goalc_32 (the
+  --race-no-corner-cut field); only cannonball carries faceid_32 (--obs-normal).
+* CHECKS BEFORE RENTING (droplet CPU, seconds each, under nice):
+  - the map loads on the fixed core (6bd7f931 tables): 31 entities, 1 trigger_multiple, 1
+    trigger_teleport (the fall net, target edgeflow_reset), 16 spawn points;
+  - the finish is trigger_multiple *1 (targetname edgeflow_finish); its clip hull is a PLAIN BOX equal
+    to the zones end box ([1552,1232,296] .. [2160,1600,416]; GoalHull.match -> model 1, plain_box
+    True), so the box test is the game's test (the lesson of the unitfarmer2 finish bug);
+  - spawns: 16 states, x 1664/1792/1920/2048 at y -1584, -1472, -1360 (z 600) and y -1248 (z 604,
+    lifted clear by map_spawn_pool); 40 idle ticks from each: 0 dead, 0 goal hits (blue050's dead
+    y -1248 row of September does not recur);
+  - goalc_32 baked with tools/bake_nocut_field.py --device cpu (29 s): 747,305 reachable voxels, the
+    start stays connected, start geodesic 2,672 u in both fields (+0), max geodesic 5,436 u; md5
+    175ce04adfabceba2f52fbad0e942420. Shipped to the box as ~/ar_m2/maps/blue200c_maps.tar.gz (md5
+    b49b6f857e44c0ca8984c8c160615b0a) = the user's nine files + this one, so the trainer and score.py
+    read one field. faceid_32 was baked by the trainer on the box (130,427 surface voxels).
+* BRANCH m3/sib, commit 661af7a7 = m2/sib a00a3fee + autoresearch/config.json (map, field, start_d
+  2672, maps_tarball, doc strings, and the recipe's --maxvel back to sidistic's 4000) +
+  maps/surf_edgeflow_blue200.zones.json ("source": "manual", from the user's tarball). No trainer
+  code changed. --maxvel: the princessburglar arms ran 3500 (that map's server physics); edgeflow has
+  no such setting on record, tools/run_arm.sh pins 4000 on every scratch run and September's edgeflow
+  runs used that default. So this run is sidistic's token list literally.
+* LAUNCH 07:26:37 UTC through box.py -> tools/run_arm.sh (SCRATCH=1):
+  MAP=maps/surf_edgeflow_blue200.bsp BUDGET=60000000000 RECORD_EVERY=75e6 SCRATCH=1 bash
+  tools/run_arm.sh m3sib_b200 --envs 1024 --obs-normal 1 --simba 1 --ep-ticks 30000 --unstuck
+  --unstuck-reach eval --respawn-margin 2 --unstuck-max 0.2 --unstuck-temp-heads keys --obs-surf 1
+  --surf-bonus 0 --obs-compass 1 --obs-pot-rate 1 --race-ratchet --race-no-corner-cut 1 --time-pen
+  0.001 --stall-eps 5 --pitch-sigma-min 0.05 --eval-patience 30 --eval-parallel 1 --front-temp 1
+  --front-band 0.01 --energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1 --maxvel 4000
+  --auto-spine --auto-spine-scratch --auto-spine-async --auto-spine-recheck --auto-spine-banked
+  --auto-spine-explorer mcts --auto-spine-mcts-minutes 6 --auto-spine-envs 2048
+  --auto-spine-ge-minutes 0 --auto-spine-patience 3e8 --auto-spine-retry 3e8 --demo-success-d 100
+  --demo-window 5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50
+  --demo-front-frac 0.5 --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'
+  The stored run.json against the sidistic original (azr1b2_pool), key by key: only map,
+  obs_potential_d0 (edgeflow_blue200 2672.5 for sidistic 99674.75), the run's own spine0 path, the
+  commit, the label and the start time differ. Against arm A (m2sib_pb1): the same plus maxvel 4000
+  for 3500.
+* PROVENANCE: no checkpoint (scratch), no demo, no route, no spawn-state file. The first "spine" is
+  the map's spawn state (2 rows, --auto-spine-scratch); every later one is this run's own search.
+* BOX: 60179848, RTX 5080, 0.282 USD/h (machine 146166, Minnesota; the cheapest passing offer), ready
+  in 31 s, health check "healthy", deployed 07:26:22. Record gate PASSED (POV render, greedy, stoch,
+  mixed). Fleet watchdog: deadline 2026-11-11T13:24:36Z (6 h from the rent), harvest spec
+  "43057 66.44.155.253 m3sib_b200" at deadline - 20 min, pid file runs/m3sib_b200.pid. Dashboard on
+  the box (port 8600), tunnel on the droplet: http://localhost:8601/ . Credit 33.65 USD, reserve 10.
+  Bus post 20261111T072438Z_claude_fb92d4 before the rent (inbox empty).
+* FIRST MINUTES: the eval at 524,288 steps put 9/9 greedy episodes past the spawn "line" and search 1
+  started beside the training (greedy frontier d 2,433); 33.0M steps at 07:29:30, throughput still
+  climbing (200k steps/s average so far).
+* HOW IT IS READ: finishes from the true start inside the finish trigger, and the step of the first
+  finishing eval; without one, the best progress on the grader field (score.py, start_d 2672) and
+  where the greedy stops. Reference on this map (entries 2026-09-15 23:55, 2026-09-26/27): the way
+  to the finish first gives back 2,204 u = 82.5% of d0; the September recipe never finished greedily
+  from the start in 2B steps; the planner-free pipeline finished 8/9 at 228M.
+* A CAVEAT WRITTEN DOWN BEFORE THE RESULT: the recipe's constants in map units were set on a 99,675 u
+  map and stay as they are on a 2,672 u one: a new line must beat the greedy frontier by 200 u
+  (7.5% of d0 here, 0.2% on sidistic), --demo-success-d 100, the plateau detector's 500 u. They are
+  not touched (0b); if the run fails on one of them, that is a finding about the recipe (constants
+  in absolute units do not carry across map sizes), not a reason to tune them for this map.
