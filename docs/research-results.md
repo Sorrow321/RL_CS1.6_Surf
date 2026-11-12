@@ -41449,3 +41449,103 @@ Run `fxpb_t2` is up: the 91 tokens of the pre-launch entry (the 89 of try 1 plus
 
 Cuts and read-outs: as fixed in the pre-launch entry (5B; stop at 0.5B if the yaw sigma is
 at its clamp again; a pit line's walk-back flat for 2B; 8B at most).
+
+## 2026-11-12 10:26 UTC: fix round TRY 2 FINAL - fxpb_t2 stopped at its sanity cut: --yaw-entropy 0 does not keep the yaw sigma down
+
+Run `fxpb_t2`: the 89 try-1 tokens plus `--yaw-entropy 0` (91 tokens, `--maxvel 3500`), from
+scratch at the true start, seed 0, one RTX 5080, config commit `3663ee4c` on `fx/pb`. Launched
+09:54:16 UTC. Stopped by hand at step 517,472,256 (10:17:53 UTC) by the cut fixed in the
+pre-launch entry: "the yaw sigma at its clamp again at 0.5B (the piece did not do what it is
+for: stop)". One seed.
+
+### Result: the piece does NOT keep the yaw sigma down. princessburglar did not move.
+
+Yaw sigma at matched steps (launch logs; pitch sigma in brackets):
+
+| steps | try 1 (`fxpb_t1`, bonus on) | try 2 (`fxpb_t2`, `--yaw-entropy 0`) |
+|---|---|---|
+| 5.2M | 0.318 | 0.307 |
+| 10.0M | 0.337 | 0.317 |
+| 19.9M | 0.414 | 0.347 |
+| 29.9M | 0.558 | 0.421 |
+| 49.8M | 0.950 (0.500) | 0.675 (0.500) |
+| 75.0M | 1.744 | 1.125 |
+| 100.1M | 2.718 | 1.737 |
+| 124.8M | 2.718 | 2.552 |
+| 149.9M on | 2.718 | 2.718 |
+
+* **Without the bonus the sigma reaches the 2.718 clamp anyway, about 50M steps later**
+  (150M against 100M), and stays there to the stop at 517M. The run's `run.json` carries
+  `yaw_entropy 0.0` and the trainer printed "the yaw head's entropy term is OFF", so the flag
+  was in force.
+* **The pitch sigma tells the same story:** it has had no bonus since the absolute view
+  became the default, and it sits at its own 0.500 cap from 44M steps in try 1, try 2 and the
+  frozen run. On this map the policy gradient itself pushes both view sigmas up.
+* **So the 09:37 entry's reading "the entropy bonus pushes that sigma up" is wrong as the
+  cause here**, and so is October's note "while a run is stuck the entropy bonus is the only
+  force on that sigma" (pbr1b4 notes, 2026-10-23). The bonus makes the climb about 1.5 times
+  faster; it is not the cause.
+* **The October trace I leaned on was not like for like.** `pbr1b1_bcur5` (yaw sigma 0.084
+  at 10M, 0.011 at 800M with `yaw_entropy 0.0`) did not start from a fresh draw in the quiet
+  start room: its log says "resumed runs_ckpt.pt at step 0" (a warm start, sigma 0.078 at the
+  first step line) and it spawned on a spine curriculum. I should have checked that before
+  using it as the piece's expected trace.
+* Other diagnostics, as in try 1: kl 0.024 at the start, 0.19-0.30 from 200M on; stall kills
+  100%; episode length 1,600-2,000 decisions.
+
+### What the run did in its 517M steps
+
+* Search 1 (fired at 524,288; 674 s beside the training): the tree line ended at d 56,916
+  (not past the reference), the held archive kind returned a chain from root 1,931: NEW SPINE
+  from beam+ge, 4,743 states (47.4 s), end d 55,349 on the ground at (809, -2704, 3332),
+  adopted at 230,162,432; success line d <= 55,449. The same kind of first line as try 1's.
+* Greedy from the true start: 0/9 past the line at 302.5M, 378.0M and 453.5M; frontier
+  56,936-56,938 (57,062 at the first eval). Grader 0.3-0.4% at all 7 evals, 0 finishes.
+* Curriculum: stuck one step from the line's end region, moving between starts 3,392 and
+  3,397 of 4,742 (band success 21-24% then 7-8%, backoff), as in try 1.
+
+Read-outs fixed in advance: (1) the sigma trace: FAILED, at the clamp; (2) the greedy leaves
+the start room: not in 517M (frozen 2.95B, so this says nothing at this length); (3) a pit
+line adopted and walked back: no search reached the pit in 517M. "Moved": no.
+
+### What this does and does not show
+
+* Shown: on princessburglar the yaw noise goes to its ceiling with or without the entropy
+  bonus; `--yaw-entropy 0` is not the piece.
+* NOT shown, still: that the noise is why the handed lines are not learned. The piece never
+  got the noise down, so the question it was run for was not asked.
+* Measured across the program, all runs from scratch (max yaw sigma over every step line of
+  the launch log): blue200 0.304 (frozen 0.304), unitfarmer2 0.327 (0.324), celestial 0.336
+  (0.353), petrus 0.318 (0.321), frozen cannonball 0.387, frozen sidistic 0.332;
+  princessburglar 2.718 in all three runs (frozen, try 1, try 2). The pitch sigma never
+  passes 0.301 on the six others. The sigma starts at 0.30 and on six maps it only falls.
+* Not measured: what pays for the noise in the start room. Three candidates: the novelty key
+  holds 8 view sectors (`--int-view 8`, the launcher's pin), so turning the view earns
+  intrinsic reward where nothing else pays; intrinsic reward in general; the stall kill.
+
+### Box, cost, bundle, provenance
+
+* Box 60338328 (RTX 5080 16 GB, $0.387/h, machine 156173): created 09:52:36, trainer launched
+  09:54:16, stopped 10:17:53, released 10:21:36 UTC (through box.py; gone on the fleet list,
+  2 live after it) = 0.48 h = about $0.19. No OOM, no traceback. Tunnel 8601 stopped. The
+  host was healthy and is not blocklisted.
+* Bundle on the droplet, md5 equal to the box (taken after the trainer stopped):
+  `/home/steam/ar_m2/runs/fxpb/fxpb_t2/` (7 eval trajectories, md5 of the md5 list
+  94acbf37873a30fe256027fa49f13262; run.json e7423cf142751fe7356990db80f770a6; progress.csv
+  bef0c7b84bffa5d903a429c0dfc2270b; launch log 73344fd1e2c3a683b1247d1fcb92e875),
+  `ckpts_t2/ckpt_latest.pt` (509b123b52241219f4d82b81e63f6b6b, 517M), `auto_t2/` (spine0.npy
+  and k01, line md5 4679a88884846e68c061ff7d7c00809f).
+* Provenance: from scratch; spawn states only from the run's own `auto/spine0.npy` and its
+  own search line; nothing record-derived and nothing of October's princessburglar work
+  entered. The checkpoint is clean and is not a result.
+
+### Where the fix round stands
+
+Try 1: blue200 FINISHED, celestial FINISHED, petrus FINISHED, unitfarmer2 NULL,
+princessburglar NULL at the early cut; sidistic (3.56B, no finish yet, cut 9.0B) and
+cannonball (3.09B, no finish yet, cut 4.3B) are running. Try 2 (this entry): stopped at its
+sanity cut for about $0.19. One try is left under the cap of three. The candidate, to be
+pre-registered in its own entry before any launch: the pitch head's OTHER rule for the yaw
+head, a ceiling on its sigma at 0.5 (`--yaw-sigma-max 0.5`, built twice in October, on
+princessburglar and on za_loop, never ported to this code line). On the six other maps the
+sigma never passes 0.39, so that ceiling is never touched there.
