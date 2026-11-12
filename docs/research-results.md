@@ -40147,3 +40147,128 @@ rate and best time), re-record a finish at `--maxvel 3500` before it is put besi
 record, then bundle and release. Deadline 10:20:44 UTC on 2026-11-12; no constant has been
 touched. A finish here would be one seed on one map: the scoreboard stands at three of six
 (sidistic, cannonball, petrus finished; princessburglar, blue200, unitfarmer2 null) until then.
+
+## 2026-11-12 00:10 UTC: m7sib_cel INTERIM - FIRST FINISH and first 9/9 on celestial at 1,585,971,200 steps; 34 of 36 since, best 43.86 s
+
+Interim entry (the run is live; box 60270811, RTX 4080, one seed, flags unchanged since the launch
+entry of 22:33 UTC; 1.85B steps at 00:08 UTC on 2026-11-12, about 310k steps/s = 1.11B steps per
+hour). It continues the interim entry of 2026-11-11 23:39 UTC.
+
+**The result.** The frozen sidistic recipe finishes surf_src_celestial from the true start. First
+greedy finish and first 9/9 in the SAME eval, at 1,585,971,200 steps (about 85-90 minutes of
+training). The four evals from there read 9, 8, 8, 9 of 9: 34 of 36 greedy episodes finish,
+43.85-45.21 s, best 43.86 s by the grader. All 21 evals before it (189 episodes) are 0 finishes.
+
+**Evals (greedy, true start, 9 episodes; grader `autoresearch/score.py`; no route ruler exists for
+this map, so the physical column is the closest approach of each episode to the finish trigger's
+box, read from the eval trajectory; "banked" = the trainer's greedy frontier d, d0 61,069).**
+
+| step | best / median % | banked d | finishes | closest approach to the finish box / finish times (s) |
+|---|---|---|---|---|
+| 1,133.0M | 92.6 / 91.8 | 6,458 | 0 / 9 | 3,289-3,305 u (never in the last corridor; the % is a fall) |
+| 1,208.5M | 99.3 / 99.2 | 2,948 | 0 / 9 | 8 episodes 434-572 u, 315-440 u under it, at about 45 s |
+| 1,284.0M | 98.3 / 98.3 | 2,903 | 0 / 9 | 8 episodes 967-1,070 u, 920-1,040 u under it |
+| 1,359.5M | 98.4 / 98.3 | 2,835 | 0 / 9 | 7 episodes 970-1,013 u |
+| 1,435.0M | 99.2 / 98.6 | 2,875 | 0 / 9 | 6 episodes 543-903 u |
+| 1,510.5M | 100.0 / 99.6 | 621 | 0 / 9 | 4 episodes 49-109 u, passing 46-108 u UNDER its lower edge; 3 more 273-517 u |
+| **1,586.0M** | 100 / 100 | 2,701 | **9 / 9** | 44.88 44.97 44.84 44.79 44.93 44.95 44.71 45.00 45.12 |
+| 1,661.5M | 100 / 100 | 2,823 | **8 / 9** | 45.21 45.05 45.20 45.07 44.93 45.15 44.86 45.20; 1 fail |
+| 1,737.0M | 100 / 100 | 2,714 | **8 / 9** | 44.15 43.94 43.94 44.12 44.26 43.95 44.07 43.85; 1 fail |
+| 1,812.5M | 100 / 100 | 2,730 | **9 / 9** | 44.89 44.59 44.40 44.73 44.73 44.56 44.71 44.66 44.47 |
+
+(Times in the table are the last recorded tick of each episode; the grader's best per eval is
+44.72, 44.87, 43.86 and 44.41 s.)
+
+* The finishes are inside the finish trigger. The trigger (`trigger_multiple` *142) is a plain box
+  equal to the zones `end` box, mins (6960.9, 5007.14, -3524.8), maxs (6968.0, 6594.74,
+  -2209.36): a 7.1 u curtain facing west. All 34 finishing episodes end "done" with last recorded
+  positions x 6,929..6,945, y 5,369..5,517, z -3,342..-3,436, moving +x at about 1,500-1,740 u/s
+  and climbing (vz +156..+321): inside the curtain's y and z, 16-32 u (one tick) before it.
+* The game's second stop trigger *143 (the west curtain of the mirror branch, x 1,568..1,593) is
+  not counted by the simulator. No episode goes near it: the closest approach to it over the ten
+  evals above is 857 u (one episode at 1,359.5M, on its way down to the kill level); the
+  finishing episodes stay 3,250 u or more from it.
+* The two failures since the first 9/9 are both early deaths on the void floor of the fork room:
+  (740, 1104, 540) at 16.19 s and (-3341, 4493, 535) at 17.01 s. The fork is still where the
+  greedy is least reliable.
+* The banked frontier reads 2,701-2,823 on the finishing evals and the trainer prints "0/9 greedy
+  episodes past the success line" on every one of them: with `--auto-spine-banked` the depth is
+  banked at the last contact and the finish is reached in flight. A finish is not a quorum event
+  (cannonball's open item 1, seen again; nothing is changed in this run).
+
+**The last 450 u, and the searches since the 23:39 entry.**
+
+| search | trigger, step | ended | greedy frontier d | line: states, end d | outcome |
+|---|---|---|---|---|---|
+| 5 | quorum on line 3 (held by the retry clock), 1,284.0M | 1,372.6M | 2,903 | 4,450, 1,292 | adopted (d <= 1,392); greedy 0/9 past it at 1,435.0M, 5/9 at 1,510.5M |
+| 6 | quorum, 1,510.5M | 1,601.7M | 621 | 4,553, 175 | adopted (d <= 275), AFTER the first 9/9 |
+
+* Search 5 (830 waves, 1.70M nodes, 262,668 cells, `beam_finished` 0): a 44.50 s line that ends
+  almost at rest (85 u/s) at (6019, 6588, -4423), about 900 u under the curtain's lowest z and
+  940 u west of it. Not a finish: a hang under the finish.
+* Search 6 (920 waves, 1.88M nodes, 145,870 cells, `beam_finished` 0): a 45.53 s line that ends
+  at (6793, 5031, -3645) moving (449, -1862, 178): 168 u short of the curtain in x and 120 u
+  under it, flying along it. Not a finish either. Its checkpoint was taken at 1,510.5M, 75M
+  steps before the greedy's first finish.
+* So no search line reaches the finish; the policy found the curtain itself. What a line did
+  give: line 3 carried it through the fork (23:39 entry); from 831M to 1,208.5M the greedy flew
+  from 49% to 434 u from the curtain with no new line; line 5's curriculum then spawned it on
+  the last stretch for 213M steps, and the first training wins appeared between 1,499.5M and
+  1,512.6M (0.58% @ 26.8 s), about 140M steps after line 5's adoption, the first greedy
+  finishes 73M steps later. One seed: whether line 5's spawns or the policy's own approach
+  closed the last 450 u is not separated. Line 6 had no part in the first 9/9.
+* Line 6's curriculum has walked back from its end to state 1,662 of 4,552 by 1.85B (band
+  success 42-98% on the way, backoffs near state 2,050 at 3-5%). The greedy held 8-9 of 9
+  through it so far. The patience clock (1,601.7M + 3e8) will fire search 7 at the eval of
+  1,962.9M.
+
+**Training win rate, with the reservoir minimum depth beside it.** 0.00% in every step line up
+to 1,499.5M (mind 0.6-1.6% from 1.19B). Then 0.58% @ 26.8 s at 1,512.6M (mind 0.22%), 88-92%
+@ 16.5-21.2 s from 1,525.7M to 1,578.1M, 19-20% @ 26-28 s at 1.60B-1.62B, 74-92% @ 9-24 s from
+1.63B to 1.85B; mind 0.000% from 1,525.7M on. These are wins from curriculum spawns on the last
+9-24 s of lines 5 and 6 and from a reservoir that reaches the goal: harvest-flattered, a
+diagnostic only. The evidence is the greedy evals from the true start above.
+
+**Beside the bars on this map** (other cards, so step-matched only; never constants; all at
+`--maxvel 4000`): the plain and cross-map recipes never passed the fork (celDCcur3B 28-29% from
+0.75B to 3B, 0 finishes; jt3ANCHU 30% from 1.6B on). September's champion-free but hand-staged
+lineage gsCELunstuck..gsCELunstuck6 (pre-fork spawn windows, six resumes: not one recipe) had
+its first greedy finish after 2.5B steps (43.39 s) and a best of 42.04 s. This run: fork passed
+at 0.76B-0.83B, first finish and first 9/9 at 1.586B, best 43.86 s so far, with nothing staged
+and no constant set for this map. The human record is 34.76 s. This run's times are at the
+recipe's maxvel 4000; by the ledger's convention they are NOT put beside the record until a
+finish is re-recorded at `--maxvel 3500`.
+
+**Scoreboard of the frozen recipe (one seed per map, no flag or constant changed; unitfarmer2
+and princessburglar ran `--maxvel 3500`, their server physics).**
+
+| map | result | steps |
+|---|---|---|
+| surf_src_sidistic (where it was built) | finished | 7.248B (run 5: 8.230B) |
+| surf_princessburglar_b26 | null | 12.86B |
+| surf_edgeflow_blue200 | null | 4.14B |
+| surf_src_cannonball | finished | first finish 2.718B, 9/9 at 3.247B, 61% of episodes after |
+| surf_petrus_lite | finished | first finish and 9/9 at 3.247B, 141 of 144 after |
+| surf_unitfarmer2 | null | 3.42B |
+| surf_src_celestial | finished (interim) | first finish and 9/9 at 1.586B, 34 of 36 since |
+
+Four of seven. One seed per map: a finish on one map with one seed is not a recipe win by
+itself. Here the recipe passes a gate (the fork) where the plain recipes stood for up to 3B
+steps, and then finishes; the three nulls stand.
+
+**Health.** No CUDA out-of-memory, no traceback in the log; GPU 4.8 of 16 GiB at 00:03 UTC;
+bus inbox empty; credit $28.04; the box's deadline is 10:20:44 UTC.
+
+**Files.** Search lines k05 and k06 (spine.npy, spine.keys.npy, spine.json, auto_spine.log,
+beam.log) copied to /home/steam/ar_m2/runs/m7sib/cel_auto/ and md5-checked against the box: k05
+spine a241dfec678467c4046a8f9424e020ab, k06 spine 911d91d8abb4ff5609ac6539ec9d9427 (k01-k04
+and spine0 in the 23:39 entry). 25 eval trajectories, progress.csv and the launch log are in
+/home/steam/ar_m2/runs/m7sib/m7sib_cel/ (run.json md5 9d170cc235e5b963f20160deb27c53e3). Every
+line is the policy's own search output on the trainer's field; no record-derived file is in the
+run.
+
+**Plan.** Stable read: the run goes on to about 2.5B steps (about a dozen evals after the first
+9/9: finish rate and best time, and whether line 6's curriculum or the patience search
+disturbs the greedy as on cannonball). Then a finish is re-recorded at `--maxvel 3500` on the
+box, the run is bundled (md5) and the box released, well ahead of the deadline. No constant has
+been touched.
