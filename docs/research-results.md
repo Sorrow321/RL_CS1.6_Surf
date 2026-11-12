@@ -40672,3 +40672,58 @@ as the acceptance line (55,082-55,113 against about 55,100), so adoption is a co
 crossing, and learning the launch took October 2.4B steps with parts this recipe lacks.
 unitfarmer2: null. If the stage hands back lines and the policy does not learn them, try 2
 adds ONE generic learning piece and nothing else.
+
+## 2026-11-12 05:55 UTC: fix round try 1 LAUNCHED - fxpb_t1, fxb200_t1, fxuf2_t1 (89 tokens, from scratch)
+
+Try 1 of the fix round is running: the 89 tokens of the entry above, from scratch at the true
+start, one seed (0), one box per map, nothing else changed. Branch heads on the boxes: fx/pb
+`e31169f5`, fx/b200 `53fbdf4a`, fx/uf2 `d2eeef14` (each = fx/sib `1b456e42` + its config.json).
+
+| run | launched (UTC) | box | card | USD/h | machine | watchdog deadline (UTC) | dashboard |
+|---|---|---|---|---|---|---|---|
+| `fxb200_t1` | 05:41:05 | 60314286 | RTX 5080 16 GB | 0.309 | 146166 | 13:38 | localhost:8602 |
+| `fxpb_t1` | 05:41:27 | 60314356 | RTX 5080 16 GB | 0.387 | 154401 | 17:39 | localhost:8601 |
+| `fxuf2_t1` | 05:42:17 | 60314419 | RTX 5080 16 GB | 0.301 | 155253 | 13:39 | localhost:8603 |
+
+* **Boxes.** Each ready in 18-31 s, `gpu_health` healthy, deployed, record gate passed (4
+  recordings each in 15-32 s: POV render, greedy, stochastic, mixed). Each watchdog entry
+  carries a harvest spec and the run's pid file (owner autoresearch). About 1.00 USD/h for the
+  three; credit 27.60 USD at the launch.
+* **Two boxes failed on the way, both blocklisted BEFORE the destroy and verified gone.**
+  60313698 (RTX 4080, machine 148127): ready in 29 s, then `exited / stopped` by itself 40 s
+  later, three looks over 70 s, no action of ours in the watchdog log (the same machine ran
+  m7sib_cel for 2.9 h the day before without a fault; reason `unreliable`). 60313759 (RTX
+  5080, machine 147973): still `loading` its image after 330 s.
+* **Provenance, from each run.json.** `demo_file` = the run's own `auto/spine0.npy` (the spawn
+  state), `route_file` and `bc_file` None, seed 0. The three configs differ from each other
+  only in map, the per-map d0 key, label, commit, start time and `maxvel` (4000 on blue200,
+  3500 on the other two). Against the frozen unitfarmer2 run (m6sib_uf2) 10 of 285 keys
+  differ: the six recipe keys (`auto_spine_ge_minutes` 0 -> 5, `auto_spine_args`,
+  `auto_spine_current_ref`, `auto_spine_patience_tau`, `auto_spine_finish_stop`,
+  `demo_match_band`) and own spine0, commit, label, start time. `git.dirty` is True on the
+  princessburglar box as in all four earlier princessburglar runs: the map tarball's
+  `zones.json` has CRLF line ends (`git diff --ignore-cr-at-eol` is empty).
+* **Start geodesics the trainer prints (kill-aware):** blue200 2,672 u, princessburglar
+  57,149 u (54,367 standard), unitfarmer2 30,648 u (30,343 standard): the figures of the
+  frozen runs. No bake line, no refusal, no traceback in any of the three launch logs.
+* **Search 1 on each box (fired at step 524,288, a random policy; a functional check of the
+  stage on a card, not a result).** blue200: the tree's line (d 2,016 against the frontier
+  2,433) passed the reference, so no archive stage ran; 365 s; discarded as stale (the
+  greedy was at 1,981 by then). unitfarmer2: the same (tree line d 29,584, stale against
+  29,468). princessburglar: the tree's line (d 56,908) did NOT pass the reference (56,995
+  minus 200), so the held archive ran: 300 s, 5.89M explorer runs, 15,245 cells, 0 goal
+  hits, and it handed back a 4,242-state line that ends in a held cell at d 55,353,
+  (808, -3272, 3332), 1,642 u of d past the frontier. The contact archive did not run (the
+  first kind had a line). The whole search took 673 s; the line was ADOPTED at 237.0M steps
+  ("NEW SPINE from beam+ge"). For scale only: the frozen run's reference at the pit was
+  55,300-55,382 and its greedy took 3.0B steps to get there; where this line ends
+  physically is read with the first evals. Explorer exit code 1 is "time over, no goal
+  hit", not an error (the replay check: 16 of 16 links, root error 0.0).
+* **Speed with a search beside the training:** 207k-305k steps/s in the first minutes
+  (blue200 305k at 140M steps). GPU memory 5.1-5.5 of 16.3 GiB with the tree stage running,
+  4.3-4.5 GiB without a search; the held-archive stage ran inside that (no OOM).
+
+**Read-out and cuts are the ones fixed in the entry above** (princessburglar 8B, blue200 4B,
+unitfarmer2 3B; "moved" = a greedy episode from the true start past the place the frozen run
+died, read physically, and finishes). Per search the ledger will say which stage handed back
+a line (tree, held archive, contact archive), where it ends and whether it was adopted.
