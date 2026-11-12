@@ -40727,3 +40727,118 @@ start, one seed (0), one box per map, nothing else changed. Branch heads on the 
 unitfarmer2 3B; "moved" = a greedy episode from the true start past the place the frozen run
 died, read physically, and finishes). Per search the ledger will say which stage handed back
 a line (tree, held archive, contact archive), where it ends and whether it was adopted.
+
+## 2026-11-12 07:03 UTC: fix round try 1 INTERIM - blue200 FINISHES; a pit line on princessburglar; the all-seven rerun plan
+
+Operator entry, branch `fx/sib`. Try 1 of the fix round (entry "2026-11-12 05:31 UTC", launch
+entry 05:55 UTC) at about 1.4B-1.8B steps per map. One seed per map; nothing is called yet.
+
+### blue200 (`fxb200_t1`): 9 of 9 from the true start, six evals in a row
+
+| eval step | greedy from the true start (grader) |
+|---|---|
+| 76.0M to 1,359.5M (18 evals) | 0/9, best 52.4-55.2%, deepest d about 1,977: in front of the void |
+| 1,434,976,256 | **9/9**, best 16.27 s |
+| 1,510,473,728 | 9/9, best 15.48 s |
+| 1,585,971,200 | 9/9, best 14.79 s |
+| 1,661,468,672 | 9/9, best 14.58 s |
+| 1,736,966,144 | 9/9, best 14.60 s |
+| 1,812,463,616 | 9/9, best 14.51 s |
+
+The frozen recipe on this map (`m3sib_b200`): 0 finishes in 4.14B steps, flat from 0.98B.
+
+* **What did it.** Search 1 (tree line, d 2,016): stale. Search 2 (tree line, 306 states, end
+  d 1,661): adopted at 575.1M, did not move the greedy. Search 3 (patience, fired at 906.5M,
+  greedy d 1,977, reference 1,661 = the current line's end): the tree's line ended at d 1,725
+  and did not pass; the archive stage ran, and its FIRST kind, the held archive, reached the
+  goal (`ge_goal` 1, `ge_end_d` 0): a 7,422-state line (74.22 s), adopted at 1,053.3M
+  ("NEW SPINE from beam+ge").
+* **The policy does not fly that line, it learns the route from it.** The curriculum walked
+  the line back at 40 states a move with 92-99% band success; the first 9/9 from the true
+  start came 382M steps after the adoption, when the curriculum was still at state about
+  2,800 of 7,421, and the greedy flies the map in 14.5-16.3 s against the line's 74.2 s.
+* **Not what the offline check predicted.** Offline (droplet, roots = the frozen run's
+  states, one seed) the contact kind reached the goal and the held kind did not in 10
+  minutes; on the box the held kind did it in its 5 minutes from this run's own roots. One
+  seed each way: the two kinds are not separated by this, and the contact kind has not run
+  on a box yet (the second kind runs only if the first hands back no line).
+* **`--auto-spine-finish-stop` does its job:** every eval since prints "9/9 greedy episodes
+  FINISH (...): no search", and no patience search has replaced the line.
+* The training win rate there (96% @ 12.4 s, reservoir minimum depth 3.4%) is the curriculum
+  spawning along a finished line: harvest-flattered, not the result. The result is the greedy
+  from the true start, above.
+
+Stable read fixed now: the 20 evals from the first 9/9, through the eval of 2,869,428,224
+steps; then bundle and release (the 4B cut was for a null; a finisher needs no more).
+
+### princessburglar (`fxpb_t1`): the archive stage handed back a line over the pit
+
+* Search 1 (adopted at 237.0M): held archive, a 42.42 s line that ends on the pit's near side
+  at (808,-3272,3332), d 55,353. The curriculum on it did not get past its last 8-10 s.
+* **Search 2 (patience, fired at 1,284.0M, adopted at 1,521.5M):** the tree's line ended at
+  d 56,909 (start room); the held archive returned a 25.33 s line, end d 55,098, that
+  **crosses the pit**: falls onto the ridge (z 3,346 at 18.2 s), is launched by its rising
+  end (vz +404 at x 561), lands on the east ledge at (982,-3155,3452) at 19.8 s, goes north
+  along the ledge and west along the north side, and ends on the ground at (755,-2688,3452).
+  The same take-off as the offline crossings of 2026-11-11 (ridge, launch, ledge). It passed
+  the acceptance line 55,153 (the reference 55,353 minus the 200 u gain) by 55 u.
+* The frozen recipe never had such a line: 0 pit lines in 12.86B steps, and 0 in 12 pit
+  searches of the diagnostic arm.
+* **Not learned yet.** The curriculum walked back from state 2,532 to about 1,950 in 215M
+  steps and has stood at 1,947-1,952 for 90M since (band success 24-42% at 1,952, 11-12% at
+  1,947): that is the last 0.2 s of the flight before the touch-down on the ledge. The launch
+  off the ridge is 130 states further back. The greedy from the true start is still in the
+  start room (0.4%; the frozen run left the room at 2.95B). `approx_kl` has been 0.18-0.27
+  since 0.2B on this map (blue200 and unitfarmer2: 0.02-0.08); not compared with the frozen
+  run's series yet.
+* The rule fixed before launch stands: 8B steps, or earlier if this line's walk-back does not
+  move for 2B.
+
+### unitfarmer2 (`fxuf2_t1`): the archive stage has not had a turn
+
+Greedy 10.2% from 0.9B on (the same death dive as the frozen run; read physically, not by the
+percentage). Search 1 stale; searches 2 and 3 adopted TREE lines (end d 28,317 and 27,816:
+deeper dives). Because the tree hands back a line past the reference every time, the
+field-free stage has never run on this map. That is the stage's entry rule (it runs when the
+tree has no line), not a failure of the stage, and it was not foreseen in the 05:31 entry,
+which predicted a null for a different reason. Cut unchanged: 3B.
+
+### The all-seven rerun: plan, cuts and expectations, written before the launch
+
+blue200 has moved, so the approved rule applies ("if any of them moves, rerun all seven"):
+the SAME 89 tokens and the same launch extra, from scratch at the true start, seed 0, one box
+per map, on the four maps the frozen recipe finished. The three running boxes are those
+maps' runs. No token differs; `--maxvel 4000` on all four, as in each map's frozen run.
+
+| map | run | card | frozen recipe: first greedy finish | first 9/9 | cut |
+|---|---|---|---|---|---|
+| sidistic | `fxsid_t1` | 16 GB tier | 7.248B (run `azr1b2_pool`) | none in 10.4B (1-6 of 9 per eval) | 9.0B |
+| cannonball | `fxcan_t1` | RTX 5090 only | 2.718B | 3.247B | 4.3B |
+| petrus | `fxpet_t1` | 16 GB tier | 3.247B | 3.247B | 4.3B |
+| celestial | `fxcel_t1` | 16 GB tier | 1.586B | 1.586B | 3.0B |
+
+* **Stop rule, the same on all four:** the first greedy finish plus 10 evals (755M steps), or
+  the cut, whichever comes first. Then bundle and release.
+* **The question:** does the changed recipe still finish the maps the frozen one finished,
+  at a comparable step count. The read-out: step of the first greedy finish, finishes over
+  the 10 evals after it (frozen runs, same window, for comparison), and on a miss the place
+  the greedy stands at the cut against the frozen run at the same step.
+* **What a miss would mean.** One seed, and the cuts are only 1.24-1.9 times a one-seed
+  figure (sidistic alone has read 7.25B, 8.23B and 14.19B on near-identical recipes): a run
+  not finished at its cut reads "not finished by X steps", not "the change broke it". A
+  greedy standing clearly behind the frozen run's place at the same step would be the
+  warning sign, to be read physically.
+* **What I expect:** the four finish. The new stage only runs when the tree has no line past
+  the reference, and `--auto-spine-finish-stop` removes the post-finish patience searches,
+  so the first-finish step should be near the frozen one and the rate after it the same or
+  better. Risks: `--auto-spine-current-ref` and `--auto-spine-patience-tau` change which
+  lines are adopted before the first finish (the sidistic run adopted many); the archive
+  stage's GPU memory on cannonball's 671M-voxel grid is untested (the frozen run's search 11
+  ran out of memory even on 32 GB), so its first stage is watched; a stage adds up to 10
+  minutes to a search, during which the trainer shares the card.
+* **Provenance:** from scratch; spawn states only from each run's own `auto/spine0.npy` and
+  its own search lines; no checkpoint, line, record or gate box of any earlier run enters.
+* **Cost:** about $6.5-7 for the four at the cuts (sidistic about $3.2 of it: 9.0B at about
+  1.08B steps/h), plus about $2.7 for the three running boxes to their ends. Credit $26.42 at
+  06:57 UTC; about $17 after, reserve $10. With that the round's budget (about $10-15) is
+  used: a try 2 on all seven would need the user.
