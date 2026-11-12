@@ -41072,3 +41072,160 @@ not where the lines go.
 Try 1 on the three maps the frozen recipe failed: blue200 FINISHED (07:50 entry),
 unitfarmer2 NULL (this entry), princessburglar still running to its 8B cut (a pit-crossing
 line adopted at 1.52B, its launch not learned at 3.07B; next entry).
+
+## 2026-11-12 09:36 UTC: fix round try 1 - princessburglar FINAL: NULL at the early cut (the search crosses the pit, the policy does not learn the line; yaw noise at its ceiling)
+
+Run `fxpb_t1`: the try-1 recipe (the 89 tokens of the 05:31 entry, `--maxvel 3500`), from
+scratch at the true start, seed 0, one RTX 5080. Cut fixed before the launch: 8B steps,
+earlier if a pit line is adopted and its walk-back does not move for 2B. The early rule was
+reached (the walk-back's last new low was at 2,654.5M; the eval of 4,681.4M closed the 2B),
+search 5 was left to end, and the trainer was stopped by hand at step 4,836,556,800
+(09:03:54 UTC). The box is released. One seed.
+
+### Result: NULL. The search crosses the pit; the policy never leaves the start room
+
+* **0 finishes.** 65 greedy evals from the true start (524,288 to 4,832,362,496), 585
+  episodes, every one ends "fail"; the grader reads 0.3-0.4% at every eval.
+* **The greedy never leaves the start room.** Its frontier (median deepest d) is
+  56,953-56,995 at every eval, the trainer's best is 233 u for the whole run. The frozen
+  recipe (`m2sib_pb1`, arm A) left the room at 2.95B and stood at the pit (3.2%) from 3.0B.
+  On the greedy, try 1 is BEHIND the frozen run on this map. One seed each.
+* **"Moved" was defined before the launch** as a greedy episode from the true start over the
+  pit onto the east ledge. None left the room. princessburglar did not move.
+
+### The five searches: the archive stage hands back a pit crossing every time it runs
+
+| search | fired at | outcome | line |
+|---|---|---|---|
+| 1 | 0.5M | ADOPTED 237.0M, "from beam+ge" in 673 s | 4,242 states (42.4 s), end d 55,353: out of the room, ends on the pit's NEAR side; success line 55,453 |
+| 2 | 1,284.0M (patience) | ADOPTED 1,521.5M, "from beam+ge" in 674 s | 2,533 states (25.3 s), end d 55,098: CROSSES the pit (held archive: the tree line's first 141 states + a chain of 27 cells, 2,392 explorer states); success line 55,198 |
+| 3 | 3,095.9M (patience) | NO new spine at 3,445.1M (976 s) | tree frontier 56,922; held kind 7.24M runs, 14,027 cells, line 2,985 states end d 55,354; contact kind 3.13M runs, 5,905 cells, line 2,390 states end d 55,082 |
+| 4 | 3,775.4M (patience) | NO new spine at 4,126.7M (977 s) | held 5.36M runs, 13,273 cells, line 2,795 states d 55,349; contact 3.27M runs, 5,487 cells, line 3,789 states d 55,080 |
+| 5 | 4,454.9M (patience) | NO new spine at 4,803.0M | held 4.23M runs, 15,283 cells, line 1,923 states d 55,089; contact 3.66M runs, 4,812 cells, line 3,052 states d 55,342 |
+
+* **The stage did its job.** The frozen run found no pit line in 29 searches over 12.86B
+  steps (2 adopted lines, both ending on the near side). Here the archive stage returned a
+  far-ledge line (d 55,080-55,098) in every one of searches 2 to 5, from the policy's own
+  states, with the field read once at the hand-back and never in the search.
+* **Both archive kinds cross.** Held in searches 2 and 5, contact in 3 and 4. The offline
+  check of the 05:31 entry had the contact kind saturating on the near side at 5.2k cells
+  in 36 droplet minutes; on the box (about 13 times the runs) it crosses.
+* **Searches 3 to 5 were rejected by the gain rule only.** A new line must end 200 u past the
+  DEEPER of the frontier and the current line's end (55,098.2 -> 54,898.2), and the far
+  ledge is level on the field. Right as a rule (the line in use already crosses), but it
+  means three searches of 16 minutes each bought nothing. Generic open item, not changed.
+
+### The learning side: where the walk-back stopped
+
+* **Line 1** (near side, 42 s of explorer walk): the curriculum stood at starts 3,191-3,206
+  from 0.75B until the line was replaced at 1.52B (band success 21-34%). About 1,040 of
+  4,242 states walked back in 1.28B steps.
+* **Line 2** (the crossing): walked from 2,533 to its last new low, 1,827, at 2,654.5M
+  (about 700 states in 1.13B steps), then about 300 cycles between start 1,842 (band windows
+  of mean 32.5%, up to about 40%) and start 1,837 (0.0-0.1%) until the stop.
+* **What a "win" needs there.** An episode wins when its raw minimum d reaches the line's end
+  plus 100 (55,198). The line first reads that at state 2,430, 5.9 s after state 1,842: it
+  flies off the ridge at about state 1,860, tops out near 1,910 (z 3,540), lands at about
+  1,965-1,980 near (982, -3155, 3452) with d 55,437, then shuffles about 3 s on a slope and
+  walks 500 u north-west to (755..842, -2634..-2688), where d drops to 55,098. The flight
+  alone does not win; the landing plus the explorer's walk does.
+* **No physics cliff between 1,837 and 1,842** (droplet CPU, measurement only, on the
+  policy's own search line): 270 constant actions per start state, 400 ticks each; the share
+  ending alive with x > 900 (the far side) is 1.5-1.9% from states 1,812-1,827, 24.1% from
+  1,832, 32.6% from 1,837, 30.4% from 1,842, 28.1% from 1,847, 3.3-7.0% from 1,852-1,862.
+  Nobody dies: the pit has a floor. So a constant action crosses as often from 1,837 as from
+  1,842, and the policy's 32.5% at 1,842 is the constant-action rate. Why the policy reads
+  0.0% from 1,837 is not answered (a policy bench on a box would answer it; not run).
+
+### Measured: on this map the policy's view noise sits at its hard ceiling
+
+The view heads draw `z ~ N(mu(s), sigma)`, `u = tanh(z)`; each head's sigma is ONE
+state-independent parameter (clamp 0.0067..2.718; the pitch head is capped at 0.5 and has no
+entropy term since `docs/contyaw.md`). The step line prints both.
+
+| step | try 1 `fxpb_t1`: yaw sigma, pitch, kl, stall-kills | frozen `m2sib_pb1`: same |
+|---|---|---|
+| 50M | 0.950, 0.500, 0.14, 100% | 0.930, 0.500, 0.15, 100% |
+| 100M | **2.718**, 0.500, 0.19, 100% | **2.718**, 0.500, 0.20, 100% |
+| 1.0B | 2.718, 0.500, 0.24, 64% | 2.718, 0.500, 0.22, 100% |
+| 2.0B | 2.718, 0.500, 0.20, 50% | 2.718, 0.412, 0.17, 72% |
+| 2.5B | 2.690, 0.246, 0.23, 52% | 1.272, 0.118, 0.29, 94% |
+| 3.0B | 2.638, 0.177, 0.21, 60% | 0.763, 0.059, 0.26, 92% |
+| 4.0B | 2.202, 0.109, 0.16, 49% | 0.686, 0.051, 0.20, 97% |
+| 4.8B | 1.578, 0.078, 0.17, 58% | 0.605, 0.050, 0.15, 97% |
+| 8.0B | - | 0.890, 0.063, 0.09, 97% |
+| 12.0B | - | 1.025, 0.070, 0.20, 99% |
+
+* **Both princessburglar runs pin the yaw sigma at the clamp from 100M steps for 2B or
+  more.** At 1.6-2.7 before the tanh the view target is close to a coin flip between hard
+  left and hard right of the velocity at every decision, in EVERY training rollout, the
+  curriculum's pit starts included.
+* **No other run of this recipe does it** (yaw sigma from 0.37B on, kl, stall-kills): try-1
+  blue200 0.02-0.09, 0.02-0.03, 0%; try-1 unitfarmer2 0.064 falling to 0.013, 0.03-0.07, 0%;
+  frozen blue200 0.02-0.04, 0.01-0.05, 0%; try-1 sidistic 0.13 falling to 0.04, 0.02-0.04,
+  0-5%; try-1 cannonball 0.07, 0.03, 0-3%. Every run starts at 0.30.
+* **In the frozen run the sigma comes down as the policy starts to learn a line**, and the
+  walk-back speeds up with it: line 5 (adopted 1.90B, 1,262 states) was walked back about
+  985 states in 0.9B steps with the sigma falling from 2.7 to about 1; with line 7 (adopted
+  2.81B, 1,089 states, sigma about 0.8) 2 of 9 greedy episodes passed its success line at
+  2,944.9M and 8 of 9 at 3,020.4M, 0.2B steps after its adoption. In try 1 the lines came
+  earlier and were 2 to 4 times longer (explorer walk), and the sigma stayed above 2.6 to
+  3.5B.
+* **This defect is known and has a flag.** `--yaw-entropy` (commit c416c4a8, 2026-10-23,
+  `tests/python/test_yaw_entropy.py`): "The view sigma is a state-independent parameter, so
+  while a run is stuck (no reward signal) the bonus alone walks it up to the clamp and the
+  whole policy's view goes noisy (princessburglar: 0.08 -> 2.718 in ~500M steps); 0 leaves
+  sigma to the policy gradient". It is the pitch head's defect (`docs/contyaw.md`), fixed by
+  default for pitch only. Of October's run.json files on the droplet, 287 of 331
+  princessburglar runs and 76 of 85 unitfarmer2 runs carry `yaw_entropy 0`, 0 of 271
+  sidistic runs do, and the frozen recipe (sidistic's) does not: `yaw_entropy` is absent in
+  every run of this program (= 1.0).
+* **What is and is not shown.** Shown: the sigma is at the clamp on princessburglar and on no
+  other map, in two runs, from 100M steps. NOT shown: that this is why the handed line is
+  not learned (the frozen run did leave the room with the sigma near 0.8; the 32.5% at start
+  1,842 matching the constant-action rate is suggestive only), nor which term drives it (the
+  entropy bonus, scaled by `--unstuck`'s (1 + T), is the documented one; the `--int-view 8`
+  novelty key also pays for turning the view).
+
+### Against the frozen recipe on this map
+
+| | frozen (`m2sib_pb1`) | try 1 (`fxpb_t1`) |
+|---|---|---|
+| steps | 12.86B | 4.84B |
+| greedy evals, finishes | 171, 0 | 65, 0 |
+| greedy leaves the start room | 2.95B | never (to 4.84B) |
+| greedy at the pit | from 3.0B (3.2%) | never |
+| searches, adopted lines | 29, 2 | 5, 2 |
+| lines that cross the pit | 0 | 1 adopted (1.52B) + 3 found and rejected by the gain rule |
+| greedy over the pit | never | never |
+
+The try-1 change does what it was built for (a pit line from the policy's own states, at the
+second search) and the recipe then fails one step later: the line is not learned. That is
+the outcome the 05:31 entry named as the trigger for try 2: "If the stage hands back lines
+and the policy does not learn them, try 2 adds ONE generic learning piece and nothing else."
+
+### Box, cost, bundle, provenance
+
+* Box 60314356 (RTX 5080 16 GB, $0.3867/h, machine 154401): created 05:39:49, trainer
+  launched 05:43:03, stopped 09:03:54, released 09:05:53 UTC (through box.py; gone on the
+  fleet list) = 3.43 h = about $1.33. No OOM, no traceback. Tunnel stopped. (A first box,
+  60313698, machine 148127, was created 05:32:36 and dropped before the launch.)
+* Bundle on the droplet, md5 equal to the box (taken after the trainer stopped):
+  `/home/steam/ar_m2/runs/fxpb/fxpb_t1/` (65 eval trajectories, md5 of the md5 list
+  30d9fcef48b94a9d3e6a546b36ea2c05; run.json f288ee7d63c9f1a2fde2bb571e7505a5; progress.csv
+  b68ea9d47203980bf0f4d77578e11bff; launch log 6fe00cbf1fd6e447f519c91ebd02c5f1),
+  `ckpts_t1/` (ckpt_latest.pt b8024c1eb2206ec4bedda83f73be5c72 at 4.83B; ckpt_4001366016.pt
+  66221b350839a7ca26cbbb2c527aa54a; ckpt_3001024512.pt e92af0dfb0195f1e5b75208f11478d2f;
+  ckpt_2000683008.pt 650c76c1fa9af01297551df7a5b688a2; ckpt_1000341504.pt
+  abfdaa0c76ebd8000d8f527dfeeb32bd), `auto_t1/` (k01-k05 logs and lines, spine0.npy,
+  current.json; k02 spine.npy 3a5f83a63415ebc336bb50b54fe7fd97).
+* Provenance: from scratch; spawn states only from the run's own `auto/spine0.npy` and its own
+  search lines; nothing of October's princessburglar lineage and nothing record-derived
+  entered. The constant-action funnel and the line read-outs above are measurement on the
+  run's own search line; nothing from them enters a reward, a spawn rule or a schedule.
+
+### Where the fix round stands after this
+
+Try 1 on the three maps the frozen recipe failed: blue200 FINISHED (07:50 entry),
+unitfarmer2 NULL (08:31 entry), princessburglar NULL (this entry). The all-seven rerun of the
+same tokens is the next entry.
