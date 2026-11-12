@@ -2968,6 +2968,15 @@
       "detail": "RTX 4080 SUPER power limit 255 W of 320 W default (80 pct), bf16 GEMM 97 TFLOPS, sm 2475 of 3105 MHz under load; gpu_health --all verdict UNHEALTHY, deploy_box.sh refused (2026-11-10 17:02 UTC, m2warm)",
       "run": "",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "190.14.206.149",
+      "machine_id": 148127,
+      "host_id": 655271,
+      "date": "2026-11-12",
+      "detail": "fx fxpb 2026-11-12: READY (ssh ok) 29 s after create, then actual_status exited / intended_status stopped within 40 s with no action of ours (ssh closed by remote host in deploy step 2, then connection refused; status_msg 'success, running .../ssh'); seen exited on three looks over 70 s. The same machine ran m7sib_cel for 2.9 h on 2026-11-11 without a fault",
+      "run": "fxpb_t1 (never deployed)",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
