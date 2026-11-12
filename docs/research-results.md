@@ -42142,3 +42142,192 @@ The reference is the greedy frontier, 55,348-55,349, so a line must end at d <= 
 The next search fires at the first eval after 2,743,706,368 (2,793,930,752); about four
 more fit before the 5B cut (about 15:50 UTC). The cuts of the 10:50 entry stand. Credit
 about $18.8 at 13:25 UTC with two boxes up ($0.637/h); the $10 reserve stands.
+
+## 2026-11-12 15:15 UTC: fix round, sidistic FINAL - `fxsid_t1` FINISHES (first greedy finish at 8.38B, frozen 7.25B); the changed recipe finishes five of seven maps
+
+Run `fxsid_t1`: the try-1 recipe (the 89 tokens of the 05:31 entry, `--maxvel 4000`), from
+scratch at the true start, seed 0, one RTX 5080. The last map of the all-seven rerun the
+user's step 2 asks for once a failing map moves (blue200 did). Cut rule fixed before the
+launch: the first greedy finish plus 10 evals, or 9.0B steps, whichever comes first. The 9.0B
+bound came first (first finish plus 10 evals would have been the eval of 9,135,718,400). The
+trainer was stopped by hand at step 9,010,413,568 (15:04:38 UTC, no search running), the box
+is released. One seed. Every finish count below is the grader's (`autoresearch/score.py` on
+the trajectory files; all 120 evals graded), never the trainer's success-line count.
+
+### Result: FINISHES, 1.13B steps later than the frozen run on this seed
+
+* **First greedy finish: 1 of 9 at 8,380,743,680 steps** (118.96 s). The frozen run
+  `azr1b2_pool` had its first at 7,248,281,600 (2 of 9). Two other runs of nearby recipes
+  on this map had theirs at 8.23B and 14.19B (the unified-recipe program and program 6, one
+  seed each), so 8.38B is inside this map's own spread.
+* **Before it:** 111 evals (524,288 to 8,305,246,208), 0 of 999.
+* **The nine evals from the first finish to the cut (8,380.7M to 8,984.7M): 31 of 81
+  (38.3%).** Per eval 1, 4, 2, 4, 6, 2, 4, 2, 6. No 9/9 eval (the most is 6/9, twice).
+* **Best finish 118.96 s**; per-eval bests 118.96 to 121.29 s. The frozen run's finishes are
+  123.5 to 125.4 s (best 123.54 s).
+* **It is not reliable**, and the misses have no single place (below).
+
+Per eval, from 7,550.3M (grader):
+
+| step | best / median | finishes | best finish | frozen run at the same step |
+|---|---|---|---|---|
+| 7,550,271,488 | 27.8% / 27.8% | 0/9 | - | |
+| 7,625,768,960 | 97.9% / 28.2% | 0/9 | - | |
+| 7,701,266,432 | 97.9% / 27.8% | 0/9 | - | |
+| 7,776,763,904 | 46.5% / 27.8% | 0/9 | - | |
+| 7,852,261,376 | 97.9% / 27.8% | 0/9 | - | |
+| 7,927,758,848 | 27.8% / 27.8% | 0/9 | - | |
+| 8,003,256,320 | 86.2% / 27.8% | 0/9 | - | |
+| 8,078,753,792 | 98.4% / 10.8% | 0/9 | - | |
+| 8,154,251,264 | 27.8% / 27.7% | 0/9 | - | |
+| 8,229,748,736 | 86.0% / 27.8% | 0/9 | - | |
+| 8,305,246,208 | 98.5% / 85.0% | 0/9 | - | |
+| 8,380,743,680 **first finish** | 100.0% / 21.8% | 1/9 | 118.96 s | 0/9 |
+| 8,456,241,152 | 100.0% / 97.3% | 4/9 | 119.72 s | 6/9 |
+| 8,531,738,624 | 100.0% / 86.0% | 2/9 | 121.29 s | 5/9 |
+| 8,607,236,096 | 100.0% / 97.9% | 4/9 | 120.49 s | 2/9 |
+| 8,682,733,568 | 100.0% / 100.0% | 6/9 | 119.66 s | 0/9 |
+| 8,758,231,040 | 100.0% / 39.0% | 2/9 | 120.79 s | 4/9 |
+| 8,833,728,512 | 100.0% / 74.4% | 4/9 | 120.33 s | 5/9 |
+| 8,909,225,984 | 100.0% / 27.8% | 2/9 | 119.35 s | 2/9 |
+| 8,984,723,456 (the cut) | 100.0% / 100.0% | 6/9 | 119.35 s | 2/9 |
+
+* **Where the 50 misses of the last nine evals stop** (read physically, `ends.py`): 9 near
+  (2,350..2,650, y -320..310, z 9,585..10,790) after 30 to 59 s, the place the greedy died at
+  for 2B steps (below); 9 after 96 to 100 s near x -1,680..-3,430, z 3,520..4,260 (five of
+  them within 6 u of x -1,683), past the end of line 7 (92.8 s); 7 in the first 16 s; the
+  other 25 in ones and twos between 22 s and 147 s. No single gate.
+* **Training win rate, with what it is measured on:** 74.18% @ 31.1 s at the last step line,
+  with the reservoir's minimum depth at about 1.1% of d0 beside it: wins from starts next to
+  the goal. It says nothing about the true start; the greedy numbers above do.
+* Throughput 314k steps/s, update kl 0.03-0.045, yaw / pitch sigma 0.060 / 0.069 at the end
+  (max yaw sigma over the run 0.341, at 21M steps); no traceback, no OOM in the launch log.
+
+### The greedy's trace: up to 84% by 2.6B, back to 28% for 4B steps, then the finish
+
+Grader best / median: 1.5% to 529M; 27.6% / 27.6% at 1,133.0M; 42.0% / 42.0% at 1,888.0M;
+57.1% / 57.0% at 2,340.9M; 78.0% / 72.4% at 2,491.9M; **84.3% / 84.3% at 2,642.9M**; best
+83.9-84.5% in six of the seven evals to 3,171.4M (medians 32-84%; 28.1% at 2,944.9M). Then it
+fell back: 28.2% at 3,246.9M, 39-57% from 3.3B to 4.2B, 33-38% from 4.3B to 4.9B, and
+**27.8% / 27.8% nearly flat from 5.36B to 7.55B**. Single episodes at 97.9% from 7,625.8M;
+98.5% / 85.0% at 8,305.2M; the first finish at 8,380.7M.
+
+At the flat stretch the greedy dies the same way every time: at 7,550.3M six of nine
+episodes end after 29.3 to 29.7 s near (2,507..2,512, y -709..-886, z 10,734..10,742),
+falling at about 1,100 u/s.
+
+### The nine searches
+
+| search | fired at | tree line | archive stage (5 min per kind) | outcome |
+|---|---|---|---|---|
+| 1 | 0.5M | 6,993 states, end d 97,912 (frontier 99,349) | not run | ADOPTED 113.8M (374 s) |
+| 2 | 604.5M | end d 93,056 | not run | STALE at 708.3M: frontier 90,565 by then |
+| 3 | 1,057.5M | end d 73,480 | not run | STALE at 1,159.2M: frontier 72,423 by then |
+| 4 | 1,510.5M | 3,575 states, end d 69,104 | not run | ADOPTED 1,614.3M (377 s) |
+| 5 | 1,661.5M | 2,797 states, stops at d 72,165 (reference 67,670) | held: 3.51M runs, 2.11M cells, 0 goal hits, chosen cell d 72,059; contact: 3.26M runs, 63k cells, deepest d 72,662 | no line, 1,956.1M (993 s) |
+| 6 | 2,265.4M | 7,540 states, end d 37,784 (frontier 44,066) | not run | ADOPTED 2,370.8M (377 s) |
+| 7 | 2,491.9M | 9,281 states, end d 19,153 (frontier 27,588) | not run | ADOPTED 2,595.2M (376 s) |
+| 8 | 2,642.9M | 2,802 states, stops at d 72,056 (reference 15,783) | held: 3.27M runs, 1.69M cells, chosen cell d 72,540; contact: 3.50M runs, 63k cells, deepest d 72,076 | no line, 2,936.0M (989 s) |
+| 9 | 8,305.2M (a quorum past line 7's success line, frontier 16,345) | 11,854 states, end d 1,408 | not run | ADOPTED 8,408.5M (376 s) |
+
+* **Five adopted lines, all from the tree. No archive line was adopted on this map.** When
+  the tree stops (searches 5 and 8) it stops at d about 72,100, and both archive kinds end
+  within 600 u of d of it: in 5 minutes the count archive does not get a player past that
+  place either.
+* **The first finish came on line 7's curriculum**, before line 9 was adopted (8,380.7M
+  against 8,408.5M). Line 7 ends at d 19,153 after 92.8 s, 26 s short of a finish: the last
+  stretch is the policy's own. Line 9 (118.5 s, end d 1,408) is nearly a whole run; at the
+  stop its curriculum stood at state 8,683 of 11,853.
+* The finish quorum (`--auto-spine-finish-stop`) held the search off at 8,682.7M and
+  8,984.7M ("6/9 greedy episodes FINISH: no search").
+
+### 5.37B steps with no search: the generic open item of this run
+
+From 2,936.0M to 8,305.2M no search fired. `--auto-spine-patience-tau` restarts the patience
+clock at every new low of the curriculum's position on its line, and line 7's curriculum kept
+making new lows, slowly and without a pause. Lowest start state of line 7 (of 9,280), per
+250M-step window:
+
+| steps | 2.75-3.0B | 3.25-3.5B | 4.0-4.25B | 5.0-5.25B | 6.0-6.25B | 7.0-7.25B | 7.5-7.75B | 8.0-8.25B | 8.25-8.5B |
+|---|---|---|---|---|---|---|---|---|---|
+| low | 6,805 | 6,170 | 5,190 | 4,470 | 3,740 | 3,220 | 2,965 | 2,725 | 2,650 |
+
+About 1,300 states (13 s of the line) per 1B steps; it never reached state 0.
+
+* **Side by side, one run, no cause shown:** over the same steps the greedy from the true
+  start fell from 84% to 27.8% and stayed there. The place it died at (29.3-29.7 s into the
+  flight, near (2,510, -800, 10,738)) is where line 7 passes between its states 2,850
+  (2,281, 98, 11,216) and 3,100 (2,676, -116, 10,827). The curriculum's low was above state
+  3,220 until 7.25B, so until then the policy was not being started from before that place
+  on its line; the low passed state 2,965 at 7.5-7.75B and the first 97.9% episode from the
+  true start is at 7,625.8M.
+* **Against the frozen run:** it replaced its line about every 450M steps (27 searches, 15
+  adopted lines by 10.2B). Here one long line was held for 5.7B steps. Which of the two is
+  better is not decided by one seed (this run finishes later, then more often and faster).
+* **Candidate for a next change (generic, NOT built, no map constant):** the patience clock
+  should not restart on any new low however small; a walk-back that moves 13 s per 1B steps
+  holds the search off for billions of steps. A rate floor on the walk-back, or the clock
+  restarting only on a new low of the GREEDY's frontier, would be the forms to test. The
+  flag did what it was written to do (unitfarmer2's line 5 was replaced after 448M steps,
+  never walked back); this is the other side of the same rule.
+
+### Against the frozen recipe on this map (one seed each)
+
+| | frozen (`azr1b2_pool`) | try 1 (`fxsid_t1`) |
+|---|---|---|
+| first greedy finish | 7,248,281,600 (2/9) | 8,380,743,680 (1/9) |
+| finishes, own first finish + 8 evals | 10 of 81 (2, 2, 1, 4, 0, 1, 0, 0, 0) | 31 of 81 |
+| finishes, same steps (8,380.7M to 8,984.7M) | 26 of 81 | 31 of 81 |
+| finishes, own first finish to 8,984.7M | 42 of 216 (24 evals) | 31 of 81 (9 evals) |
+| best finish | 123.54 s | 118.96 s |
+| searches / adopted lines | 27 / 15 by 10.2B | 9 / 5 by 9.0B |
+
+Later to the first finish by 1.13B steps (16%); after it, more finishes per eval than the
+frozen run had in its own first nine evals, about the same as the frozen run over the same
+steps (31 against 26 of 81), and about 4.5 s faster. One seed each: none of these gaps is
+carried as an effect.
+
+### Box, cost, bundle, provenance
+
+* Box 60321977 (RTX 5080 16 GB, $0.3367/h, machine 153623): created 07:04:43, trainer
+  launched 07:06:32, stopped 15:04:38, released 15:06:11 UTC (through box.py; gone on the
+  fleet list, 1 live after it) = 8.02 h = about $2.70. Tunnel 8604 stopped.
+* Bundle on the droplet, md5 equal to the box (taken after the trainer stopped):
+  `/home/steam/ar_m2/runs/fxsid/fxsid_t1/` (120 eval trajectories, md5 of the md5 list
+  a8efb5dad56e4bb0978f4f2d320e5f54; run.json 69a326fc6b2d137ca703b82f6b09e2ec; progress.csv
+  4c73a7fefaf7191c48728c8e439b9a16; launch log b864d30743e3dbbb63e7cded1e9975cd),
+  `ckpts_t1/` (ckpt_latest.pt 5b60d921bf6f5f6529c386407c5459f6 at 9.01B;
+  ckpt_9003073536.pt 861bd6195a4b7f03ef2a09f82976a67b; ckpt_8002732032.pt
+  39079e7d04a8ea0bc4e752bd5f98e495; ckpt_7002390528.pt a4738128230e4dbae356b26eac4ec88b;
+  ckpt_6002049024.pt 503b7b0a0b120547ca98a9235326053b; ckpt_5001707520.pt
+  3c9b13c9b1a4c9d62639bba789bb8c41; ckpt_4001366016.pt 80eaf70f767ba798645a7e0782b7a247;
+  ckpt_3001024512.pt e9bc2b3fd42205a5ef2cb8687443546e; ckpt_2000683008.pt
+  6d75df6bdae8af9314de9abecafd9f2a; ckpt_1000341504.pt 007be0027526c01c0130424a78d75dd0),
+  `auto_t1/` (k01-k09 logs and lines, spine0.npy, current.json
+  e4928771ff543ed2e1b20c2097eb2d20; the archives themselves were left on the box).
+* Provenance: from scratch; spawn states only from the run's own `auto/spine0.npy` and its
+  own search lines; nothing record-derived entered.
+
+### Where the fix round stands after this
+
+The changed recipe (the 89 try-1 tokens), from scratch, one seed per map, on all seven:
+
+| map | frozen recipe | changed recipe (try 1) |
+|---|---|---|
+| blue200 | null (4.14B) | **FINISHED**, 180 of 180 after the first finish, best 14.18 s |
+| celestial | finished, first finish 1,586.0M | finished, 1,284.0M |
+| petrus | finished, 3,246.9M | finished, 2,642.9M |
+| cannonball | finished, 2,718.4M | finished, 3,095.9M |
+| sidistic | finished, 7,248.3M | finished, 8,380.7M (this entry) |
+| unitfarmer2 | null (3.42B) | null (3.06B) |
+| princessburglar | null (12.86B) | null at the early cut (4.84B) |
+
+**Five of seven against four of seven.** The gain is blue200. On the four maps both recipes
+finish, the changed recipe is earlier on two and later on two: no direction that one seed
+per map can carry. unitfarmer2 and princessburglar are open.
+
+Still running: try 3, the last try under the cap (`fxpb_t3`, princessburglar, the 89 tokens
+plus `--yaw-sigma-max 0.5`), to its 5B cut at about 15:52 UTC. At 4.36B: the greedy leaves
+the start room and ends on the pit floor, 0 episodes on the far ledge, and searches 2 to 6
+at the pit all returned no line. Its FINAL entry follows. After it nothing more is rented
+under step 2; credit $17.71 at 15:06 UTC.
