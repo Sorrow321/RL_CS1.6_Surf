@@ -706,7 +706,7 @@ def main(argv=None) -> int:
             for k, ((mode, boosts), kind) in enumerate(
                     (sp, kd) for sp in stage_specs(a.ge_boost) for kd in ge_kinds(a)):
                 tag = "ge" if k == 0 else f"ge{k + 1}"
-                kw = {"kind": kind}
+                kw = {} if kind is None else {"kind": kind}
                 if mode == "tail":
                     tr = tail_roots(e, st, TICKS_PER_S, a.roots_secs, a.roots_n)
                     if tr is not None:
