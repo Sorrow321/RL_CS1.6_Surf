@@ -41549,3 +41549,152 @@ pre-registered in its own entry before any launch: the pitch head's OTHER rule f
 head, a ceiling on its sigma at 0.5 (`--yaw-sigma-max 0.5`, built twice in October, on
 princessburglar and on za_loop, never ported to this code line). On the six other maps the
 sigma never passes 0.39, so that ceiling is never touched there.
+
+## 2026-11-12 10:50 UTC: fix round TRY 3, pre-launch - princessburglar with --yaw-sigma-max 0.5 (the last try; one piece, a ceiling on the yaw noise)
+
+Written BEFORE the launch. Try 3 of the fix round, the LAST try under the cap (the user's
+order of 2026-11-12: "Okay, I think you can implement steps 1 and 2 for the beginning"; step
+2 is capped at two or three tries and about $10-15). Try 2 (10:26 entry) showed that taking
+the entropy bonus off the yaw head does not keep its sigma down on princessburglar: the
+policy gradient walks it to the 2.718 clamp anyway. Try 3 tests the same suspicion with the
+direct tool.
+
+### The one piece: `--yaw-sigma-max 0.5`
+
+* **What it is.** Under the absolute continuous view each view head draws its action around
+  a mean with ONE state-independent sigma per head. The pitch head's sigma has had a ceiling
+  of 0.5 since the absolute view became the default (`PITCH_LOG_STD_MAX_ABS`); the yaw head's
+  only bound is the global clamp, 2.718. `--yaw-sigma-max 0.5` gives the yaw head the pitch
+  head's ceiling, with the pitch head's own constant. The mean is untouched, the entropy
+  bonus is untouched (try 2's `--yaw-entropy 0` is REMOVED: one piece per try).
+* **What 0.5 means in degrees** (measured: 200k draws through `off_warp(tanh z)`, the offset
+  of the view from the velocity heading per decision):
+
+  | sigma | median | p90 | p99 | over 45 deg | over 90 deg |
+  |---|---|---|---|---|---|
+  | 0.30 (the init) | 1.3 | 7.7 | 24.2 | 0.1% | 0.0% |
+  | 0.39 (highest on the six other maps) | 2.1 | 14.9 | 46.8 | 1.1% | 0.0% |
+  | **0.50 (the cap)** | 3.3 | 28.3 | 80.7 | 4.8% | 0.6% |
+  | 0.65 (frozen run at the pit, lowest) | 5.8 | 53.7 | 122.1 | 12.7% | 3.5% |
+  | 0.76 (frozen run as it left the start room) | 8.5 | 76.1 | 144.3 | 19.4% | 7.3% |
+  | 1.27 | 31.2 | 151.5 | 177.0 | 43.5% | 28.0% |
+  | 2.718 (the clamp) | 134.9 | 179.7 | 180.0 | 71.4% | 61.3% |
+
+  At the clamp the view points nearer backwards than forwards in six decisions of ten; a
+  strafe with a backward component brakes (air accelerate), and a handed line that needs a
+  held heading for a second cannot be flown by the sampling policy at all.
+* **Why this piece.** On princessburglar the yaw sigma is at 2.718 from 100M steps in all
+  three runs (frozen, try 1, try 2), for 2B+ steps; in the frozen run it then sat at
+  0.65-1.13 for the whole 10B at the pit (0.76 at 3.0B, 0.69 at 4.0B, 0.65 at 6.0B, 0.89 at
+  9.0B, 1.03 at 12.0B); in try 1 it was 2.72 at 2.0B, 2.64 at 3.0B, 2.20 at 4.0B, 1.58 at
+  4.8B. Update kl is 0.13-0.29 through all of it (0.01-0.03 on the maps that finish). In
+  every run the curriculum walked a handed line back to the same place and stalled there:
+  the run-up to the drop off the upper floor of the start room, about (110..410, -2,910..
+  -3,110, z 3,650..3,720): state 3,191 of 4,241 (try 1, line 1; 3,341 after 105M steps, then
+  150 states in 500M), state 1,827 of 2,532 (try 1, the pit line, for 2B+), state 3,367 of
+  4,742 (try 2). The frozen run left the start room only as the sigma came down by itself
+  (2.72 at 2.0B, 1.27 at 2.5B, 0.76 at 3.0B).
+* **The cap never binds on the six other maps.** Max yaw sigma over every step line of every
+  run from scratch: blue200 0.304 (frozen 0.304), unitfarmer2 0.327 (0.324), celestial 0.336
+  (0.353), petrus 0.318 (0.321), sidistic 0.341 at 3.72B (frozen 0.332), cannonball 0.374 at
+  3.35B (frozen 0.387); 0 step lines over 0.4 anywhere. Below the ceiling the clamp and the
+  projection are the identity, so on those maps the piece changes no number (checked locally,
+  below) and their try-1 runs are runs of this recipe.
+* **Why it is generic (rule 0b).** No constant comes from a map: 0.5 is the pitch head's
+  existing ceiling. "Would I run exactly this on a map I have never opened" is yes: a
+  state-independent sigma that the optimiser can walk to a uniform draw is a defect of the
+  parameterisation wherever the reward goes quiet for a few hundred million steps.
+* **History, for honesty.** The flag was built twice in October for this defect (425b849f on
+  princessburglar, 04524bae on za_loop at 0.3) inside map programs that also used spawn-state
+  files and warm starts; it was never carried into the unified code line. This is its first
+  run from scratch in a frozen recipe. The port is a cherry-pick of 04524bae (trainer,
+  recorder mirror, search mirror, test).
+* **Not shown, and the reason for the run:** that the sigma is WHY the handed line is not
+  learned. Three runs show the two side by side; try 2 showed the bonus is not the cause of
+  the sigma. What pays for the noise is open (the 8 yaw sectors of the novelty key, the
+  intrinsic reward in general, the stall kill: none tested, none changed here).
+
+### Try 3: flags, map, cuts (fixed before the launch)
+
+The 89 try-1 tokens plus `--yaw-sigma-max 0.5` = 91 tokens; the launch extra is unchanged
+(`--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256
+--mcts-mix-warm 2'`); `--maxvel 3500`. From scratch at the true start, seed 0, run `fxpb_t3`,
+branch `fx/pb`, one RTX 5080 class box under the price cap.
+
+* **princessburglar only.** unitfarmer2's failure is on the search side and its sigma is
+  0.33 at most: the piece changes nothing there.
+* **What counts as "moved"** (unchanged): a greedy episode from the true start over the pit
+  onto the east ledge, read physically, and finishes.
+* **Read-outs fixed in advance:** (1) the yaw sigma trace (at or under 0.5 by construction;
+  where it sits) and the update kl; (2) whether the curriculum walks the first handed line
+  back PAST the drop off the upper floor (earlier than the state where the line leaves
+  z 3,650..3,720 near x 110..410), and to state 0; (3) the step at which the greedy leaves
+  the start room (frozen 2.95B, try 1 never in 4.84B); (4) whether a pit-crossing line is
+  adopted and whether its walk-back passes the launch.
+* **Cuts:** 5B steps. Earlier, at 1.5B: stop if no handed line has been walked back past the
+  drop off the upper floor (read-out 2) and the greedy is still in the start room: the
+  piece's direct prediction failed. Earlier, any time: a pit line adopted and its walk-back
+  not moving for 2B. Later, to 8B at most: only if a pit line's walk-back made a new low
+  within the last 0.5B before 5B.
+* **Expectations, written down before the run.** The sigma goes to 0.5 within about 40M
+  steps and sits there (the gradient that walked it to 2.718 is still there). If the noise
+  is the brake, the first handed line is walked back past the drop within a few hundred
+  million steps of its adoption and the greedy leaves the start room well before 2.95B. If
+  the curriculum stalls at the same place with the sigma at 0.5, the noise was not the
+  brake and the round ends with princessburglar open. Past the start room the odds are
+  those of the 05:31 entry: the stage crosses the pit in most searches, and learning the
+  launch is the open part. One seed: a null at a cut reads "not by X steps".
+* **If it moves:** the cap does not bind on the other six maps, so their try-1 runs stand
+  beside it as runs of the same 91 tokens (blue200, celestial and petrus finished;
+  cannonball had its first greedy finish at 3.70B and runs to its cut; sidistic is running;
+  unitfarmer2 null). A fresh rerun of all seven with the cap in the command line would be
+  the clean form; it does not fit what is left of the round's budget and needs the user.
+
+### Local checks before renting (CPU)
+
+* The port is commit `b2a5259b` on `fx/sib` (a cherry-pick of 04524bae: the trainer flag, the
+  recorder mirror, the search mirror, `tests/python/test_yaw_sigma_max.py`). With the flag
+  off the trainer builds the ceiling list it built before and writes no config key.
+* Tests (droplet, CPU): `test_yaw_sigma_max.py` 6 passed. With the four neighbouring files
+  (`test_yaw_entropy`, `test_pitch_sigma_min`, `test_auto_spine_fx`, `test_view_absolute`):
+  45 passed, 9 skipped, 1 failed. The failure is
+  `test_absolute_policy_caps_the_pitch_log_sigma_and_projects_the_raw`, its "gradient live
+  AT the cap" line, and it is NOT the port: it fails the same way on the code before the
+  port (checked in the fx/sid worktree) on the droplet's torch 2.14.1+cpu, where a clamp at
+  an exact tie no longer passes the gradient whole (it read 0.0 for the yaw head at the
+  global clamp and 0.5 for the pitch head at its cap), and it passes on a box (torch
+  2.7.1+cu128, run on the live sidistic box on CPU: 1 passed). On the boxes the gradient at
+  a ceiling is therefore whole, which the runs also show: the pitch sigma sat at its 0.500
+  cap and then left it (0.412 at 2.0B, 0.118 at 2.5B in the frozen run). The capped yaw head
+  uses that same path.
+* A CPU smoke of the COMPLETE command line (the launcher's 92 scratch tokens, the 91 recipe
+  tokens, the launch extra; shrunk only by overrides appended at the end), on princessburglar
+  at `--maxvel 3500`: rc 0, no refusal, no traceback; the trainer prints "--yaw-sigma-max
+  0.5: the yaw head's sigma is capped at 0.5"; `run.json` carries `yaw_sigma_max 0.5` and no
+  `yaw_entropy` key (`ent 0.005`, `pitch_entropy 0.0` as before); two searches ran beside the
+  training on the capped checkpoint with the tree and both archive stages (beam rc 0, replay
+  ok) and handed back no line, as in the try-1 and try-2 smokes.
+* **The cap is the identity while it does not bind, end to end.** The same smoke with the
+  pair stripped (the 89 try-1 tokens), same seed: all 20 eval trajectory files equal row for
+  row (23,780 data rows), `progress.csv` equal in every cell but the fps column, the sigma
+  columns of all 20 step lines equal (last 0.302/0.299, max yaw 0.302). That is the local
+  form of "the try-1 runs of the six other maps are runs of this recipe"; it is a 40,960-step
+  CPU run, and the trainer is not run-to-run reproducible on a GPU, so on a box the claim
+  rests on the clamp being the identity below the ceiling, not on a replay.
+* The record gate (`tools/record_gate.py`, the dashboard's backend) on the smoke's capped
+  checkpoint: greedy and stochastic recordings ok (the POV render needs a GPU and is left to
+  the gate on the box). `yaw_sigma_max` is MIRRORED in `record_ckpt.py` and `beam_tas.py`.
+* The config is commit `3b19642f` on `fx/pb` (fx/pb = `fx/sib` b2a5259b but for its config
+  and blocklist); its first 89 tokens are the try-1 recipe token for token (checked against
+  the sidistic rerun's config, `--maxvel` aside).
+
+### Budget and box
+
+Credit $20.68 at 10:50 UTC with two boxes up ($0.92/h): cannonball to its 4.3B cut at about
+11:02 UTC (about $0.2 more; its first greedy finish came at 3.70B, entry to follow) and
+sidistic to 9.0B at about 15:30 UTC (about $1.6 more). Try 3 goes on one RTX 5080 (the offer
+is $0.30/h): about $1.3 at the 5B cut, about $2.0 at 8B. Credit after all of it about $17;
+step 2 then ends at about $10-11 of the $10-15 the user set, and the $10 reserve stands. Three
+boxes are live with it (the watchdog's cap is five). The watchdog entry carries the harvest
+spec and the pid file; the dashboard tunnel is http://localhost:8601/. This is the last try
+of the round: after it nothing more is rented under step 2 except what is already running.
