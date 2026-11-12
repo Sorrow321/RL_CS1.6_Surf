@@ -40842,3 +40842,126 @@ maps' runs. No token differs; `--maxvel 4000` on all four, as in each map's froz
   1.08B steps/h), plus about $2.7 for the three running boxes to their ends. Credit $26.42 at
   06:57 UTC; about $17 after, reserve $10. With that the round's budget (about $10-15) is
   used: a try 2 on all seven would need the user.
+
+## 2026-11-12 07:50 UTC: fix round - blue200 FINAL (180 of 180 over 20 evals, best 14.18 s); the all-seven rerun is up on three maps
+
+Operator entry, branch `fx/sib`. Closes `fxb200_t1` (entries 05:31, 05:55 and 07:03 UTC) and
+records the launch state of the all-seven rerun planned in the 07:03 entry.
+
+### blue200 (`fxb200_t1`) FINAL: it finishes, 180 of 180 over the stable read
+
+The read fixed in the 07:03 entry: the 20 evals from the first 9/9 through the eval of
+2,869,428,224 steps, greedy from the true start (16 spawn points), 9 episodes each.
+
+| eval steps | greedy from the true start (grader) |
+|---|---|
+| 76.0M to 1,359.5M (18 evals) | 0/9, best 52.4-55.2%: in front of the void |
+| 1,434,976,256 | first greedy finish and first **9/9** in the same eval, best 16.27 s |
+| 1,510.5M to 2,869.4M (19 evals) | 9/9 at every one, best per eval 14.18-15.48 s |
+
+* **180 of 180 episodes finish.** Times over the 180: best 14.17 s (rows x tick; the grader
+  prints 14.18 s, eval of 2,491,940,864), median 14.91 s, worst 17.39 s. Every "done" ends in
+  the finish trigger, which on this map is a plain box (the box test is the game's test).
+* **The speed cap does not matter here.** Top speed over the 180 finishes is 961 u/s (top
+  single component 935 u/s) against `--maxvel 4000` in the run and 3,500 on the servers:
+  no re-record at 3,500 was made and none is needed. No human record is put beside it.
+* **The frozen recipe on this map** (`m3sib_b200`): 0 finishes in 4.14B steps, flat at 62.5%
+  from 0.98B. Same card class, same seed, same 83 tokens; the six added tokens are the
+  difference.
+* **What did it** (07:03 entry, unchanged): search 3, fired by patience at 906.5M; the
+  tree's line did not pass the current line's end, the archive stage ran, and its first
+  kind (the held archive) reached the goal: a 74.22 s line adopted at 1,053.3M. The first
+  9/9 came 382M steps after the adoption. No search ran after it: the finish-stop flag
+  printed "9/9 greedy episodes FINISH (...): no search" at all 20 evals, and the line was
+  never replaced. Three searches in the whole run.
+* **Not separated:** which of the six tokens was needed. The stage delivered the line; the
+  current-line reference is what sent search 3 to the stage (the tree's line beat the greedy
+  frontier, 1,725 against 1,977, and under the frozen rule would have been adopted
+  instead); the contact kind never ran on a box. One seed.
+* Training side at the end: win 95.7% @ 12.6 s with reservoir minimum depth 8.2% (the
+  curriculum spawns along a finished line: harvest-flattered, not the result); `approx_kl`
+  0.02-0.03 as in the frozen run; 405k-413k steps/s; no OOM, no traceback.
+* **Box 60314286** (RTX 5080 16 GB, $0.309/h, machine 146166): created 05:39:13, trainer
+  05:41:05 to 07:39:49 (stopped by hand at 2,944,401,408 steps, after the read was
+  complete), released 07:40:54 UTC through box.py, gone on the next fleet look, tunnel 8602
+  stopped. 2.03 h = about $0.63.
+* **Bundle on the droplet (md5 = box, taken with the trainer stopped):**
+  `/home/steam/ar_m2/runs/fxb200/fxb200_t1/` (39 eval trajectories, md5 of the md5 list
+  b02562615622f616e0d241910e7c68f4; run.json a85f60d599df0e58c058e1f8ba72c7f0; progress.csv
+  9f4a601122cb53f9c07ef7ca37ad1fb0; launch log 5f99903161e33d762091bb162714bc1c);
+  `ckpts_t1/` (ckpt_latest.pt d1140fdbf1239326b89cc639267d3472 at 2.94B, a 9/9 flyer;
+  ckpt_2000683008.pt 983aec98d37ad84bd263068522d901e2; ckpt_1000341504.pt
+  1bb4584fff40229ce252ca314d3eff33, before the adoption); `auto_t1/` (spine0, k01-k03 with
+  the archive stage's logs, current.json 03c9ed00ccb2ac6b300755f98585b9ea).
+* **Provenance:** from scratch; spawn states only from the run's own `auto/spine0.npy` and
+  its own three search lines; nothing record-derived, no earlier checkpoint or line.
+
+**Scoreboard, read carefully.** With the changed recipe blue200 is the fifth of seven maps
+finished by one flag set IF the four maps the frozen recipe finished still finish under the
+changed one. That is what the rerun measures; until it is in, the changed recipe has
+finished exactly one map.
+
+### `approx_kl` on princessburglar: the same as the frozen run (closes the 07:03 open item)
+
+Medians per 0.25B bucket: the frozen `m2sib_pb1` 0.21-0.24 through 1.5B and 0.13-0.27
+later; `fxpb_t1` 0.20-0.25. The high value belongs to the map under this recipe, not to
+the change. blue200 (0.02-0.03) and unitfarmer2 (0.10 falling to 0.035) also match their
+frozen runs.
+
+### The all-seven rerun: three of four boxes are up (state 07:50 UTC)
+
+Same 89 tokens and launch extra as try 1, from scratch, seed 0, `--maxvel 4000`. Each
+run.json was diffed against its frozen run: 285 keys, the same 10 differ on every map (the
+six recipe keys, the run's own `auto/spine0.npy`, commit, label, start time). Record gates
+passed (greedy, stochastic, mixed, POV render). Watchdog entries carry a harvest spec and a
+pid file. No field or face-id bake in any first minute.
+
+| run | box | card, $/h | machine | trainer start (UTC) | watchdog until | tunnel | frozen run diffed against |
+|---|---|---|---|---|---|---|---|
+| `fxsid_t1` | 60321977 | RTX 5080, 0.337 | 153623 | 07:06:32 | 16:34 | 8604 | `azr1b2_pool` |
+| `fxpet_t1` | 60322032 | RTX 5080, 0.387 | 156173 | 07:08:37 | 11:05 | 8606 | `m5sib` petrus run |
+| `fxcel_t1` | 60325724 | RTX 5080, 0.309 | 146166 | 07:43:55 | 11:12 | 8607 | `m7sib_cel` |
+| `fxcan_t1` | not rented | RTX 5090 only | - | - | - | 8605 | `m4sib` cannonball run |
+
+Config commits: fx/sid 70765083, fx/pet ef7335f6, fx/cel 2bc156da, fx/can 6fad5657.
+
+* **The fleet watchdog holds five boxes, not twelve.** Its daemon on the droplet has run
+  since 2026-10-24 with `RLSURF_MAX_BOXES=5`. Celestial's first box (60322218, the sixth)
+  was flagged at 07:07:42 ("beyond the 5-box cap") and destroyed at 07:08:16, 40 s after
+  its create. box.py's rent loop read that as a readiness failure and was about to
+  blocklist machine 35039 and rent again; both pending pipelines were stopped by hand
+  first. Machine 35039 is NOT in any blocklist (it was healthy). Cost about one cent.
+  The daemon was not restarted and the cap was not raised: launches queue behind releases.
+  Celestial took blue200's slot at 07:42.
+* **Cannonball is not launched.** It needs a 32 GB card (23.9 GiB peak on the frozen run).
+  Rent refused twice (07:05 and 07:41 UTC): the unblocked RTX 5090 offers stood at $0.607
+  and $0.617/h against the $0.60 cap, and the cap was not raised. At 07:49 one offer
+  passes again ($0.567/h, machine 154692), but five boxes are live: it goes up in
+  unitfarmer2's slot at that run's 3B cut (about 08:25 UTC) if an offer still passes.
+* **Early read, same steps as the frozen runs (too early to mean anything but "alive and
+  on the same path"):** sidistic 9.7% at 680.0M (frozen 8.8%), search 1 adopted at 113.8M,
+  search 2 stale; petrus 20.5% at 906.5M (frozen 20.7%), search 1 stale, search 2 adopted
+  at 589.3M (a 52.33 s tree line, end d 28,058). The archive stage has not run on either.
+
+### The two try-1 runs still going (07:50 UTC)
+
+* **princessburglar `fxpb_t1`, 3.07B steps.** The curriculum on the pit-crossing line
+  (adopted 1,521.5M) stood at states 1,927-1,952 of 2,532 at 1.96B and is at 1,847-1,862
+  since about 2.27B, with success between 7% and 47% and repeated back-offs: it is inside
+  the launch (states about 1,820-1,940) and has moved 15 states in the last 0.8B. Greedy
+  from the true start: still in the start room (0.4%, 0/9 past the success line) at
+  3,020.4M; the frozen run left the room at about 2.95B. The run goes on to its 8B cut
+  (about 11:10 UTC) unless the walk-back stands still for 2B.
+* **unitfarmer2 `fxuf2_t1`, 2.36B steps.** Search 4 (patience, fired 1,510.5M) was the
+  first there to enter the archive stage: the tree's line (end d 27,917) beat the greedy
+  frontier (28,577) but not the current line's end (27,816) by the 200 u gain. Both
+  archive kinds ran and handed back nothing past it (the held kind's deepest held cell
+  d 27,797), and the tree line was adopted as the fallback. Greedy 10.2% flat, the same
+  death dive as the frozen run. Search 5 is running. Cut at 3B (about 08:25 UTC).
+
+### Cost
+
+Credit $25.10 at 07:47 UTC ($27.72 before step 2); five boxes, $1.72/h. To the cuts:
+about $6 for the five running boxes plus about $1.9 for cannonball, so about $17 is left
+at the end, above the $10 reserve. That uses the round's budget ($10-15): a try 2 on all
+seven maps needs the user.
