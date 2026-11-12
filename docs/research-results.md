@@ -40965,3 +40965,110 @@ Credit $25.10 at 07:47 UTC ($27.72 before step 2); five boxes, $1.72/h. To the c
 about $6 for the five running boxes plus about $1.9 for cannonball, so about $17 is left
 at the end, above the $10 reserve. That uses the round's budget ($10-15): a try 2 on all
 seven maps needs the user.
+
+## 2026-11-12 08:31 UTC: fix round - unitfarmer2 FINAL (try 1: NULL, 0 finishes in 3.06B steps, the frozen death dive)
+
+Run `fxuf2_t1`: the try-1 recipe (the 89 tokens of the 05:31 entry, `--maxvel 3500`), from
+scratch at the true start, seed 0, one RTX 5080. Cut fixed before the launch: 3B steps. The
+run reached it; the trainer and its sixth search were stopped by hand at step 3,058,171,904
+(08:23 UTC), the box is released. One seed; this is an ANALYSIS of a benchmark map, and the
+verdict is the predicted one.
+
+### Result: NULL, the same death as the frozen recipe
+
+* **0 finishes.** 41 greedy evals from the true start (524,288 to 3,020,423,168), 369
+  episodes, every one ends "fail".
+* **The greedy flies the frozen run's flight.** From 906.5M on every episode lasts 5.75 to
+  5.99 s and the lowest point of every eval is z 180-182, the kill level; the episodes of the
+  last three evals end near (-1115, -818), north-east of the start. The frozen run
+  `m6sib_uf2` ended its last eval (3,397.9M) at 5.95-5.96 s near (-1135, -838, 182): the same
+  dive, about 28 u apart.
+* **It never enters the pit.** No eval episode goes below z 180, and from 76.0M on none goes
+  south of y -2,774 (the untrained policy's first eval reached y -2,860). The record goes
+  south to y -3,325 and down to z -876 (measurement only, never a training input).
+* **The grader's number is the death dive, as before:** 5.8% at 76.0M, 6.2-6.5% from 151.5M to
+  604.5M, 8.6% at 680.0M, 9.5% at 755.5M, 9.8% at 831.0M, 10.0-10.1% to 1,133.0M, 10.2-10.3%
+  flat from 1,208.5M to the cut. The trainer's
+  banked frontier is 28,571-28,577 at every eval from 1,208.5M on (d0 30,647.5). On this map
+  the percentage is not progress; read it physically.
+
+"Moved" was defined before the launch as a greedy episode in the pit and out of it. None is
+in it. unitfarmer2 did not move.
+
+### The six searches
+
+| search | fired at | tree line | archive stage (5 min per kind) | outcome |
+|---|---|---|---|---|
+| 1 | 0.5M | end d 29,584 (ref 30,233) | not run (the tree line passed the reference) | STALE at 103.3M: frontier 29,468 by then |
+| 2 | 453.5M | 1,497 states, end d 28,317 (ref 29,440) | not run | ADOPTED 567.3M |
+| 3 | 1,057.5M | 581 states, end d 27,816 (ref 28,317) | not run | ADOPTED 1,151.9M |
+| 4 | 1,510.5M (patience) | 570 states, d 27,917: past the frontier 28,577, not past line 3's end minus 200 (27,616) | held: 5.22M runs, 842k cells, 0 goal hits, best line d 27,797; contact: 4.47M runs, 32k cells, best line d 28,396 | no archive line past 27,616: the tree line (the fallback) ADOPTED 1,804.6M |
+| 5 | 2,189.9M (patience) | 609 states, d 28,273: past the frontier 28,573, not past 27,717 | held: 5.50M runs, 804k cells, 0 goal hits, best line d 28,516; contact: 4.36M runs, 30k cells, no line | fallback ADOPTED 2,477.8M |
+| 6 | 2,869.4M (patience) | 2,721 states (27.2 s, crawls 23.4 s past its stall), best d 28,343: past the frontier 28,572, not past 28,073 | held kind at 4.2M runs, 813k cells, best d 27,591 when stopped | stopped at the cut |
+
+* **The archive stage ran in three searches and handed back nothing past the current line**
+  (two complete: 19.5M explorer runs, 0 goal hits). This is the null the offline check of the
+  05:31 entry predicted: the archive fills near the start and the pit, and a hand-back ranked
+  on the field cannot return a pit line (the pit is +2,840 u of d). Whether the box archives
+  hold pit cells was not re-measured (the archives were not pulled; 800k cells each).
+* **Every adopted line ends in the air on the same side as the death**, none in the pit: line
+  2 at (-1793, -1119, 197) after 15.0 s, line 3 at (-1354, -966, 196) after 5.8 s, line 4 at
+  (-1409, -1016, 309) after 5.7 s, line 5 at (-1735, -1155, 196) after 6.1 s. The start is at
+  y -2,272; the pit is south of it.
+* **The curriculum walked all four lines back to state 0** (band [0, end], band success 68%,
+  92%, 98%, 95%), and the greedy from the true start still passed none of their success
+  lines (0/9 at every eval; frontier 28,571-28,577 against line ends 27,816-28,317). The band
+  success is over starts drawn from the whole band, so it does not say a start from state 0
+  reaches the line's end. In the frozen run one line was replaced after 448M steps without
+  being walked back; with `--auto-spine-patience-tau` that did not happen here. It bought
+  nothing on this map.
+* **Generic observation on `--auto-spine-current-ref` (NOT changed, no map constant):** the
+  flag sends a tree line that beats only the greedy frontier to the archive stage first, and
+  adopts it as the fallback when the stage returns nothing. Here that happened twice and the
+  line in use got SHALLOWER each time: end d 27,816 -> 27,917 -> 28,273. The patience clock
+  had expired on a line the curriculum had already walked back to state 0, so "the line is
+  not being learned" was not the reason for a new one; the loop has no state for "walked
+  back, greedy still short", and it restarts the curriculum on a line that is no deeper.
+  Search 6's tree line was 27 s of crawling. A candidate for the next change: after a full
+  walk-back with the greedy still short, do not accept a line that ends above the current
+  one. Not built.
+
+### Against the frozen recipe on this map
+
+| | frozen (`m6sib_uf2`) | try 1 (`fxuf2_t1`) |
+|---|---|---|
+| steps | 3.42B | 3.06B |
+| greedy evals, finishes | 46, 0 | 41, 0 |
+| all nine episodes last 5.75 s or more from | 1.21B | 0.91B |
+| greedy in the pit | never | never |
+| searches, adopted lines | 8, 7 | 6 (5 ended), 4 |
+| lines in the pit | 0 | 0 |
+
+No difference that one seed can carry. The field-free stage does nothing here because its
+hand-back is still ranked on the field; the bookkeeping flags change which line is in use,
+not where the lines go.
+
+### Box, cost, bundle, provenance
+
+* Box 60314419 (RTX 5080 16 GB, $0.3006/h, machine 155253): created 05:40:26, trainer
+  launched 05:42:17, stopped 08:23, released 08:26:52 UTC (through box.py; gone on the fleet
+  list, 4 live after it) = 2.77 h = about $0.83. No OOM, no traceback. Tunnel 8603 stopped.
+* Bundle on the droplet, md5 equal to the box (taken after the trainer stopped):
+  `/home/steam/ar_m2/runs/fxuf2/fxuf2_t1/` (41 eval trajectories, md5 of the md5 list
+  fe016131024008c94d85a7580b2c4ab5; run.json 6fa0b519f49039aa6eb52b6890c46b65; progress.csv
+  4164532247ab5bce5959f47749ba7f22; launch log a4142064aa5742d0f8bae3c64be662a5),
+  `ckpts_t1/` (ckpt_latest.pt 881065145467534c41d194421450c77b at 3.06B;
+  ckpt_3001024512.pt 3460a1f1915a3f520c7fb625a92f86a4; ckpt_2000683008.pt
+  3fa15cabeaec62fcd6dac37d9e623bb0; ckpt_1000341504.pt 9dfd74899f0761e9084d4d5f6500afea),
+  `auto_t1/` (k01-k06 logs and lines, spine0.npy, current.json
+  b87be6d430fb22e088df924179af5341; the archives themselves were left on the box).
+* Provenance: from scratch; spawn states only from the run's own `auto/spine0.npy` and its own
+  search lines; nothing of September's or October's unitfarmer2 work and nothing
+  record-derived entered. The checkpoint is clean but is not a result: it is a policy that
+  dies 6 s after the spawn.
+
+### Where the fix round stands after this
+
+Try 1 on the three maps the frozen recipe failed: blue200 FINISHED (07:50 entry),
+unitfarmer2 NULL (this entry), princessburglar still running to its 8B cut (a pit-crossing
+line adopted at 1.52B, its launch not learned at 3.07B; next entry).
