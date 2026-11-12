@@ -41948,3 +41948,106 @@ Try-1 recipe, from scratch, one seed per map:
   $1.4 more), try 3 about $1.3 at its 5B cut ($2.0 at 8B). The $10 reserve stands. After
   try 3 nothing more is rented under step 2; a fresh run of one flag set on all seven maps
   needs the user.
+
+## 2026-11-12 12:27 UTC: fix round TRY 3 INTERIM - fxpb_t3 at its 1.5B check: line 1 walked back to 117 u from the spawn, greedy episodes leave the start room from 1,359.5M (frozen 2,944.9M); no pit crossing; continues to 5B
+
+Run `fxpb_t3` (the 89 try-1 tokens + `--yaw-sigma-max 0.5`, `--maxvel 3500`, from scratch,
+seed 0, box 60344011, RTX 5080; pre-registered in the 10:50 entry, launched 10:52 UTC). This is
+the check the 10:50 entry fixed for 1.5B steps, read at step 1,556,611,072 (12:23 UTC), with
+the stricter reading of read-out (2) written down in the 11:22 entry before any outcome. One
+seed; nothing is called here.
+
+### The rule and its verdict
+
+"At 1.5B: stop if no handed line has been walked back past the drop off the upper floor AND
+the greedy is still in the start room." Neither holds. **The run continues to its 5B cut.**
+
+### Read-out (2): the curriculum walked line 1 back to the spawn side
+
+Line 1 (search 1, adopted at 93,323,264: 2,997 states, end d 55,897; state 0 is the spawn, the
+last state on the upper floor is 2,790, the end is (394, -3092, 3376)). Start position of the
+curriculum's band on it, with the path it stands before the drop:
+
+| step | start state | path before the drop | path from the spawn |
+|---|---|---|---|
+| 95.9M | 2,991 | (after the drop) | |
+| 111.7M | 2,801 | at the drop | |
+| 253M-302M | 2,401-2,411 (standing) | 352 u | 2,730 u |
+| 316.1M | 2,396 | 355 u | 2,728 u |
+| 331.9M | 2,286 | 431 u | 2,651 u |
+| 442.0M | 1,866 | 797 u | 2,286 u |
+| 567.8M | 1,031 | 1,561 u | 1,522 u |
+| 568M-866M | 1,031-1,051 (standing, band success 25-54%) | | |
+| 942.7M | 946 | 1,675 u | 1,408 u |
+| 1,144.5M | 851 | 1,808 u | 1,275 u |
+| 1,301.8M | 616 | 2,166 u | 916 u |
+| 1,329.1M | 581 | 2,208 u | 875 u |
+| 1,406.7M | 226 | 2,857 u | 226 u |
+| 1,511.5M | 141 | 2,954 u | 129 u |
+| 1,556.6M | 101 | 2,966 u | 117 u |
+
+* Try 1's curriculum on its first line stalled 360 u of path before the drop (start 3,191 of a
+  line that drops at state 3,342; 150 states in 500M steps), and its later pit line stalled in
+  the same run-up for 2B+ (10:50 entry); no line of try 1 was walked back past it in 4.84B.
+  Try 3 passed that distance between 316M and 332M and stands 117 u of path from the spawn at
+  1.56B. The prediction of the piece ("if the noise is the brake, the first handed line is
+  walked back past the drop within a few hundred million steps of its adoption") is met in
+  the stricter path sense, with two stand-stills on the way (253M-302M; 568M-866M).
+* Not at state 0 yet. The band is [101, 2,996] with band success 62-66% at the cut of this
+  entry.
+
+### Read-out (3): greedy episodes leave the start room from 1,359.5M
+
+Read from the eval trajectories (grader + where each episode ends), not from the trainer's
+success-line count:
+
+| eval step | grader best / median | episodes that go below the upper floor (z < 3,600) |
+|---|---|---|
+| 524,288 to 1,283,981,312 (18 evals) | 0.3-0.6% / 0.1-0.4% | 0 of 9 at every eval |
+| 1,359,478,784 | 3.2% / 0.4% | 1 of 9 |
+| 1,434,976,256 | 3.2% / 0.4% | 4 of 9 |
+| 1,510,473,728 | 3.2% / 0.4% | 3 of 9 |
+
+* The episodes that go down end on the lower floor near (808..819, -3,314..-3,365, z
+  3,330..3,362) after 41-45 s; the floor there is z 3,314. That is the grader's 3.2%, the
+  number the frozen run stood at for 10B steps. It is NOT the east ledge (z about
+  3,440-3,470): nothing has crossed the pit, and "moved" (a greedy episode over the pit onto
+  the east ledge) has not happened.
+* The other episodes end standing on the upper floor near (649, -3155, 3652) after 31-36 s
+  (the eval's patience cut), the same end as before 1.36B.
+* The frozen run (`m2sib_pb1`) on the same grader: best 0.3-0.4% at all 39 evals through
+  2,869,428,224, first 3.2% at 2,944,925,696 (2 of 9 episodes down), median 3.2% from
+  3,020,423,168 (8 of 9). Its episodes ended near (1060, -2850, 3350), about 570 u from try
+  3's. Try 1 never in 4.84B. So on the first-episode-down mark try 3 is at 1,359.5M against
+  the frozen 2,944.9M (2.2 times earlier, one seed each: side by side, not a ranking), and it
+  is not yet where the frozen run was one eval later (most episodes down).
+
+### Read-out (1): the sigma and the update size
+
+* Yaw sigma: at the 0.5 cap from about 31M steps; the FIRST step line under it is at
+  1,294,991,360, and it reads 0.478-0.496 from 1.45B to 1.56B. It comes off the bound by
+  itself as the walk-back nears the spawn. In the frozen run the same thing happened from the
+  2.718 clamp at 2.0B-3.0B (0.76 as it left the start room).
+* Pitch sigma: at its 0.5 cap from about 63M to about 1.19B, then down: 0.453 at 1.25B, 0.419
+  at 1.33B, 0.349 at 1.56B.
+* Update kl is still 0.15-0.26 with both sigmas capped (0.01-0.03 on the maps that finish).
+  The cap did not bring it down. What drives it is open; nothing is changed.
+
+### Read-out (4): no pit line yet, one search so far
+
+Only search 1 has run (k01). No greedy quorum has passed line 1's success line (d <= 55,997:
+1, 4 and 3 of 9), and under `--auto-spine-patience-tau` the patience clock restarts at every
+new low of the curriculum, which has kept moving. The next search fires at a quorum of 5 of 9
+past the line or 300M steps after the curriculum's last new low.
+
+### Other
+
+* Alive, 285k steps/s, no traceback, no OOM. win 0.00% (training), reservoir min depth 96.77%.
+* Box 60344011, $0.3006/h; watchdog deadline 16:03 UTC, the 5B cut arrives about 15:45 UTC.
+  An extension is needed only for the 8B clause (a pit line's walk-back making a new low in
+  the last 0.5B before 5B); it is decided then, inside the budget.
+* Credit $19.43 at 12:25 UTC, two boxes up ($0.637/h): this run and sidistic `fxsid_t1`
+  (5.67B steps at 12:10, 0 finishes by the grader through 5,662,834,688, 27.8-31.9%; the
+  frozen run's first finish was at 7.25B; cut 9.0B).
+* Cuts from here, unchanged: 5B; earlier if a pit line is adopted and its walk-back does not
+  move for 2B; to 8B at most only on a pit line's new low in the last 0.5B before 5B.
