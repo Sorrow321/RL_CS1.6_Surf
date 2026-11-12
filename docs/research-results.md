@@ -40272,3 +40272,221 @@ run.
 disturbs the greedy as on cannonball). Then a finish is re-recorded at `--maxvel 3500` on the
 box, the run is bundled (md5) and the box released, well ahead of the deadline. No constant has
 been touched.
+
+## 2026-11-12 01:25 UTC: m7sib_cel FINAL - celestial FINISHED by the frozen recipe: first finish and 9/9 at 1,585,971,200 steps, 150 of 180 greedy episodes over the 20 evals to 3.02B, best 43.35 s; box released
+
+FINAL entry. The run is over and the box is released (01:15:25 UTC on 2026-11-12). One seed,
+from scratch, the frozen sidistic recipe with no flag or constant changed since the launch entry
+of 2026-11-11 22:33 UTC. It continues the interim entries of 23:39 UTC (fork passed) and
+2026-11-12 00:10 UTC (first finish). The cut was fixed in advance at the eval of 3,020,423,168
+steps (told to the user at 00:52 UTC); three more evals landed while the bundle was pulled and
+are shown below the cut, not counted in the read.
+
+**The result.** The frozen recipe finishes surf_src_celestial from the true start.
+
+* The greedy sat at the fork (29-32%) from 151.5M to 755.5M steps and passed it between 755.5M
+  and 831.0M, on search line 3 (the mirrored side of the room). Plain recipes never passed it
+  in 3B steps.
+* First greedy finish and first 9/9 in the SAME eval, at **1,585,971,200 steps**. All 21 evals
+  before it: 0 of 189.
+* Stable read, the 20 evals from there through 3,020,423,168: **150 of 180 greedy episodes
+  finish (83.3%)**; nine evals are 9/9, six are 8/9, five are bad (5, 2, 5, 4, 5 of 9).
+  The three evals after the cut read 9, 9, 8 (176 of 207 over all 23).
+* Best time **43.35 s** by the grader (at 2,567,438,336); the best full eval is 9/9 at
+  43.44-43.94 s (2,718,433,280).
+* Re-recorded at `--maxvel 3500` (the server physics every human demo ran on): 9/9,
+  43.57-44.01 s, the same flight row for row as at the recipe's 4000. The human record is
+  34.76 s (spriggan): the policy is about 8.8 s (25%) slower.
+* Total: about 3.27B steps in 2 h 45 min of training (about 1.18B steps per hour on the
+  RTX 4080; step-matched comparisons only).
+
+**Evals from the first finish (greedy, true start, 9 episodes; times are the last recorded
+tick of each finishing episode; "line" = the search line whose curriculum was running and how
+far into that line, in seconds, its start band stood at the eval).**
+
+| step | finishes | finish times (s) | failures: time, last position | line, band at |
+|---|---|---|---|---|
+| 1,585,971,200 | **9 / 9** | 44.72-45.13 | | 5, 20.2 s |
+| 1,661,468,672 | 8 / 9 | 44.87-45.22 | 16.20 s (740, 1104, 540) | 6, 37.2 s |
+| 1,736,966,144 | 8 / 9 | 43.86-44.27 | 17.02 s (-3341, 4493, 535) | 6, 25.6 s |
+| 1,812,463,616 | **9 / 9** | 44.41-44.90 | | 6, 20.6 s |
+| 1,887,961,088 | 8 / 9 | 44.24-45.47 | 31.53 s (7179, -5901, -3247) | 6, 13.3 s |
+| 1,963,458,560 | **9 / 9** | 44.11-45.03 | | 6, 9.2 s |
+| 2,038,956,032 | 5 / 9 | 43.87-44.30 | 15.56 s, 15.71 s (fork room); 31.94 s, 32.01 s (7176, -52xx, -363x) | 7, 34.3 s |
+| 2,114,453,504 | 8 / 9 | 43.80-44.26 | 16.49 s (99, 1582, 540) | 7, 22.7 s |
+| 2,189,950,976 | **9 / 9** | 43.93-44.48 | | 7, 17.4 s |
+| 2,265,448,448 | 8 / 9 | 43.78-44.36 | 67.77 s (7525, -4053, -4769), a hang | 7, 12.2 s |
+| 2,340,945,920 | **9 / 9** | 43.90-44.54 | | 7, 5.9 s |
+| 2,416,443,392 | **9 / 9** | 43.79-44.25 | | 8, 33.9 s |
+| 2,491,940,864 | **9 / 9** | 43.63-44.20 | | 8, 22.7 s |
+| 2,567,438,336 | 2 / 9 | 43.35-43.54 | six at 15.71-16.08 s on the fork room's floor; one hang there to 40.81 s | 8, 16.7 s |
+| 2,642,935,808 | 8 / 9 | 43.88-44.33 | 16.28 s (291, 1241, 535) | 8, 14.0 s |
+| 2,718,433,280 | **9 / 9** | 43.44-43.94 | | 8, 9.2 s |
+| 2,793,930,752 | 5 / 9 | 43.51-43.77 | four at 15.82-16.06 s on the fork room's floor | 9, 33.4 s |
+| 2,869,428,224 | 4 / 9 | 44.11-44.33 | five at 16.00-16.27 s on the fork room's floor | 9, 22.2 s |
+| 2,944,925,696 | 5 / 9 | 44.14-44.49 | four at 15.91-16.09 s on the fork room's floor | 9, 19.6 s |
+| 3,020,423,168 (the cut) | **9 / 9** | 50.42-51.36 | | 9, 15.2 s |
+| 3,095,920,640 | **9 / 9** | 49.22-51.38 | | 9, 11.8 s |
+| 3,171,418,112 | **9 / 9** | 48.46-51.62 | | 10, 39.2 s |
+| 3,246,915,584 | 8 / 9 | 44.65-49.10 | 6.56 s (-4231, -337, 2732), a fall on the first descent | 10, 27.6 s |
+
+* Every finish is inside the finish trigger *142 (the east curtain, a plain box): all 176
+  finishing episodes end "done" one tick before it, at x 6,929..6,945, inside its y and z,
+  moving +x at 1,230-1,740 u/s. No episode ends at the game's second stop trigger *143 (the
+  west curtain; not counted by the simulator, so a sim finish is a game finish).
+* **Where the misses die.** Of the 30 failures up to the cut, **26 are in the fork room**: 25
+  deaths on its void floor (z 535-566) at 15.6-17.0 s and one hang there. 23 of the 25 lie at
+  x -194..948, y 1,021..1,582, under the stretch a finishing flight covers between 15.5 s and
+  16.0 s on its way out of the room ((32, 1759, 1292) to (760, 1210, 826) in the 9/9 eval of
+  2,718.4M: the bottom of its dive, after which it climbs again); the fallers are on the floor
+  260-290 u under that bottom at the same second. Three more failures die at about 32 s near
+  (7176..7179, -5200..-5901, -3247..-3636), one hangs at 67.8 s. The fork is passed, but it
+  stays the place where the greedy is least reliable.
+* **The misses come in bouts, and the cause is not shown.** 51 of 54 in the first six evals;
+  5/9 in the first eval after line 7's adoption; 52 of 54 in the next six; 2/9 at 2,567.4M;
+  8/9 and 9/9; then 14 of 27 over the three evals after line 9's adoption; then 9/9 again.
+  Two of the three bouts start in the first eval after a finishing line is adopted and the
+  curriculum restarts at its end (lines 7 and 9); the third sits in the middle of line 8's
+  walk-back; lines 6, 8 and 10 were adopted with no drop (8/9, 9/9, 9/9 in the next eval). The
+  curriculum's position does not separate good from bad evals either (last column: bad evals
+  with the band at 34.3, 16.7, 33.4, 22.2 and 19.6 s; good ones at every depth). At 00:52 UTC
+  I told the user the 2/9 "coincides with line 8's curriculum reaching the fork room's
+  states": the full table does not support that as a rule. One seed: restarts, the curriculum
+  and plain policy drift are not separated. Cannonball showed the same loss of reliability
+  after the first finish (61% of episodes); petrus did not (97.9%).
+* **The 50 s evals are a wait at the start, not a different route.** From 3,020,423,168 the
+  greedy creeps on the start slope before it drops in: it passes x -6,000 at 9.1 s (median;
+  3.0-3.2 s in every eval before), then 7.7 s, 7.0 s and 3.6 s in the three evals after. The
+  flight after the start is the same line (finishers' median 41.3-42.1 s against 40.5-41.9 s
+  before). It appeared in the first eval after the three bad ones; all 27 episodes of the
+  three evals that have it in full finish; and it was fading when the run ended (five of
+  eight finishes at 44.65-44.97 s in the last eval). Not explained.
+
+**Searches (all on the trainer's field, from the policy's own checkpoint; 1-6 in the earlier
+entries).**
+
+| search | fired at (why) | verdict at | line | what it is |
+|---|---|---|---|---|
+| 1 | 524,288 (quorum) | 105,381,888 stale | | |
+| 2 | 453,509,120 (quorum) | 546,832,384 adopted | 1,281 states, end d 43,338 | the field's side of the fork, ends in the air; not followed |
+| 3 | 604,504,064 (quorum) | 701,497,344 adopted | 1,538 states, 15.38 s, end d 42,103 | the mirrored side, ends on the ground; carried the greedy through the fork |
+| 4 | 830,996,480 (quorum) | 925,892,608 stale | end d 30,910 | the greedy was already at 15,848 |
+| 5 | 1,283,981,312 (quorum) | 1,372,585,984 adopted | 4,450 states, 44.50 s, end d 1,292 | a hang 900 u under the curtain |
+| 6 | 1,510,473,728 (quorum) | 1,601,699,840 adopted | 4,553 states, 45.53 s, end d 175 | 168 u short, 120 u under the curtain |
+| 7 | 1,963,458,560 (patience) | 1,968,701,440 adopted | 4,424 states, 44.24 s, end d 0 | the greedy's own finishing rollout |
+| 8 | 2,340,945,920 (patience) | 2,345,140,224 adopted | 4,424 states, 44.24 s, end d 0 | the greedy's own finishing rollout |
+| 9 | 2,718,433,280 (patience) | 2,722,627,584 adopted | 4,380 states, 43.80 s, end d 0 | the greedy's own finishing rollout |
+| 10 | 3,095,920,640 (patience) | 3,099,590,656 adopted | 4,959 states, 49.59 s, end d 0 | the same, with the wait at the start in it |
+
+* Searches 1-6 each ran the full 6 minutes with `beam_finished` 0: **no search line reached
+  the finish before the policy did.** What the search gave this map is line 3: the way through
+  the fork. From 49% to the first 9/9 the policy flew on by itself (line 5 spawned it on the
+  last stretch for 213M steps before the first finish; its share is not separated).
+* Searches 7-10 each ended in 12-15 s after ONE wave (2,090 nodes, best line's macros "G"):
+  the tree's first greedy rollout finishes, so the search returns the policy's own flight,
+  the line is adopted (end d 0 beats the banked greedy frontier of 2,711-2,827 by more than
+  the gain 200) and the curriculum restarts at the line's end.
+* The trainer printed "0/9 greedy episodes past the success line" on all 23 finishing evals
+  (success line d <= 1,392, then 275, then 100 from line 7 on; banked greedy frontier
+  2,701-2,907 on 21 of them, 40,344 and 40,273 on the 2/9 and 4/9 evals; the depth is banked
+  at the last contact and the finish is reached in flight). So a finish never counts as a
+  quorum, and after search 6 the only searches are the 3e8 patience searches, one every 377M
+  steps.
+* Lines 2 and 3 were walked back to state 0; no later line was: lines 5-9 were each replaced
+  by the next search first (deepest start bands reached: line 5 state 2,009, line 6 state 902,
+  line 7 state 588, line 8 state 883, line 9 state 1,169; line 10 stood at 2,763 when the run
+  ended). Bands with 0% success sit at states the true-start greedy flies through 8-9 of 9
+  times (states 1,163-1,198 of line 8 at 2.67B-2.69B: 0.0-1.7% over 75-174 episodes each, and
+  the next move reads 89.4% over 370 episodes at state 1,193; states 1,174-1,189 of line 9 at
+  3.08B-3.09B: 0.0-0.8%). A spawn from a recorded state at the training temperature is not the
+  greedy flying through it, and the band's success figure swings by itself.
+
+**The re-record at `--maxvel 3500` (ledger convention before a time is put beside the human
+record).** Done on the box at 00:42 UTC beside the running trainer, from a frozen copy of
+ckpt_latest.pt (step 2,555,904,000, md5 aa6306f470dad87dd9be5327b055f88c):
+`tools/record_ckpt.py ckpt_rec.pt --episodes 9 --maxvel 3500` gives 9/9 at 43.57-44.01 s
+(grader best 43.58 s). The control from the same copy at the checkpoint's own 4000 is row for
+row identical: 39,461 data rows equal, only the 9 episode headers differ (maxvel, maxvel_ckpt,
+phys). Top speed in both is 2,670 u/s, so the policy never reaches either cap and the cap does
+not matter for its flight. Beside the human record of 34.76 s (spriggan; a recording used
+for this comparison only): 8.8 s slower.
+
+**Beside the bars on this map** (other cards, so step-matched only; never constants; all at
+`--maxvel 4000`).
+
+| | fork passed | first greedy finish | best time |
+|---|---|---|---|
+| plain / cross-map recipes (celDCcur3B, jt3ANCHU) | never (28-30% to 3B) | none | |
+| September's hand-staged lineage gsCELunstuck..6 (pre-fork spawn windows, six resumes) | by staging | after 2.5B | 42.04 s |
+| **this run (frozen recipe, nothing staged)** | 0.76B-0.83B | **1.586B** | 43.35 s |
+
+**Training side.** About 310-330k steps/s; win 93.9% @ 19.9 s with reservoir minimum depth
+0.000% in the last step line (curriculum spawns near the goal: harvest-flattered, a diagnostic
+only; the evidence is the greedy evals above). No CUDA out-of-memory and no traceback in the
+whole log; GPU 4.8 of 16 GiB.
+
+**Scoreboard of the frozen recipe (one seed per map, no flag or constant changed; unitfarmer2
+and princessburglar ran `--maxvel 3500`, their server physics).**
+
+| map | result | steps | greedy finish rate after the first 9/9 |
+|---|---|---|---|
+| surf_src_sidistic (where it was built) | finished | 7.248B (run 5: 8.230B) | |
+| surf_princessburglar_b26 | null | 12.86B | |
+| surf_edgeflow_blue200 | null | 4.14B | |
+| surf_src_cannonball | finished | first finish 2.718B, 9/9 at 3.247B | 61% |
+| surf_petrus_lite | finished | first finish and 9/9 at 3.247B | 97.9% |
+| surf_unitfarmer2 | null | 3.42B | |
+| **surf_src_celestial** | **finished** | first finish and 9/9 at 1.586B | 83.3% (150 of 180) |
+
+Four of seven. One seed per map: a finish on one map with one seed is not a recipe win by
+itself. What this map adds: the fork is a short level stretch the field does not pay for, and
+the search found its way round it (line 3, 15 s of flight) where the two pits and the blue200
+void (longer stretches against the field) stay nulls. The three nulls stand.
+
+**Generic open items seen again here (none fixed; no map constant in any of them).**
+
+1. A finish is not a quorum event (cannonball's item 1): "0/9 past the success line" on all 23
+   finishing evals.
+2. The 3e8 patience search keeps replacing the line after the map is already finished, with
+   the greedy's own rollout, and restarts the curriculum each time (four times here). The
+   greedy lost reliability after two of those restarts; cause not separated.
+3. A new line is compared with the banked greedy frontier, not with the line it replaces:
+   line 10 (49.59 s, the hesitating greedy) replaced line 9 (43.80 s).
+4. Curriculum bands with 0% success at states the greedy flies through; "walked back" is a
+   band average at the training temperature (petrus's items 2 and 4).
+5. Reliability after the first finish moves in bouts at one place (the fork room's exit);
+   nothing in the recipe measures or repairs the greedy's reliability from the true start.
+
+**Box and cost.** Instance 60270811 (RTX 4080 16 GB, $0.2833/h, machine 148127, Panama):
+rented 22:20:42, launched 22:29:57, released 01:15:25 UTC = 2.91 h = about $0.83 (9.1 h of the
+12 h budget unused). Released through box.py; gone on two looks (`vastai show instances`: 0
+instances; fleet registry: live 0); the 8601 tunnel is stopped. Credit $27.72.
+
+**Bundle on the droplet (every file md5-checked against the box before the release).**
+
+* /home/steam/ar_m2/runs/m7sib/m7sib_cel/: 44 eval trajectories (same names as on the box),
+  progress.csv, the launch log, run.json (md5 9d170cc235e5b963f20160deb27c53e3), ckpt_latest.pt
+  (md5 b16a7133e2fc863833b9d26691486b75, pulled at 01:14:32 UTC at about 3.25B steps).
+* /home/steam/ar_m2/runs/m7sib/cel_ckpts/: the trainer's periodic checkpoints
+  ckpt_1000341504.pt (85771a17a46c08b58db72dbf121efe70), ckpt_2000683008.pt
+  (18b8ef32b8be5db10d6c9e2dd04af2d8), ckpt_3001024512.pt (54115a6c4529b70ed12c4d546d09f031) and
+  ckpt_k09_2718433280.pt (519d9290a14a2298c9eb3b8b2256d554: the checkpoint search 9 took at
+  the 9/9 eval of 43.44-43.94 s).
+* /home/steam/ar_m2/runs/m7sib/cel_rec/: rec_mv3500.jsonl (b64b57ab65b5c7dc3efd24e6c887f7ef),
+  rec_mv4000.jsonl (1c5fa6a3624a98f47a857f165f8d49a2), their logs, run_rec.sh and ckpt_rec.pt
+  (aa6306f470dad87dd9be5327b055f88c).
+* /home/steam/ar_m2/runs/m7sib/cel_auto/: k01..k10 (spine.npy, spine.keys.npy, spine.json,
+  auto_spine.log, beam.log), spine0.npy (0e62cd2ddd03163cb8b752bffd61e574), current_0112.json
+  (07df724e5f0a9e81ec4b2cba757fa868). Spines: k07 7a5a3c1fdb66f4b49d1cafbfa7dc3918, k08
+  042844aa6409fb12a64c6c6882b28b35, k09 fa5c0f07f7a66361d996a330cf3883c5, k10
+  7f8d3f7c870390daa7790f62030534bd (k01-k06 in the earlier entries).
+* Map caches for a later box: /home/steam/ar_m2/maps/celestialc_maps.tar.gz (md5
+  a17afe75e41a8ec7f7032b4c2f3cdb92) and
+  /home/steam/ar_m2/maps/celestial_faceid/surf_src_celestial.faceid_32.npz (md5
+  577fa4f4bef354b60990e8a194d6702c).
+
+**Provenance.** From scratch. The only spawn-state files are the run's own auto/spine0.npy and
+its own search lines k02, k03, k05-k10, every one built by the run's search from the run's own
+checkpoint on the trainer's field. Nothing of September's celestial work (checkpoints,
+`celestial_pregate.npy`, lines, gate boxes) and nothing record-derived entered the run; the
+human record is used above as a number to stand beside, nothing else.
