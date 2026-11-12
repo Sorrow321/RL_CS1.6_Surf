@@ -290,6 +290,8 @@ class Archive:
         # --select-energy K: the most energetic cell (z + |v|^2 / 2g) of each place is drawn
         # (1 + K) times as often as its W says; 0 = the Nature weight alone
         self.select_energy = 0.0
+        # --cell-held: the archive indices whose state the map HOLDS (contact_rows); None = off
+        self.held: set | None = None
 
     def _grow(self, cap: int) -> None:
         old = getattr(self, "key", None)
@@ -496,6 +498,10 @@ class Archive:
                 if i < n:
                     flat[off[i]:off[i + 1]] = a
             extra = dict(link_acts=flat, link_off=off)
+        if self.held is not None:
+            hd = np.zeros(n, bool)
+            hd[[i for i in self.held if i < n]] = True
+            extra["held"] = hd
         np.savez(path,
                  key=self.key[:n], state=self.state[:n], seen=self.seen[:n],
                  chosen=self.chosen[:n], parent=self.parent[:n],
@@ -791,6 +797,15 @@ def explore(args) -> int:
                         float(cfg.phys.sv_maxvelocity))
         print(f"--cell-contact: only states the map holds are archived (ground, or a tick whose "
               f"vz gives back > 1 u/s more than the {contact_rule[0]:g} u/s free-fall step)")
+    held_rule = None
+    if getattr(args, "cell_held", False):
+        if not getattr(args, "exact_chains", False):
+            raise SystemExit("--cell-held marks cells whose state is never replaced: give "
+                             "--exact-chains")
+        held_rule = (float(cfg.phys.sv_gravity) * float(cfg.phys.msec) / 1000.0,
+                     float(cfg.phys.sv_maxvelocity))
+        print("--cell-held: every state is archived as before; archive.npz also says which "
+              "cells' states the map holds (ge_replay --held)")
 
     zones = load_zones(str(bsp))
     if not zones.get("end"):
@@ -874,6 +889,8 @@ def explore(args) -> int:
     arch = Archive(hasher, max_cells=args.max_cells)
     arch.exact = bool(getattr(args, "exact_chains", False))
     arch.select_energy = float(getattr(args, "select_energy", 0.0) or 0.0)
+    if getattr(args, "cell_held", False):
+        arch.held = set()
     if arch.select_energy > 0.0:
         print(f"--select-energy {arch.select_energy:g}: the most energetic cell of each "
               f"{args.cell:g} u place drawn x{1.0 + arch.select_energy:g}")
@@ -885,6 +902,8 @@ def explore(args) -> int:
         else:
             i = arch.add(int(rk[j]), roots[j], depth=0, parent=-1)
         arch.dist[i] = dist.sample(roots[j]["origin"][None, :])[0]
+        if arch.held is not None and int(roots[j]["onground"]) != -1:
+            arch.held.add(i)        # a root has no tick before it: its ground flag alone
     if keep_all:
         print(f"--roots-keep-all: {len(roots)} roots -> {arch.size} root cells "
               f"({len(set(int(k) for k in rk))} distinct keys)")
@@ -1046,7 +1065,7 @@ def explore(args) -> int:
 
             n_runs += len(r_t0)
             fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist, acts_h,
-                       contact=contact_rule)
+                       contact=contact_rule, held=held_rule)
             it += 1
             if (max_minutes > 0.0 and not stop
                     and time.perf_counter() - t_start >= 60.0 * max_minutes):
@@ -1147,11 +1166,13 @@ def contact_rows(hist: np.ndarray, rid_h: np.ndarray, g_step: float, vmax: float
 
 
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
-               r_org, dist, acts_h=None, contact=None) -> None:
+               r_org, dist, acts_h=None, contact=None, held=None) -> None:
     """Archive everything one chunk of rollout discovered. ``contact`` = (g_step, vmax) archives
-    only the states the map holds (--cell-contact, contact_rows)."""
+    only the states the map holds (--cell-contact, contact_rows); ``held`` = (g_step, vmax)
+    archives every state and records which new cells' states the map holds (--cell-held)."""
     if not r_t0:
         return
+    hc = contact_rows(hist, rid_h, held[0], held[1]) if held is not None else None
     if contact is not None:
         rid_h = np.where(contact_rows(hist, rid_h, contact[0], contact[1]), rid_h, -1)
     keys = hasher.keys(hist)
@@ -1168,6 +1189,8 @@ def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
         for i, j in zip(added.tolist(), ent):
             t0 = int(r_t0[int(g_run[j])])
             arch.link_acts[i] = acts_h[t0:int(g_tick[j]), int(g_env[j])].copy()
+            if hc is not None and hc[int(g_tick[j]), int(g_env[j])]:
+                arch.held.add(i)
     if added.size:
         arch.dist[added] = dist.sample(arch.state[added]["origin"])
 
@@ -1251,6 +1274,8 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
         out["view_follow"] = str(args.view_follow)
     if getattr(args, "cell_contact", False):
         out["cell_contact"] = 1
+    if getattr(args, "cell_held", False):
+        out["cell_held"] = 1
     if float(getattr(args, "cell_energy", 0.0) or 0.0) > 0.0:
         out["cell_energy"] = float(args.cell_energy)
     if int(getattr(args, "cell_heading", 0) or 0) > 0:
@@ -1881,6 +1906,13 @@ def build_parser() -> argparse.ArgumentParser:
                          "fast map most new cells are ballistic flight (they fill --max-cells in "
                          "minutes) and the deepest is an apex over the void; contact cells are the "
                          "surfaces a line can actually reach. Off = every state, byte-identical")
+    ap.add_argument("--cell-held", action="store_true",
+                    help="archive every state as before (the search itself is unchanged) and "
+                         "also write, per cell, whether the map HOLDS its state (the "
+                         "--cell-contact rule; a root: its ground flag) as archive.npz's 'held' "
+                         "column. ge_replay --held then ends the line at the deepest held cell: "
+                         "air cells stay stepping stones, but the line handed back never ends in "
+                         "a flight. Needs --exact-chains. Off = no column, byte-identical")
     ap.add_argument("--select-energy", type=float, default=0.0,
                     help="selection: the most energetic cell (z + |v|^2 / 2g) of each --cell "
                          "place is drawn (1 + K) times as often as W = 1/sqrt(C_seen+1) says "

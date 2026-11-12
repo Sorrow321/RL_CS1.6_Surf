@@ -145,6 +145,11 @@ TRAIN_ONLY = frozenset({
     # of the TRAINING spawn pool. A recording spawns at the map start like the trainer's eval
     "auto_spine_scratch", "auto_spine_explorer", "auto_spine_mcts_minutes", "demo_share",
     "auto_spine_banked", "auto_spine_mcts_args",
+    # --auto-spine-args / -current-ref / -patience-tau / -finish-stop (fx/sib): the TRAINING
+    # search's Go-Explore knobs, its reference d, its patience clock and its stop on a
+    # finishing greedy
+    "auto_spine_args", "auto_spine_current_ref", "auto_spine_patience_tau",
+    "auto_spine_finish_stop",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore

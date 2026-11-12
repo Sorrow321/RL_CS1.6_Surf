@@ -180,6 +180,13 @@ def beats_greedy(de: float, greedy_d: float, gain: float, finished: bool = False
     return bool(de < float(greedy_d) - float(gain)) or (bool(finished) and float(greedy_d) > 0.0)
 
 
+def ref_d(greedy_d, current_d=None) -> float:
+    """The d a new line is measured against: the greedy frontier, and under --current-d the
+    deeper of it and the end of the line the trainer holds now (None = the frontier alone, as
+    before)."""
+    return float(greedy_d) if current_d is None else min(float(greedy_d), float(current_d))
+
+
 # the held keys (fwd, side, duck; engine bins) each line's states were reached with, by line
 # tag (beam / beam_br* / ge*): written next to the spine for train_fast --demo-keys, because a
 # spine spawn that resets the held keys starts another state than the line's own (round 4)
@@ -333,12 +340,25 @@ def energy_cell(st, parent, depth, line, field, d0: float, lo: float, hi: float,
     return max(ok, key=lambda c: (c["progress"], c["gain"])), len(cands)
 
 
+def ge_kinds(a) -> list:
+    """The archive kinds the Go-Explore stages run, in order: 'held' (--ge-held: the plain
+    archive, the line ends at its deepest HELD cell), 'contact' (--ge-cell-contact: only held
+    states are archived); [None] = the archive as before. With both switched on every stage
+    runs once per kind: a flight longer than one burst needs flight cells as stepping stones
+    (princessburglar's pit: the contact archive stopped growing at 5.2k cells, the plain one
+    crossed), a long walk beside a void needs an archive the void's air cannot fill (blue200:
+    the contact archive reached the goal in 0.85M runs, the plain one not in 4.2M)."""
+    return [k for k, f in (("held", "ge_held"), ("contact", "ge_cell_contact"))
+            if int(getattr(a, f, 0) or 0)] or [None]
+
+
 def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_keys=None,
-               roots=None, pick=None):
+               roots=None, pick=None, kind=None):
     """GE --exact-chains rooted at the line's last --roots-secs before ``end`` (or at the line
     indices ``roots``); the deepest chain (or the chain to the cell ``pick(archive path)``
     returns; None = no chain) replayed and spliced onto the line at its root ->
-    (spliced states, info)."""
+    (spliced states, info). ``kind``: this stage's archive kind (ge_kinds; None = the first)."""
+    kind = ge_kinds(a)[0] if kind is None else kind
     from spine_canon_view import canon_view
     from surfgym.core import STATE_DTYPE
     if roots is not None:
@@ -396,8 +416,28 @@ def go_explore(a, out: Path, line, end: int, boosts=None, tag: str = "ge", line_
         # heading (the policy's frame), so a chain's held keys mean what they would mean to the
         # policy (round 4: gates 12 and 14 fell to such chains, unboosted)
         cmd += [f"--view-follow={a.ge_view_follow}"]
+    if kind == "contact":
+        # explore_phase1 --cell-contact: only states the map holds are archived, so the deepest
+        # cell handed back is a held state - the trainer's banked frontier and the tree's own
+        # hand-back are read the same way, and the air of a fall can never be a line's end
+        cmd += ["--cell-contact"]
+    if kind == "held":
+        # explore_phase1 --cell-held: the archive is the plain one (flight cells stay stepping
+        # stones, the search is unchanged) and also says which cells' states the map holds
+        cmd += ["--cell-held"]
+        if pick is None:
+            def pick(arch):
+                # the deepest HELD cell: the line handed back never ends in a flight, which is
+                # how the trainer's banked frontier and the tree's hand-back are read
+                from ge_replay import deepest_cell
+                return deepest_cell(np.load(arch, allow_pickle=False), load_field(a.field),
+                                    held=True)[0]
     rc = run(cmd, out / f"{tag}.log", a.ge_minutes * 60 + 600)
     info = {"ge_rc": rc, "ge_roots": [int(i) for i in idx], "ge_boost": boosts}
+    if kind is not None:
+        info["ge_kind"] = kind
+    if (gd / "win_1.spine.npy").exists():
+        info["ge_goal"] = 1                    # the explorer stopped on a goal hit (--goals 1)
     if not (gd / "archive.npz").exists():
         return None, info
     cell = None
@@ -502,6 +542,22 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-view-follow", default="-90,-60,-30,-15,0,15,30,60,90",
                     help="explore_phase1 --view-follow offsets (deg from the velocity heading) for "
                          "the Go-Explore stages; 'none' = the uniform yaw-rate explorer")
+    ap.add_argument("--ge-cell-contact", type=int, default=0, choices=(0, 1),
+                    help="1 = the Go-Explore stages run explore_phase1 --cell-contact (only "
+                         "states the map holds are archived) and a stage's line ENDS at its "
+                         "chain's deepest cell, a held state, instead of at the best raw d of "
+                         "its ticks; 0 = as before. With --ge-held 1 as well every stage runs "
+                         "once per archive kind, the held one first (ge_kinds)")
+    ap.add_argument("--ge-held", type=int, default=0, choices=(0, 1),
+                    help="1 = the Go-Explore stages run explore_phase1 --cell-held (the plain "
+                         "archive, plus which cells' states the map holds) and a stage's line "
+                         "is the chain to the deepest HELD cell, ending there: flight cells are "
+                         "stepping stones, never a line's end; 0 = as before")
+    ap.add_argument("--current-d", type=float, default=None,
+                    help="the end d of the line the trainer holds now: a new line must end "
+                         "below min(--greedy-d, this) - --gain. A beam / tree line that only "
+                         "beats --greedy-d is kept as the fallback and the Go-Explore stages get "
+                         "their turn first. Absent = --greedy-d alone, as before")
     ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
@@ -559,10 +615,13 @@ def main(argv=None) -> int:
               f"{int(round(a.tick))} ms; seconds convert at {TICKS_PER_S:.2f} ticks/s", flush=True)
     field = load_field(a.field)
     res = {"greedy_d": a.greedy_d, "gain": a.gain, "spine": None}
+    ref = ref_d(a.greedy_d, a.current_d)
+    if a.current_d is not None:
+        res.update(current_d=float(a.current_d), ref_d=ref)
     line, info = beam(a, out)
     line_tag = "beam"
     res.update(info)
-    best_src = None
+    best_src = fallback = None
     if line is not None and len(line):
         d = field_d(field, line)
         fin = bool(info.get("beam_finished"))
@@ -574,9 +633,17 @@ def main(argv=None) -> int:
         print(f"beam line: {len(line)} states, best d {d.min():,.0f}, "
               + ("FINISHES - kept whole, " if fin else
                  f"cut at {e} (last contact {contact_cut_states(line, a.contact_tol)}) ")
-              + f"d {de:,.0f}; greedy frontier {a.greedy_d:,.0f}", flush=True)
-        if beats_greedy(de, a.greedy_d, a.gain, fin):
+              + f"d {de:,.0f}; greedy frontier {a.greedy_d:,.0f}"
+              + ("" if a.current_d is None else f"; current line's end {a.current_d:,.0f}"),
+              flush=True)
+        if beats_greedy(de, ref, a.gain, fin):
             best_src = ("beam", line[:e + 1], de)
+        elif a.current_d is not None and beats_greedy(de, a.greedy_d, a.gain, fin):
+            # --current-d: past the greedy frontier but not past the line the trainer holds.
+            # The stages below get their turn first; this line is handed back if they find none
+            fallback = ("beam", line[:e + 1], de)
+            print(f"the line beats the greedy frontier but not the current line's end "
+                  f"({de:,.0f} against {ref:,.0f} - {a.gain:g}): kept as the fallback", flush=True)
         # branched beams: the fork at --branch-tick and --branch-extra-secs earlier (a fork AT
         # the commitment point only perturbs what is already decided; each beam costs ~20 s)
         forks = [] if (a.branch_tick <= 0 or a.explorer == "mcts") else [a.branch_tick] + [
@@ -620,21 +687,26 @@ def main(argv=None) -> int:
             print(f"branched beam line (fork at tick {ft}): {len(bl)} states, "
                   f"best d {bd_.min():,.0f}, " + ("FINISHES, " if bfin else f"cut at {be} ")
                   + f"d {bde:,.0f}", flush=True)
-            if beats_greedy(bde, a.greedy_d, a.gain, bfin):
+            if beats_greedy(bde, ref, a.gain, bfin):
                 best_src = (tag, bl[:be + 1], bde)
             elif bde < de:
                 line, d, e, de = bl, bd_, be, bde     # GE roots on the deepest line
                 line_tag = tag
-        if best_src is None and a.ge_minutes > 0:
+        if best_src is None and a.ge_minutes > 0 and a.current_d is not None \
+                and ref - a.gain <= 0:
+            print(f"no Go-Explore stage: nothing can end below {ref:,.0f} - {a.gain:g}",
+                  flush=True)
+        elif best_src is None and a.ge_minutes > 0:
             st = min(e, stall_tick(d, a.stall_margin))
             res.update(beam_stall=st)
             # the escalation ladder: a stage's speed factors only if the previous stage found
             # no line past the greedy frontier. The boost buys the uniform explorer the energy
             # its random actions waste; the trained policy has flown the route it found with
             # its own (round 3: gate 8's chain needed x1.04, the greedy passed unboosted)
-            for k, (mode, boosts) in enumerate(stage_specs(a.ge_boost)):
+            for k, ((mode, boosts), kind) in enumerate(
+                    (sp, kd) for sp in stage_specs(a.ge_boost) for kd in ge_kinds(a)):
                 tag = "ge" if k == 0 else f"ge{k + 1}"
-                kw = {}
+                kw = {"kind": kind}
                 if mode == "tail":
                     tr = tail_roots(e, st, TICKS_PER_S, a.roots_secs, a.roots_n)
                     if tr is not None:
@@ -659,13 +731,19 @@ def main(argv=None) -> int:
                 if gl is None:
                     continue
                 gd_ = field_d(field, gl)
-                ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
+                if kind is not None:
+                    # the chain ends at the archive's deepest (held) cell, a state the map
+                    # holds; the ticks between two cells are flight and never the line's end
+                    ge_e, ge_de = len(gl) - 1, float(gd_[-1])
+                else:
+                    ge_e, ge_de = cut_line(gl, gd_, a.contact_tol, a.cut)
                 res.update({f"{tag}_len": int(len(gl)), f"{tag}_end": ge_e,
                             f"{tag}_end_d": ge_de, f"{tag}_best_d": float(gd_.min())})
                 print(f"GE stage {k + 1} ({'energy roots, ' if mode == 'energy' else ''}"
+                      f"{kind + ' archive, ' if kind else ''}"
                       f"speed x {boosts}): {len(gl)} states, best d "
                       f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
-                if ge_de < a.greedy_d - a.gain:
+                if ge_de < ref - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
                     break
         if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
@@ -713,6 +791,11 @@ def main(argv=None) -> int:
             else:
                 print(f"energy stage: no cell keeps {a.energy_gain:g} u more than the line "
                       f"({got.get('energy_candidates', 0)} candidates)", flush=True)
+    if best_src is None and fallback is not None:
+        best_src = fallback
+        res.update(fallback=1)
+        print("no stage found a line past the current line's end: the fallback is handed back",
+              flush=True)
     if best_src is not None:
         src, sp, de = best_src
         sp = clean(sp)
@@ -766,6 +849,22 @@ def selftest() -> int:
     cond = e2 == 0 or de2 == float(field_d(F(), s2).min())
     print(("ok   " if cond else "FAIL ") + "a grounded line ends at its best d")
     ok &= bool(cond)
+    # --current-d: the reference is the deeper of the greedy frontier and the current line's
+    # end; a line that only beats the frontier is the fallback, not a pass
+    for name, cond in (
+            ("no --current-d: the reference is the greedy frontier", ref_d(1000.0) == 1000.0),
+            ("a deeper current line is the reference", ref_d(1000.0, 800.0) == 800.0),
+            ("a deeper greedy frontier is the reference", ref_d(700.0, 800.0) == 700.0),
+            ("a line past the frontier only: not past the reference",
+             beats_greedy(750.0, ref_d(1000.0), 200.0)
+             and not beats_greedy(750.0, ref_d(1000.0, 800.0), 200.0)),
+            ("a line past the current line's end passes",
+             beats_greedy(590.0, ref_d(1000.0, 800.0), 200.0)),
+            ("a finishing line passes while the reference is not at the goal",
+             beats_greedy(0.0, ref_d(1000.0, 150.0), 200.0, True)
+             and not beats_greedy(0.0, ref_d(1000.0, 0.0), 200.0, True))):
+        print(("ok   " if cond else "FAIL ") + name)
+        ok &= bool(cond)
     return 0 if ok else 1
 
 

@@ -37,6 +37,20 @@ def chain_to(parent: np.ndarray, i: int) -> list:
     return out[::-1]
 
 
+def deepest_cell(z, f, held: bool = False):
+    """(the archive's deepest cell on the GoalField ``f`` or None, every cell's d). ``held``:
+    only the cells whose state the map holds count (the archive's 'held' column, explore_phase1
+    --cell-held), so the chain to that cell never ends in a flight."""
+    d = f.sample(z["state"]["origin"].astype(np.float64)).astype(np.float64)
+    d[d >= f.reach_max - 0.5 * f.cell] = np.inf
+    if held:
+        if "held" not in z.files:
+            raise SystemExit("the archive has no held column: run explore_phase1 with "
+                             "--cell-held")
+        d[~z["held"]] = np.inf
+    return (int(np.argmin(d)) if np.isfinite(d).any() else None), d
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--map", required=True)
@@ -45,6 +59,10 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--cell", type=int, default=None,
                     help="the chain's end cell (archive index); default the deepest on the field")
+    ap.add_argument("--held", action="store_true",
+                    help="end the chain at the deepest cell whose state the map HOLDS (the "
+                         "archive's 'held' column, explore_phase1 --cell-held) instead of the "
+                         "deepest cell: a line that never ends in a flight")
     ap.add_argument("--tol", type=float, default=0.5)
     a = ap.parse_args(argv)
     z = np.load(a.archive, allow_pickle=False)
@@ -56,11 +74,18 @@ def main(argv=None):
     zf = np.load(a.field, allow_pickle=False)
     f = GoalField(zf["grid"].astype(np.float32) * float(zf["quant"]), zf["mins"],
                   float(zf["cell"]), float(zf["reach_max"]))
-    d = f.sample(st["origin"].astype(np.float64)).astype(np.float64)
-    d[d >= f.reach_max - 0.5 * f.cell] = np.inf
-    end = int(np.argmin(d)) if a.cell is None else int(a.cell)
+    end, d = deepest_cell(z, f, held=a.held and a.cell is None)
+    if a.held and a.cell is None:
+        print(f"--held: {int(z['held'].sum()):,} of {len(d):,} cells are held", flush=True)
+    if a.cell is not None:
+        end = int(a.cell)
+    if end is None:
+        if a.held:
+            raise SystemExit("--held: no held cell on the field")
+        end = 0                                # no cell on the field at all: as before
     chain = chain_to(parent, end)
-    print(f"{'deepest' if a.cell is None else 'chosen'} cell {end}: d {d[end]:,.0f} at "
+    print(f"{'deepest' + (' held' if a.held else '') if a.cell is None else 'chosen'} cell "
+          f"{end}: d {d[end]:,.0f} at "
           f"{np.asarray(st[end]['origin']).round(0)}; chain of {len(chain)} cells")
     cfg = default_config(num_envs=1, spawn_mode=2, max_episode_ticks=int(meta.get("ep_ticks", 6000)),
                          water_fail=1, yaw_jitter_deg=0.0, lidar_w=0, lidar_h=0)

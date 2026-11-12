@@ -4127,6 +4127,13 @@ def banked_min_d(d, vz, g_step: float, tol: float = 1.0, vmax: float = 1e9) -> f
     return float(d[c].min()) if len(c) else float(d[0])
 
 
+# the tools/auto_spine.py flags the trainer builds itself: --auto-spine-args may not repeat them
+AUTO_SPINE_OWN_FLAGS = frozenset((
+    "--ckpt", "--map", "--field", "--out", "--greedy-d", "--current-d", "--gain", "--beam-ticks",
+    "--envs", "--ge-minutes", "--act-every", "--seed", "--branch-tick", "--timeout", "--maxvel",
+    "--energy-gain", "--explorer", "--mcts-minutes", "--mcts-extra"))
+
+
 def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
     """--auto-spine-recheck: a new spine whose end lies at field distance ``end_d`` is still worth
     adopting when it beats the latest greedy frontier ``greedy_med`` (the median deepest d of the
@@ -5238,6 +5245,36 @@ def main() -> None:
                          "as ONE string (e.g. '--mcts-random-frac 1.0 --mcts-perturb-frac 0': the "
                          "knob is part of the run's flag set, not of a code default). Absent = "
                          "beam_tas's defaults, byte-identical; config only when set")
+    ap.add_argument("--auto-spine-args", default=None,
+                    help="--auto-spine: extra tools/auto_spine.py flags for every search as ONE "
+                         "string (e.g. '--ge-cell-heading 0 --ge-view-follow none --ge-boost 1.0 "
+                         "--ge-cell-contact 1': the Go-Explore stage's knobs are part of the "
+                         "run's flag set, not of a code default). A flag the trainer sets itself "
+                         "is refused. Absent = auto_spine.py's defaults, byte-identical; config "
+                         "only when set")
+    ap.add_argument("--auto-spine-current-ref", action="store_true",
+                    help="--auto-spine: the search is told the end d of the line the curriculum "
+                         "holds now (auto_spine.py --current-d): a new line must end "
+                         "--auto-spine-gain below the DEEPER of the greedy frontier and that "
+                         "end, and a tree / beam line that only beats the frontier is handed "
+                         "back when the Go-Explore stage finds nothing deeper (m6sib_uf2: line 8 "
+                         "replaced the deeper line 7). Off = the greedy frontier alone, "
+                         "byte-identical; config only when on; never restored")
+    ap.add_argument("--auto-spine-patience-tau", action="store_true",
+                    help="--auto-spine-patience counts from the curriculum's last NEW LOW of tau "
+                         "(read at each greedy eval), not from the line's adoption: the "
+                         "patience search does not replace a line the curriculum is still "
+                         "walking back (m6sib_uf2 line 5: replaced after 448M steps, never "
+                         "walked back). The quorum search is untouched. Off = byte-identical; "
+                         "config only when on; never restored")
+    ap.add_argument("--auto-spine-finish-stop", action="store_true",
+                    help="--auto-spine: a greedy eval with --auto-spine-quorum FINISHING "
+                         "episodes starts no search, restarts the patience, and a search that "
+                         "ends after it is discarded (a finishing episode's banked d is not "
+                         "past a finishing line's success line, so the patience search kept "
+                         "handing the greedy's own finishing rollout back and restarting the "
+                         "curriculum: m4sib_cb, m7sib_cel). Off = byte-identical; config only "
+                         "when on; never restored")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
     ap.add_argument("--auto-spine-async", action="store_true",
@@ -12348,6 +12385,25 @@ def main() -> None:
                          "--auto-spine-explorer mcts")
     if args.auto_spine_banked and not args.auto_spine:
         raise SystemExit("--auto-spine-banked reads --auto-spine's greedy frontier: give it")
+    if args.auto_spine_args:
+        if not args.auto_spine:
+            raise SystemExit("--auto-spine-args passes flags to --auto-spine's search: give it")
+        import shlex as _shlex
+        try:
+            _own = sorted(set(_shlex.split(str(args.auto_spine_args))) & AUTO_SPINE_OWN_FLAGS)
+        except ValueError as ex:
+            raise SystemExit(f"--auto-spine-args does not parse: {ex}")
+        if _own:
+            raise SystemExit(f"--auto-spine-args: {', '.join(_own)} is set by the trainer "
+                             "itself (its own --auto-spine-* flag)")
+    if args.auto_spine_current_ref and not args.auto_spine:
+        raise SystemExit("--auto-spine-current-ref is a rule of --auto-spine's search: give it")
+    if args.auto_spine_patience_tau and not (args.auto_spine
+                                              and float(args.auto_spine_patience) > 0):
+        raise SystemExit("--auto-spine-patience-tau moves --auto-spine-patience's clock: give "
+                         "--auto-spine and --auto-spine-patience")
+    if args.auto_spine_finish_stop and not args.auto_spine:
+        raise SystemExit("--auto-spine-finish-stop is a rule of --auto-spine's search: give it")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15571,6 +15627,14 @@ def main() -> None:
             meta["config"]["auto_spine_mcts_minutes"] = float(args.auto_spine_mcts_minutes)
         if args.auto_spine_mcts_args:
             meta["config"]["auto_spine_mcts_args"] = str(args.auto_spine_mcts_args)
+        if args.auto_spine_args:
+            meta["config"]["auto_spine_args"] = str(args.auto_spine_args)
+        if args.auto_spine_current_ref:
+            meta["config"]["auto_spine_current_ref"] = 1
+        if args.auto_spine_patience_tau:
+            meta["config"]["auto_spine_patience_tau"] = 1
+        if args.auto_spine_finish_stop:
+            meta["config"]["auto_spine_finish_stop"] = 1
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16787,6 +16851,22 @@ def main() -> None:
         AUTO["med"] = med                 # --demo-stall-cut reads the greedy frontier
         if AUTO["last"] is None:
             AUTO["last"] = int(global_step)
+        if args.auto_spine_patience_tau and (AUTO.get("tau_low") is None
+                                             or int(demo.tau) < AUTO["tau_low"]):
+            # --auto-spine-patience-tau: the curriculum moved earlier on its line since the
+            # last eval that looked - the line is still being learned, the patience restarts
+            AUTO["tau_low"] = int(demo.tau)
+            AUTO["last"] = int(global_step)
+        if args.auto_spine_finish_stop:
+            _nf = int(_eval_finishes(ev_path)[0])
+            AUTO["fin"] = _nf >= int(args.auto_spine_quorum)
+            if AUTO["fin"]:
+                # --auto-spine-finish-stop: the greedy finishes the map - no search, and the
+                # patience restarts
+                AUTO["last"] = int(global_step)
+                print(f"[{global_step:>13,d}] auto-spine: {_nf}/{len(eps)} greedy episodes "
+                      f"FINISH (greedy frontier {med:,.0f}): no search", flush=True)
+                return
         quorum = m >= int(args.auto_spine_quorum)
         pat = (float(args.auto_spine_patience) > 0
                and global_step - AUTO["last"] >= float(args.auto_spine_patience))
@@ -16841,6 +16921,13 @@ def main() -> None:
                     "--mcts-minutes", f"{float(args.auto_spine_mcts_minutes):g}"]
             if args.auto_spine_mcts_args:
                 cmd += ["--mcts-extra", str(args.auto_spine_mcts_args)]
+        if args.auto_spine_current_ref:
+            # --auto-spine-current-ref: the end d of the line the curriculum holds now
+            _cd = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
+            cmd += ["--current-d", f"{_cd:.1f}"]
+        if args.auto_spine_args:
+            import shlex as _shlex
+            cmd += _shlex.split(str(args.auto_spine_args))
         t0 = time.time()
         if args.auto_spine_async:
             # the search reads its weights more than once (the beam, each branched beam), and
@@ -17044,6 +17131,12 @@ def main() -> None:
                   f"{dt:.0f}s ({json.dumps(res) if res else 'no result'}); next try at "
                   f"step {AUTO['retry_at']:,}", flush=True)
             return
+        if args.auto_spine_finish_stop and AUTO.get("fin"):
+            # --auto-spine-finish-stop: the greedy began to finish while the search ran
+            AUTO["last"] = int(global_step)
+            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: spine discarded - the "
+                  f"latest greedy eval finishes the map", flush=True)
+            return
         sp = np.load(res["spine"])
         if args.auto_spine_recheck:
             # --auto-spine-recheck: the policy may have moved on while the search ran
@@ -17082,6 +17175,8 @@ def main() -> None:
         demo_idx[:] = -1
         AUTO["last"] = int(global_step)
         AUTO["retry_at"] = 0
+        if args.auto_spine_patience_tau:
+            AUTO["tau_low"] = int(demo.tau)   # the new line's own walk back starts here
         _en = {}
         if args.auto_spine_energy is not None:
             # an energy spine is taught with the energy success rule, a depth spine without it
