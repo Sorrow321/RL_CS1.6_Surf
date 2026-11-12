@@ -41229,3 +41229,114 @@ and the policy does not learn them, try 2 adds ONE generic learning piece and no
 Try 1 on the three maps the frozen recipe failed: blue200 FINISHED (07:50 entry),
 unitfarmer2 NULL (08:31 entry), princessburglar NULL (this entry). The all-seven rerun of the
 same tokens is the next entry.
+
+## 2026-11-12 09:39 UTC: fix round try 1, the all-seven rerun - celestial FINISHED (1.284B), petrus FINISHED (2.643B), a correction, cannonball launched
+
+"If any of them moves, rerun all seven" (the plan of the 05:31 entry): blue200 moved, so the
+SAME 89 tokens run from scratch, seed 0, on the four maps the frozen recipe finished
+(`--maxvel 4000` on all four, as in their frozen runs). Cut of each rerun, fixed before its
+launch: the first greedy finish plus 10 evals (755M steps), or the step cut (sidistic 9.0B,
+cannonball 4.3B, petrus 4.3B, celestial 3.0B), whichever comes first. This entry closes
+celestial and petrus and records the cannonball launch; sidistic and cannonball are running.
+
+### celestial `fxcel_t1`: FINISHED, first 9/9 at 1.284B (frozen 1.586B)
+
+* Evals (grader): 29.7-31.6% from 151.5M to 604.5M (the fork), 61.7% at 680.0M (past the
+  fork; the frozen run passed it at 755.5M-831.0M), 65-78% to 1,057.5M, 85.2% and 83.6%,
+  then the **first greedy finish and first 9/9 at 1,283,981,312 (46.58 s)**. The 11 evals
+  from it (through 2,038,956,032) read 9, 8, 3, 9, 9, 8, 9, 7, 7, 6, 8 of 9 = **83 of 99**,
+  best 44.59 s.
+* Frozen `m7sib_cel`: first finish and 9/9 at 1,585,971,200 (44.72 s); its first 11 evals
+  read 9, 8, 8, 9, 8, 9, 5, 8, 9, 8, 9 = 90 of 99; in the SAME steps as the try-1 window
+  (1,284.0M to 2,039.0M) it reads 0, 0, 0, 0, 9, 8, 8, 9, 8, 9, 5 = 56 of 99.
+* The 16 misses: 11 on the fork room's void floor (z 537-561 at 16.0-18.0 s), 1 fall at
+  20.2 s, 4 hangs (58.0-69.4 s). The same kind of miss as the frozen run's (26 of 30 there
+  in the fork room).
+* **Searches:** 1 STALE at 111.1M; 2 "from beam" (1,638 states, end d 41,825) adopted
+  565.2M; 3 STALE at 788.5M (end d 21,576 against a frontier of 21,679 by then); 4 "from
+  beam" (4,787 states, end d 0: a finishing line of 47.9 s) adopted 1,151.3M. After the
+  first 9/9 `--auto-spine-finish-stop` started no search.
+* **The archive stage delivered no line here** (every adopted line is the tree's). The
+  0.30B head start cannot be credited to the stage; it is the bookkeeping flags or the seed.
+  One seed.
+* Stopped by hand at step 2,059,927,552 (09:12:40 UTC), 10 evals after the first finish.
+  Box 60325724 (RTX 5080, $0.3089/h, machine 146166): created 07:42:35, trainer launched
+  07:45:33, released 09:13:37 = 1.52 h = about $0.47. (A first box, 60322218, was destroyed
+  by the fleet watchdog 40 s after its create: the sixth box against the 5-box cap; not a
+  host defect, not blacklisted.) Bundle, md5 equal to the box:
+  `/home/steam/ar_m2/runs/fxcel/fxcel_t1/` (28 eval trajectories, md5 of the md5 list
+  f73161c8abdd4e8e7bed79421d94d029; run.json cfff8bc087b19fb8c19cfc1760d9ad5e; progress.csv
+  05e804d5c7413e4aac82f7158dc39a24; launch log d68195f9237ca2f0d78b09489bfe9e1c),
+  `ckpts_t1/` (ckpt_latest.pt 2a4c66262be9c9dc5c4fb7ff6fe5c37b at 2.06B; ckpt_2000683008.pt
+  768334dd85c373b79de80703505f6529; ckpt_1000341504.pt 42207d63c927d240bbae430fc6cee166),
+  `auto_t1/` (k01-k04, spine0.npy, current.json).
+
+### petrus `fxpet_t1`: FINISHED, first 9/9 at 2.643B (frozen 3.247B)
+
+* Evals (grader): 20.6-20.7% from 0.5B to 2,114.5M, 22.6% at 2,190.0M, 23.6-24.1% from
+  2,265.4M to 2,491.9M, best 98.2% (median 23.8%) at 2,567.4M, then the **first greedy
+  finish and first 9/9 at 2,642,935,808 (33.57 s)**. The 11 evals from it (through
+  3,397,910,528) read 9, 7, 7, 9, 9, 8, 7, 8, 9, 5, 9 of 9 = **87 of 99**, best 31.55 s.
+* Frozen `m5sib_pl`: first finish and 9/9 at 3,246,915,584 (33.13 s); its first 11 evals
+  read 9, 9, 9, 9, 7, 9, 9, 9, 9, 9, 9 = 97 of 99, best 33.10 s over its whole run; in the
+  SAME steps as the try-1 window (2,642.9M to 3,397.9M) it reads 0 x 8, then 9, 9, 9 = 27
+  of 99.
+* The 12 misses: 7 late falls at 29.7-32.1 s near z -2,089..-2,298, 4 mid-map falls at
+  16.5-18.9 s, 1 at 22.2 s. More misses per eval than the frozen run after its first
+  finish (12 of 99 against 2 of 99), in a window that sits 0.6B steps earlier in training.
+* **Searches:** 1 STALE at 128.5M; 2 "from beam" (5,233 states, end d 28,058) adopted
+  589.3M; **3 "from beam+ge" (3,310 states, end d 22,364) adopted 2,208.8M: the HELD
+  archive's line** (root index 803, a chain of 2,507 explorer states). The tree's own
+  frontier in that search was 27,902 against the reference 28,058: no line by the gain
+  rule. The greedy stood at 20.6-20.7% for 1.6B steps before it and finished 434M steps
+  after it.
+* **Here the archive stage delivered the line that the tree could not.** The frozen run
+  needed three more tree lines (adopted 1,038.1M, 1,484.8M, 2,379.7M, the first two ending
+  at about d 28,0xx, the last at 16,047) and finished at 3.25B. One seed each.
+* Stopped by hand at step 3,420,979,200 (09:25:57 UTC), 10 evals after the first finish.
+  Box 60322032 (RTX 5080, $0.3867/h, machine 156173): created 07:05:24, trainer launched
+  07:08:37, released 09:26:56 = 2.36 h = about $0.91. Bundle, md5 equal to the box:
+  `/home/steam/ar_m2/runs/fxpet/fxpet_t1/` (46 eval trajectories, md5 of the md5 list
+  1080a95ab45b4e2fac218164c8b67be4; run.json 09e41060863b48611f5340912a34c8c4; progress.csv
+  99e1bd1634c0f3e1177bda6b5f0aa473; launch log 9015a0f05f3c327f844307073d362acc),
+  `ckpts_t1/` (ckpt_latest.pt 8f7e2f624e02e03b6adc1f78d4736437 at 3.42B; ckpt_3001024512.pt
+  ff3dd893d4ff2fff6ecce9187741c115; ckpt_2000683008.pt 158c917c617e9f7eae28901b2fabe8d6;
+  ckpt_1000341504.pt 601cac0f0b59e80ea334ab4717c7970d), `auto_t1/` (k01-k03, spine0.npy,
+  current.json).
+
+### CORRECTION of an interim read (given to the user and on the bus at 08:39 UTC)
+
+At 08:39 I reported petrus as "behind its frozen run". The step-matched number was right
+(at 1,963.5M the grader read 20.6% against the frozen run's 49.2%, and 24.0% against 56.1%
+at 2,416.4M) and the forecast in it was wrong: try 1 finished at 2.643B, 0.60B steps BEFORE
+the frozen run. The frozen run climbed in steps (49% -> 56% -> 99.8%) on four tree lines;
+try 1 stood still and then went from 24% to 9/9 in two evals on one archive line. A
+step-matched % in the middle of a run does not rank two runs of this recipe; the event
+(first finish) does. Same lesson as my "stuck" forecast on the frozen petrus run.
+
+### cannonball `fxcan_t1`: LAUNCHED 08:33:05 UTC (running)
+
+Box 60330591, RTX 5090 32 GB (the frozen run's card type; the search needs the memory),
+$0.5844/h, under the 0.60 cap. run.json against the frozen `m4sib_cb`: 10 of 285 keys
+differ (the six fix-round keys `auto_spine_args`, `auto_spine_current_ref`,
+`auto_spine_finish_stop`, `auto_spine_ge_minutes` 0 -> 5, `auto_spine_patience_tau`,
+`demo_match_band`; its own `auto/spine0.npy`; commit, label, started). Watchdog with harvest
+spec and pid file, deadline about 12:58 UTC; dashboard tunnel 8605. Cut: the first greedy
+finish plus 10 evals, or 4.3B. At 09:22 UTC: 1.38B steps, 467k steps/s, search 2 adopted at
+697.3M, search 3 found no line (both archive kinds ran on the big grid, no OOM), 9 of 9
+greedy episodes past line 2's success line at 1,359.5M. Frozen reference: first finish
+2.718B, 9/9 at 3.247B.
+
+### Where the fix round stands (09:40 UTC)
+
+| map | frozen recipe | try 1 (89 tokens) |
+|---|---|---|
+| blue200 | null (flat at 62.5%, 4.14B) | FINISHED: 180 of 180 from 1.435B, best 14.18 s |
+| celestial | first 9/9 at 1.586B | FINISHED: first 9/9 at 1.284B, 83 of 99 after |
+| petrus | first 9/9 at 3.247B | FINISHED: first 9/9 at 2.643B, 87 of 99 after |
+| unitfarmer2 | null (3.42B) | NULL (3.06B), the same death |
+| princessburglar | null (12.86B, at the pit) | NULL (4.84B, never left the start room; pit line found, not learned) |
+| sidistic | first finish 7.248B | running: 2.47B, search 6 adopted at 2.37B; cut 9.0B |
+| cannonball | first finish 2.718B | running: 1.38B; cut 4.3B |
+
+Credit $22.11 at 09:28 UTC (step 2 has cost $5.61 so far; about $4 more to the two cuts).
