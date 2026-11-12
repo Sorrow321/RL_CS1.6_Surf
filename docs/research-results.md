@@ -42051,3 +42051,94 @@ past the line or 300M steps after the curriculum's last new low.
   frozen run's first finish was at 7.25B; cut 9.0B).
 * Cuts from here, unchanged: 5B; earlier if a pit line is adopted and its walk-back does not
   move for 2B; to 8B at most only on a pit line's new low in the last 0.5B before 5B.
+
+## 2026-11-12 13:27 UTC: fix round TRY 3 INTERIM 2 - fxpb_t3 at 2.57B: the greedy goes down to the pit bottom from 1.59B (frozen 3.02B); two searches at the pit, no line: the explorer never reaches the far ledge (a third of the runs, two thirds of the roots past the launch)
+
+Run `fxpb_t3` (try 3, the 91 tokens of the 10:50 entry, from scratch, seed 0, one RTX 5080),
+at 2,566,914,048 steps at 13:24 UTC. Nothing was changed in the run. One seed; this is an
+interim read of a benchmark map, and the map has NOT moved: 0 greedy episodes on the far
+ledge, 0 finishes.
+
+### What the cap bought: the start room, 1.9 times earlier than the frozen run
+
+Greedy episodes from the true start that leave the upper floor and go down (grader file by
+file, ends read physically):
+
+| eval step | episodes down (of 9) | grader median |
+|---|---|---|
+| all 18 evals through 1,283,981,312 | 0 | 0.3-0.4% |
+| 1,359,478,784 | 1 | 0.4% |
+| 1,434,976,256 | 4 | 0.4% |
+| 1,510,473,728 | 3 | 0.4% |
+| 1,585,971,200 | 7 | 3.2% |
+| 1,736,966,144 | 9 | 3.2% |
+| 1,963,458,560 | 8 | 3.2% |
+| 2,416,443,392 to 2,567,438,336 (3 evals) | 9, 9, 9 | 3.2% |
+
+* Frozen run `m2sib_pb1`: 0 down at all 39 evals through 2,869,428,224, 2 of 9 at
+  2,944,925,696, 8 of 9 at 3,020,423,168. Try 1 (no cap): never in 4.84B. So the first
+  episode down comes at 1.36B against 2.94B and the first majority at 1.59B against 3.02B.
+  One seed each: a ratio of this size is above the noise floor, the exact figure is not.
+* The first handed line (search 1, 2,997 states) was walked back to state 0 by about 1.97B
+  (band [0, 2996]); starts on the line now succeed 91-96% of 500 episodes. In try 1 the
+  walk-back stalled 360 u before the drop for the whole run.
+* **Where "down" is.** The "lower floor" of the 12:27 entry is the PIT BOTTOM (floor
+  z 3,314), not a near side of the pit: the episodes that go down end there after 38-45 s,
+  hopping in place, at the wall corner near (808..830, -3353..-3365) through 2,416.4M and
+  spread over the floor (x 533..1056, y -2895..-3273) in the two newest evals. The far
+  ledge is about 126 u above that floor.
+* Yaw sigma: at the 0.5 cap from 31M to 1.29B; 0.478-0.496 at 1.45B-1.56B; at 0.500/0.500
+  (yaw/pitch) from 1.97B to 2.50B; then falling by itself: 0.403/0.372 at 2.517B,
+  0.333/0.317 at 2.538B, 0.288/0.280 at 2.559B, 0.278/0.271 at 2.567B, with the mean
+  reward up from 0.72-0.85 to 0.98-1.11 and the intrinsic part from 0.19-0.22 to 0.34-0.54
+  per episode. Cause not established (the policy is spreading over the pit floor). Update
+  kl 0.14-0.26 throughout, as in every princessburglar run.
+
+### Two searches at the pit, no line
+
+| search | steps | tree line | held kind (5 min) | contact kind (5 min) | outcome |
+|---|---|---|---|---|---|
+| 2 | 1,585,971,200 to 1,839,202,304 | 2,941 states, best d 55,304 | 1,835,128 runs, 12,666 cells, 0 goal hits; hand-back d 55,350 | 1,337,787 runs, 4,800 cells; deepest d 55,315 | NO new spine (981 s) |
+| 3 | 2,189,950,976 to 2,443,706,368 | 1,818 states, best d 55,311 | 1,868,776 runs, 12,109 cells, 0 goal hits; hand-back d 55,350 | 1,275,078 runs, 4,719 cells; deepest d 55,311 | NO new spine (980 s) |
+
+The reference is the greedy frontier, 55,348-55,349, so a line must end at d <= 55,148.
+
+* **The explorer never reached the far ledge in either search.** Read on the box: the
+  trainer's field sampled at EVERY archived cell of all four archives (held or not): 0 cells
+  with d <= 55,148, 0 with d <= 55,250, 0 with d <= 55,300. The deepest cells are the
+  pit-bottom roots themselves (d 55,311-55,323, depth 0). So it is not "crossed but not
+  held" and not the thin acceptance margin of the 05:31 entry: nothing crossed.
+* **Try 1's searches on the same map crossed in 4 of 5** (4 of 8 stage runs), with the
+  same stage and the same flags. Two things differ, both generic, neither changed here:
+  1. *Runs.* Try 1's stages did 4.2-7.2M (held) and 3.1-3.7M (contact) runs in their 5
+     minutes at 1.6-2.1M ticks/s; these do 1.84-1.87M and 1.28-1.34M at 0.79-0.84M
+     ticks/s. Ticks per run are the same (126 against 130), so it is box throughput, not
+     longer runs: this box (machine 155253) gives the explorer 0.38 of what try 1's box
+     (machine 154401) gave it, and the trainer 0.70 (281k against 400k steps/s). The
+     offline crossings of the 05:31 entry came at 0.98M-1.10M runs from start-room roots.
+     **The stage's budget is wall-clock minutes, so the search's power is a property of
+     the box.** A run budget would be the same on every box. Not built.
+  2. *Roots.* The stage takes 24 roots before the tree line's stall tick and 24 before its
+     end. In try 1 the policy never left the start room, so every root (14-25 per stage)
+     stood on the upper floor near the spawn. Here the tree's line follows the greedy down,
+     so 32 of the 48 roots of search 2 are already in the drop or on the pit floor, past
+     the launch point; 16 are on the upper floor. The held archive of search 2 has 1,534
+     cells on the upper floor, 5,276 on the pit floor and 5,856 in the air between.
+* **Why roots past the launch cannot cross** (measurement on try 1's own adopted pit line,
+  `auto_t1/k02/spine.npy`, never an input here): the crossing is a launch off the upper
+  floor. The line runs along the floor at 364-388 u/s, drops off near x -11..62, falls onto
+  a ramp near (312..512, -2965, z 3,367) at vz -547 and leaves it at vz +390 and 629 u/s,
+  flies up to z 3,541, and comes down on the east side near (960, -3165, 3438). From the
+  pit floor the ledge is 126 u up; a jump is 45-63 u.
+* So the picture after two searches: the cap made the policy good enough to follow the
+  field into the pit, the tree's line follows it, and the archive stage then starts mostly
+  from where the crossing can no longer be made, with a third of the runs. "The better
+  the policy follows the field, the worse the roots" is the generic statement; a root rule
+  that keeps roots spread over the whole line would be the generic candidate. Not built,
+  and nothing is changed in the last try.
+
+### What is left
+
+The next search fires at the first eval after 2,743,706,368 (2,793,930,752); about four
+more fit before the 5B cut (about 15:50 UTC). The cuts of the 10:50 entry stand. Credit
+about $18.8 at 13:25 UTC with two boxes up ($0.637/h); the $10 reserve stands.
