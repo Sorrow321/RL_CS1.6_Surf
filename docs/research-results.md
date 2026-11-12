@@ -41698,3 +41698,32 @@ step 2 then ends at about $10-11 of the $10-15 the user set, and the $10 reserve
 boxes are live with it (the watchdog's cap is five). The watchdog entry carries the harvest
 spec and the pid file; the dashboard tunnel is http://localhost:8601/. This is the last try
 of the round: after it nothing more is rented under step 2 except what is already running.
+
+## 2026-11-12 10:56 UTC: fix round TRY 3 LAUNCHED - fxpb_t3 (princessburglar, --yaw-sigma-max 0.5)
+
+Run `fxpb_t3` is up: the 91 tokens of the pre-launch entry (the 89 of try 1 plus
+`--yaw-sigma-max 0.5`), `--maxvel 3500`, from scratch at the true start, seed 0. The last try
+of the fix round.
+
+* Box 60344011: RTX 5080 16 GB, $0.3006/h, machine 155253 (the machine that ran unitfarmer2's
+  try 1), created 10:51:13, ready (ssh) 29 s later, deployed 10:52:25 on `fx/pb` 3b19642f,
+  trainer started 10:52:32 UTC (torch 2.7.1+cu128). Record gate passed (4 recordings in 41 s:
+  POV, greedy, stochastic, mixed).
+* `run.json` against `fxpb_t1`: 5 of 286 keys differ: `yaw_sigma_max` (absent -> 0.5), the
+  run's own `auto/spine0.npy`, the commit, the label, the start time. Nothing else; no
+  `yaw_entropy` key. The log prints "--yaw-sigma-max 0.5: the yaw head's sigma is capped at
+  0.5 (z space; the offset from the velocity heading)". The trainer's rewrite of the map's
+  zones file on the box is whitespace only (`git diff -w` is empty).
+* Watchdog: registered at rent, re-registered after the launch with the harvest spec
+  "40441 208.102.196.176 fxpb_t3" and pid file `runs/fxpb_t3.pid`, deadline 16:03 UTC (5.2 h
+  after create). Dashboard on the box, tunnel http://localhost:8601/. Three boxes live
+  (sidistic, cannonball, this one); cannonball is released at its cut in a few minutes.
+* First numbers (yaw sigma / pitch sigma, update kl): 5.2M 0.314/0.295, kl 0.025; 10.5M
+  0.338/0.290, 0.039; 15.7M 0.364/0.290, 0.086; 21.0M 0.410/0.310, 0.090; 26.2M 0.463/0.328,
+  0.079. The sigma climbs toward the cap at the pace of try 1 (0.414 at 19.9M, 0.558 at
+  29.9M there), as written down in advance.
+* Credit $20.55 at 10:55 UTC, burn $1.22/h with three boxes (about $0.64/h after cannonball).
+
+Cuts and read-outs: as fixed in the pre-launch entry (5B; at 1.5B stop if no handed line has
+been walked back past the drop off the upper floor and the greedy is still in the start
+room; a pit line's walk-back flat for 2B; 8B at most).
