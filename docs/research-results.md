@@ -41727,3 +41727,224 @@ of the fix round.
 Cuts and read-outs: as fixed in the pre-launch entry (5B; at 1.5B stop if no handed line has
 been walked back past the drop off the upper floor and the greedy is still in the start
 room; a pit line's walk-back flat for 2B; 8B at most).
+
+## 2026-11-12 11:22 UTC: fix round try 1, the all-seven rerun - cannonball FINAL: fxcan_t1 FINISHES (first greedy finish 6/9 at 3,095,920,640 steps, 49 of 153, best 77.40 s); CORRECTION of the 10:50 entry (not 3.70B)
+
+Run `fxcan_t1`: the try-1 recipe (the 89 tokens of the 05:31 entry, `--maxvel 4000`), from
+scratch at the true start, seed 0, one RTX 5090 (the map's search needs the 32 GB card). Part
+of the all-seven rerun the user's step 2 asks for once a failing map moves (blue200 did). Cut
+rule fixed before the launch: the first greedy finish plus 10 evals, or 4.3B steps, whichever
+comes first. The trainer was stopped by hand at step 4,316,987,392 (11:02:16 UTC, no search
+running), the box is released. One seed.
+
+### CORRECTION of the 10:50 entry (and of what the user, the bus and the status file were told)
+
+The 10:50 entry says twice that cannonball "had its first greedy finish at 3.70B". **Wrong.
+The first greedy finish is 6 of 9 at 3,095,920,640 steps.** How the misread happened: I read
+the tail of the trainer's eval lines. Its "k/9 greedy episodes past the success line" count is
+banked contact-frontier crossings, not finishes (a finishing episode's last contact on this
+map is at d about 10,6xx, above line 4's success line 2,985), so an eval with 1 to 4 finishes
+prints "0/9"; the "N/9 greedy episodes FINISH" line is printed only at a quorum of 5, and the
+one at 3,095.9M was further up than I looked. The 5/9 at 3,699.9M was the second such line.
+
+* The wrong step went to the user (10:45 and 10:57 UTC), into the 10:50 entry, into the bus
+  post 20261112T105640Z and into the status file. All are corrected by this entry and the
+  posts that follow it; nothing is edited in place.
+* **The run overran its own cut rule.** First finish plus 10 evals is the eval of
+  3,850,895,360. With the wrong first finish the run went on to the 4.3B bound: 453M steps,
+  about 16 minutes, about $0.15 more than the rule allowed. The six evals past the rule are
+  reported below as a bonus read and marked as such; the rule's window is reported first.
+* **Rule from now on:** finishes are read from the grader (`autoresearch/score.py`) on the
+  trajectory files, never from the trainer's success-line count. Every number below is the
+  grader's, cross-checked with `tools/eval_honesty.py --order-only 16` on the 25 evals from
+  2,642.9M on: the two agree on the finish count at every eval.
+* Generic open item (not built): the trainer should print the finish count at every eval,
+  not only at a quorum.
+
+### Result: FINISHES, later and less often than the frozen run on this seed
+
+* **First greedy finish: 6 of 9 at 3,095,920,640 steps** (best 78.42 s). The frozen run
+  `m4sib_cb` had its first at 2,718,433,280 (2 of 9): 377M steps earlier.
+* **Before it:** 41 evals, 0 of 369.
+* **The rule's window (first finish + 10 evals, to 3,850,895,360): 26 of 99 (26.3%).** Per
+  eval 6, 1, 3, 4, 1, 2, 0, 0, 5, 3, 1.
+* **To the 4.3B bound (17 evals): 49 of 153 (32.0%).** The six evals past the rule: 1, 6, 1,
+  5, 5, 5 = 23 of 54.
+* **Best finish 77.40 s** (at 4,077.4M); finish times 77.40 to 81.78 s, median 78.4 s. The
+  frozen run's best is 76.52 s. No 9/9 eval (the most is 6/9, twice); the frozen run had two.
+* **It is not reliable.** Two evals in the window have no finish at all (3,548.9M and
+  3,624.4M; the second one stops at the 51,000 u gate in 7 of 9 episodes), and the eval
+  after a 6/9 is 1/9 both times.
+
+Per eval, from 2,642.9M (route 231,680 u; "route max" is the order-only maximum; the old wall
+is 205,440 u):
+
+| step | grader best / median | route max (order-only) | past 205,440 u | finishes | best finish | misses stop at (route %, count) |
+|---|---|---|---|---|---|---|
+| 2,642,935,808 | 84.6% / 59.1% | 180,533 | 0/9 | 0/9 | - | 22-26% x3, 28-34% x1, 54% x1, 78% x4 |
+| 2,718,433,280 | 98.6% / 34.9% | 224,229 | 3/9 | 0/9 | - | 28-34% x5, 78% x1, 94-97% x3 |
+| 2,793,930,752 | 96.9% / 84.6% | 213,416 | 1/9 | 0/9 | - | 2-5% x1, 28-34% x2, 78% x5, 94-97% x1 |
+| 2,869,428,224 | 96.8% / 96.7% | 217,934 | 8/9 | 0/9 | - | 28-34% x1, 94-97% x8 |
+| 2,944,925,696 | 84.7% / 75.3% | 180,442 | 0/9 | 0/9 | - | 11% x1, 43-48% x1, 66-69% x5, 78% x2 |
+| 3,020,423,168 | 85.8% / 72.0% | 182,528 | 0/9 | 0/9 | - | 22-26% x3, 43-48% x1, 66-69% x3, 78% x2 |
+| 3,095,920,640 **first finish** | 100.0% / 100.0% | 231,680 | 6/9 | 6/9 | 78.42 s | 22-26% x1, 54% x1, 78% x1 |
+| 3,171,418,112 | 100.0% / 84.8% | 227,185 | 1/9 | 1/9 | 78.41 s | 28-34% x1, 78% x7 |
+| 3,246,915,584 | 100.0% / 85.3% | 231,680 | 3/9 | 3/9 | 78.29 s | 2-5% x1, 78% x5 |
+| 3,322,413,056 | 100.0% / 85.1% | 231,680 | 4/9 | 4/9 | 77.99 s | 2-5% x1, 43-48% x2, 78% x2 |
+| 3,397,910,528 | 100.0% / 24.5% | 229,526 | 1/9 | 1/9 | 81.78 s | 22-26% x6, 43-48% x2 |
+| 3,473,408,000 | 100.0% / 24.5% | 231,680 | 2/9 | 2/9 | 78.91 s | 22-26% x7 |
+| 3,548,905,472 | 85.3% / 85.0% | 181,553 | 0/9 | 0/9 | - | 22-26% x3, 78% x6 |
+| 3,624,402,944 | 24.5% / 24.5% | 51,129 | 0/9 | 0/9 | - | 2-5% x2, 22-26% x7 |
+| 3,699,900,416 | 100.0% / 100.0% | 231,680 | 5/9 | 5/9 | 77.92 s | 22-26% x3, 28-34% x1 |
+| 3,775,397,888 | 100.0% / 95.9% | 231,680 | 3/9 | 3/9 | 78.86 s | 78% x3, 87-88% x3 |
+| 3,850,895,360 (cut rule) | 100.0% / 85.0% | 231,680 | 2/9 | 1/9 | 79.48 s | 54% x1, 78% x6, 94-97% x1 |
+| 3,926,392,832 | 100.0% / 84.9% | 231,680 | 1/9 | 1/9 | 79.62 s | 22-26% x4, 78% x4 |
+| 4,001,890,304 | 100.0% / 100.0% | 231,680 | 7/9 | 6/9 | 78.00 s | 78% x2, 94-97% x1 |
+| 4,077,387,776 | 100.0% / 84.9% | 231,680 | 1/9 | 1/9 | 77.40 s | 2-5% x1, 78% x7 |
+| 4,152,885,248 | 100.0% / 100.0% | 231,680 | 5/9 | 5/9 | 78.55 s | 2-5% x1, 22-26% x2, 78% x1 |
+| 4,228,382,720 | 100.0% / 100.0% | 231,626 | 5/9 | 5/9 | 77.91 s | 28-34% x3, 78% x1 |
+| 4,303,880,192 | 100.0% / 100.0% | 231,680 | 5/9 | 5/9 | 78.00 s | 2-5% x1, 22-26% x2, 78% x1 |
+
+* **The two metrics agree.** Past-205,440 equals the finish count at every eval but two
+  (3,850.9M: 2 past, 1 finish; 4,001.9M: 7 past, 6 finishes). Before the first finish the
+  frontier already crossed the old wall: 3 of 9 at 2,718.4M, 8 of 9 at 2,869.4M (those end
+  at route 94-97%, dives short of the finish box), then 0 of 9 for two evals.
+* **Where the 104 misses of the 153 episodes stop** (read on the route, not on the grader's
+  percentage): 46 are dives below the route at route 77-80% (about 180,500 u; end z median
+  -5,886; 62 to 94 s; the grader reads them as 84.6-85.3%, the flattered death dive this
+  file warns about); 35 stop at route 20-27% (about 51,000 u, end z median 785, median
+  21.6 s: the known ~50k gate of the gate ladder; the grader's 24.5%); 3 at 86-89%; 2 dives
+  at 94-98%; 18 elsewhere (5 hang near the start at 2-5% for 41 to 182 s; 4 at 43%; 4 at
+  28-34%; 2 at 54%; 3 others). Neither big cluster is the old 88.8% wall.
+* **Training win rate, with what it is measured on:** 80.85% @ 55.7 s at the last step line,
+  with the reservoir's minimum depth at 0.521% of d0 beside it: wins from starts next to the
+  goal. It says nothing about the true start; the greedy numbers above do.
+
+### The five searches
+
+| search | fired at | tree line | archive stage (5 min per kind) | outcome |
+|---|---|---|---|---|
+| 1 | 0.5M | end d 193,441 | not run (the tree line passed the reference) | STALE at 173.0M: frontier 186,636 by then |
+| 2 | 529.0M | 5,829 states, end d 74,787 (frontier 82,818) | not run | ADOPTED 697.3M (386 s) |
+| 3 | 755.5M | 2,267 states, stops at d 153,810 (reference 51,788) | held: 4.07M runs, 4.0M cells, 0 goal hits, best line d 155,276; contact: 5.09M runs, 47k cells, best line d 154,166 | no line, 1,213.7M (1,009 s) |
+| 4 | 1,586.0M | 7,177 states, end d 2,885 (frontier 31,090), beam_finished 0 | not run | ADOPTED 1,737.0M (382 s) |
+| 5 | 2,491.9M (patience) | 11,036 states, stops at d 148,340, crawls 22.1 s past its stall (reference 2,885 = line 4's end) | held: 6.72M runs, 982k cells, 0 goal hits, best line d 147,872; contact: 3.51M runs, 55k cells, best line d 145,937 | no line, 2,950.2M (998 s) |
+
+* **Two adopted lines, both from the tree. No archive line was ever adopted on this map.**
+  When the tree stops (searches 3 and 5) it stops at d 148k-154k, which is the 51,000 u
+  gate where a third of the greedy misses stop too, and both archive kinds end within
+  2,500 u of d of the tree there: in 5 minutes the count archive does not get a player
+  through that gate either. No search OOM on the 32 GB card.
+* **Line 4 is not a finishing line.** It ends at d 2,885 (state 7,176, 71.8 s), 2,885 u of
+  d short of the goal. The finishes are the policy's own, past the end of its line.
+* **No search after 2,950.2M.** The finish quorum (`--auto-spine-finish-stop`) held it off
+  at 3,095.9M (6/9), 3,699.9M (5/9), 4,001.9M (6/9) and 4,152.9M-4,303.9M (5/9 each), and
+  between those the patience clock (`--auto-spine-patience-tau`) kept restarting on the
+  curriculum's new lows.
+* **Line 4's walk-back** (this corrects my own working note that it was "stuck at starts
+  1,076-1,311"): adopted at 1,737.0M; the curriculum stood within the last 1.0-1.5 s of the
+  line (starts 7,026-7,076 of 7,176) from 1.93B to 2.95B, a full 1B steps; then it unlocked:
+  start 5,906 at 3,056.1M (the first finish is the next eval), 4,896 at 3,156.2M, 3,791 at
+  3,358.6M, 2,746 at 3,564.6M, 2,051 at 3,776.4M, 1,521 at 3,988.3M, 1,201 at 4,193.3M,
+  low 1,066 at the stop. **It was still walking back when the run was cut**: the policy had
+  not yet been trained from the first 10.7 s of its own line (state 1,066 is at
+  (-8905, -5385, 5514), speed 2,792 u/s). A read past the cut would say whether the finish
+  rate rises as the walk-back reaches state 0; the rule did not allow it and it was not
+  run.
+* **The gate misses come in one bout, beside the walk-back.** The 51,000 u gate is at about
+  state 2,090 of line 4 (the line passes (2343, -6243, 1146) at state 2,100; the misses end
+  near (1700..2200, -5930, 775) after 21.1 s). 26 of the 35 gate misses fall in the five
+  evals 3,397.9M to 3,699.9M, while the curriculum's low walked from state 3,791 to 2,341,
+  the stretch just before its band took in the gate's states; the four evals before that
+  have 1, and the eight evals from 3,775.4M on (low 2,051 and earlier) have 8. Celestial's
+  fork-room misses came in bouts the same way (m7 entry). Side by side only: one run, no
+  cause shown.
+
+### Against the frozen recipe on this map (one seed each)
+
+| | frozen (`m4sib_cb`) | try 1 (`fxcan_t1`) |
+|---|---|---|
+| first greedy finish | 2,718,433,280 (2/9) | 3,095,920,640 (6/9) |
+| finishes, own first finish + 10 evals | 36 of 99 (36.4%) | 26 of 99 (26.3%) |
+| finishes, own first finish + 16 evals | 67 of 153 (43.8%) | 49 of 153 (32.0%) |
+| finishes, same steps (3,095.9M to 4,303.9M) | 96 of 153 (62.7%) | 49 of 153 (32.0%) |
+| 9/9 evals | 2 (3,246.9M, 4,303.9M) | 0 |
+| best time | 76.52 s | 77.40 s |
+| searches, adopted lines | 11, 7 | 5, 2 |
+| a finishing line in the curriculum | from 2,882.5M (search 8: the greedy's own finishing rollout, end d 0) | never (line 4 ends at d 2,885) |
+
+* **What the bookkeeping flags changed, as built:** fewer line swaps (2 against 7), no
+  shallower line replacing a deeper one (the frozen run adopted a line ending at d 39,733
+  over one ending at 4,747 at 2,782.4M), no search once a quorum finishes. They did what
+  they were written to do.
+* **What it bought on this seed: nothing visible.** The run with fewer swaps finished 377M
+  steps later and about half as often over the same steps. One difference that may matter
+  and is NOT shown to: the frozen run's patience search handed the curriculum the greedy's
+  own finishing rollout at 2.88B, so from then on its spawn states covered the whole route
+  to the goal; here `--auto-spine-finish-stop` and `--auto-spine-patience-tau` together
+  let no search run after 2.95B, so no such hand-back could happen, and the curriculum
+  stayed on a line that stops short. Whether a finishing rollout should be adopted ONCE
+  (and then no more) is a generic question for the loop; not built.
+* **No ranking.** One seed each, and this file's own measurements say identical runs from
+  scratch on this map differ 3-9x late and 27% at 750M. "Later and less often on this seed"
+  is all that is claimed. What stands: the changed recipe finishes cannonball from scratch.
+
+### Box, cost, bundle, provenance
+
+* Box 60330591 (RTX 5090 32 GB, $0.5844/h, machine 155214): created 08:27:54, deployed
+  08:32:43, trainer started 08:33:05, stopped 11:02:16, released 11:05:34 UTC (through
+  box.py; gone on the fleet list) = 2.63 h = about $1.54. No OOM, no traceback. Mean 466k
+  steps/s past 3.0B. Tunnel 8605 stopped.
+* Bundle on the droplet, md5 equal to the box (taken after the trainer stopped):
+  `/home/steam/ar_m2/runs/fxcan/fxcan_t1/` (58 eval trajectories, md5 of the md5 list
+  41621ce8c4a23ecd792805397ed174a1; run.json 27b2fa3a8b01b87c0a7fbf3fb21bcd82; progress.csv
+  b72d8409da89f17e22c1c5a223b2e578; launch log 25724b30baca4d7eed13185e2500f741),
+  `ckpts_t1/` (ckpt_latest.pt 160475570da5c999020808b86fcff4a0 at 4.32B;
+  ckpt_4001366016.pt 0ce531588416269a38203c0cc79a526e; ckpt_3001024512.pt
+  e08ecf29ffae80d58cc9bf454c4f8288; ckpt_2000683008.pt 1f7c1ea142025845e140fb6a5eb708e7;
+  ckpt_1000341504.pt b126a2def9dd1969daa3a69f8998dc9b), `auto_t1/` (k01-k05 logs and
+  lines, spine0.npy, current.json 683af88c9e26219b4ec364db68c7f597 = line 4).
+* Provenance: from scratch; spawn states only from the run's own `auto/spine0.npy` and its
+  own two search lines; nothing record-derived, no route line in training (the route file
+  is used by the honest metric only), nothing of the `xARC` / `cySPINEW` / `exitABS*` /
+  `gbCAN*` lineage. The checkpoint is clean.
+
+### Where the fix round stands after this (11:25 UTC)
+
+Try-1 recipe, from scratch, one seed per map:
+
+| map | frozen recipe | try 1 (89 tokens) |
+|---|---|---|
+| blue200 | null (4.14B) | FINISHED (180 of 180, best 14.18 s) |
+| celestial | finished, first 9/9 at 1.586B | FINISHED, first 9/9 at 1.284B |
+| petrus | finished at 3.247B | FINISHED at 2.643B |
+| cannonball | finished, first finish 2.718B | FINISHED, first finish 3.096B (this entry) |
+| unitfarmer2 | null (3.42B) | NULL (3.06B) |
+| princessburglar | null (12.86B) | NULL at the early cut (4.84B) |
+| sidistic | finished, first finish 7.25B | running: 0 finishes by the grader through 4.53B; cut 9.0B |
+
+* **sidistic `fxsid_t1`** at 11:19 UTC: 4.69B steps, 308k steps/s, kl 0.017; line 7 (success
+  line d <= 19,253) 0/9, greedy frontier about 73,700; curriculum at starts [4880, 9280].
+  Best so far 84.3-84.5% at 3.02B-3.17B, 32-42% since 3.55B. It closes at its first greedy
+  finish plus 10 evals or at 9.0B (about 15:30 UTC).
+* **Try 3 `fxpb_t3`** (princessburglar, the 89 tokens + `--yaw-sigma-max 0.5`; the last
+  try) at 11:20 UTC, 448M steps: both view sigmas at the 0.500 ceiling (yaw from about 31M,
+  pitch from about 63M); kl still 0.19-0.26 (it is not the sigma that makes it high:
+  recorded, nothing changed). Search 1's line was adopted at 93.3M (2,997 states, the drop
+  off the upper floor at state 2,790). The curriculum reached the drop by 112M, stood at it
+  for about 60M, stood again at start 2,401 (352 u of path before the drop) from 253M to
+  302M, and has moved since: low 1,866 at 442M = 924 states = 9.2 s and about 790 u of path
+  before the drop. The greedy from the true start is still in the start room (frontier
+  56,936-56,966 at every eval).
+* **A stricter reading of try 3's read-out (2), written at 300M before any outcome.** As
+  worded in the 10:50 entry ("walks the first handed line back past the drop") it was
+  already met by try 1, whose curriculum stalled 151 states = 360 u of path BEFORE the drop
+  (start 3,191 of a line that drops at state 3,342; measured now, the 10:50 entry gave the
+  states without the drop). So the comparable is path distance before the drop: try 3 has
+  to walk clearly beyond 360 u before the drop and on toward state 0. At 302M it stood at
+  352 u, try 1's place; at 442M it is at about 790 u, past it. Too early to call; the 1.5B
+  check stands as fixed, read with this comparable.
+* Budget: credit $20.09 at 11:22 UTC, two boxes, $0.64/h. Planned: sidistic to 9.0B (about
+  $1.4 more), try 3 about $1.3 at its 5B cut ($2.0 at 8B). The $10 reserve stands. After
+  try 3 nothing more is rented under step 2; a fresh run of one flag set on all seven maps
+  needs the user.
