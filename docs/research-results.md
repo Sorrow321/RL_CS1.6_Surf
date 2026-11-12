@@ -41340,3 +41340,92 @@ greedy episodes past line 2's success line at 1,359.5M. Frozen reference: first 
 | cannonball | first finish 2.718B | running: 1.38B; cut 4.3B |
 
 Credit $22.11 at 09:28 UTC (step 2 has cost $5.61 so far; about $4 more to the two cuts).
+
+## 2026-11-12 09:51 UTC: fix round TRY 2, pre-launch - princessburglar with --yaw-entropy 0 (the one generic learning piece)
+
+Written BEFORE the launch. Try 2 of the fix round (the user's order of 2026-11-12: "Okay, I
+think you can implement steps 1 and 2 for the beginning"; step 2 is capped at two or three
+tries and about $10-15). The 05:31 entry fixed the trigger in advance: "If the stage hands
+back lines and the policy does not learn them, try 2 adds ONE generic learning piece and
+nothing else." That is what happened on princessburglar (09:37 entry).
+
+### The one piece: `--yaw-entropy 0`
+
+* **What it is.** Under the absolute continuous view each view head draws its action around
+  a mean with ONE state-independent sigma per head. The entropy bonus pushes that sigma up by
+  its coefficient at every update whether or not anything is learned. The pitch head has been
+  excluded from the bonus since the absolute view became the default (`PITCH_ENT = 0`); the
+  yaw head has not. `--yaw-entropy 0` gives the yaw head the pitch head's rule: its sigma is
+  left to the policy gradient. The flag exists since 2026-10-23 (c416c4a8,
+  `tests/python/test_yaw_entropy.py`, TRAIN_ONLY in `record_ckpt.py`); nothing is built.
+* **Why this piece.** Measured in the 09:37 entry: on princessburglar the yaw sigma sits at
+  its hard clamp 2.718 from 100M steps for 2B+ in the try-1 run AND in the frozen run, and on
+  no other map of the seven (0.01-0.16). While it sat there no handed line was walked back
+  (try 1: the line of search 1, adopted at 237M, never; the pit line stopped one decision
+  before the launch, at starts 1,837 = 0.0% against 1,842 = 32.5%). In the frozen run the
+  lines were learned only as the sigma came down (2.72 at 2.0B, 1.27 at 2.5B, 0.76 at 3.0B;
+  line 7 learned in 0.2B at 2.9B-3.1B). One October princessburglar run from scratch with the
+  flag (pbr1b1_bcur5, read for its sigma trace only) shows what the flag does to the trace in
+  the same start room: 0.084 at 10M, 0.074 at 100M, 0.018 at 500M, 0.011 at 800M.
+* **Why it is generic (rule 0b).** No constant comes from a map; the value 0 is the pitch
+  head's existing rule; "would I run exactly this on a map I have never opened" is yes: any
+  map on which the reward goes quiet for a few hundred million steps hits the same defect.
+* **Not shown, and the reason for the run:** that the sigma is WHY the handed line is not
+  learned. The two are measured side by side, nothing more.
+
+### Try 2: flags, map, cuts (fixed before the launch)
+
+The 89 try-1 tokens plus `--yaw-entropy 0` = 91 tokens; the launch extra is unchanged
+(`--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256
+--mcts-mix-warm 2'`); `--maxvel 3500`. From scratch at the true start, seed 0, run `fxpb_t2`,
+branch `fx/pb`, one RTX 5080 class box under the price cap.
+
+* **princessburglar only.** unitfarmer2, the other failing map, is not run: its yaw sigma is
+  already 0.013-0.06 and its failure is on the search side (no pit line is ever handed
+  back), so this piece predicts nothing there. If princessburglar moves, unitfarmer2 is in
+  the all-seven rerun anyway.
+* **What counts as "moved"** (unchanged): a greedy episode from the true start over the pit
+  onto the east ledge, read physically, and finishes.
+* **Read-outs fixed in advance:** (1) the yaw sigma trace, the check that the piece does
+  what it is for; (2) the step at which the greedy leaves the start room (frozen 2.95B,
+  try 1 never in 4.84B); (3) whether a pit-crossing line is adopted and whether its
+  walk-back passes the launch (try 1 stopped at start 1,837 of 2,532).
+* **Cuts:** 5B steps. Earlier: the yaw sigma at its clamp again at 0.5B (the piece did not do
+  what it is for: stop); or a pit line adopted and its walk-back not moving for 2B. Later,
+  to 8B at most (try 1's original cut): only if a pit line's walk-back made a new low within
+  the last 0.5B before 5B.
+* **Expectations, written down before the run.** The sigma stays under about 0.3 and falls.
+  The first handed line (to the pit's near edge) is walked back and the greedy leaves the
+  start room well before 2.95B: this is the piece's direct prediction, and if it fails the
+  sigma was not the brake. Past that the odds are those of the 05:31 entry: the stage crosses
+  the pit in most searches, adoption is thin, and learning the launch is the open part. A
+  risk on the other side: without the bonus the sigma may collapse (0.011 in the October
+  trace) and the view explores less; on the maps that finish it is already 0.01-0.16 WITH
+  the bonus. One seed: a null at the cut reads "not by X steps".
+* **If it moves:** the same 91 tokens on all seven maps before anything is called. That rerun
+  does not fit what is left of the round's budget and needs the user.
+
+### Local checks before renting (CPU)
+* `tests/python/test_yaw_entropy.py` on the fix-round code: 3 passed, 1 skipped (the skipped
+  one is the bit-identity check against the trainer before c416c4a8, which is not in this
+  branch's first-parent history; it passed when the flag was built).
+* A CPU smoke of the COMPLETE command line (the launcher's 92 scratch tokens, the 91 recipe
+  tokens, the launch extra; shrunk only by overrides appended at the end), on
+  princessburglar at `--maxvel 3500`: rc 0, no refusal, no traceback; the trainer prints
+  "--yaw-entropy 0: the yaw head's entropy term is OFF"; `run.json` carries `yaw_entropy 0.0`
+  (and `pitch_entropy 0.0`, `ent 0.005`: the bonus on the key heads is untouched); one search
+  ran beside the training with the tree and both archive stages and handed back no line, as
+  in the try-1 smoke (nothing beats the reference on a 40k-step policy).
+* `yaw_entropy` is declared TRAIN_ONLY in `tools/record_ckpt.py`, so the launcher's record
+  gate and the dashboard's buttons read the checkpoint.
+* The config is commit `3663ee4c` on `fx/pb` (fx/pb differs from the fix-round code only in
+  its config and blocklist). No code changed for try 2.
+
+### Budget and box
+
+Credit $21.81 at 09:47 UTC with two boxes up ($0.92/h; sidistic to 9.0B, cannonball to 4.3B,
+about $3.5 more between them). Try 2 costs about $1.7 at its 5B cut (about $2.7 at 8B) on an
+RTX 5080 at about $0.39/h. Step 2 then ends at about $11 of the $10-15 the user set, and the
+$10 reserve stands. Three boxes are live with it (the watchdog's cap is five). The watchdog
+entry carries the harvest spec and the pid file; the dashboard tunnel is
+http://localhost:8601/.
