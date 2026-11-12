@@ -42331,3 +42331,165 @@ plus `--yaw-sigma-max 0.5`), to its 5B cut at about 15:52 UTC. At 4.36B: the gre
 the start room and ends on the pit floor, 0 episodes on the far ledge, and searches 2 to 6
 at the pit all returned no line. Its FINAL entry follows. After it nothing more is rented
 under step 2; credit $17.71 at 15:06 UTC.
+
+## 2026-11-12 15:57 UTC: fix round TRY 3 FINAL - `fxpb_t3` NULL at the 5B cut: the yaw-sigma cap gets the greedy out of the start room at 1.36B (frozen 2.94B), six pit searches find no line; step 2 ends at five of seven maps
+
+Run `fxpb_t3`: try 3 of the fix round, the LAST try under the cap. The 91 tokens of the 10:50
+entry (the 89 try-1 tokens plus `--yaw-sigma-max 0.5`), `--maxvel 3500`, from scratch at the
+true start, seed 0, one RTX 5080. Cut fixed before the launch: 5B steps. The run reached it;
+the trainer was stopped by hand at step 5,002,756,096 (15:50:41 UTC), no search was
+running, the box is released. Nothing was changed in the run. One seed; this is a benchmark
+map and the verdict is a null.
+
+### Result: NULL - out of the start room twice as early, then the pit floor
+
+* **0 finishes, 0 episodes on the far ledge.** 67 greedy evals from the true start (524,288
+  to 4,983,357,440), 603 episodes, every one ends "fail". The grader's median is 0.1-0.4%
+  through 1,510.5M and 3.2% at every one of the 46 evals from 1,585,971,200 on; its best is
+  3.2% at the 49 evals from 1,359,478,784 on and never more.
+* **Where the episodes end** (read physically; the 17 evals from 3,775.4M to 4,983.4M, 153
+  episodes): 150 end on the pit floor (end z 3,314..3,372) after 34.7-67.7 s (median
+  37.3 s): 87 hopping at the east wall (x 1,000..1,096), 31 standing still at
+  (695, -3124, 3332), 14 at the west end (x 208..260), 18 elsewhere on the floor. The other 3
+  never reach the floor: they end at z 3,464..3,491 near x -25..59, on the start side. Over
+  all 603 episodes of the run none ends east of x 900 at z 3,400 or higher (the far ledge is
+  near (960, -3165, 3438)), and the largest end x is 1,096, at floor height.
+* "Moved" was defined before the launch as a greedy episode from the true start over the pit
+  onto the east ledge, read physically, and finishes. Neither happened. princessburglar did
+  not move.
+
+### The four read-outs fixed before the launch
+
+1. **Yaw sigma and update kl.** The sigma went to the 0.5 cap by 31M steps, as expected, and
+   sat on it to 1.29B (0.47-0.50 to 1.97B) and again from 1.97B to 2.50B. It then fell BY
+   ITSELF to 0.235 at about 2.8B (while the policy spread over the pit floor) and climbed
+   back: 0.34 at 3.25B, 0.42 at 3.75B, 0.43-0.50 from 4.0B to the cut (0.484 at the stop).
+   Cause of the fall not established. Update
+   kl (mean per 0.25B): 0.20-0.22 to 1.0B, 0.17 from 1.0B to 2.5B, 0.12-0.14 from 3.0B on
+   (0.01-0.03 on the maps that finish).
+2. **The first handed line walked back past the drop off the upper floor: YES.** Line 1
+   (search 1, adopted at 93,323,264: 2,997 states, end d 55,897) was walked back to state 0
+   by about 1.97B and its band stayed [0, 2996] to the cut. In try 1 the walk-back stalled
+   360 u before the drop for the whole run.
+3. **The greedy leaves the start room: at 1.36B.** Episodes down, of 9: 0 at all 18 evals
+   through 1,283,981,312; 1 at 1,359,478,784; 4; 3; 7 at 1,585,971,200 and at 1,661.5M; 8-9
+   at every eval from 1,737.0M on (393 of 396 episodes). Frozen run `m2sib_pb1`: 2 of 9 at
+   2,944,925,696, 8 of 9 at 3,020,423,168. Try 1 (no cap): never in 4.84B. First episode
+   down 2.2 times earlier, first majority 1.9 times earlier; one seed each, so the size of
+   the ratio is real and the exact figure is not.
+4. **A pit-crossing line adopted: NO.** Six searches at the pit, none returned a line (next
+   section). So the later cut (to 8B) was never in play.
+
+The pre-launch expectation held on its direct half (the noise was the brake in the start
+room) and failed on the other: "the stage crosses the pit in most searches, and learning the
+launch is the open part". The stage did not cross once, so the launch was never offered to
+this policy.
+
+### The seven searches
+
+Reference at the pit = the greedy frontier, d 55,348-55,366; a line must end 200 u below it.
+Every stage: 5 minutes, 0 goal hits. "Upper roots" = roots of the archive stage that stand
+on the upper floor (z > 3,600), of 48.
+
+| search | fired to ended | tree line | held kind | contact kind | upper roots | outcome |
+|---|---|---|---|---|---|---|
+| 1 | 0.5M to 93.3M | 2,997 states, end d 55,897 (frontier 57,084) | not run | not run | - | ADOPTED 93.3M (the start-room line) |
+| 2 | 1,586.0M to 1,839.2M | 2,941 states, best d 55,304 | 1,835,128 runs, 12,666 cells; hand-back d 55,350 | 1,337,787 runs, 4,800 cells; deepest d 55,315 | 16 | no line (981 s) |
+| 3 | 2,190.0M to 2,443.7M | 1,818 states, best d 55,311 | 1,868,776 runs, 12,109 cells; d 55,350 | 1,275,078 runs, 4,719 cells; d 55,311 | not read | no line (980 s) |
+| 4 | 2,793.9M to 3,040.3M | 1,153 states, best d 55,310 | 1,953,263 runs, 13,273 cells; d 55,375 | 1,258,237 runs, 4,931 cells; d 55,310 | 24 | no line (978 s) |
+| 5 | 3,397.9M to 3,646.9M | 1,381 states, best d 55,315 | 1,818,271 runs, 11,721 cells; d 55,366 | 1,312,728 runs, 4,983 cells; d 55,315 | 17 | no line (979 s) |
+| 6 | 4,001.9M to 4,256.2M | 1,209 states, best d 55,312 | 1,838,186 runs, 12,465 cells; d 55,366 | 1,322,412 runs, 4,941 cells; d 55,312 | 16 | no line (979 s) |
+| 7 | 4,605.9M to 4,859.6M | 1,201 states, best d 55,318 | 1,824,586 runs, 12,167 cells; d 55,323 | 1,370,357 runs, 4,919 cells; d 55,322 | 18 | no line (978 s) |
+
+* **In six of six pit searches the explorer never reached the far ledge.** Read on the box:
+  the trainer's field sampled at EVERY archived cell of all twelve archives (held or not): 0
+  cells with d <= 55,300 (a line would need about 55,150). The deepest cells are the
+  pit-floor roots themselves, near (808..833, -3,287..-3,306, z 3,359..3,371). It is not
+  "crossed but not held" and not a thin acceptance margin: nothing crossed.
+* **Try 1's searches on the same map crossed in 4 of 5**, with the same stage and the same
+  flags. Two things differ; both are generic, neither was changed here, neither is proven to
+  be the cause (they move together in this run and were not separated):
+  1. *Runs.* The stage's budget is wall-clock minutes. Try 1's box (machine 154401) gave the
+     explorer 4.2-7.2M (held) and 3.1-3.7M (contact) runs per stage at 1.6-2.1M ticks/s; this
+     box (machine 155253) gave 1.82-1.95M and 1.26-1.37M at about 0.8M ticks/s: 0.38 of the
+     runs for the same flags. The search's power is a property of the box. A run budget
+     would be the same on every box. Not built.
+  2. *Roots.* The stage takes 24 roots before the tree line's stall tick and 24 before its
+     end. In try 1 the policy never left the start room, so every root stood on the upper
+     floor. Here the tree's line follows the greedy into the pit, so only 16-24 of the 48
+     roots are on the upper floor; the rest are past the launch point, where the ledge is
+     126 u up and a jump is 45-63 u. "The better the policy follows the field, the worse
+     the roots." A root rule that keeps roots spread over the whole line is the generic
+     candidate. Not built.
+* Each pit search fired on the quorum (7-9 of 9 greedy episodes past line 1's success line)
+  at the first eval 300M steps after the one before it ended. The seven searches ran for
+  6,246 s (104 minutes) beside the training, for one adopted line.
+
+### Tries 1, 2 and 3 and the frozen run on this map
+
+| | frozen (`m2sib_pb1`) | try 1 (`fxpb_t1`) | try 2 (`fxpb_t2`) | try 3 (`fxpb_t3`) |
+|---|---|---|---|---|
+| recipe | 83 tokens | 89 tokens | 89 + `--yaw-entropy 0` | 89 + `--yaw-sigma-max 0.5` |
+| steps | 12.86B | 4.84B | 0.52B (sanity cut) | 5.00B |
+| yaw sigma | 2.72 to 2.0B, then 0.65-1.13 | 2.72 to 2.0B, 1.58 at 4.8B | 2.72 again by 0.5B | 0.5 cap, 0.24-0.50 |
+| first greedy episode out of the start room | 2.94B | never | - | 1.36B |
+| greedy at the end | pit floor, 3.2% | start room | - | pit floor, 3.2% |
+| pit-crossing line found by a search | 0 of 22 (tree only) | 4 of 5 searches | - | 0 of 6 |
+| pit-crossing line learned | no | no (walk-back stalled one decision before the launch) | - | none offered |
+| finishes | 0 | 0 | 0 | 0 |
+
+The two halves never met in one run. In try 1 the search crossed the pit while the policy
+could not fly a handed line (yaw sigma at the clamp). In try 3 the policy flies its handed
+line (walked back to the spawn, 53-96% band success) while the search, started mostly from
+the pit floor on a slower box, finds no crossing. Whether a capped policy learns the launch
+when it is handed one is still not measured.
+
+### Box, cost, bundle, provenance
+
+* Box 60344011 (RTX 5080 16 GB, $0.3006/h, machine 155253): created 10:51:13, trainer
+  started 10:52:32, stopped 15:50:41, released 15:51:40 UTC (through box.py; 0 live on the
+  fleet list and 0 instances on vast after it) = 5.01 h = about $1.51. 279-281k steps/s. No
+  OOM, no traceback. Tunnel 8601 stopped.
+* Bundle on the droplet, md5 equal to the box (taken after the trainer stopped):
+  `/home/steam/ar_m2/runs/fxpb/fxpb_t3/` (67 eval trajectories, md5 of the md5 list
+  868d0eb9811b30fbd7c32aec0c3b15a4; run.json 74a03464d115eb3b86149540b009aeb8; progress.csv
+  a5cc5e7b2681d6adaaef78d04b807777; launch log e38e2f4f739e2caf3d2c150dfb136f99),
+  `ckpts_t3/` (ckpt_latest.pt ac552734fc40c2200ff7c45a3df8b9b9 at 5.00B;
+  ckpt_5001707520.pt d489c4acfeab994184096359d099d548; ckpt_4001366016.pt
+  4c5e4f252d173b363e887f6943acf065; ckpt_3001024512.pt dae8290127ce5bd353df29dc3fd57aba;
+  ckpt_2000683008.pt 02664a3f2f8b2a274006126fec2f98a8; ckpt_1000341504.pt
+  74f85d8ada9614601405ee11fd536977), `auto_t3/` (k01-k07 logs, lines and roots, spine0.npy
+  and k01/spine.npy md5 = box, current.json ff648f4f0a289a3bf0c345d63166c777; the twelve
+  archives were read on the box and left there).
+* Provenance: from scratch; spawn states only from the run's own `auto/spine0.npy` and its own
+  search line 1; nothing of October's princessburglar work and nothing record-derived
+  entered. Try 1's adopted pit line was read for the geometry of the crossing (13:27 entry):
+  a measurement, never an input. The checkpoint is clean but is not a result: it is a policy
+  that walks into the pit and stays on its floor.
+
+### Where the fix round stands: step 2 is over
+
+* **The changed recipe (89 tokens, one seed per map) finishes FIVE of seven maps; the frozen
+  recipe finished four.** The gain is blue200 (180 of 180). On the four maps both finish the
+  first greedy finish came earlier on two (celestial 1.28B against 1.59B, petrus 2.64B
+  against 3.25B) and later on two (cannonball 3.10B against 2.72B, sidistic 8.38B against
+  7.25B): no direction one seed can carry. unitfarmer2 and princessburglar are open.
+* **The cap of try 3 is not part of that scoreboard.** It never binds on the six other maps
+  (max yaw sigma 0.30-0.39), so their try-1 runs are runs of the 91 tokens to the number;
+  on princessburglar it halves the time to the pit and does not cross it. Kept as a
+  candidate, not called a fix: the map did not move.
+* **Open generic items, none built** (no map constant in any of them):
+  1. The archive stage's budget is wall-clock minutes, so the search is weaker on a slower
+     box (this entry). A run budget.
+  2. The archive stage's roots follow the greedy; once the policy is past a launch point
+     most roots are too (this entry). Roots spread over the whole line.
+  3. `--auto-spine-patience-tau` can hold one line for billions of steps on small new lows
+     (sidistic, 15:15 entry). A rate floor, or the clock tied to the greedy frontier.
+  4. After a full walk-back with the greedy still short, a shallower fallback line is
+     accepted (unitfarmer2, 08:31 entry).
+  5. The archive stage's hand-back is ranked on the field, so it cannot return a line that
+     goes against the field for long (unitfarmer2: the pit is +2,840 u of d).
+* **Budget.** Credit $17.46 at 15:52 UTC with no box up. Step 2 cost $10.26 ($27.72 before
+  it), inside the $10-15 the user set; the $10 reserve stands. Nothing more is rented under
+  step 2: the cap was three tries. A fresh run of all seven maps on one frozen command
+  line, the multi-map pilots (step 3) and the long run (step 4) need the user's order.
