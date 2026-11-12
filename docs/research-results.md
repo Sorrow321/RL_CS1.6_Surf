@@ -40490,3 +40490,185 @@ its own search lines k02, k03, k05-k10, every one built by the run's search from
 checkpoint on the trainer's field. Nothing of September's celestial work (checkpoints,
 `celestial_pregate.npy`, lines, gate boxes) and nothing record-derived entered the run; the
 human record is used above as a number to stand beside, nothing else.
+
+## 2026-11-12 05:31 UTC: fix round, steps 1 and 2 - the comparison, one field-free search stage, try 1 before launch
+
+The user's order (2026-11-12): "Okay, I think you can implement steps 1 and 2 for the
+beginning." Step 1 = the comparison below (no box). Step 2 = build the missing piece, freeze
+the changed recipe, run the three failing maps from scratch, at most two or three tries, about
+$10-15 (the entries that follow). Branch `fx/sib`, off `m7/sib` 624fc14f.
+
+### The scoreboard this starts from
+
+Frozen sidistic recipe, from scratch, one seed per map, no constant changed (only `--maxvel
+3500` on the two maps whose server runs it): sidistic FINISHED (7.25B), cannonball FINISHED
+(2.72B), petrus FINISHED (3.25B), celestial FINISHED (1.59B); princessburglar NULL (12.86B,
+3.2% at the pit), blue200 NULL (4.14B, 62.5%, the void), unitfarmer2 NULL (3.42B, never in
+the pit). Four of seven.
+
+### What crossed each failing place before, against what the frozen recipe has
+
+| place | what crossed it (all champion-free) | selection | moves | recipe has it? |
+|---|---|---|---|---|
+| princessburglar pit | `explore_phase1` archive from the policy's own frontier states: 4 of 6 seeds (2026-11-11 queue 2, pr2-pr5), 0.96M-3.1M runs; October's GE6 on the old core | cell COUNT, W = 1/sqrt(seen+1), 64 u x 32 u energy cells | uniform random bursts, 4 s, 95% repeat | no: `--auto-spine-ge-minutes 0` |
+| blue200 void | `edge_archive` (2026-10-17, ledger "edge archive"): 6 of 6 seeds to the finish in 2-8 s | edge COUNT only | a TRAINED line-following executor's three 2 s ray commands | no |
+| unitfarmer2 pit | October's agent-built lineage: novelty on speed, energy potential 12, windowed death charge, pit-state respawns, tick ramp, then 4,096 independent policy rollouts with no culling + backward curriculum | none (no culling) in the search; several map-read constants in the rest | the POLICY's own sampled actions | no (and most of it may not be: rule 0b) |
+
+What the three have in common is the SELECTION: none of them ranks a state by the goal field.
+The moves differ (random bursts, a trained executor, the policy), so "a search that ignores
+the field crossed all three" is true only as "selection without the field". The frozen
+recipe's two explorers both rank by the field: the policy is paid on it, and the tree search
+(`mcts_search`, `--score d`) keeps the lowest banked d. On each null the route has a stretch
+that RAISES d for longer than either stumbles through (pit: 8.5 s with no progress on d;
+blue200: the detour gives back 82% of d0; unitfarmer2: +2,840..3,060 u in the first seconds).
+
+So the one missing piece is a search stage that does not read the field, with a hand-back the
+curriculum can take. The count archive is that stage and it is already in `auto_spine.py` (the
+Go-Explore stage, off in the frozen recipe); its packaged form of 2026-11-10 (`--cell-heading
+1`, `--view-follow`, October's roots) crossed 0 of 6, the plain form 4 of 6 (thin: a
+suspicion, not a finding; ledger 2026-11-11 queue 2).
+
+The four bookkeeping items, all seen on the finishing maps too (ledger wrap-up of 2026-11-11
+and the cannonball / petrus / celestial FINAL entries):
+
+1. a new line is compared with the greedy frontier, not with the line it replaces
+   (unitfarmer2 line 8 replaced the better line 7; celestial line 10, 49.59 s, replaced line
+   9, 43.80 s);
+2. the 3e8 patience search replaces a line the curriculum is still walking back (unitfarmer2
+   line 5: 448M steps, never walked back);
+3. a finish is not a quorum event, and after the map is finished the patience search keeps
+   handing back the greedy's own rollout and restarting the curriculum (cannonball, petrus,
+   celestial: "0/9 past the success line" on every finishing eval);
+4. the curriculum's blind band where a line stands still (`respawn.py` `_key`;
+   `--demo-match-band` exists and is off in the frozen recipe).
+
+### Step 2, the build (branch `fx/sib`): one field-free stage and four bookkeeping flags
+
+Everything below is generic: no constant comes from a map, a record or a place where a policy
+dies, and the flag set is the same on every map (rule 0b). Nothing record-derived is read:
+the stage's roots are states of the search's own line from the policy's own checkpoint.
+
+**The stage.** The Go-Explore stage of `auto_spine.py` (a count archive, `explore_phase1.py`:
+cells 64 u x 32 u energy bands, pick weight 1/sqrt(seen+1), uniform random bursts of 100
+decisions; selection never reads the field) is switched on in its plain form (`--ge-cell-heading
+0 --ge-view-follow none --ge-boost 1.0`), 5 minutes per archive kind, and runs whenever the
+tree search returns no line past the reference. Two things are new in it:
+
+* *the hand-back ends where the map holds the player.* The field is read ONCE, at the end, to
+  pick which archived cell to return; it never steers the search. The old rule took the best
+  raw d of any tick, which on these maps is the air of a fall. The new rule returns the chain
+  to the deepest cell whose state the map holds (ground flag, or a ramp pushing back: the
+  same test `contact_rows` uses for the banked frontier), and the line ends at that state.
+* *two archive kinds per search, the held kind first, then the contact kind*
+  (`--ge-held 1 --ge-cell-contact 1`; `ge_kinds`). The held kind is the plain archive,
+  byte-identical in its exploration, with a per-cell `held` flag (`--cell-held`). The contact
+  kind archives only held states (`--cell-contact`). Why both: see the offline checks; the
+  two maps the stage was checked on want opposite archives, and nothing at search time says
+  which map this is.
+
+**The four bookkeeping flags** (each off = byte-identical, tested):
+
+| flag | rule | the case it comes from |
+|---|---|---|
+| `--auto-spine-current-ref` | a new line must end 200 u below the DEEPER of the greedy frontier and the current line's end; a tree line that only beats the frontier is the fallback | unitfarmer2 line 8 replaced the deeper line 7 |
+| `--auto-spine-patience-tau` | the patience clock restarts at every new low of the curriculum's position on its line | unitfarmer2 line 5: replaced after 448M steps, never walked back |
+| `--auto-spine-finish-stop` | an eval with a quorum of FINISHES starts no search; a search landing after it is discarded | cannonball, petrus, celestial: the patience search kept handing back the greedy's own finishing run |
+| `--demo-match-band` (existing flag, was off) | the curriculum's band no longer goes blind where a line stands still | 0% bands at states the greedy flies through |
+
+`--auto-spine-args` (new) carries the stage's knobs from the trainer's flag set to
+`auto_spine.py`, so the stage is part of the recorded recipe and not of a code default; a flag
+the trainer sets itself is refused. All new trainer flags are declared in `record_ckpt.py`.
+
+Not built, on purpose: a special hand-back when the explorer hits the goal. The line ends at
+the last held cell before the finish, the same rule as everywhere; `ge_goal: 1` is recorded.
+A finish crossed in the air after the last held cell is left to the policy and the tree.
+Search memory on big maps (cannonball's OOM) is untouched: cannonball stays on a 32 GB card.
+
+### Offline checks on the droplet (CPU, measurement only, before any box)
+
+Roots in each check are the frozen run's own states picked the way the trainer's stage picks
+them. One seed per cell: these are existence checks, not rates.
+
+| map | archive | minutes | runs | result |
+|---|---|---|---|---|
+| blue200 | contact only | 3.2 | 0.85M | GOAL: a 55.6 s line in contact, ends 64 u from the finish |
+| blue200 | plain + held flag | 10.0 | 4.20M | 0 goal hits; no held cell past the roots (deepest held d 1,725; the line to beat 802) |
+| princessburglar | contact only (seed 4) | 36.0 | 1.69M | no crossing; the archive stops growing at 5.2k cells |
+| princessburglar | plain + held flag (seed 4) | 25.1 | 1.68M | CROSSES at 1.10M runs (16.8 min), run for run the crossing of 2026-11-11 (pr4); 2 held cells past the line 55,100.4: a grounded far-ledge cell d 55,094.5 and a ramp-held one d 55,098.1 |
+| princessburglar | plain + held flag (seed 5) | 25.0 | 1.59M | CROSSES at 0.98M runs (14.5 min), run for run the crossing of 2026-11-11 (pr5); 1 held cell past the line: a ramp-held one d 55,081.7 (the grounded far-ledge cell reads 55,113.4) |
+| unitfarmer2 | plain + held flag | 15.1 | 3.52M | 0 goal hits; 867k cells, the pit is filled and never left (0 pit cells with a descendant above z 300) |
+
+* **The two maps want opposite archives.** A flight longer than one burst needs flight cells
+  as stepping stones: with only held states archived the princessburglar archive saturates
+  and never leaves the near side. A long walk beside a void needs an archive the void's air
+  cannot fill: on blue200 98% of the plain archive's runs die in the void and its 46k cells
+  are almost all air, while the contact archive (11k cells) walks the detour. So the stage
+  runs both kinds, 5 minutes each. A box does about 4.1M explorer runs in 5 minutes (m2ge),
+  about 13 times the droplet, so each offline case above fits inside one box stage.
+* **With the held flag on, the plain archive's exploration is bit-identical** to the runs of
+  2026-11-11 (pb4 against pr4 and pb5 against pr5, iteration by iteration: cells, runs,
+  deaths), so yesterday's 4 of 6 crossings stand for this stage.
+* **On princessburglar the hand-back is thin.** After the crossing the deepest held cell is
+  6 u (seed 4) and 19 u (seed 5) past the acceptance line of the frozen run's search 18
+  (55,100.4 = its reference 55,300.4 minus the 200 u gain); the frozen run's reference at the
+  pit moved between 55,300 and 55,382 from search to search, so the same cell passes by 6 to
+  88 u. The far ledge is level with the frontier on the field: the crossing gains a pit's
+  width of ground and about 250 u of d. A box stage runs about 2.5 times the runs these two
+  checks had, so it explores further past the ledge; how much deeper its held cells get was
+  not measured.
+* **unitfarmer2 is a predicted null for this try.** The archive fills the pit and never
+  climbs out, and a hand-back ranked on the field cannot return a pit line anyway (the pit
+  is +2,840 u of d). The deepest held cell there is a ramp-held dive state 16 u above the
+  kill level (d 27,870): it would be adopted, the same kind of line the tree already handed
+  back in m6sib_uf2, so no new harm and no help.
+
+### Tests (local, CPU; code commits `5debfd9a` + `1b456e42`)
+
+`tests/python/test_auto_spine_fx.py`: 7 passed (the flags are train-only and wired; refusals;
+the stage runs once per kind with the plain key and the fallback rule; a finishing quorum
+starts no search; an adoption under the patience-tau clock; flags off is bit-identical with
+624fc14f). `tests/python/test_cell_held.py`, `test_cell_contact.py`, `test_ge_minutes.py`,
+`test_demo_match_band.py`: 12 passed, 1 skipped (the explorer with `--cell-held` is
+bit-identical in its archive and adds the `held` column; `ge_replay --held`; refusals).
+The older search-loop tests (`test_auto_spine.py`, `_energy`, `_async`, `_recheck`) caught one
+thing after the first commit: the stage loop passed the new `kind` argument even with the
+flags off, which two test stand-ins refuse; `1b456e42` passes it only when a kind is set.
+Final pass on `1b456e42`, the fix tests and those four files together: 39 passed, 2 skipped.
+Four older explorer tests (`test_ge_roots_keep_all`, `test_ge_select_energy`, two of
+`test_ge_view_follow`) need a fixture file that is not in this checkout; with it linked they
+pass (8 passed, 1 skipped). `auto_spine.py --selftest`: ok.
+A CPU smoke of the COMPLETE command line (the launcher's 92 scratch tokens, the 89 recipe
+tokens, the launch extra; shrunk only by overrides appended at the end) ran two searches, each
+with the tree and both stages, with no refusal and rc 0. No line was adopted in it (nothing
+beat the reference on a 60k-step policy); the adoption path is covered by the test above.
+
+### Try 1: the flag set, the same on every map
+
+The 83 frozen tokens with `--auto-spine-ge-minutes 5` (was 0), plus
+
+    --auto-spine-args '--ge-cell-heading 0 --ge-view-follow none --ge-boost 1.0 --ge-held 1
+        --ge-cell-contact 1'
+    --auto-spine-current-ref --auto-spine-patience-tau --auto-spine-finish-stop
+    --demo-match-band
+
+and the launch extra every frozen run had (`--auto-spine-mcts-args '--mcts-mix-rule sib
+--mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2'`). 89 tokens. Only `--maxvel`
+follows the map's server physics, as before (3500 on princessburglar and unitfarmer2, 4000 on
+blue200). From scratch at the true start, one seed, one box per map.
+
+**Cuts, fixed before the launch:** princessburglar 8B steps (the frozen run reached the pit
+at 3.0B; earlier if a pit line is adopted and its walk-back does not move for 2B); blue200
+4B (the frozen run was flat from 0.98B); unitfarmer2 3B (flat from 1.2B). **What counts as
+"moved":** a greedy episode from the true start past the place the frozen run died at
+(princessburglar: over the pit onto the east ledge; blue200: past the void, 62.5%;
+unitfarmer2: a greedy episode in the pit and out of it), read physically, and finishes. If
+any map moves, the same 89 tokens are rerun on all seven maps before anything is called.
+
+**What I expect, written down before the runs:** blue200 is the best chance (the contact
+stage reaches the goal offline in minutes; the open question is whether the policy can learn
+a 55 s crawl handed to it as a curriculum line). princessburglar: the stage should cross the
+pit in some searches (4 of 6 seeds offline) but the far-ledge cells read only about as deep
+as the acceptance line (55,082-55,113 against about 55,100), so adoption is a coin flip per
+crossing, and learning the launch took October 2.4B steps with parts this recipe lacks.
+unitfarmer2: null. If the stage hands back lines and the policy does not learn them, try 2
+adds ONE generic learning piece and nothing else.
