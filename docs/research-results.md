@@ -41429,3 +41429,23 @@ RTX 5080 at about $0.39/h. Step 2 then ends at about $11 of the $10-15 the user 
 $10 reserve stands. Three boxes are live with it (the watchdog's cap is five). The watchdog
 entry carries the harvest spec and the pid file; the dashboard tunnel is
 http://localhost:8601/.
+
+## 2026-11-12 09:56 UTC: fix round TRY 2 LAUNCHED - fxpb_t2 (princessburglar, --yaw-entropy 0)
+
+Run `fxpb_t2` is up: the 91 tokens of the pre-launch entry (the 89 of try 1 plus
+`--yaw-entropy 0`), `--maxvel 3500`, from scratch at the true start, seed 0.
+
+* Box 60338328: RTX 5080 16 GB, $0.387/h, machine 156173 (South Carolina), created 09:52:36,
+  ready (ssh) 29 s later, deployed 09:54:10 on `fx/pb` 3663ee4c, trainer started 09:54:16
+  UTC. Record gate passed (4 recordings in 19 s: POV, greedy, stochastic, mixed).
+* `run.json` against `fxpb_t1`: 5 of 286 keys differ: `yaw_entropy` (absent -> 0.0), the
+  run's own `auto/spine0.npy`, the commit, the label, the start time. Nothing else. The log
+  prints "--yaw-entropy 0: the yaw head's entropy term is OFF".
+* Watchdog: registered at rent, re-registered after the deploy with the harvest spec
+  "42920 162.213.119.141 fxpb_t2" and pid file `runs/fxpb_t2.pid`, deadline 15:03:48 UTC
+  (5.2 h after create). Dashboard on the box, tunnel http://localhost:8601/. Three boxes
+  live (sidistic, cannonball, this one).
+* First numbers: 14.2M steps at 09:56, yaw sigma 0.327 (it starts at 0.30).
+
+Cuts and read-outs: as fixed in the pre-launch entry (5B; stop at 0.5B if the yaw sigma is
+at its clamp again; a pit line's walk-back flat for 2B; 8B at most).
