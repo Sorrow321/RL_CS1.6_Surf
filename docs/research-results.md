@@ -42606,3 +42606,28 @@ RTX 5080 class under the config's caps (about $0.30-0.42/h; the fix round measur
 steps/h on this recipe): unitfarmer2 to 3.5B is about 3 h, princessburglar to 5B about 4.5 h;
 about $3 for the wave if both run to their cuts. Each box: a watchdog entry with the harvest
 spec and the pid file, a dashboard on the box and a tunnel here. No other box is up.
+
+## 2026-11-13 02:30 UTC: ablation round wave 1 interim - the all-in DIVES INTO THE UNITFARMER2 PIT (from 151.5M, 9/9 at 227M; October 227M), not out yet; princessburglar holds a pit-crossing search line, greedy still in the start room
+
+Interim read at 02:28 UTC, against the read-outs fixed in the 01:5x entry (56617a2d).
+
+* **unitfarmer2 (`abuf2_all`, 527M steps, RTX 4080 SUPER, 297k steps/s): the greedy DIVES
+  INTO THE PIT.** First episodes below z 0 at the eval of 151.5M (3 of 9 at the pit floor, z
+  -976..-991), 9 of 9 at 227.0M (z -978..-996), and every eval since (302.5M, 378.0M, 453.5M).
+  October's lineage: 9 of 9 at 227M. The frozen and fix-round recipes never went below z 180
+  in 3.42B and 3.06B. The early cut (no pit entry by 1.0B) is passed.
+* **Not out yet.** Episodes lap the bowl and end on its floor (11-27 s) or part way up its
+  walls at about 32 s (end z -696..+72, never above 500). Grader 1.8-2.2%.
+* Search 1 (on the 0.5M weights) was ADOPTED at 101.2M: 1,735 states, end d 29,374, a walk
+  round the platform that drops to the ledge at z ~550 and ends falling at z 296; NOT in the
+  pit. Its curriculum is at starts [1344..1734]. No second search yet.
+* **princessburglar (`abpb_all`, 667M steps, RTX 5080, 371k steps/s): still in the start
+  room** (every episode of the evals 453.5M-604.5M ends at (729, -2856, z 3655) at 32-34 s).
+  Search 1 was ADOPTED at 229.6M "from beam+ge": 6,383 states, end d 55,107, which CROSSES THE
+  PIT (launch off the upper floor at state ~4,095, the pit bottom z 3,319, the east ledge at z
+  3,471-3,525, end on it at z 3,452). Its curriculum is at starts [5272..6382]. Yaw sigma
+  0.03-0.09 (cap 0.5, entropy 0); the key temperature T sits at its 0.5 cap (520M steps
+  without a 500 u gain).
+* **The tick does not cost steps per second**: 297k on the 4080 SUPER and 371k on the 5080,
+  against the fix round's 282k (4080) and 368k (5080) on the 10 ms recipe. What it costs in
+  steps per game second is read at the regression stage.
