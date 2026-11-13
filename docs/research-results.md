@@ -42684,3 +42684,74 @@ merged recipe) is where princessburglar is run again.
   progress.csv, launch log), `ckpts_all/` (ckpt_1000341504, ckpt_2000683008, ckpt_latest),
   `auto_all/` (k01-k04 logs and lines, spine0); md5 equal to the box (box_md5_all.txt,
   local_md5_all.txt). Tunnel :8602 stopped.
+
+## 2026-11-13 04:03 UTC: ablation round wave 2 PRE-LAUNCH - unitfarmer2: three leave-one-out arms for the dive (death, novelty, yaw) and a diagnostic arm without the search loop for the exit
+
+Written BEFORE the launch. Wave 2 of the ablation round, on unitfarmer2 only, while the all-in
+`abuf2_all` runs on to its 3.5B cut. Two questions, both from what wave 1 has shown so far.
+
+### Why these arms
+
+* **The dive.** The all-in takes the greedy INTO the pit from 151.5M (9 of 9 at 227.0M,
+  ledger 3c8ea814); no recipe of this series had done it. Which groups are needed for it is
+  the first thing to separate, and it reads early and cheaply. October's dive run (`dcw`) had
+  the death charge, the speed novelty, `--yaw-entropy 0` and the key temperature, with energy
+  K 3, no tick change and no boosted or turned rows; those four are tested first.
+* **The exit.** At 1.68B the greedy laps the pit with October's energy (E 1,183-1,210 at the
+  bottom, up to 1,351; October's `turn` run at 2.21B: 1,200-1,227, about 1,320), but nothing
+  climbs out: the greedy's highest point after entering is z 49-57, and four Monte Carlo
+  benches of October's exact search (`beam_tas --elite-frac 1.0 --keys-temp 1.5`, 4,096
+  rollouts of 46 s from the true start; frozen copies at 0.96B, 1.33B, 1.68B x 2 seeds) find
+  0 of 16,384 rollouts out of the pit (October: 1 of 4,096 at 2.28B). The searches of the
+  loop hand back lines ranked on the field: line 2 (689.4M) goes ROUND the pit through the
+  trough (October's dead end), line 3 (1,567.1M) is a 301-state platform line (the shallow
+  fallback, the fix round's open item 4). Under the curriculum about half of all training
+  starts sit on those lines (the demo rows replace the reservoir share; greedy and frontier
+  rows take 25% each of the rest), where October's lineage had NO curriculum until after its
+  first training exit (1.13B) and its Monte Carlo line (2.28B).
+
+### The arms (from scratch, seed 0, unitfarmer2, `--maxvel 3500`)
+
+| owner / run | recipe | question | cut |
+|---|---|---|---|
+| `abu2d_1` | all-in without `death` (133 tokens) | is the death charge needed for the dive? | 0.6B |
+| `abu2n_1` | all-in without `novelty` (128 tokens: the recipe's 0.25 / view 8 / speed 3) | is the speed novelty needed? | 0.6B |
+| `abu2y_1` | all-in without `yaw` (133 tokens) | is the yaw group needed? (it collapsed the yaw sigma on princessburglar) | 0.6B |
+| `abu2nl_1` | all-in WITHOUT the search loop and its curriculum (98 tokens; no launch extra) | does the loop's curriculum keep the policy from the exit? DIAGNOSTIC, not a recipe candidate | 2.5B |
+
+* The key-temperature group is the fifth dive candidate; it runs when a box frees (the
+  watchdog's cap is five boxes, the all-in holds one).
+* **Dive read-out** (fixed now): the first eval with a greedy episode below z 0, and the first
+  with 9 of 9 below z 0 (the all-in: 151.5M and 227.0M). A group is called NEEDED for the dive
+  when its arm has no greedy episode below z 0 by 0.6B (four times the all-in's first dive);
+  NOT NEEDED when the arm dives 9 of 9 by 0.6B; anything between is reported as it is.
+* **No-loop read-outs** (fixed now): (1) the greedy's highest point after entering the pit
+  against the all-in's z 49-57; (2) a greedy episode out of the pit (back above z 500 after
+  the floor); (3) the Monte Carlo bench (the same command, seed 0) on frozen copies at about
+  1.5B and 2.2B: does any rollout leave the pit? If the no-loop arm climbs out and the all-in
+  does not, the loop's curriculum is the brake on this map and the next item is a generic
+  rule for what the loop hands back (the fix round's open items 4 and 5), not removing the
+  loop, which finishes the other maps.
+* One seed each: a dive difference of a few evals is noise; a dive versus no dive at 0.6B
+  is the signal this wave can carry.
+
+### Local checks (CPU)
+
+* A CPU smoke of each COMPLETE command line (the launcher's 92 scratch tokens, the arm's recipe,
+  the launch extra; the no-loop arm without the extra and without the search overrides),
+  40,960 steps on unitfarmer2: rc 0 on all four, no refusal, no traceback.
+* run.json of each smoke carries exactly the intended change: abu2d death_charge None; abu2n
+  int_coef 0.25, int_view 8, int_speed 3, int_speed_weight None; abu2y yaw_entropy and
+  yaw_sigma_max None; abu2nl auto_spine None and demo_file None (no curriculum), every group
+  on. The three leave-one-out smokes ran a search beside the training; the no-loop smoke ran
+  none.
+* Configs: branches ab/abu2d, ab/abu2n, ab/abu2y, ab/abu2nl = ab/uf2 + config.json
+  (max_boxes 5), worktrees /home/steam/ar_m2/wt/<owner>.
+
+### Budget and box
+
+Credit $41.22 at 04:01 UTC, $10 reserve; the all-in box is the only one up. Four more boxes of
+the RTX 5080 / 4080 class under the config caps (about $0.31/h each): the three dive arms to
+0.6B are about 40 minutes each with setup (about $0.2 each), the no-loop arm to 2.5B about 2.5
+to 3 h (about $0.9); about $1.6 for the wave. Five boxes is the watchdog's cap; each box gets
+a watchdog entry with the harvest spec and the pid file, a dashboard and a tunnel.
