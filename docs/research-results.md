@@ -42493,3 +42493,116 @@ when it is handed one is still not measured.
   it), inside the $10-15 the user set; the $10 reserve stands. Nothing more is rented under
   step 2: the cap was three tries. A fresh run of all seven maps on one frozen command
   line, the multi-map pilots (step 3) and the long run (step 4) need the user's order.
+
+## 2026-11-13 01:55 UTC: ablation round wave 1 PRE-LAUNCH - the all-in (the fix-round recipe + every training piece of October's unitfarmer2 pit-exit lineage + the try-3 yaw cap) on unitfarmer2 and princessburglar
+
+Written BEFORE the launch. A new round on the user's order of 2026-11-13, after the question
+whether October's finishes of unitfarmer2 and princessburglar came from a real difference or a
+lucky seed: "go over these things one by one, ablate them on every map, see which thing
+actually does the job, and then ... merge it into our recipe. See, do we have regressions or
+we're good? ... first solve the map ... with our recipe, plus some things that are not in our
+recipe but which were in the recipe that actually beat the map. And after that ... try things
+one by one ... start with unit farmer map." On the tick: "30% acceleration is good. Let's do
+it. Let's fix it for all maps. If this doesn't slow down the training." On respawn speed: "up
+to maybe 30 50% more speed". On heading turns: taken only if automatic, never placed by hand.
+
+### What the recipe lacks against October's unitfarmer2 lineage
+
+Read from run.json of the fix round's `fxuf2_t1` against October's one lineage from scratch
+(`uf2r1b1_dcw` -> `gsp` -> `turn` -> `tick` -> `cur`, ~/ar_uf2/runs/uf2r1b1), the runs that
+dived into the pit (dcw) and took the greedy out of it (cur). Each row is ONE ablation group.
+
+| group | October (dcw .. cur) | recipe (fx try 1) | acts on | generic? |
+|---|---|---|---|---|
+| death | `--death-charge 1 --death-charge-window 2` | none | reward | yes: objective fix (0b) |
+| novelty | int-coef 2.5, int-view 0, int-speed 8, speed weight 3 up | 0.25, view 8, speed 3 | intrinsic reward | mechanism yes; values set once |
+| energy | `--energy-pot 12` | 3 | reward | quantity yes; one value |
+| greedy | own greedy-eval failure states, x1.0-1.3, heading U(-180, 180), hot keys 1 s | none | spawns | own states, no map constant |
+| front | own reservoir frontier rows, x1.0-1.3, heading U(-90, 90) | none | spawns | own states, no map constant |
+| keytemp | unstuck max 0.5, patience and period 2e7, reach res | 0.2, 2e8 and 1e8, eval | key temperature when stuck | yes |
+| yaw | `--yaw-entropy 0` (+ try 3's `--yaw-sigma-max 0.5`) | none | view noise | yes |
+| tick | 7.63 ms (October ramped 10 -> 7.63) | 10 ms | physics | a player frame rate, not a map |
+
+* The two spawn groups are what program 6's one-pool design switched off (October's
+  `--respawn-*` sources); they are the "respawned with bigger speed" the user remembers.
+* The novelty values (2.5, 8 speed bins) and energy K 12 were set on unitfarmer2 in
+  September and October; under 0b they are allowed only as ONE value carried unchanged to
+  every map, which is what the regression stage tests.
+* NOT carried: `--respawn-novel` and `--respawn-backward-mix` (October's base before its
+  curriculum; the trainer refuses both beside the curriculum's `--demo-file`, and October's
+  pit-exit run `cur` had neither), and `--int-real-only` (needs `--respawn-novel`).
+* NOT in this wave, search side: October's first pit-exit line came from a Monte Carlo search
+  (4,096 independent policy rollouts, no culling: `beam_tas --elite-frac 1.0 --keys-temp
+  1.5`). Our search loop cannot pass beam flags today (a small build), and a search setting
+  can be benched on a saved checkpoint without retraining. It is the next item if wave 1
+  dives into the pit and does not climb out.
+* What the fix round added and October did not have stays in (the archive stage that
+  finished blue200, its bookkeeping flags, MCTS with the sibling rule).
+
+### October's clock on this map (one lineage, pieces added by hand on the way)
+
+Dive into the pit 0.227B steps; first exit in a TRAINING episode 1.13B; GREEDY out of the pit
+2.94B; first 9/9 under the old box rule 8.16B; first REAL 9/9 15.018B (meta-analysis report
+unitfarmer2_agents.md, sections 4 and 10a). The frozen and fix-round recipes never entered the
+pit: no greedy episode below z 180 in 3.42B and 3.06B steps.
+
+### Wave 1: the all-in, two runs
+
+`abuf2_all` (unitfarmer2) and `abpb_all` (princessburglar), from scratch at the true start,
+one seed each, the SAME 137 tokens (the 89 try-1 tokens + the eight groups; energy replaces
+`--energy-pot 3`, keytemp replaces `--unstuck-max 0.2` and `--unstuck-reach eval`) and the
+unchanged launch extra (`--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+--mcts-mix-horizon 256 --mcts-mix-warm 2'`); `--maxvel 3500` on both (server physics).
+Branches ab/uf2 and ab/pb = fx/sib (code b2a5259b) + config. Nothing of October's runs is
+used: no checkpoint, line or state; their run.json files are read for flag values only.
+
+* **unitfarmer2 read-outs:** (1) the step of the first greedy episode INTO the pit (min z
+  below 0; the pit floor is at z -860..-1000 in October's own dives); (2) the first greedy
+  episode OUT of it (back above z 500 after the floor); (3) finishes, from the grader. The
+  grader's percent alone is not read: the frozen run's 10.2% was a death dive.
+* **princessburglar read-outs:** (1) greedy out of the start room (frozen 2.94B, try 3
+  1.36B); (2) greedy over the pit onto the east ledge; (3) finishes.
+* **Cuts:** unitfarmer2 3.5B, earlier at 1.0B if no greedy episode has entered the pit
+  (October 0.227B). princessburglar 5B, earlier at 2.0B if the greedy has not left the start
+  room.
+* **Expectations, before the run.** unitfarmer2 dives well before 1B (every dive piece of
+  October's is in). Whether it climbs out depends on whether our search loop finds the exit
+  line that October's Monte Carlo found: if it dives and stays in, the search item is next.
+  princessburglar: open; try 3's cap took it out of the room at 1.36B and the archive stage
+  crossed the pit in try 1, but the two never met in one run.
+* **After:** if unitfarmer2 passes the pit, leave-one-out arms (one group off each, same
+  map) find which groups are needed; the needed ones are merged into the recipe and the
+  merged recipe runs on all seven maps from scratch against the fix-round scoreboard (five of
+  seven; steps to first finish). A group that is not needed is not merged.
+* **The tick and training speed.** One tick costs the same compute at 7.63 ms as at 10 ms,
+  but one second of game time is 1.304x the ticks, so with decisions every 4 ticks (30.7 ms)
+  a run needs up to 1.3x the steps for the same game time unless it learns faster. The
+  regression stage measures steps to first finish with and without it; decisions every 5
+  ticks (38.3 ms, today's 40 ms) is the variant that keeps decisions per game second.
+
+### Local checks (CPU)
+
+* A CPU smoke of the COMPLETE command line on each map (the launcher's 92 scratch tokens, the
+  recipe tokens, the launch extra; shrunk only by overrides appended at the end, 40,960 steps).
+* Pass 1 caught `--respawn-novel is not wired with --demo-file` (the curriculum's spine is a
+  demo file from step 0); `--respawn-backward-mix` has the same refusal. Both dropped (October's
+  pit-exit run `cur` had neither). Pass 2 caught `--int-real-only 1 needs --respawn-novel`:
+  dropped. Pass 3 (the 137 tokens): rc 0 on both maps, no refusal, no traceback.
+* What pass 3 shows: the trainer prints the tick (pattern [8,8,7] = 7.667 ms, 130.4 Hz, gamma
+  0.99961664 per tick for the same 20 s horizon, decisions every 30.7 ms), the death charge
+  and its 2 s window (261 calls), the FRONT-PERTURB and GREEDY spawn sources at 25% each;
+  `greedyhot` in the step line; run.json carries tick_ms 7.63, death_charge 1, window 2,
+  int_coef 2.5, int_view 0, int_speed 8, energy_pot 12, respawn_greedy 0.25,
+  respawn_front_perturb 0.25, unstuck_max 0.5, yaw_entropy 0, yaw_sigma_max 0.5.
+* Searches ran beside the training (three on unitfarmer2, two on princessburglar): the
+  tree at the checkpoint's tick ("the beam runs it (physics parity), the explorer 8 ms"), both archive kinds (exit 1 = the
+  budget stop, as in the fix round's real runs), no line handed back (nothing beats the
+  reference on a 40k-step policy).
+
+### Budget and box
+
+Credit $42.44 at 01:30 UTC on 2026-11-13 (the user topped up), $10 reserve. Two boxes of the
+RTX 5080 class under the config's caps (about $0.30-0.42/h; the fix round measured about 1.2-1.3B
+steps/h on this recipe): unitfarmer2 to 3.5B is about 3 h, princessburglar to 5B about 4.5 h;
+about $3 for the wave if both run to their cuts. Each box: a watchdog entry with the harvest
+spec and the pid file, a dashboard on the box and a tunnel here. No other box is up.
