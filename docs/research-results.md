@@ -42755,3 +42755,43 @@ the RTX 5080 / 4080 class under the config caps (about $0.31/h each): the three 
 0.6B are about 40 minutes each with setup (about $0.2 each), the no-loop arm to 2.5B about 2.5
 to 3 h (about $0.9); about $1.6 for the wave. Five boxes is the watchdog's cap; each box gets
 a watchdog entry with the harvest spec and the pid file, a dashboard and a tunnel.
+
+## 2026-11-13 04:39 UTC: ablation wave 2 interim - for the unitfarmer2 dive the yaw group is NEEDED and the death charge is NOT (dives 2x later); keytemp and energy arms launched
+
+Two dive arms of wave 2 are read (rule fixed in the 9f984fb2 entry: NEEDED = no greedy episode
+below z 0 by 0.6B, NOT NEEDED = 9 of 9 by 0.6B), and two more are launched in their boxes.
+
+### Read
+
+| arm | first eval below z 0 | first 9/9 | verdict |
+|---|---|---|---|
+| all-in (`abuf2_all`, reference) | 151.5M (3/9) | 227.0M | - |
+| without `death` (`abu2d_1`) | 453.5M (9/9) | 453.5M | NOT NEEDED for the dive (it comes 2x later) |
+| without `yaw` (`abu2y_1`) | none in 9 evals to 604.5M | - | NEEDED |
+| without `novelty` (`abu2n_1`) | none in 7 evals to 453.5M | - | running to 0.6B |
+| no search loop (`abu2nl_1`, diagnostic) | 529.0M (4/9) | 680.0M | dives; read for the exit |
+
+* **Without the yaw group** the yaw sigma rose to 1.20 by 0.64B (the all-in: 0.03-0.04), and
+  the curriculum walked search line 1 (2,601 states, a line round the platform, end d 29,634)
+  back to state 0 at 99.4% success: the greedy flies the search's line and never dives.
+* **Without the death charge** no search line was adopted (the curriculum stayed on the spawn
+  spine, starts [0, 1]); the greedy dove 9 of 9 at 453.5M and 529.0M (highest after entry z
+  110 and 269).
+* One seed per arm, and each arm's first search hands its curriculum a different line, which
+  pulls the greedy elsewhere: these verdicts say what each run did, not a law.
+* Stopped by pid at 648.0M (`abu2y_1`) and 590.3M (`abu2d_1`); bundles in
+  /home/steam/ar_m2/runs/abu2y and /abu2d (BUNDLE OK: checkpoints, evals, run.json,
+  progress, launch log, search lines); boxes 60446925 and 60446786 released at 04:38-04:39 UTC
+  (about $0.18 and $0.17).
+
+### Launched next (same rule, cut 0.6B, written before the launch)
+
+* `abu2k_1`: the all-in without `keytemp` (133 tokens: back to the recipe's `--unstuck-max 0.2
+  --unstuck-reach eval` and the default patience and period) - the fifth dive candidate named in
+  the 9f984fb2 entry.
+* `abu2e_1`: the all-in without `energy` (137 tokens: back to `--energy-pot 3`) - October's
+  dive run had K 3, so the prediction is NOT NEEDED for the dive; it is run because K 12 is
+  the biggest change the all-in makes to the other six maps' reward.
+* CPU smokes of both complete command lines (40,960 steps): rc 0, no refusal; run.json
+  carries unstuck_max 0.2 / reach eval / patience 2e8 / period 1e8 (abu2k) and energy_pot 3.0
+  (abu2e), every other group on.
