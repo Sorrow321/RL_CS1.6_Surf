@@ -42823,3 +42823,81 @@ below z 0 by 0.6B, NOT NEEDED = 9 of 9 by 0.6B). All five bundled (BUNDLE OK) an
   none of their boosts or turns and ran at 10 ms); they belong to the exit question.
 * Steps stopped at: abu2k 739.2M, abu2e 482.3M (its verdict was reached at 227.0M); boxes
   60450152 and 60450242 released 05:20 UTC. Bundles in /home/steam/ar_m2/runs/abu2k, /abu2e.
+
+## 2026-11-13 05:56 UTC: ablation round - unitfarmer2 FINAL for the all-in and the no-loop diagnostic: the greedy dives but never leaves the pit by 3.5B, yet October's Monte Carlo search on the final weights finds the exit in 3 of 3 seeds; the loop handed back a dead-end trough line four times
+
+The all-in on unitfarmer2 (`abuf2_all`, pre-launch 56617a2d) at its 3.5B cut, the no-loop
+diagnostic (`abu2nl_1`, pre-launch 9f984fb2) at its 2.5B cut, and a Monte Carlo bench on the
+all-in's final weights that changes the reading. Every box is released.
+
+### Result: the dive YES, the exit NO, and the exit line EXISTS in the final policy
+
+* **`abuf2_all`** (RTX 4080 SUPER, stopped by pid at step 3,497,525,248 after the eval of
+  3,473,408,000): the greedy is in the pit in every eval from 227.0M to the end (43 of 44 evals
+  9 of 9, one 8 of 9), none out (never back above z 500 after the floor). At 2,944.9M eight of
+  nine climb the pit's south side on the FIRST lap to z 436-521 at about 7.4 s (the record turns
+  north at z 485-587 on its first lap), then fall back; later evals climb to z 279, 110, 476,
+  and the last one (3,473.4M) laps low with E 1,318-1,461 (the record: 1,117). Grader best 3.29%
+  (76.0M, before the dive), 0 finishes.
+* **`abu2nl_1`** (no search loop, no curriculum; RTX 5080, stopped at 2,610,954,240): dives (4/9
+  at 529.0M, 0/9 at 604.5M, 9/9 from 680.0M) and laps to the cut, highest point after entry z
+  196, never out; Monte Carlo on its 1.84B weights (seeds 0, 1): 0 of 8,192 rollouts out.
+  Dropping the loop does NOT open the exit by 2.5B; the all-in climbed higher.
+* **Monte Carlo benches** (October's exact search, `beam_tas --elite-frac 1.0 --keys-temp 1.5
+  --envs 4096 --max-ticks 6000`, from the true start, on frozen copies; measurement only):
+
+| weights | seeds | best frontier | out of the pit? |
+|---|---|---|---|
+| all-in 0.96B, 1.33B, 1.68B | 0; 0; 1, 2 | the platform at 2.3 s, d 30,033-30,093 | no (0 of 16,384) |
+| no-loop 1.84B | 0, 1 | the platform at 2.3 s | no (0 of 8,192) |
+| **all-in 3.50B (final)** | **0, 1, 2** | **d 29,834 / 29,890 / 29,857 at 33.7 / 42.2 / 19.9 s** | **YES, 3 of 3 seeds** |
+
+* On the final weights each seed's frontier lineage laps the pit for 19-42 s (E 1,026-1,331
+  on the laps) and then CLIMBS OUT of its south-east side, ending at (-1,730..-1,802,
+  -2,730..-2,812, z 504-612) with E 1,174-1,262 and a horizontal speed of about 1,020 u/s;
+  frontier d 29,834-29,890, deeper than October's Monte Carlo exit line (d 29,987 at 30.6 s,
+  on the block top at (-2,577, -2,763, 508), one lineage of 4,096 on its 2.28B weights).
+  Lines in /home/steam/ar_m2/runs/abuf2/bench_all/fin_s0..2/beam_frontier.npz.
+
+### Why the run did not take the exit: the loop handed back a dead end, four times
+
+| search | adopted at | line | handed back from |
+|---|---|---|---|
+| 1 | 101.2M | 1,735 states, round the platform to the ledge, end d 29,374 | tree |
+| 2 | 689.4M | 1,585 states, end (-1,979, -1,278, z 311), d 28,599 | archive |
+| 3 | 1,567.1M | 301 states on the platform, d 29,986 (shallow fallback) | tree |
+| 4 | 2,332.6M | 1,350 states, end (-2,373, -1,714, z 310), d 28,937 | archive |
+| 5 | 2,988.4M | 1,248 states, end (-2,369, -1,174, z 317), d 28,714 | archive |
+
+* Lines 2, 4 and 5 go NORTH from the ledge through the trough at z ~300 above the kill sheet
+  (z 160), never into the pit: October's dead end (its b2 stalled there at 10.75%, on bands 2 u
+  above the sheet). The curriculum never learned them (success 3-11% at the newest starts).
+* On the field they are DEEPER (d 28,599-28,937) than the pit exit (d 29,834-29,890), so the
+  hand-back, which ranks on d, prefers them; and with `--auto-spine-current-ref` the next line
+  must beat the HELD line's end (search 5: reference 28,937), which a pit-exit line cannot. The
+  tree (MCTS, ranked on the field) found nothing past the platform (search 5: d 30,100 at 2.4
+  s). This is the fix round's open items 4 and 5 met on the map they were written for: the
+  loop keeps a line the policy cannot learn and its reference blocks the line it could.
+
+### What this says, and what it does not
+
+* The all-in's TRAINING pieces carry unitfarmer2 to the edge of the exit: the dive (novelty,
+  yaw, keytemp; ledger a5a24c58), October-plus energy in the pit, and by 3.5B a policy whose
+  own independent rollouts leave the pit in 3 of 3 seeds. They do not carry the GREEDY out in
+  3.5B.
+* The missing step is on the SEARCH side and is generic: (1) a search that does not cull
+  (independent rollouts of the policy, ranked once at the end), and (2) a hand-back that does
+  not keep or prefer a line the policy has failed to learn. Neither is built; one seed; the
+  Monte Carlo result is three seeds of a search on one checkpoint, not a training result.
+* The no-loop arm says the loop's curriculum is not what keeps the policy in the pit; it says
+  the loop's CHOICE of lines wastes its curriculum here.
+
+### Boxes, cost, bundles
+
+* `abuf2_all`: box 60434370 released 05:54 UTC (3 h 58 min at $0.313/h, about $1.24).
+  `abu2nl_1`: box 60446700 released 05:50 (1 h 45 min at $0.309/h, about $0.54).
+* Bundles (md5 = box): /home/steam/ar_m2/runs/abuf2 (`abuf2_all/` 47 evals, run.json,
+  progress, launch log; `ckpts_all/` 1.0B, 2.0B, 3.0B, latest = md5 60b665bf; `auto_all/`
+  k01-k05 logs and lines; `bench_all/` mc1, mc2, mc3_s1, mc3_s2, fin_s0..2 logs and frontier
+  lines) and /home/steam/ar_m2/runs/abu2nl (`abu2nl_1/` 35 evals, three checkpoints,
+  `bench_1/` nl1_s0, nl1_s1). Credit $38.94 at 05:54 UTC; the round so far cost about $3.50.
