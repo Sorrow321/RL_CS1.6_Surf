@@ -42631,3 +42631,56 @@ Interim read at 02:28 UTC, against the read-outs fixed in the 01:5x entry (56617
 * **The tick does not cost steps per second**: 297k on the 4080 SUPER and 371k on the 5080,
   against the fix round's 282k (4080) and 368k (5080) on the 10 ms recipe. What it costs in
   steps per game second is read at the regression stage.
+
+## 2026-11-13 03:45 UTC: ablation round wave 1 - princessburglar FINAL: the all-in is NULL at the 2.0B early cut (the greedy never leaves the start room; try 3 left it at 1.36B); the curriculum reaches the east ledge, never the crossing; yaw sigma collapses to 0.01-0.05
+
+Princessburglar's half of wave 1 (pre-launch entry 56617a2d, interim 3c8ea814). Run `abpb_all`,
+the all-in (137 tokens), from scratch, seed 0, RTX 5080 (box 60434479, $0.309/h).
+
+### Result: NULL at the early cut (2.0B, the greedy never left the start room)
+
+* The cut fixed before the launch: "princessburglar 5B; earlier at 2.0B if the greedy has not
+  left the start room". Every greedy episode of all 28 evals to 2,038,956,032 ends in the start
+  room; from 0.45B on all nine end at (729, -2856, z 3652..3677) at 32-34 s, hopping in one
+  spot (grader 0.2-0.4%, 0 finishes). The trainer and its fourth search (started at the same
+  eval) were stopped by pid at step 2,056,257,536 (03:29 UTC).
+* Against the earlier runs on this map: the frozen recipe left the room at 2.94B, the fix
+  round's try 3 (`--yaw-sigma-max 0.5` alone) at 1.36B; the all-in not by 2.04B.
+
+### What happened
+
+| read-out | value |
+|---|---|
+| search 1 (0.5M weights) | ADOPTED 229.6M "from beam+ge": 6,383 states, end d 55,107, CROSSES the pit |
+| searches 2, 3 (1,021.3M, 1,699.2M) | no new spine (974 s each); search 4 stopped at the cut |
+| curriculum on line 1 | deepest start 4,987 (on the east ledge, after the crossing); then backed off to 5,542 |
+| the line at the crossing | launch off the upper floor about state 4,095, pit bottom 4,410 (z 3,319, 715 u/s), up the far side 4,500 (z 3,495), east ledge from about 4,600 |
+| yaw sigma | 0.30 at the start, 0.10 at 0.4B, 0.03-0.05 from 0.6B, 0.009-0.05 at the cut |
+| update kl | 0.03-0.15 (0.01-0.03 on the maps that finish) |
+| key temperature T | at its 0.5 cap from about 0.1B to the cut (no 500 u gain for 1.9B steps) |
+| steps per second | 371-376k on the RTX 5080 (the fix round: 368k at 10 ms) |
+
+* **The curriculum never reached the crossing.** It walked line 1 back from 6,382 to 4,987
+  (about 1,400 states, all on the east ledge) and never into 4,095-4,600, the drop, the pit
+  bottom and the climb onto the ledge. Try 1 stalled one decision before the launch; this run
+  stalled earlier on the walk-back, on the far side.
+* **The yaw sigma collapsed** (`--yaw-entropy 0` takes the bonus off; the cap 0.5 never
+  bound): 0.01-0.05 from 0.6B, the trace October's pbr1b1_bcur5 showed with the same flag
+  (0.011 at 800M). Try 3 kept it at 0.24-0.50 and left the room at 1.36B. One seed: not
+  separated from the other groups.
+
+### Reading
+
+The all-in does not help princessburglar by 2B steps; it is behind try 3 (the cap alone) on
+the one read-out both reached. The groups were taken from unitfarmer2's lineage; nothing here
+says which of them hurts. princessburglar is NOT used to separate them in this round:
+unitfarmer2 decides which groups are needed, and the regression stage (all seven maps, the
+merged recipe) is where princessburglar is run again.
+
+### Box, cost, bundle
+
+* Box 60434479 released at 03:45 UTC after the bundle; 1 h 48 min at $0.309/h, about $0.56.
+* Bundle in /home/steam/ar_m2/runs/abpb: `abpb_all/` (28 eval trajectories, run.json,
+  progress.csv, launch log), `ckpts_all/` (ckpt_1000341504, ckpt_2000683008, ckpt_latest),
+  `auto_all/` (k01-k04 logs and lines, spine0); md5 equal to the box (box_md5_all.txt,
+  local_md5_all.txt). Tunnel :8602 stopped.
