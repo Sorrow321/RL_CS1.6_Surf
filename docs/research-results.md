@@ -42795,3 +42795,31 @@ below z 0 by 0.6B, NOT NEEDED = 9 of 9 by 0.6B), and two more are launched in th
 * CPU smokes of both complete command lines (40,960 steps): rc 0, no refusal; run.json
   carries unstuck_max 0.2 / reach eval / patience 2e8 / period 1e8 (abu2k) and energy_pot 3.0
   (abu2e), every other group on.
+
+## 2026-11-13 05:21 UTC: ablation wave 2 - the unitfarmer2 DIVE needs the speed novelty, the yaw group and the key temperature; the death charge halves the time to it; energy K 12 does not change it
+
+The five dive arms of wave 2 are read (rule of the 9f984fb2 entry: NEEDED = no greedy episode
+below z 0 by 0.6B, NOT NEEDED = 9 of 9 by 0.6B). All five bundled (BUNDLE OK) and released.
+
+| group dropped | run | dive (greedy below z 0) | verdict for the dive |
+|---|---|---|---|
+| none (all-in) | `abuf2_all` | 3/9 at 151.5M, 9/9 at 227.0M | - |
+| `death` | `abu2d_1` | 9/9 at 453.5M | NOT NEEDED (2x later) |
+| `novelty` | `abu2n_1` | none to 604.5M | NEEDED |
+| `yaw` | `abu2y_1` | none to 604.5M | NEEDED |
+| `keytemp` | `abu2k_1` | 5/9 at 302.5M only, then 0/9 to 680.0M | NEEDED to stay in: from 378M the greedy dies on the hidden kill sheet at 4.4-5.0 s (end z 181-200, grader 7.3-7.5%), the frozen recipe's trap |
+| `energy` (K 3) | `abu2e_1` | 9/9 at 227.0M | NOT NEEDED |
+
+* **For the dive, three groups carry it: the speed novelty, the yaw group (`--yaw-entropy 0
+  --yaw-sigma-max 0.5`) and the key temperature.** The death charge halves the time to it;
+  energy K 12 does not change it. October's dive run had the same three plus the death charge,
+  at K 3.
+* The yaw group cuts both ways: on unitfarmer2 it is needed (without it the yaw sigma rises to
+  1.20 and the greedy flies the search's line round the platform); on princessburglar the same
+  group took the sigma to 0.01-0.05 and the all-in never left the start room (64cc18fb). Its
+  two flags are not separated here (`--yaw-entropy 0` alone and the cap alone are the next
+  split if the yaw group is merged).
+* The greedy, frontier and tick groups were not dropped for the dive (October's dive run had
+  none of their boosts or turns and ran at 10 ms); they belong to the exit question.
+* Steps stopped at: abu2k 739.2M, abu2e 482.3M (its verdict was reached at 227.0M); boxes
+  60450152 and 60450242 released 05:20 UTC. Bundles in /home/steam/ar_m2/runs/abu2k, /abu2e.
