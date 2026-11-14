@@ -44459,3 +44459,72 @@ Written BEFORE the launch. Wave 7 starts the third candidate, recipe v3.
   (40,960 steps): rc 0, no refusal, the novelty gate reads every eval (2.5 at progress 0). Two 4080/5080-class boxes (~$0.39/h), deadlines 2.6 h and 2.2 h, watchdog with
   harvest spec and pid file; tunnels http://localhost:8637/ (celestial) and :8638 (blue200).
   Credit $29.07 at 11:08 UTC.
+
+## 2026-11-14 11:44 UTC: ablation wave 7 - sub-agent U: the unitfarmer2 exit was lost because the swap to a longer line moved every curriculum start to its far end; --demo-rehearse keeps a share on the learned line (ab/rh 57bd77fd); merged with the novelty gate as ab/v4 b784f84c
+
+Sub-agent U, wave 7 (analysis + a default-off build; no box, $0). Read from ab4u_1's launch log and
+auto/ files (copied read-only off its box at 11:08 UTC, step ~7.07B) and its 92 bundled evals.
+
+### (1) ab4u_1: where training started, and when the exit was lost
+
+* The start pool is fixed by the flags: 10% at the map's start, then of the rest 25% greedy-eval
+  rows, 25% perturbed reservoir-frontier rows and 50% curriculum draws, of which the uniform half
+  is the part the greedy and frontier rows overwrite - so 45% of all starts sit on the held
+  line's FRONTIER BAND [tau, tau+4], 22.5% on greedy rows (the last 2-0.25 s of each failed
+  greedy episode), 22.5% on frontier rows, 10% at the start.
+* Line 5 (search 5, a tree line, 2,123 rows, adopted 3.279B, ends on the ground at the SE lip):
+  its walk-back went from row 2,117 to 1,297 by 3.599B (the last lap, the climb and the exit) -
+  45% of starts there. The greedy left the pit at 3.473B and 3.549B (9 of 9), 3.700B (9 of 9) and
+  3.851B (8 of 9); the evals between had 0 of 9.
+* Search 6 was a QUORUM search (3.473B: 9 of 9 past line 5's success line, frontier 22,020): line
+  6 (Monte Carlo, 11,100 rows, adopted 3.604B) passes line 5's end 27 u away at its row 1,658,
+  then runs on to the far NE (d 16,423). The walk-back restarted at its row 11,094: the 45% band
+  moved to the far NE (row 10,944 at 3.70B, 9,079 at 4.30B, 5,019 at 6.00B, 2,429 at 6.88B, 2,234
+  at 7.03B) and never came back to row 1,658. The greedy rows followed the greedy (far beyond the
+  pit while it exited, in the pit after), the frontier rows followed the reservoir (far NE): after
+  the swap only the 10% start spawns flew the exit.
+* The greedy lost the exit 0.33B after the swap: 0 of 9 out of the pit in every eval from 3.926B
+  to 7.07B (best d 29,939-30,124; out = d below 29,000).
+
+### (2) The generic failure and the rule
+
+* Yes: a backward curriculum restarts at the NEW line's far end, so the band the policy just
+  learned leaves the curriculum - here for 3.4B steps - and the policy unlearns it. A new line
+  that extends the learned one should keep it practised until its own walk-back gets there.
+* Built (branch ab/rh = ab/v3 5d304af7 + one commit; default off, unchanged when off):
+  `train_fast --demo-rehearse F [--demo-rehearse-r U]`. When a QUORUM search (the held line is
+  learned) hands back a line that passes within U of the held line's END, the held line's walked
+  rows [lowest tau, end] are rehearsed: F of the frontier-band draws (the draws no later share
+  overwrites) come uniformly from them until the new walk-back reaches the junction row. Rehearsal
+  rows match no row of the new spine (no outcome counted). One setting: F = 0.25 (about 11% of all
+  starts), U = 256 u. TRAIN_ONLY in record_ckpt; config dumped only when on.
+* Changes in surfgym/respawn.py (DemoCurriculum: tau_min, set_rehearsal, the band draws) and
+  train_fast.py (the flag, the search's trigger, the junction before the swap); nothing in
+  auto_spine.py, so it merges with the --int-coef-progress work on ab/v3.
+
+### Evidence it would not have changed the finishing runs
+
+Every spine swap in the four finishing runs, by the same reading:
+
+* blue200 fx: search 2 replaced the spawn spine; search 3 (the goal line) was a PATIENCE search.
+* petrus fx: search 2 replaced the spawn spine; search 3 was a PATIENCE search.
+* celestial fx: search 4 was a QUORUM search after line 2 was walked to row 0, but line 4 takes
+  the other side of the fork: its nearest row is 1,183 u from line 2's end (> U).
+* celestial ab6c: one adoption (search 2), over the spawn spine.
+* So no swap in them qualifies: with the flag the four runs draw exactly as they did. In ab4u_1
+  the one qualifying swap is search 6 (junction 27 u, row 1,658, never reached): 25% of line 6's
+  band draws would have stayed on line 5's rows 1,297-2,122 from 3.604B to the 7.07B read.
+  Whether that keeps the exit is NOT measured.
+
+### Tests
+
+* tests/python/test_demo_rehearse.py, 6 passed (off = the same draws; on = the first band draws
+  come from the rehearsal set and match no row of the new spine; the rehearsal ends at the
+  junction; tau_min; the trainer's wiring and order; the refusals).
+* The curriculum and search-loop suites on ab/rh: 213 passed, 33 skipped, 8 failed; the same 8
+  fail on ab/v3 without this change (test_goal_primlearn x4, test_loop_pick x4: the goal planner
+  and the loop driver, not touched here) - run side by side on both branches: 119 passed, 8
+  failed, 33 skipped on each.
+* CPU smoke of the complete command line (the ab/v3 tokens + `--demo-rehearse 0.25`): rc 0, the
+  flag announced, run.json carries demo_rehearse 0.25 / 256; its one swap replaced the spawn
+  spine, so nothing was rehearsed (by design).
