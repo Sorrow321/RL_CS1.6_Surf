@@ -44428,3 +44428,34 @@ start, times (1 + T) under `--unstuck` (T up to 0.5: up to 3.6).
   2.499-2.5); search 2 adopted an archive line with its held keys, the next patience search
   recorded its dead end, every search carried `--end-survive-secs 1.0`; ckpt_final carries
   `int_coef_progress {progress 3.9e-05, coef 2.4991}` beside `auto_spine_failed`.
+
+## 2026-11-14 11:19 UTC: ablation wave 7 PRE-LAUNCH - recipe v3 (progress-gated novelty + the full search-loop set) on celestial and blue200 first
+
+Written BEFORE the launch. Wave 7 starts the third candidate, recipe v3.
+
+### Recipe v3 (139 tokens, the same on every map; only --maxvel follows the map; code ab/intp)
+
+* Training side: v1-lean (the 89 try-1 tokens + novelty KEY view 0 / speed 8 weighted up,
+  keytemp, greedy and front respawn rows, tick 7.63 ms, yaw cap 0.2; no death charge, energy K
+  3) with the novelty WEIGHT gated by the greedy frontier, `--int-coef-progress 2.5:0.25:0.1`
+  (8cf0c760): 2.5 near the start (unitfarmer2's dive needs it, 94b9230a), 0.25 past 10% of the
+  spawn's distance (celestial's fork needs it, f26bef37).
+* Search side (ab/v3 5d304af7 + ab/intp ae2ff10b): the Monte Carlo stage, the energy-rooted
+  archives, the archive bar (a6383c75), the path ban on failed archive ends (R 128; 84cfe0ed),
+  the failed-line fallback (39710934), the dead-end ban (c42b7a11), the bar and bans kept across
+  a resume, the held keys at curriculum spawns (`--auto-spine-keys`, 7547f96a) and the cut of a
+  line that ends in a fatal flight (`--end-survive-secs 1.0` in --auto-spine-args, 1aec7c74).
+
+### First arms: regression of v3 on two maps that finish (more maps follow)
+
+| owner / run | map | read | cut |
+|---|---|---|---|
+| `ab7c_1` | celestial | first greedy finish (fix round 1,284.0M; ab6c 906.5M) | 2.5B |
+| `ab7b_1` | blue200 | first greedy finish (fix round 1,435M; ab3b2 302.5M) | 2.0B |
+
+* Unitfarmer2 and princessburglar with v3 follow when sub-agent U's curriculum change for a
+  freshly learned band (the exit lost after a line swap, ab4u_1) is in or ruled out.
+* Local check: the 139-token line with unitfarmer2's --maxvel on CPU on the ab/intp code
+  (40,960 steps): rc 0, no refusal, the novelty gate reads every eval (2.5 at progress 0). Two 4080/5080-class boxes (~$0.39/h), deadlines 2.6 h and 2.2 h, watchdog with
+  harvest spec and pid file; tunnels http://localhost:8637/ (celestial) and :8638 (blue200).
+  Credit $29.07 at 11:08 UTC.
