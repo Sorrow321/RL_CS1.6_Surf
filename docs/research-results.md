@@ -44124,3 +44124,16 @@ fork, 75M steps apart; within one eval the greedy is one-sided in 25 of 30 / 13 
   c42b7a11) costs the fork; at 0.25 the fork comes earlier than in the fix round.
 * Open: `ab6u_1` (unitfarmer2, same tokens): 0 of 9 below z 0 at 227.0M, where the 2.5-weight
   runs dove 9/9; its 0.6B read decides whether the dive needs the weight.
+
+## 2026-11-14 10:34 UTC: ablation wave 6 - CELESTIAL FINISHES with v1-lean at novelty weight 0.25 (906.5M; fix round 1,284M); the unitfarmer2 arm was lost to a host reboot and relaunched
+
+* `ab6c_1` (celestial, v1-lean with `--int-coef 0.25`, 132 tokens, code ab/mc; pre-launch
+  d85659be) FINISHES: first greedy finish at 906.5M (6/9, 48.68 s), 9/9 at 982.0M (best 47.53 s),
+  1/9 at 1,057.5M, 3/9 at 1,133.0M (best 46.97 s), grader. The fix round's try 1: 1,284.0M,
+  best 43.35-46.58 s; the two novelty-2.5 runs: no finish by 2.5B. Stopped by pid at 1,139.3M
+  (the question was answered), BUNDLE OK, box 60627787 released 10:33 UTC.
+* `ab6u_1` (unitfarmer2, the same tokens) is VOID: its box (60628379, RTX 5080, machine 147030,
+  Utah) rebooted at about 10:03 UTC and the trainer died at 244.3M steps (0 of 9 below z 0 in the
+  evals to 227.0M); found idle at 10:31, files pulled, released, machine blocklisted
+  (unreliable). Relaunched as `ab6u_2` on another box with the same config, same read (the
+  dive by 0.6B).
