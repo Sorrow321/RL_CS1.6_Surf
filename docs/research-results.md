@@ -45671,3 +45671,291 @@ Two things in one entry, both decided before the launches they describe.
   extra, princessburglar, 40,960 steps, worktree wt/abpbc): rc 0.
 * Cut (fixed now): 3.0B steps if the greedy has never left the room AND no held line's walk-back
   has passed its landing band; otherwise on to 10B, or the first finish + 5 evals.
+
+## 2026-11-14 21:58 UTC: princessburglar start room under v7 (sub-agent P): no arm left the room by its cut; v7 leaves the room only by walking a held search line back to the spawn, and the greedy-death / front-perturbed spawn rows halve the line's share of starts; one proposed change (drop the rows), untested on unitfarmer2
+Sub-agent P, wave 10: what keeps recipe v7's greedy in princessburglar's START ROOM. Bundles
+first (written before any launch), then one candidate fix tested from scratch.
+
+### The room has two gates, and the bundles separate them
+
+Measured along the room-exit line the fix round's try 3 learned (its search-1 tree line, rows
+0-2,996: from the spawn WEST through the room for ~16 s, a crouch tunnel at rows ~1,600-1,800
+where the field reads 59,021 against 56,8xx around it, the drop at row ~2,800, the pit floor):
+per greedy eval, the furthest row of that line each episode passes within 96 u of.
+
+| run (training side) | median route row of the greedy | leaves the room |
+|---|---|---|
+| fxpb_t3 (frozen + cap 0.5) | ~1,600 from 0.23B to 1.13B | 1.36B (curriculum: its tree line) |
+| m2sib_pb1 arm A (frozen) | ~1,600 from 0.23B | ~2.94B (a tree line at 2.81B) |
+| fxpb_t1 (frozen, no cap) | ~1,600 from 0.23B to 3.6B | never (archive lines held) |
+| ab3py (cap 0.5 + all-in groups) | 214-539 (max 613) to 2.04B | never |
+| abpb_all (all-in) | 219-886 (max 1,127) to 2.04B | never |
+| ab7b_pb5 (v5) | 233-684 (one eval 1,604 max) to 2.49B | never |
+| abl1 / abl2 (v5 side, uniform line spawns) | 230-880 to 1.36B | never |
+
+* Gate 1, the room traversal to the tunnel entrance (row ~1,600, 16 s): every run with the
+  frozen training side passes it by 0.23B (3 of 3, with and without a yaw cap); every run with
+  the all-in / v5 training side stays 2-5 s along the route, in the room's east part (6 of 6, to
+  1.4-2.5B). Gate 2, the tunnel and the drop: passed only after the curriculum held a TREE line
+  (the policy's own room-to-pit rollout) and walked it back (t3: search 1 at 93M; arm A: search
+  7 at 2.81B). Every tree search of the v-recipes, the all-in and t1 stayed in the room (best d
+  56,879-56,933 against t3's 55,897); their curricula held ARCHIVE lines, whose room parts are
+  uniform-explorer walks the walk-back never learns (stalls at 65-80% of the line).
+* So gate 1 is the training side. What differs between the 3 frozen runs and the 6 blocked ones
+  and is common to all 6: the novelty (2.5 with the speed key, below the gate's 10% progress -
+  pb's room reads 0.3%), the keytemp group (`--unstuck-max 0.5 --unstuck-patience 2e7
+  --unstuck-period 2e7 --unstuck-reach res`), the greedy / front spawn rows and 7.63 ms. Not the
+  yaw cap (ab3py at 0.5 and t1 with none sit on opposite sides), not energy or the death charge
+  (v5 has neither and is blocked).
+* The novelty is the training reward of every blocked run: 1.1-2.4 per episode against a total of
+  0.2-0.8 (t3: 0.08-0.23 of -1.2..+0.2). And under `--unstuck-int` (default on) the unstuck
+  temperature multiplies the coefficient by (1 + T) and halves every visit count each
+  `--unstuck-period` while T > 0: v5's T reached 0.5 at 0.17B and its counts were halved 124
+  times in 2.5B (every 20M steps; t3 48 times in 5B), with only 12-32 cells ever visited. The
+  room's few dozen cells are refreshed for ever - a novelty farm in the room - while the route
+  west (16 s at 20-75 u/s) pays little of anything.
+
+### The candidate (one generic change, the same value on every map)
+
+* `--unstuck-int 0`: the unstuck temperature keeps tempering the keys heads (the dive's key
+  temperature) and stops scaling the novelty coefficient and decaying the visit counts, so the
+  count novelty anneals as designed: a visited cell stops paying, new cells pay. An existing
+  flag (config `unstuck_int`, record_ckpt TRAIN_ONLY); nothing to build.
+* Predictions. princessburglar: the room's farm dries up and the greedy follows the field west
+  to the tunnel (gate 1) as the frozen runs did. unitfarmer2: the dive needs the HI novelty, the
+  yaw group and the key temperature (a5a24c58); this keeps all three - the dive's novelty is
+  NEW cells (the pit), which the count decay never touched, and the decay refreshed the
+  platform's old cells, the opposite of what the dive needs. Risk: wave 2's no-keytemp arm
+  (abu2k) took the whole group away, so the key temperature and the novelty scaling were not
+  separated there; if the dive's "stay in the pit" came from the scaled novelty, this loses it.
+
+### Arms (at most three, one box at a time; pre-launch for arm 1)
+
+| owner / run | change on recipe v7 (147 tokens, code ab/probe 878336ff) | read |
+|---|---|---|
+| `abr1_1` | `--unstuck-int 0` | gate 1 by ~0.6B; leaves the room by 1.5B |
+| `abr2_1` (only if abr1 is blocked) | novelty LO on pb: `--int-coef-progress 0.25:0.25:0.1` | is the novelty the blocker at all |
+| `abr3_1` (only if both are blocked) | no greedy / front spawn rows | the remaining candidate |
+
+* From scratch, one seed, princessburglar, `--maxvel 3500`, the launch extra unchanged
+  (`--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256
+  --mcts-mix-warm 2'`). Config: branch ab/room (= ab/probe 878336ff + mkcfg_v7.py's pb config).
+* Read-outs: per greedy eval the median route row (gate 1 = ~1,600) and the room exit (5 of 9
+  greedy episodes past the drop, route row >= 2,800); the novelty share, T, the count decays; the
+  search lines (tree or archive). Cut at the first eval where the greedy leaves the room, or
+  1.5e9 steps; a step count standing still for 10 minutes stops it. Gate 1 is read early: the
+  three frozen runs had the greedy at the tunnel entrance at their SECOND eval (76M; t3 1,603, t1
+  1,602, arm A 1,603 median), the six blocked runs never in 1.4-2.5B - so an arm with no gate-1
+  pass by 0.45B (six evals) is called blocked and cut there, to leave budget for the next arm.
+
+### Local check (CPU, before the launch)
+
+* The complete arm-1 line (the launcher's scratch pins + the 147 tokens of ab/room's config + the
+  launch extra + `--unstuck-int 0`, shrunk only by overrides at the end, the loop exercised with
+  delay 0 and patience 1) ran 61,440 steps on princessburglar, rc 0: run.json `unstuck_int: 0`,
+  the unstuck line now names only the keys heads and the entropy, T reached 0.50 and NO count
+  decay fired (v5's run logged 124), the novelty gate read 2.47-2.50 with no (1 + T) factor, a
+  search ran. Config branch ab/room 0304a63e (= ab/probe 878336ff + the pb config), pushed.
+
+### Arm 1 `abr1_1` (`--unstuck-int 0`): BLOCKED at gate 1 - the novelty farm is not the blocker
+
+* Box 60689026 (RTX 5090, $0.571/h - the only passing offer after 14 min of refusals; ready
+  19:41 UTC, deployed on ab/room 0304a63e, record gate passed), launched 19:42; cut by pid at
+  505M steps (20:06) under the pre-registered 0.45B rule; bundle `~/ar_m2/runs/abr1/abr1_1/`
+  (7 evals, ckpt_latest md5 9f5c9fb9 = box).
+* Median route row of the greedy: 460 (76M), 878 (151M), 551, 570, 550, 547 (453M); max 615-998.
+  The frozen runs sat at 1,602-1,605 from 76M.
+* The change did what it should: no count decay fired, the novelty fell to 0.04-0.26 per episode
+  (the frozen runs' level; v5 1.4-2.4), the training reward went back to -1.3 per episode (time
+  penalty, as t3 before it left). T still rose to 0.5 by ~0.1B (keys temperature and entropy x 1.5).
+* Search 1 (302M) as in v5: the tree's line best d 56,918 and the Monte Carlo line 56,888 - both
+  in the room (t3's tree: 55,897).
+
+### Arm 2 `abr1_2` (written before its launch): the keytemp group back to the frozen schedule
+
+* Same box, run name `abr1_2`: recipe v7 + the launch extra + `--unstuck-max 0.2
+  --unstuck-patience 2e8 --unstuck-period 1e8 --unstuck-reach eval` (the group wave 2 dropped on
+  unitfarmer2 as `abu2k`). Why next: with the novelty quiet, what still separates arm 1 from the
+  frozen runs early is the unstuck schedule (T 0.5 by ~0.1B against T = 0 until ~0.2-0.3B), the
+  greedy / front spawn rows and 7.63 ms; the schedule is the one that acts in the first 76M.
+* uf2 prediction if it passes: wave 2's `abu2k` (this exact change on unitfarmer2) dove at 302M
+  but lost the pit from 378M (the hidden kill sheet) - so a plain revert is not the fix; it
+  would name the component.
+* CPU smoke of the complete line (40,960 steps): rc 0, run.json unstuck_max 0.2, reach eval.
+* Same read and the same 0.45B gate-1 rule; the watchdog re-registered with the harvest spec
+  for both runs and `--pid-file runs/abr1_2.pid`.
+
+### Arm 2 `abr1_2` (frozen keytemp schedule): BLOCKED at gate 1 - the unstuck schedule is not it
+
+* Same box, launched 20:08 UTC, cut by pid at 475M steps (20:27) under the 0.45B rule; bundle
+  `~/ar_m2/runs/abr1/abr1_2/` (7 evals, ckpt_latest).
+* Median route row: 228 (76M), 236, 292, 258, 258, 258 (453M); max 235-603. T stayed 0 to ~0.3B
+  and reached only 0.2 (2 count decays); the novelty 0.38-0.83 per episode; the yaw sigma fell
+  by itself below the cap (0.15 -> 0.10). Search 1 again in the room (tree 56,918, Monte Carlo
+  56,912).
+* What the blocked greedy fails: the route's FIRST hop (rows ~200-250 of t3's line: a jump at
+  x ~750 from the floor at z ~3,652 onto a step at ~3,691, crouch added in the air), then a
+  slow parkour section (rows 250-1,000, vh 20-60 u/s, hops of vz 200-260). Its episodes end on
+  the floor (z 3,640-3,680) of the room's east part.
+
+### Arm 3 `abr1_3` (written before its launch): no greedy / front spawn rows
+
+* Same box: recipe v7 WITHOUT `--respawn-greedy*` and `--respawn-front-perturb*` (25 tokens,
+  122 kept; box.py `--no-recipe` with the list, the launch extra unchanged). The rows cannot be
+  switched off from the extra (their sub-flags refuse a zero share). Why: the greedy rows put a
+  quarter of the non-start spawns at the greedy's own stall (the first hop) with headings turned
+  up to 180 deg; the front rows a quarter at the reservoir's deepest states; the frozen runs'
+  non-start spawns are their own harvested states only.
+* uf2 prediction: the dive did not need them (October's dive run had none); wave 2 did not drop
+  them for the dive.
+* CPU smoke of the complete line (40,960 steps): rc 0, run.json `respawn_greedy` None, no
+  greedy / front-perturb line. Same read and the same 0.45B rule; watchdog re-registered with
+  the harvest spec for the three runs and `--pid-file runs/abr1_3.pid`.
+
+### CORRECTION (written after arm 3): "gate 1" was an artifact of the route-row measure, and arms 1 and 2 were cut before they held a line
+
+* The route-row read (the furthest row of t3's tree line each greedy episode passes within 96 u
+  of) credited the frozen runs' resting spot - the room floor's SW corner, (649-656,
+  -3,150..-3,155, z 3,652) - with t3's rows 1,100-1,600, which loiter on the upper level about
+  80 u ABOVE that corner. Read physically (the greedy's minimum x, whether an episode stands on
+  the upper level west of x 680, where the median episode ends), NO princessburglar greedy of
+  any run climbs out of the room by itself: the frozen greedies rest in the SW corner, the
+  v-recipe greedies in the NW corner (650-765, -2,845..-2,856), both on the floor at the
+  field's floor minimum (d ~56,975). Upper level west of x 680: 0 of 9 in every eval of every
+  run until the run leaves. The "gate 1" paragraph of the pre-launch analysis is withdrawn.
+* Every run that left the room did so while its curriculum walked a held search line back to
+  near its start: t3 at 1.36B, its walk-back at row ~460 of a 2,997-row tree line; arm A
+  (m2sib_pb1) at 2.94B, at row ~310 of a 1,089-row tree line (search 7). t1's two archive lines
+  stalled at 72-75% and it never left (4.8B).
+* So the pre-registered 0.45B rule cut arms 1 and 2 on the artifact, at 505M and 475M, while
+  their search 1 was still running (a search takes ~12 min beside the training; arm 3's was
+  adopted at 580M). Neither ever held a line, so neither says anything about leaving the room.
+  Their headings above ("BLOCKED ... not the blocker", "not it") are withdrawn. What stands from
+  them is room behaviour only: with the novelty quiet (arm 1: 0.04-0.26 per episode, no count
+  decay) or the frozen keytemp schedule (arm 2: T <= 0.2), the greedy still rests in the NW
+  corner and search 1's tree stays in the room (best d 56,918 in both).
+* Two more pre-launch statements are wrong. "So gate 1 is the training side" and the yaw-cap
+  argument after it rest on the artifact and are withdrawn with it. And the arm-3 pre-launch's
+  unitfarmer2 line ("October's dive run had none") is false: `uf2r1b1_dcw`'s run.json has
+  greedy rows 0.25 (without the boost and the turn) and front-perturbed rows 0.25 (x1.0-1.3,
+  90 deg); every unitfarmer2 run that dove had both row kinds.
+
+### Arm 3 `abr1_3` (no greedy / front spawn rows): no exit by the 1.5B cut, but cut while its curriculum was still walking back, 81% of the way
+
+* Same box, launched 20:30 UTC, ran to the 1.5B cut (21:33 UTC); bundle
+  `~/ar_m2/runs/abr1/abr1_3/` (20 evals, ckpt_final md5 1936216c) and search 1's line in
+  `~/ar_m2/runs/abr1/abr1_3_k01/` (spine.npy, spine.json; its keys file stayed on the box).
+* Greedy: grader 0.3-0.4% at every eval to 0.98B, 0.0% from 1.06B; 0 finishes; upper level west
+  of x 680 0 of 9 in all 20 evals. It rested at (729, -3,112) - south, beside the frozen runs'
+  corner, the only arm that moved it off the NW corner - from 76M to 0.98B, then from 1.06B
+  walked EAST from the spawn (min x 855-860, ends at x 1,700-2,400, z 3,307-3,636, field
+  progress 0): away from the room's exit.
+* Search 1 (302M; tree 56,917 and Monte Carlo 56,920, both in the room) handed back an ARCHIVE
+  line at 580M (beam+ge, held kind, root 0 = the whole line is the explorer's chain): 3,770
+  rows, end d 55,368. The line: the spawn, a detour north to (849, -2,872), a step up at row
+  ~400, ~10 s of wandering on the upper level at x 715-770 (rows 433-1,400), west along it to
+  the crouch tunnel (x 362 -> 50, rows ~1,800-2,000), the drop (below z 3,400 from row 2,305),
+  then EAST along the pit floor (z 3,332, x 270 -> 1,041) to its end.
+* Its walk-back: row 3,769 -> 3,254 at 100% success in 0.04B; the pit floor by 0.72B; the drop
+  by 0.78B (a 0.06B plateau at rows 2,284-2,329); the tunnel by ~0.85B; then the upper-level
+  wander, with a 0.17B plateau at row ~1,360 (0.91-1.08B) and ~130 rows per 0.1B after it
+  (1,244 at 1.10B -> 734 at 1.50B). Last moves at 1.48-1.50B: 769 (60.2%), 754 (45.4%), 734
+  (25.9%), 739 (0.0%); row 734 is at (715, -3,025, 3,702) on the upper level, 300 rows past
+  the step up. Still moving when it was cut.
+* Training side: T 0.5 throughout (v7's keytemp group); the novelty 1.2-1.5 per episode to
+  0.5B, 0.4-0.7 just after the line was adopted, then 1.2-4.1 from 0.8B (73 count decays by
+  1.48B, 125 cells non-zero at the end against 6 before the line); the training reward 2.0-3.4
+  per episode from 0.9B, nearly all of it novelty, while the greedy walked east.
+
+### Every line princessburglar's curriculum ever held, and how far it was walked back (bundles)
+
+| run | spawn rows | keys at spawn | line (search) | length | lowest tau (share left) | where it stalled |
+|---|---|---|---|---|---|---|
+| ab7b_pb5 | on | yes | k01 archive | 2,605 | 1,684 (65%) | 0.47B on the pit floor (rows ~2,104-2,154), then at the drop; replaced at 1.18B |
+| ab7b_pb5 | on | yes | k02 archive | 4,347 | 3,471 (80%) | 1.27B in the pit (998, -3,181, 3,489), to its 2.51B end |
+| ab7p_1 | on | yes | k02 archive | 2,736 | 1,750 (64%) | none: still moving when its run ended at 0.47B (0.27B held), just past the tunnel (470, -3,123, 3,733) |
+| abpb_all | on | no | k01 archive | 6,383 | 4,987 (78%) | 1.24B in the pit (951, -2,774, 3,472) |
+| ab3py | on | no | k02 archive | 2,630 | 1,889 (72%) | 1.2B on the pit floor (681, -3,047, 3,332) |
+| fxpb_t1 | none | no | k01 archive | 4,242 | 3,191 (75%) | 0.7B at the tunnel's west exit (379, -3,106, 3,708) |
+| fxpb_t1 | none | no | k02 archive | 2,533 | 1,827 (72%) | 2.2B just after the drop (409, -2,941, 3,334) |
+| fxpb_t2 | none | no | k01 archive | 4,743 | 3,367 (71%) | past the tunnel (117, -2,911, 3,722), to its 0.5B end |
+| **abr1_3** | **none** | **yes** | k01 archive | 3,770 | **734 (19%)** | **still moving at the 1.5B cut** |
+| fxpb_t3 | none | no | k01 TREE | 2,997 | 0 | walked to row 0; the greedy left at 1.36B (tau ~460) |
+| m2sib_pb1 | none | no | k05 / k07 TREE | 1,262 / 1,089 | 276 / 0 | the greedy left at 2.94B (k07, tau ~310) |
+
+* `ab7b_pb5` is arm 3 plus the rows: its run.json differs from arm 3's only in the 11 row keys
+  and `--auto-spine-patience-max` (which would first have fired in arm 3 at 1.58B, after the
+  cut); the code differs only on the search side (f23b5524 vs 878336ff: that patience cap, the
+  default-off end probe, the flight-fate cache fix). Same keys at spawn, same rehearsal.
+* The arithmetic: of the 90% of starts that are not the map start, the greedy-death and
+  front-perturbed rows take 25% each, so a held line gets ~45% of all starts instead of ~90%.
+* The pace, the three lines held with keys at spawn: rows walked back in the first 0.26B after
+  adoption - arm 3 (no rows) ~1,970, ab7p_1 (rows) ~990, ab7b_pb5 k01 (rows) ~460; the drop and
+  the crouch tunnel, walked back - arm 3 0.13B (0.72-0.85B), ab7p_1 0.22B (0.24-0.46B),
+  ab7b_pb5 k01 a 0.47B stall on the pit floor (0.53-1.00B), then stuck at the drop itself (rows
+  1,724-1,799) from 1.08B until the line was replaced at 1.18B. 1.7-2x, which is what the
+  share predicts.
+* The other rows-on lines (abpb_all, ab3py: no keys at spawn) stalled 1.2-1.24B in the pit; two
+  of the deep lines (ab7b_pb5 k02 and abpb_all k01, ends 55,107-55,113) stalled at the same spot
+  ~150 u above the pit floor (x 950-1,000), where arm 3's shallower line (end 55,368) never
+  went. The lines without the rows but also without keys at spawn (t1, t2) stalled at or just
+  past the crouch tunnel and the drop.
+* Not proven: one seed per run, and every run walks a different line. ab7p_1 (rows on) did not
+  stall in the 0.27B it held its line, so what is measured here is PACE - 1.7-2x, as the share
+  predicts - not a hard block; ab7b_pb5's stalls may belong to its lines. Arm 3 did not leave
+  the room by the cut. t3's greedy left with ~460 rows of its line still unwalked; arm 3 had
+  734 at the cut and was walking ~130 rows per 0.1B, so the projection is an exit around 1.7B -
+  a projection, not a result, and its greedy was walking east at the cut.
+* Separate and open: the frozen runs left on TREE lines (policy-made, walked back to row 0);
+  a tree line that climbs came in 3 of the 14 room searches of the frozen runs (t3 1 of 1, arm
+  A 2 of 7, t1 0 of 5, t2 0 of 1) and in 0 of the 17 of the v-runs (ab7b_pb5 0/4, abpb_all 0/4,
+  ab3py 0/4, ab7p_1 0/2, arms 1-3 0/3): one-sided Fisher p = 0.08, a suspicion. The policy's yaw
+  sigma at the three climbing searches was 0.5, 2.718 and 0.90, so the yaw cap does not explain
+  it on these numbers.
+
+### Answer and the one recommended change
+
+* What keeps the v7 greedy in the start room: no component holds the greedy there by itself -
+  no princessburglar greedy, frozen or v, climbs out by itself, and every exit came from a held
+  search line walked back to near the spawn. The v-runs' trees never handed back a line that
+  climbs (0 of 17 room searches; the frozen runs 3 of 14), so v7 leaves on ARCHIVE lines or not
+  at all, and the walk-back of those lines is where it loses its time: the lines held with the
+  greedy-death and front-perturbed spawn rows were walked back at about half arm 3's pace or
+  stalled (0.47-1.27B at 65-80% of their length); the one held without them (arm 3) reached 19%
+  in 0.92B - the furthest any princessburglar archive line has been walked - and was still
+  moving at the cut. The novelty x (1 + T) with its count decay (arm 1) and the keytemp
+  schedule (arm 2) were never tested against a held line.
+* ONE change, the same on every map: drop the greedy-death and front-perturbed spawn rows
+  (`--respawn-greedy*` and `--respawn-front-perturb*`, 25 tokens; v7's 147 -> 122 tokens), so
+  that a held line takes the whole non-start pool (~90% of all starts instead of ~45%).
+* What it predicts for unitfarmer2:
+  * The dive: expected to survive, but UNTESTED without the rows. It needs the speed novelty,
+    the yaw group and the key temperature (a5a24c58), all kept. But every unitfarmer2 run that
+    dove had both row kinds - October's `dcw` (run.json: greedy rows 0.25 without the boost and
+    the turn, front-perturbed rows 0.25 with x1.0-1.3 and 90 deg), the all-in and wave 2's dive
+    arms (v7's rows) - and wave 2 never dropped them. The front rows start at the reservoir's
+    deepest states, and the pit is a +2,840 u dip in the potential (its d is above the spawn's,
+    w7), so they do not point into it; that is the reason to expect no change, not evidence.
+    Read by 0.45B (the all-in dove at 151-227M).
+  * The pit exit: no later, if the loop hands back an exit line. October's first training exit
+    came after the greedy rows were boosted and turned (A6 `gsp`, A8 `turn`, by 1.13B) in a
+    lineage with NO curriculum; under v7 the exit comes from a held exit line, whose share of
+    starts this doubles (the dead-end ban is there for the trough lines the loop handed back
+    four times in wave 2).
+  * The finish: the risk. October's last ~150 u of height into the finish box came partly from
+    the front-perturbed rows' own finishes (90 of 142 at 7.98B, A13) while a line was held;
+    without them the curriculum alone has to teach it, so the finish may come later.
+  * So the change is NOT adoptable on princessburglar's evidence alone: a unitfarmer2 run from
+    scratch (v7 minus the 25 tokens) has to show the dive by ~0.45B and then the exit.
+* The cheapest next reads (not launched; the operator's call): (1) resume arm 3's ckpt_final
+  (1.5B) with its search-1 line held (the policy's own search line, SELF_STATES=1; the walk-back
+  restarts at the line's end and its learned 81% should pass at near-100% success; the keys file
+  is lost, so the spawns hold neutral keys), ~0.5B: does the greedy leave once the walk-back
+  passes the step up (row ~400)? (2) v7 minus the 25 row tokens on unitfarmer2, from scratch,
+  read for the dive (by 0.45B), the pit exit and the finish.
+
+### Box and cost
+
+* One box for the three arms: 60689026 (RTX 5090, $0.571/h), up 19:39:50 to 21:34:52 UTC,
+  about $1.10 of the $2.5 budget. Destroyed (gone from `vastai show instances`), released from
+  the watchdog, tunnel 8633 stopped. Account credit $37.20 at ~21:50 UTC (shared).
