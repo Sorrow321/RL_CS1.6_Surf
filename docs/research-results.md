@@ -46381,3 +46381,137 @@ d 6,569):
     or archives, the launch log, and the 4.53B, 4.91B, 4.98B, 5.06B and 5.13B evals;
   * scripts (canfield.py and the inline measurements) in
     `/tmp/claude-1000/-home-steam-ar-pb-wt-pbx/4506c754-e96e-459e-bf18-9528f3f92771/scratchpad/abl/trough/`.
+
+## 2026-11-14 22:40 UTC: princessburglar from scratch is at October's gate 4 (sub-agent U): one flat landing on the drop's floor costs 400-680 u of energy height and the x -1,015 wall is not cleared; the energy stage (--auto-spine-energy 150, needs --demo-success-bonus) is the mechanism in the code; correction: abpbc_1's yaw sigma fell to 0.03, not held at 0.2
+Sub-agent U, wave 11 (analysis only, no box): princessburglar's next gate from scratch, read off
+abpbc_1 (v7 + the three band flags, from scratch). Sources: abpbc_1's 52 greedy evals (0-3.851B),
+its launch log, run.json and auto/k01-k04 (logs, spines, beam / mc / ge summaries), pulled
+read-only with rsync at ~22:20 UTC (no checkpoint, nothing written on the box); October's notes
+(~/ar_pb/archive/r1/pbfr1b2/NOTES.md: gates 3-6 at l. 725-1030, the energy stage at gate 19 at
+l. 2620-2700); October's own lines in autoresearch/spines (pbr2b3_beam_g3b, pbr2b3_beam_ge_g4,
+pbr2b3_beam_g8a; old core); the fixed-core finisher pbfr1b2_c5 (eval 70.14B); my pb history
+(ledger bb1cd1e1). Field: goalc_32 (the run's race field, --race-no-corner-cut 1), d0 57,149.
+Energy height h = z + |v|^2/1600. Gate numbers are October's.
+
+### 1. Where the episodes stop: October's gate 4 (the drop's hollow), gate 5 (the x -1,015 wall)
+### right behind it
+
+* The greedy from the true start: start room (<= 0.44%) to 0.76B; 0.04-0.10% at 0.83-1.59B and
+  2.04-3.25B; in the pit (3.0-3.2%) at 1.66-1.96B; then 6.6-6.9% raw in every eval from 3.322B
+  (medians 6.58-6.74%), 14M steps after search 3's swap.
+* The flight, the same in 36 of the last 45 episodes (3.62-3.85B; the rest stay in the room or
+  the pit). It crosses the pit and passes gate 3 (the wall at x ~465 over the teleport catch).
+  It goes down the long drop west and LANDS on its floor (x -120..-320, z 2,805-2,841) at
+  670-940 u/s. It last touches the map at the start of the climb, (-558, -2,831, 2,982) = 6.05%.
+  That point is the contact-banked depth the trainer's quorum reads (d 53,690). From there it
+  hops ballistically west. It peaks at x -750..-983, z 3,135-3,190 (raw 6.6-6.9%), below the
+  wall's rim (z 3,270-3,300) and its top (~3,330). It falls back into the hollow at the wall's
+  foot (x -1,011..-1,015, z 2,981-3,012, 6.56-6.59%) or back east down the drop. The eval's 30 s
+  patience then ends the episode (lengths 37-83 s).
+* Energy through the stretch (min-max over episodes, or one line):
+
+| line | north side h | drop bottom: speed / h | over x -1,015 | best |
+|---|---|---|---|---|
+| abpbc_1 greedy, 3.62-3.85B | 3,711-3,800 | 670-940 / 3,100-3,370 | no (max z ~3,190) | 6.6-6.9% |
+| abpbc_1 tree lines k02 / k04 | 3,713 / 3,741 | 699 / 3,218; 874 / 3,303 | no | 6.67 / 6.80% |
+| Oct beam_g3b (stopped in this hollow) | 3,745 | 745 / 3,197 | no | 6.62% |
+| Oct GE_g4 (energy cells, the surf) | 3,764 | 1,086 / 3,611 | no (z 3,247) | 7.07% |
+| Oct beam_g8a (after per-call energy K 8) | 3,798 | 1,211 / 3,739 | yes (z 3,353) | 12.34% |
+| pbfr1b2_c5 (fixed core) | 3,837-3,864 | 1,251-1,265 / 3,788-3,813 | yes (z ~3,400) | 7/9 finish |
+
+* So the gate is the LANDING, not the energy that arrives. The greedy reaches the north side
+  within 0-90 u of g8a's energy, and the drop's floor then takes 400-680 u of it. October's GE
+  line lost 153 u there, g8a 59 and the finisher ~50. The record rides the slope too (October's
+  analysis only). It is the gate October met at the same place: "the beam line reaches the
+  bottom at 722 u/s ... falls into the hollow at x ~-1,000: speed at the bottom of the drop
+  again". Behind it is gate 5: to clear the wall's top the line needs h ~3,700-3,730 at the
+  wall. In October no search crossed gate 5 (two beams, four GE archives incl. 32 u x 16-energy
+  cells: 7.07-7.20%, nothing west of x -1,030). It fell to training: the frontier-perturb rows
+  (x1.0-1.3 speed at the training frontier, in v7) taught the stretch beyond, and per-call
+  energy shaping (K 3 then 8, not in v7) brought the greedy over after ~830M steps.
+* abpbc_1's training frontier is already at the wall face, as October's was before that jump.
+  The reservoir's min is d 53,034-53,062 (7.2%), held by 1-2 frontier-band states.
+* The pbf lineage passes here with the old core's skill (fx0 = r38, warm). On the fixed core
+  these gates have never been learned from scratch before this run.
+
+### 2. What the loop does next
+
+* k04's walk-back is done: row 1,596 at 3.431B to row 0 at 3.6747B (244M steps; k02's took 1.6B
+  steps for 915 rows). Since then the curriculum's own rows from the line's start succeed
+  53.5-61.3% (a crossing of d <= 53,361 counts in the air). The quorum counts contact-banked
+  depth, though, and the greedy banks 6.05% in most episodes: 0, 2, 0, 1, 1, 0 of 9 past the
+  success line in the six evals since k04 (5 needed). The hollow floor (6.56-6.59%) is 20-40 u
+  short of the line. k04's own end, (-874, -3,054, 3,157), is in the air, 0.74 s after its last
+  contact. Only a landing on the wall face counts (one episode, 6.84%, at 3.775B).
+* Next: a PATIENCE search. tau's last new low (row 0) was first seen at the 3.6999B eval, so
+  --auto-spine-patience 3e8 fires at the 4.0016B eval (patience-max would fire at 4.431B).
+  Like k01 (the pit) and k02 (the hollow), it bans the held line's end: (-874, -3,054, 3,157),
+  128 u.
+* Search 5's bar: --auto-spine-current-ref makes k04's end (53,261) the reference, because it is
+  deeper than the greedy's banked 53,690. So a line must end at d <= 53,061 (7.15%). In this
+  basin only a landing high on the wall face meets that (October's GE_g7 cell at
+  (-1,008, -3,000, 3,315) reads 53,033; GE_g4's at z 3,240 reads 53,111 and would fail).
+* Its stages, from what k02-k04 and October did here:
+  - Tree (MCTS, 6 min): k04's tree reached 6.79% by wave ~44 of 1,294 and stayed there (raw
+    6.868%). k02's ended in the hollow, and October's two beams stalled at 6.69-6.70%. Expected
+    result: the hollow again, which passes the greedy but not the bar, so it is KEPT AS THE
+    FALLBACK.
+  - Monte Carlo: k01's and k03's stayed in the room (d 56,918-56,920).
+  - GE x1.0 (held, then contact kind; 5 min each; 64 u x 32-energy cells) from the tree line's
+    last ~5 s, then the E stage (roots 1 s before the line's largest h losses, i.e. this
+    landing). October's GE from this stretch (10-12 min, 4,096 envs) ended on the wall face
+    every time, 7.07-7.20%. Meeting 53,061 is a coin flip.
+  - Nothing passes: "the fallback is handed back", a third line into the hollow. That repeats
+    k02's 1.0B steps (1.70-2.72B) and k04's 0.57B (3.43-4.00B) at a new end each time. The
+    basin is ~450 u wide (x -560..-1,015), the ban radius 128 u.
+
+### 3. The generic mechanism already in the code: the energy stage (`--auto-spine-energy 150`)
+
+* What it does (train_fast --auto-spine-energy G -> auto_spine --energy-gain G; built in
+  October's pbr5b2, tests/python/test_auto_spine_energy.py). It runs only when no depth stage
+  found a deeper line, before the fallback. It roots Go-Explore (64 u x 32-energy cells,
+  --energy-boost 1.0,1.04 by default) just before the line's largest energy losses. It hands
+  back the deepest archive cell keeping >= G u more energy height than the line at the same
+  progress, marked ENERGY. The trainer teaches such a spine with the energy rule (success only
+  with h >= the end's - G/2) and counts only energetic crossings for its quorum.
+* Why it fits: the measured cause is an energy loss at one landing (400-680 u), the archive from
+  just before it holds the slope ride (October's GE line: +414 u at the bottom), and it
+  replaces the fallback that would hand back a third hollow line.
+* October's evidence, same map: at gate 19 (c7, "the record rides the corridor's sloped sides
+  while our policy lands on its floor") the first search's energy stage found +217 u at 59.55%.
+  The greedy learned it in 75M steps (h 2,46x-2,51x -> 2,683-2,751, 9/9). The next search then
+  passed the drop by depth with an x1.12 GE root (64.15%). "Energy first, then the search
+  passes", by the loop alone.
+* The constant is set once: G = 150, October's value ("~13% of the speed at 700 u/s"). It is
+  physical, not taken from a map. It acts only at a stall, so a map whose loop does not stall
+  is untouched by the stage itself.
+* Its price: the code refuses --auto-spine-energy without --demo-success-bonus (October: 50),
+  which v7 does not carry. The bonus is paid on every spine's success line on every map. On pb
+  it pulled the greedy off the room exit once (P's arm ii, October's flags taken literally),
+  and it pays dead-end lines (v7 has the dead-end ban). So the pair needs the finished maps
+  re-run before it is called part of the recipe.
+* The second half of October's pair, for the wall itself: the GE escalation ladder, auto_spine's
+  own default `--ge-boost '1.0,1.04;1.08;1.12'`. v7 passes `1.0;E1.0`; the fix round chose the
+  plain form for simplicity, and nothing in the ledger shows the ladder harmful. Gates 8, 15 and
+  19 fell to x1.04-1.12 roots. A depth curriculum stalls at a boosted root unless the policy
+  arrives with the speed, which is what the energy rule teaches first. October's gate 5 was
+  10-30 u of height short, and v7's frontier-perturb rows clear such walls in training.
+* Not this stall: milestones (they keep an old line paid when the success line jumps), the bonus
+  alone, and per-call energy shaping. The last was October's actual gate-5 fix. It changes
+  every call's reward on every map and, at K 12 on unitfarmer2, found the pit's energy and no
+  exit (A5 dcw2). v7's frontier-only form replaced it.
+
+### 4. A correction to my wave-10 text (ledger c4be942a)
+
+* I wrote that v7's cap keeps the policy's yaw sigma near 0.2, so that in abpbc_1 the band rows
+  (0.066) were quieter than the policy. That is wrong. abpbc_1's yaw sigma fell by itself:
+  0.151 at 1.0B, 0.10 at 1.5B, 0.07 at 2.0B, 0.04 at 2.4B, 0.03 from 2.8B.
+* k02's walk-back crossed the pit's rows (~935 -> 725) at 2.1-2.5B, with the policy at
+  0.062-0.038. There the band rows were 1.1-1.7x the policy's sigma: noisier, October's regime
+  (a precise policy plus a few degrees on the band).
+* So abpbc_1 does not show that the band flags are what v7 needs at the impact. The common
+  factor across w9 (band 0.066 under a 0.21 policy), arm (i) (rows at the policy's own
+  ~0.15-0.13 when it passed) and abpbc_1 (band 0.066 over a 0.04-0.06 policy) is small yaw
+  noise on the rows that start on the band, ~0.15 z or less. P's arm (i) at 0.35-0.42 never
+  passed. The band flag sets that noise whatever the policy's sigma does. Whether a from-scratch
+  run needs the flag, or only a policy that gets precise by itself, is not separated.
