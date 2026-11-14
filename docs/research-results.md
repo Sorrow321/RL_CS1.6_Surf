@@ -44744,3 +44744,95 @@ does it fail spawns that land because it demands riding the line to its end (~10
 * Scoreboard of recipe v5 so far: petrus 302.5M, blue200 831.0M (celestial with v3 755.5M,
   v5 rerun now); cannonball and sidistic running; unitfarmer2 in the pit at 3.0B;
   princessburglar in the start room at 1.4B with a search line that ends past the pit floor.
+
+## 2026-11-14 14:44 UTC: ablation wave 8 - sub-agent U: a cap on the patience clock (--auto-spine-patience-max, ab/pmax f81cf37b)
+
+Sub-agent U, wave 8 (a default-off build; no box, $0). Branch ab/pmax = ab/v4 b784f84c + one
+commit (f81cf37b).
+
+### The problem
+
+* `--auto-spine-patience-tau` restarts the patience on every new low of tau, so a walk-back that
+  creeps holds its line as long as it creeps. unitfarmer2's v5 run `ab7c_ud` adopted a 7,201-state
+  trough line at 0.438B (search 1) and its first patience search came at 2.416B - 1.98B later -
+  (search 2 then adopted a 2,173-state archive line at 3.057B; read from its launch log at
+  ~3.18B). v1 (ab4u_1) had six searches by 3.6B; its line 6 has now been held 4.45B (since 3.604B).
+
+### The rule (`train_fast --auto-spine-patience-max N`, default off)
+
+* A PATIENCE search also starts when N steps have passed since the later of the held line's
+  adoption, the last search's start and the last finishing eval, while the greedy has not passed
+  the line (no quorum) - whatever the walk-back does. It is one term ORed into the patience
+  (`patience_max_due`), so the decision line and everything that reads `pat` (the failed-line
+  rules, `--demo-rehearse`'s trigger) treat it as a patience search; the eval line says
+  "(patience max: X.XXB steps on this line)". One N for every map: 1e9. TRAIN_ONLY in record_ckpt;
+  config dumped only when on.
+
+### N against the runs (adoption -> the first search trigger after it, launch logs)
+
+* Lines the greedy LEARNED (adoption to quorum): celestial fx k2 0.115B; cannonball fx k2 0.058B;
+  sidistic fx k1 0.491B, k4 0.047B, k6 0.121B, k7 0.048B; ab8s_1 (live) k1 0.197B, k2 0.659B;
+  ab8n_1 (live) k1 0.370B; ab4u_1 k5 0.194B. The longest is 0.659B: N = 1e9 interrupts none.
+* What N = 1e9 would have changed in the finishing runs: only fix-round petrus - its line 2
+  (adopted 0.589B) waited 1.374B for its patience search (which found the goal-side archive line,
+  finish at 2.643B); the cap fires 0.37B earlier. Every other finishing run's lines got a trigger
+  or a finishing greedy (finish-stop: no search, both clocks restart) in less than 1e9: blue200 fx
+  and v5, celestial fx / ab6c / ab7c_1, petrus v5, ab7b_1, cannonball fx (patience at +0.755B).
+* Where it bites: ab7c_ud's trough line - the cap at 1.438B instead of 2.416B; ab4u_1's line 6 -
+  a search at 4.604B. Sidistic fx's 5.8B hold (open item 3) is NOT this case: its quorum searches
+  kept firing and found no line.
+
+### Tests
+
+* tests/python/test_auto_spine_pmax.py, 4 passed: with N = 0 / absent the decision equals the old
+  one on a grid of 1,080 inputs (bit for bit); with N it fires N steps after the line's clock and
+  not before, never on a quorum, never before the retry, and the clock restarts at a search; the
+  trainer's wiring (the term after the finish stop and before `go`; the clock at an adoption, a
+  search's start, a finishing eval and the first eval); the refusal; TRAIN_ONLY.
+* With the search-loop suites of ab/v4 (rehearse, fatal end, keys, mc, v2, ban, ff, recheck, fx
+  wiring): 108 passed.
+
+### CPU smokes (ab7c_ud's complete v5 flag list, 147 tokens from its box record)
+
+* Fresh, v5 + `--auto-spine-patience-max 8192`, the plain patience out of reach (1e12), no delay:
+  rc 0; every search is the cap's ("-> SEARCH (patience) (patience max: ...)"), search 1 found no
+  line, search 2 adopted one; run.json carries auto_spine_patience_max.
+* RESUME (the warm instrument's path): a v5 checkpoint made without the flag (a stand-in - a box
+  checkpoint is never unpickled on the droplet), resumed as `box.py launch --resume` does with the
+  same 147 flags + `--auto-spine-patience-max 1e9` and nothing else: rc 0, "resumed ... at step",
+  the failed lists restored from the checkpoint, the resumed config differs from the source's
+  only in auto_spine_patience_max (None -> 1e9) and steps.
+* Two things the instrument inherits from any recipe resume, not from the flag: (1) it needs the
+  self-states declaration (`box.py launch --resume --self-states "..."`): the resume restores
+  demo_file = the run's auto/spine0.npy (the map's spawn state), which the trainer's provenance
+  guard refuses without SELF_STATES=1 (the first resume attempt stopped there); (2) the held line
+  is NOT in the checkpoint - the curriculum restarts on the spawn spine, so the first greedy eval
+  after the resume is a QUORUM search for a new line; the bar / ban / dead-end lists ARE restored
+  (the trough line, marked failed by the 2.416B patience search, stays barred), and the cap's
+  clock starts at the resume. So the instrument measures a fresh search plus the cap after it,
+  not the cap acting on ab7c_ud's held line 2.
+
+## 2026-11-14 14:44 UTC: ablation wave 8 - unitfarmer2 v5 stopped at 3.53B (dives, no exit; two trough lines); PRE-LAUNCH warm instrument with the patience cap
+
+### Read: `ab7c_ud` (unitfarmer2, recipe v5) stopped at 3,528.5M
+
+* Dives 9/9 from 378.0M to the end (37 evals), never out above z 500 after the floor (highest
+  z 471 at 3.25B); grader 1.8-2.0%, 0 finishes. Two searches in 3.5B: search 1 (438.3M) a
+  7,201-state TREE line into the trough (end (-1,816, -1,091, z 197), d 28,333), walked back
+  to rows 270-7,200 at 10-60% for 2.6B steps (each new tau low restarted the patience clock);
+  search 2 (patience, 3.06B) a beam+ge line into the trough again (end (-1,969, -1,086, z 295),
+  182 u from line 1's end: outside the dead-end ban's 128 u). BUNDLE OK (ckpts 1-3B + latest
+  md5 1bbbe985).
+
+### Written BEFORE the launch: a warm instrument with the patience cap
+
+| run | start | change | read | cut |
+|---|---|---|---|---|
+| `ab7c_w6` | ab7c_ud's latest (3.53B) | + `--auto-spine-patience-max 1e9` (ab/pmax) | searches, exit | +1.5B |
+
+* The weights are the run's own (from scratch, v5); the resume restores the failed-line lists;
+  the held line is not in the checkpoint, so the first eval after the 300M delay searches for a
+  new line, and the cap then forces a search every 1B steps without a quorum. Question: does a
+  steady search cadence on these weights find the SE-lip exit line that v1's search 5 found
+  (3.28B), and does the curriculum hold the exit (the rehearse rule is on)? An instrument, not a
+  recipe result; v6 (= v5 + the cap) is run from scratch only if it does.
