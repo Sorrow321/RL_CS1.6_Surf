@@ -44673,3 +44673,62 @@ the maps the fix-round recipe finishes, one arm per map as boxes free up.
 * `ab7c_ud` (unitfarmer2, v5): 9/9 in the pit at every eval from 378.0M to 1.43B, highest after
   the floor z 69-246, not out yet; its search-1 trough line is walked back to rows 2,020-7,200
   at 59.9%.
+
+## 2026-11-14 13:41 UTC: ablation wave 8 - sub-agent P: the princessburglar landing stall is the IMPACT, not the success test (a horizon test would teach the pit); nothing built
+Sub-agent P, wave 8 (analysis of the bundles; no box - the fleet was at its 5-box cap; $0).
+Question: on princessburglar's far-wall landing, is the curriculum's success TEST the blocker -
+does it fail spawns that land because it demands riding the line to its end (~10 s on)?
+
+### The test and the line
+
+* The curriculum scores a band episode a success when its record d reaches the line's END
+  success line (d(end) + 100). On the instruments' line (as_t3_E, 2,664 rows) the far-wall
+  impact is at row 1,560 and that line is first met at row 2,573: 10.1 s of ledge riding after
+  the impact. Past the landing the line's d is NOT monotone: 55,357 at the landing, 55,285 at
+  +2.3 s, back up to 55,590 at +6 s, 55,097 at its end.
+
+### What the bundles say
+
+1. The P1 benches (abpbm/part1: try 1's crossing line, try 1 3.0B and try 3 5.0B weights, 128
+   stochastic episodes per row, 12 s), rescored per episode:
+
+| row (launch 1838) | far ledge | on line +1 s | +3 s | +5 s | END test | ends in pit |
+|---|---|---|---|---|---|---|
+| 1832 (try 1, n/l) | 0 / 0% | 0 / 0% | 0 / 0% | 5.5 / 5.5% | 0 / 0% | 100 / 100% |
+| 1838 (try 1) | 2.3 / 5.5% | 0 / 5.5% | 2.3 / 0.8% | 43 / 29% | 0 / 0% | 100 / 100% |
+| 1844 (try 1) | 96.9 / 74.2% | 89.8 / 73.4% | 14.8 / 14.8% | 13.3 / 16.4% | 0.8 / 4.7% | 100% |
+| 1844 (try 3) | 40.6 / 33.6% | 31.2 / 21.9% | 19.5 / 15.6% | 5.5 / 10.9% | 0 / 0% | 100% |
+
+   (n / l = neutral spawn keys / the line's held keys; "on the line +H" = passes within 128 u of
+   the line's state H s after the spawn row, at any time.) Past the launch most episodes LAND,
+   and every one of them leaves the ledge and ends in the pit within a few seconds: the END
+   test refuses landing-then-falling-back, which is what happened. These weights never learned
+   the ledge, so this measures an unlearned ride, not the test.
+2. The instruments (abpbi1 / abpbi3 launch logs; the ledge ride WAS learned): the END test is met
+   right at the impact rows - band [1,558,1,562] 31.7% / 25.3% mean success, 63 / 66 advances -
+   and on the ledge ([1,598,1,602], one read each: 64% / 48%). It collapses 0.05-0.15 s before
+   the impact: [1,543,1,547] 7.6% / 0.2% (82 / 73 backoffs, 0 advances); the bands between alternate
+   ([1,548] 27%, [1,553] 9.4% / 7.6%). So the 10 s ride costs at most a factor ~2 (impact rows
+   ~30% against ~60% on the ledge); the stall is a factor ~4 inside the last 0.15 s of flight -
+   the impact, not the ride. The land-versus-ride split AT the stall band is not in the bundles
+   (the trainer records no curriculum episode).
+3. The example rule (success = the line's own d at a fixed horizon) is fooled by the pit: the
+   pit floor reads ~55,300, deeper than 882 of the 1,104 line rows after the impact (80%). On the
+   P1 benches the d test 3 s ahead passes 93-98% of the episodes from row 1832, where none
+   reaches the far ledge and all end in the pit (94-99% from 1838, 99-100% from 1844). A curriculum
+   on it would teach the pit (the same trap as cutting a line at its first near-best state, w3).
+   A position test (within 128 u of the line H s ahead) is fooled less but still is: from 1838
+   (try 1), 29-45% pass at +5 s with 2-6% on the far ledge (the ledge is ~60-130 u above the
+   pit's rim).
+
+### Verdict: no build
+
+* The test is not shown to be the blocker: past the launch the episodes land and leave the line
+  (P1), and with the ride learned the END test passes at the impact rows; the stall is 0.15 s
+  earlier. The suggested d-horizon test would pay pit dives on this map. Nothing built.
+* To settle the stall band itself (one box, ~30 min, ~$0.3, when the fleet has a slot):
+  record_ckpt from as_t3_E bands 1,538-1,562 and 1,598 on abpbi1_1's weights (md5 5290e1a6),
+  128 stochastic episodes each, neutral against the line's held keys (v5 spawns hold them,
+  --auto-spine-keys; the instruments spawned neutral while the line holds strafe right + duck
+  through the impact), 13.5 s; score END, landed (on the line 0.5-1 s past the impact), on the
+  line +3 / +5 s, and ends in the pit.
