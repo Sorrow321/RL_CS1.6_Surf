@@ -45201,3 +45201,14 @@ G 200; GOAL = the probe finished. 43 lines from the order + the 6 lines today's 
 | cannonball | incomplete: 94.8% at 4.08B, box lost at 4.25B (907dea66) | 3,095.9M |
 | unitfarmer2 | v5 alone: dive, no exit by 3.53B; + the cap (resume): FINISH 6.69B | null |
 | princessburglar | null (start room, 2.5B) | null |
+
+## 2026-11-14 17:17 UTC: PRE-LAUNCH - recipe v7 from scratch on unitfarmer2 (the clean test of the finish)
+
+* v7 = v5 + `--auto-spine-patience-max 1e9` (147 tokens) on code ab/probe 878336ff (= ab/pmax + the
+  --end-survive-secs core-reset fix; the way-on probe stays OFF). Run `ab7c_v7` on the kept box of
+  `ab7c_w6` (60637836, RTX 5080; tunnel http://localhost:8637/), from scratch, seed 0. Read: the dive,
+  the exit, the first greedy finish (grader); cut 8B. CPU smoke of the 147-token line rc 0.
+* `ab7c_w6` stopped by pid after the 6,991.9M eval (answered), BUNDLE OK. `ab8s_1` (sidistic v5)
+  stopped after its first finishes (5.06B), BUNDLE OK, box 60648641 released 17:15 UTC.
+* The cannonball v5 resume still waits for an RTX 5090 offer under the cap (no offer passed from
+  16:33 to 17:13 UTC).
