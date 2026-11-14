@@ -44968,3 +44968,15 @@ END to the nearest tail on record (u, T = 0 / 1 / 2 / 4):
   lines before it can join a recipe.
 * Running: `ab7c_w6` (warm + cap), sidistic v5 (3.55B), cannonball v5 (4.08B, 94.8%, no finish
   yet). Credit $21.63 at 15:54 UTC.
+
+## 2026-11-14 16:27 UTC: ablation wave 8 - cannonball v5 INCOMPLETE: its box hit the watchdog deadline at 4.25B (my missed extension); best 94.8% at 4.08B, no finish; resumed from the harvested 4.0B checkpoint
+
+* `ab8n_1` (cannonball, v5, RTX 5090; pre-launch 3938fb09, cut 6.2B): 69% at 0.83B, 77.8% at 0.98B,
+  92.8% at 3.25B, 94.8% at 4.08B, 78.1% at 4.15B, 59.0% at 4.23B; 0 finishes (grader). The box was
+  registered for 174 min and I did not extend it: the watchdog harvested the last evals and
+  ckpt_4001366016 (md5 3401f5a0) at 15:59 and destroyed the box at 16:12 UTC. NOT a verdict: the run
+  stopped at 4.25B, short of its cut. Written before the resume: `ab8n_r` continues it from that
+  checkpoint (the resume restores the weights and the failed-line lists, not the held line) to
+  6.2B total on a fresh 5090; the first finish counts for the regression.
+* sidistic v5 (`ab8s_1`) at 4.15B: search 7 (3.80B) a 14,880-state line to d 1,146 against a
+  greedy frontier of 5,010 (about 94% of the map).
