@@ -2407,19 +2407,22 @@ def logprob_entropy_view(padded, actions, mu, log_std, z,
                                            actions[:, N_VIEW:], temp)
     ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
     logp = logp_c + gauss_logp(z, mu, ls)
-    if yaw_ent != 1.0:
+    if torch.is_tensor(yaw_ent) or yaw_ent != 1.0:
         # --yaw-entropy: the YAW head(s)' share of the bonus scaled (0 drops it), the pitch head
         # keeping pitch_ent; 1.0 never reaches here, so the default is the expressions below op
         # for op. With no reward signal the bonus alone pushes a state-independent log sigma up
         # by the coefficient every update (princessburglar's start room: 0.08 -> the 2.718
         # clamp in ~500M steps, pbr1b1 2026-10-23), which is the pitch head's old story.
+        # --yaw-entropy-progress hands a 0-d TENSOR the trainer rewrites between iterations
+        # (a graph input, never baked into the compiled update).
+        _ye = yaw_ent if torch.is_tensor(yaw_ent) else float(yaw_ent)
         if ls.dim() > 1:
             h = 0.5 + 0.5 * LOG2PI + ls
-            ent = ent_c + float(yaw_ent) * h[..., :-1].sum(-1)
+            ent = ent_c + _ye * h[..., :-1].sum(-1)
             if pitch_ent != 0.0:
                 ent = ent + float(pitch_ent) * h[..., -1]
             return logp, ent
-        ent = ent_c + float(yaw_ent) * gauss_entropy(ls[:-1])
+        ent = ent_c + _ye * gauss_entropy(ls[:-1])
         if pitch_ent != 0.0:
             ent = ent + float(pitch_ent) * gauss_entropy(ls[-1:])
         return logp, ent
@@ -4174,6 +4177,26 @@ def parse_int_coef_progress(spec) -> tuple:
     return hi, lo, p
 
 
+def parse_yaw_entropy_progress(spec) -> tuple:
+    """--yaw-entropy-progress 'HI:LO:P' -> (HI, LO, P): HI, LO >= 0, 0 < P <= 1 (the
+    --int-coef-progress form; the coefficient at a progress is int_coef_at's)."""
+    try:
+        hi, lo, p = (float(x) for x in str(spec).split(":"))
+    except ValueError:
+        raise SystemExit(f"--yaw-entropy-progress HI:LO:P (three numbers), got {spec!r}")
+    if not (hi >= 0.0 and lo >= 0.0 and 0.0 < p <= 1.0):
+        raise SystemExit(f"--yaw-entropy-progress HI:LO:P needs HI, LO >= 0 and 0 < P <= 1, "
+                         f"got {spec!r}")
+    return hi, lo, p
+
+
+def band_yaw_mult(sigma_abs: float, log_std_yaw) -> np.ndarray:
+    """--demo-front-yaw-abs: the per-head multiplier that makes a band row's yaw sigma
+    ``sigma_abs`` (z) for a policy whose yaw log sigma is ``log_std_yaw`` - the --front-temp
+    slots multiply the policy's sigma, so S / sigma is what they must hold."""
+    return (float(sigma_abs) / np.exp(np.asarray(log_std_yaw, np.float64))).astype(np.float32)
+
+
 def int_coef_at(progress, hi: float, lo: float, p: float) -> float:
     """--int-coef-progress: the novelty coefficient at frontier ``progress`` (a fraction of the
     spawn's d): HI at 0 or less (and with no reading yet, NaN), falling linearly to LO at ``p``,
@@ -5581,6 +5604,13 @@ def main() -> None:
     ap.add_argument("--demo-front-view", type=float, default=None,  # None = 1 + T
                     help="--demo-front-temp: the yaw head's sigma multiplier inside the hot "
                          "window, instead of 1 + T (the keys stay at 1 + T)")
+    ap.add_argument("--demo-front-yaw-abs", type=float, default=None,   # None = off
+                    help="--demo-front-temp: the yaw head's sigma inside the hot window set to "
+                         "this ABSOLUTE value (z space, the head's own units) whatever the "
+                         "policy's own sigma, instead of --demo-front-view's multiplier: one "
+                         "band noise for every map and every policy (0.066 = October's 0.011 x "
+                         "6, pbr2b3). The keys stay at 1 + T; PPO scores each row at the sigma "
+                         "it was drawn at")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -7155,6 +7185,13 @@ def main() -> None:
                          "the clamp, 2.718, by 3-8B steps on two seeds). "
                          "Written to the config only under --view-absolute "
                          "and restored on resume.")
+    ap.add_argument("--yaw-entropy-progress", default=None, metavar="HI:LO:P",
+                    help="--view-continuous: the yaw head(s)' entropy share (--yaw-entropy's "
+                         "coefficient) read off the greedy frontier at every greedy eval (the "
+                         "--int-coef-progress reading): HI at progress 0, falling linearly to LO "
+                         "at fraction P of the spawn's d, LO beyond. 1:0:P keeps today's yaw "
+                         "entropy until the run has left its start and drops it past P (a "
+                         "yaw-precise policy where it flies a line). Checkpointed; off = today")
     ap.add_argument("--yaw-entropy", type=float, default=None,
                     help="--view-continuous: the YAW head(s)' share of the entropy bonus "
                          "(their Gaussian entropy is multiplied by this; the pitch head keeps "
@@ -9547,7 +9584,8 @@ def main() -> None:
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
         if (ck_cfg.get("yaw_entropy") is not None
-                and not flag_given("--yaw-entropy")):
+                and not flag_given("--yaw-entropy")
+                and not flag_given("--yaw-entropy-progress")):
             args.yaw_entropy = float(ck_cfg["yaw_entropy"])
             restored.append(f"yaw_entropy={args.yaw_entropy:g}")
         if (ck_cfg.get("pitch_sigma_min") is not None
@@ -9885,14 +9923,22 @@ def main() -> None:
             raise SystemExit("--demo-front-ticks must be > 0")
         if args.demo_front_view is not None and float(args.demo_front_view) <= 0.0:
             raise SystemExit("--demo-front-view is a sigma multiplier: > 0")
+        if args.demo_front_yaw_abs is not None:
+            if args.demo_front_view is not None:
+                raise SystemExit("--demo-front-yaw-abs (an absolute yaw sigma) and "
+                                 "--demo-front-view (a multiplier) set the same thing - pick one")
+            if not float(args.demo_front_yaw_abs) > 0.0:
+                raise SystemExit("--demo-front-yaw-abs is a yaw sigma in z: > 0")
         if not args.view_continuous or args.reward != "race":
             _bad.append("a run without --view-continuous and --reward race")
         if _bad:
             raise SystemExit("--demo-front-temp (a per-env temperature on the flat single-map "
                              "rollout, read off the demo curriculum) is not implemented with "
                              + ", ".join(_bad))
-    elif args.demo_front_ticks is not None or args.demo_front_view is not None:
-        raise SystemExit("--demo-front-ticks / --demo-front-view need --demo-front-temp")
+    elif (args.demo_front_ticks is not None or args.demo_front_view is not None
+          or args.demo_front_yaw_abs is not None):
+        raise SystemExit("--demo-front-ticks / --demo-front-view / --demo-front-yaw-abs need "
+                         "--demo-front-temp")
     if args.respawn_greedy_temp is not None:
         if float(args.respawn_greedy_temp) <= 0.0:
             raise SystemExit("--respawn-greedy-temp T needs T > 0 (absent = off)")
@@ -11222,6 +11268,26 @@ def main() -> None:
                          "--view-continuous")
     if YAW_ENT < 0.0:
         raise SystemExit("--yaw-entropy must be >= 0")
+    # --yaw-entropy-progress: the yaw entropy share read off the greedy frontier (the
+    # --int-coef-progress reading); YAW_ENT_ARG is what the loss is handed - the Python constant,
+    # or with the flag a 0-d tensor written between iterations
+    YEP = (parse_yaw_entropy_progress(args.yaw_entropy_progress)
+           if args.yaw_entropy_progress is not None else None)
+    if YEP is not None:
+        if args.yaw_entropy is not None:
+            raise SystemExit("--yaw-entropy-progress and --yaw-entropy both set the yaw head's "
+                             "entropy share - pick one")
+        if not VIEWC:
+            raise SystemExit("--yaw-entropy-progress scales the continuous YAW head's entropy: "
+                             "it needs --view-continuous")
+        if args.maps or D.enabled:
+            raise SystemExit("--yaw-entropy-progress reads ONE map's greedy frontier on the main "
+                             "rank: not implemented with --maps or --ddp")
+        print(f"--yaw-entropy-progress {YEP[0]:g}:{YEP[1]:g}:{YEP[2]:g}: the yaw head's entropy "
+              f"share is {YEP[0]:g} at frontier progress 0, falling linearly to {YEP[1]:g} at "
+              f"{YEP[2]:.0%} of the spawn's d, read at every greedy eval (the median "
+              f"contact-banked deepest d)")
+    YAW_ENT_ARG = YAW_ENT
     # --pitch-sigma-min: the pitch head's sigma floor (0 = off); a Python constant
     PITCH_SIG_MIN = float(args.pitch_sigma_min or 0.0)
     if PITCH_SIG_MIN != 0.0:
@@ -16039,6 +16105,8 @@ def main() -> None:
         meta["config"]["int_match"] = IMATCH
     if INTP is not None:
         meta["config"]["int_coef_progress"] = [float(v) for v in INTP]
+    if YEP is not None:
+        meta["config"]["yaw_entropy_progress"] = [float(v) for v in YEP]
     if CRL:
         # --crl, written ONLY when on (a control's config dump gains no key):
         # the flag, every knob a resume restores, and - provenance only - the
@@ -16165,6 +16233,8 @@ def main() -> None:
         meta["config"]["demo_front_ticks"] = int(args.demo_front_ticks)
         meta["config"]["demo_front_view"] = (float(args.demo_front_view)
                                              if args.demo_front_view is not None else None)
+        if args.demo_front_yaw_abs is not None:
+            meta["config"]["demo_front_yaw_abs"] = float(args.demo_front_yaw_abs)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -17921,13 +17991,22 @@ def main() -> None:
         print(f"--respawn-greedy-temp {args.respawn_greedy_temp:g}: an env whose episode started "
               f"on a greedy-line row samples the keys at {_gt_k:g} and the yaw sigma x {_gt_v:g} "
               f"for its first {GT_TICKS} ticks; PPO scores each row at its own temperature")
+    # --demo-front-yaw-abs: the band's yaw sigma as an absolute value; the per-row slot holds the
+    # multiplier S / sigma of the policy that draws this rollout (refreshed every iteration, so
+    # the row is drawn and scored at sigma S whatever the policy's own sigma)
+    DFT_ABS = (float(args.demo_front_yaw_abs) if (DFT and args.demo_front_yaw_abs is not None)
+               else None)
+    _dft_abs_m = np.ones(max(NZ - 1, 1), np.float32)
+    DFT_ABS_SAID = [False]
     if DFT:
         _dft_k = 1.0 + float(args.demo_front_temp)
         _dft_v = (float(args.demo_front_view) if args.demo_front_view is not None else _dft_k)
         DFT_TICKS = int(args.demo_front_ticks)
         print(f"--demo-front-temp {args.demo_front_temp:g}: an env whose episode started on the "
-              f"curriculum's frontier band samples the keys at {_dft_k:g} and the yaw sigma "
-              f"x {_dft_v:g} for its first {DFT_TICKS} ticks; PPO scores each row at its own "
+              f"curriculum's frontier band samples the keys at {_dft_k:g} and the yaw "
+              + (f"at an ABSOLUTE sigma {DFT_ABS:g} (z; --demo-front-yaw-abs)" if DFT_ABS
+                 is not None else f"sigma x {_dft_v:g}")
+              + f" for its first {DFT_TICKS} ticks; PPO scores each row at its own "
               f"temperature")
 
     def set_front_temp() -> None:
@@ -17947,7 +18026,8 @@ def main() -> None:
             ftk_np[hot] = _dft_k
             # the yaw head(s); the pitch head (the last column) moves only the camera, so it
             # keeps the cold value
-            ftv_np[np.flatnonzero(hot)[:, None], np.arange(NZ - 1)[None, :]] = _dft_v
+            ftv_np[np.flatnonzero(hot)[:, None], np.arange(NZ - 1)[None, :]] = (
+                _dft_v if DFT_ABS is None else _dft_abs_m[None, :NZ - 1])
             dft_share = float(hot.mean())
         if GTEMP and _dft_len[0] is not None:
             # --respawn-greedy-temp: the envs whose episode started on a greedy-line row,
@@ -18788,17 +18868,46 @@ def main() -> None:
         for _s in slots:
             _s.reward_fn.int_coef = float(INTP_ST["coef"])
 
-    def _int_progress_after_eval(ev_path):
-        """--int-coef-progress: the greedy eval just written sets the novelty coefficient from
-        its frontier progress (x (1 + T) under --unstuck's novelty scaling)."""
+    # --yaw-entropy-progress: the share and the frontier reading it came from (checkpointed);
+    # a fresh run starts at HI. The loss reads the 0-d tensor, rewritten in place
+    YEP_ST = {"progress": float("nan"), "coef": None if YEP is None else float(YEP[0]),
+              "eval": None}
+    if YEP is not None:
+        if ck is not None and ck.get("yaw_entropy_progress") is not None:
+            _yep = ck["yaw_entropy_progress"]
+            YEP_ST.update(progress=float(_yep.get("progress", float("nan"))),
+                          coef=float(_yep["coef"]))
+            print(f"--yaw-entropy-progress: restored the yaw entropy share {YEP_ST['coef']:.4g} "
+                  f"(greedy frontier {YEP_ST['progress']:.2%} of the spawn's d)", flush=True)
+        YAW_ENT_ARG = torch.tensor(float(YEP_ST["coef"]), device=device)
+
+    def _greedy_eval_progress(ev_path):
+        """The greedy eval's frontier as a fraction of the spawn's d (greedy_frontier_progress on
+        slot 0's field): what --int-coef-progress and --yaw-entropy-progress read."""
         from surfgym.route import episodes_from_traj
         _s0 = slots[0]
         _fd = _s0.reward_field if _s0.reward_field is not None else _s0.goal_field
         eps = [e for e in episodes_from_traj(ev_path) if len(e)][:max(1, int(args.eval_eps or 9))]
         _gs = -float(_s0.core.config.phys.sv_gravity) * float(TICK.ms) / 1000.0
-        prog = greedy_frontier_progress(
+        return greedy_frontier_progress(
             eps, _fd, float(getattr(_s0, "rf_d0", None) or getattr(_s0, "d0", None) or 0.0),
             _gs, float(_s0.core.config.phys.sv_maxvelocity))
+
+    def _yaw_progress_after_eval(ev_path):
+        """--yaw-entropy-progress: the greedy eval just written sets the yaw entropy share."""
+        prog = _greedy_eval_progress(ev_path)
+        if prog != prog:
+            return
+        c = int_coef_at(prog, *YEP)
+        YEP_ST.update(progress=float(prog), coef=float(c))
+        YAW_ENT_ARG.fill_(c)
+        print(f"[{global_step:>13,d}] --yaw-entropy-progress: greedy frontier {prog:.2%} of the "
+              f"spawn's d -> yaw entropy share {c:.4g}", flush=True)
+
+    def _int_progress_after_eval(ev_path):
+        """--int-coef-progress: the greedy eval just written sets the novelty coefficient from
+        its frontier progress (x (1 + T) under --unstuck's novelty scaling)."""
+        prog = _greedy_eval_progress(ev_path)
         if prog != prog:
             return
         c = int_coef_at(prog, *INTP)
@@ -19053,6 +19162,10 @@ def main() -> None:
             # the novelty the run had reached until its next greedy eval
             state["int_coef_progress"] = {"progress": float(INTP_ST["progress"]),
                                           "coef": float(INTP_ST["coef"])}
+        if YEP is not None:
+            # --yaw-entropy-progress: likewise, the yaw entropy share a resume keeps
+            state["yaw_entropy_progress"] = {"progress": float(YEP_ST["progress"]),
+                                             "coef": float(YEP_ST["coef"])}
         if FRONTIER and frontier_sched is not None:
             # --respawn-frontier-grow: same reason. A resume that forgot the
             # plateau clock would hand the run a fresh patience window and
@@ -19157,7 +19270,7 @@ def main() -> None:
                     padded = packer.pad(cat)
                     logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
                                                      s_z, PITCH_ENT, s_temp, s_tempv,
-                                                     yaw_ent=YAW_ENT)
+                                                     yaw_ent=YAW_ENT_ARG)
                 else:
                     padded = packer.pad(logits.float())
                     logp, ent = logprob_entropy_padded(padded, s_act, s_temp)
@@ -19272,7 +19385,7 @@ def main() -> None:
                     # Gaussian's, which is what keeps sigma from collapsing
                     logp, ent = logprob_entropy_view(
                         padded, f_act[idx], mu, policy.log_std(), f_z[idx],
-                        PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT)
+                        PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT_ARG)
                 else:
                     logp, ent = logprob_entropy_padded(padded, f_act[idx],
                                                        f_temp)
@@ -19374,7 +19487,7 @@ def main() -> None:
                 # density of the STORED z, as in mb_step
                 logp, ent = logprob_entropy_view(
                     padded, f_act[idx], mu, policy.log_std(), f_z[idx],
-                    PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT)
+                    PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT_ARG)
             else:
                 logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()
@@ -20477,6 +20590,15 @@ def main() -> None:
                 # the state every env enters this rollout with: the update's
                 # sequence re-run starts from it (truncated BPTT boundary)
                 b_h0.copy_(static_h)
+            if DFT_ABS is not None:
+                # --demo-front-yaw-abs: S / the yaw sigma of the weights this rollout draws with
+                _ls_y = policy.log_std().detach().float().cpu().numpy()[:NZ - 1]
+                _dft_abs_m[:] = band_yaw_mult(DFT_ABS, _ls_y)
+                if not DFT_ABS_SAID[0]:
+                    DFT_ABS_SAID[0] = True
+                    print(f"--demo-front-yaw-abs: band rows drawn at yaw sigma {DFT_ABS:g} = the "
+                          f"policy's {float(np.exp(_ls_y[0])):.4g} x {float(_dft_abs_m[0]):.4g} "
+                          f"(re-read every iteration)", flush=True)
             for t in range(T):
                 policy_step()
                 t_sync = tm.now()
@@ -22755,6 +22877,8 @@ def main() -> None:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
                 if INTP is not None and _i == 0 and not _s.heldout:
                     INTP_ST["eval"] = path  # --int-coef-progress: read after the eval block
+                if YEP is not None and _i == 0 and not _s.heldout:
+                    YEP_ST["eval"] = path   # --yaw-entropy-progress: likewise
                 if args.auto_finish and _i == 0 and not _s.heldout:
                     AFIN["eval"] = path     # --auto-finish: read after the eval block
                 st = episode_stats(path)
@@ -23047,6 +23171,13 @@ def main() -> None:
                 _int_progress_after_eval(_ipp)
             except Exception as _ex:         # a failed reading keeps the coefficient
                 print(f"!! --int-coef-progress: {type(_ex).__name__}: {_ex}", flush=True)
+        if YEP is not None and YEP_ST["eval"] is not None:
+            # --yaw-entropy-progress: the greedy eval just written sets the yaw entropy share
+            _ypp, YEP_ST["eval"] = YEP_ST["eval"], None
+            try:
+                _yaw_progress_after_eval(_ypp)
+            except Exception as _ex:         # a failed reading keeps the share
+                print(f"!! --yaw-entropy-progress: {type(_ex).__name__}: {_ex}", flush=True)
         if AUTO_SPINE and AUTO["eval"] is not None:
             # --auto-spine: the greedy eval just written decides whether to search
             _ap, AUTO["eval"] = AUTO["eval"], None

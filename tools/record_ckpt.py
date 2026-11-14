@@ -118,6 +118,8 @@ TRAIN_ONLY = frozenset({
     # --demo-front-temp: the TRAINING rollout's sampling temperature for curriculum-band spawns;
     # a recording spawns at the map start and samples at its own --temp
     "demo_front_temp", "demo_front_ticks", "demo_front_view",
+    # --demo-front-yaw-abs: that band's yaw sigma as an absolute value - TRAINING sampling only
+    "demo_front_yaw_abs",
     # --demo-keys: the held keys a training spine spawn starts with - TRAIN_ONLY likewise
     "demo_keys",
     # --demo-cooldown / --demo-grow-max: the TRAINING curriculum's pace
@@ -211,6 +213,8 @@ TRAIN_ONLY = frozenset({
     "int_match",
     # --int-coef-progress: the novelty coefficient set from the greedy frontier - TRAINING only
     "int_coef_progress",
+    # --yaw-entropy-progress: the yaw head's TRAINING entropy share set from the greedy frontier
+    "yaw_entropy_progress",
     # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
     "ramp_offtarget_pen",
     # --ramp-pairs' provenance per map (the pairs themselves are MIRRORED) - metadata
