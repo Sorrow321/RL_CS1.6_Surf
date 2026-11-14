@@ -43571,3 +43571,122 @@ backward curriculum teach the princessburglar launch when it is handed a crossin
 * Two 4080/5080-class boxes, about $0.39/h each, deadlines 2.6 h and 1.2 h, watchdog with
   harvest spec and pid file; tunnels http://localhost:8629/ (celestial) and :8630
   (unitfarmer2). Credit $33.8 at 08:00 UTC.
+
+## 2026-11-14 08:10 UTC: ablation wave 4 - princessburglar (sub-agent P): the success bonus alone does not pass the far-wall band and costs the start-room exit; a failed-line fallback rule for archive lines (ab/ff 2bdf492f) hands back the room-to-pit lines
+
+Written BEFORE the launch (sub-agent P, wave 4). Two items from the operator: (A) separate the
+reward from the exploration at princessburglar's far-wall band (instrument runs), (B) a rule that
+lets the all-in's room-to-pit archive lines through after a failed held line (code + CPU replay).
+
+### (A) Arm (iii): the success bonus alone
+
+* `abpbi3_1` (owner abpbi3, branch ab/pbi3 127597d1 = ab/pbm + config): wave 3's arm (i) - warm
+  resume of fxpb_t3's final weights (md5 ac552734), fixed spine as_t3_E (md5 e164025a), search
+  loop off, try 3's curriculum flags - plus `--demo-success-bonus 50` and NOTHING else (no
+  `--demo-front-temp/-view/-ticks`). 1.0B steps after the resume (absolute stop
+  6,002,756,096). Arm (ii) of wave 3 had the bonus AND the x6 band view noise: it stalled at
+  the same far-wall band with lower rates and lost the room exit of the greedy; this arm says
+  which half did what.
+* Read-outs (as wave 3): the walk-back's lowest row over time; success at the far-wall band
+  (rows 1,538-1,557; arm (i): 7.6% at [1,543,1,547], 30.0% at [1,548,1,552]) and, if reached,
+  at the launch (1,446-1,470); greedy episodes from the true start (room exit kept? far ledge?);
+  finishes from the grader only. Cut at 1.0B, or at the start room (tau <= 180), or a step
+  count standing still 10 minutes.
+* CPU smoke of the complete resume line (local try-3 smoke checkpoint): rc 0, the curriculum
+  loads the 2,664-state spine at its end, "--demo-success-bonus 50: ... paid 50 once", no band
+  temperature line.
+* Arm (iv) (an ABSOLUTE band yaw noise) is NOT run, decided before any launch: on these weights
+  the yaw sigma is 0.35-0.48 in z, which through the view's offset warp is about +-4-7 deg at
+  the velocity heading - already "a few degrees", the level October's x6 gave its sigma-0.010
+  policy (3.8 deg). An absolute noise of a few degrees would replicate arm (i); a larger one
+  moves toward arm (ii)'s near-uniform view, which did worse. The flag is cheap to build (the
+  --demo-front-temp slots with temperature = S / the yaw sigma, read once per iteration), but
+  the value that would add exploration on a capped policy is not "a few degrees", so the money
+  went to (A) and (B).
+
+### (B) A stepping-stone fallback after a failed held line (code + CPU replay, no box)
+
+* The case: the all-in's princessburglar patience searches 2 and 3 (680M, 1.36B) found
+  room-to-pit ARCHIVE lines (55,354 / 55,345 and 55,361 / 55,347; greedy frontier 57,004 /
+  56,990: ~1,650 u past it) behind the held, failed crossing line (archive, end 55,107). Under
+  recipe v1 they are refused twice: `--auto-spine-current-ref` wants 200 u past 55,107, and
+  ab/mc's `--auto-spine-archive-bar` (bar = the failed archive end 55,107) wants the same; and
+  only the tree / Monte Carlo lines have a fallback path.
+* Why "the deepest line of any stage that beats the greedy frontier" is not enough: on
+  unitfarmer2 (abuf2_all search 5) the barred archive lines are TROUGH lines that beat the
+  greedy frontier by more than the Monte Carlo exit does (28,429-29,451 vs 29,834-29,910);
+  ranked by depth they would beat the exit again. And U's bar alone cannot tell the two maps
+  apart: in both the new archive line ends SHALLOWER than a failed archive end.
+* What does tell them apart: princessburglar's new lines end 238-254 u SHORT of the failed end
+  (a stepping stone toward a line the curriculum could not learn); unitfarmer2's trough lines
+  end 114-170 u from a failed trough end (the same dead end again).
+* The rule (`ab/ff` 2bdf492f, from ab/mc 0f73a013; off = byte-identical):
+  `train_fast --auto-spine-failed-fallback` (needs `--auto-spine-archive-bar`) passes
+  `auto_spine.py --failed-fallback <every failed archive end>` in exactly the searches ab/mc
+  marks a held line failed (patience, no quorum). There, when no line passes and neither the
+  tree nor the Monte Carlo line is a fallback, the deepest ARCHIVE line that beats the greedy
+  frontier by the gain AND ends at least the gain (200 u) away from every failed archive end is
+  handed back (the existing fallback path; source `beam+ge*`, `failed_fallback: 1`). The
+  policy's own fallbacks keep precedence; no route is banned; no new constant (the gain).
+* Tests (`tests/python/test_auto_spine_ff.py`, CPU, U's stand-in replay on the real numbers):
+  12 passed - all-in pb search 2 -> the contact archive's room-to-pit line 55,345 (with or
+  without the Monte Carlo stage; refused without the rule, as before), search 3 -> 55,347;
+  U's three decisions unchanged with the rule on (abuf2_all search 5 -> the Monte Carlo exit
+  29,834; fxb200_t1 search 3 -> the archive's goal line; fxpb_t1 search 2 -> the archive's
+  crossing 55,098); unitfarmer2's trough lines (28,714 / 28,429 beside 28,599 / 28,937) stay
+  refused when no policy line is a fallback; an archive line 514 u short of the nearest failed
+  end IS handed back then (the rule as written). U's ab/mc tests 12 passed; the existing loop
+  suites 37 passed, 2 skipped; `auto_spine.py --selftest` ok.
+* CPU smoke of the complete recipe-v1 command line (the 136 tokens of ab/ab4u's config, the
+  launch extra, + `--auto-spine-failed-fallback`) on princessburglar, ab/ff code, 61,440 steps:
+  rc 0, no refusal; run.json carries `auto_spine_failed_fallback: 1` and `auto_spine_archive_bar:
+  1`; both patience searches ran with `--failed-fallback -` (the held line was the spawn spine,
+  no failed archive end), and search 1 printed "the held line failed: no archive line is a
+  stepping stone" (its archive lines did not beat the greedy frontier by 200 u on CPU budgets).
+  The first search of a real run is a quorum search (9/9 past the spawn spine's success line),
+  so the rule never acts there.
+* Not measured: whether the curriculum learns a ~3,650-row room-to-pit archive line (fix-round
+  try 1's similar 4,242-row line stalled at its crouch tunnel); this rule only stops the loop
+  from refusing such a line for 1.8B steps.
+
+### Results (written after the run)
+
+**Arm (iii) `abpbi3_1`** (RTX 4080S, $0.313/h; resumed 5,002,756,096, stopped by its budget
+at 6,003,097,600, 317k steps/s; box 60611278 07:11:36-08:07:55 UTC; 344,753 spine-line
+bonuses paid; settings in run.json: bonus 50, no band flags, no auto-spine, cap 0.5, 10 ms):
+
+* The walk-back: 2,663 -> 1,558 in 134M steps (arm (i): 152M, arm (ii): 275M), 1,548 at
+  +199M, 1,543 at +587M, its lowest 1,538 once at +619M, then 1,543 <-> 1,548 to the end. The
+  launch (rows 1,446-1,470) is never reached, as in arms (i) and (ii).
+* The far-wall band, band by band (mean success of the curriculum's moves there):
+
+| band | arm (i) no bonus | arm (ii) bonus + x6 view | arm (iii) bonus only |
+|---|---|---|---|
+| [1,543,1,547] | 7.6% (82 visits) | 0.2% (13) | 0.2% (73 visits; one advance at 20.9%) |
+| [1,548,1,552] | 30.0% (81) | 9.5% (53) / 21.1% (13 advances) | 28.9% (73 advances) / 7.7% (9) |
+| [1,553,1,557] | passed at +178M | passed at +301M | 5.9% (66) / 25.0% (9 advances) |
+
+* The greedy from the true start LOST the room exit as in arm (ii): grader 3.2% at 5.00B and
+  5.08B, 1.7% at 5.15B, then 0.3-0.4% in all eleven later evals (the room's east part and its
+  half-pipe; two "far ledge" hits at 5.23B / 5.31B are the half-pipe below the room, best
+  0.4%); 0 finishes.
+
+### What (A) says
+
+* The success bonus alone takes the greedy's room exit away (arm iii as arm ii: 3.2% ->
+  0.3-0.4%); the x6 view noise of arm (ii) is not needed for that. With the bonus the hardest
+  far-wall band [1,543,1,547] went from 7.6% (no bonus) to 0.2% in both bonus arms. The bonus
+  helps neither the walk-back's depth (lowest 1,538 in arms i and iii) nor the band.
+* So on this line, from these weights, neither the reward half nor the exploration half of
+  October's band flags moves the curriculum past the far-wall impact in 1.0B steps; the
+  bonus costs the start room. The launch is still not measured. One seed per arm.
+
+### Boxes, cost, files
+
+* One box this round: 60611278 (RTX 4080S, $0.313/h) 07:11:36-08:07:55 UTC, about $0.29;
+  watchdog registered with harvest spec and pid file (until 09:40:53Z); dashboard tunnelled to
+  http://localhost:8633/ (stopped by PID); released and verified gone (`vastai show
+  instances`). Account credit $33.05 at 08:09 UTC (the whole fleet's).
+* Bundle (box.py pull, checkpoint md5 = box 4857c9a2): `~/ar_m2/runs/abpbi3/abpbi3_1/`
+  (run.json, progress.csv, launch log, 14 evals) + `local_md5_abpbi3_1.txt`. Branch ab/pbi3
+  127597d1. Code for (B): ab/ff 2bdf492f (pushed), smoke log in scratchpad `abl/pbx/ff/`.
