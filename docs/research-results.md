@@ -45159,3 +45159,45 @@ G 200; GOAL = the probe finished. 43 lines from the order + the 6 lines today's 
   (-98..624, -2,415..1,425, z -170..-1,353), short of the finish box; 0 finishes yet. The furthest any
   run of this program has reached on unitfarmer2 (v1: 40.4% at 3.70B). An instrument (a warm
   resume with one flag added), not a from-scratch recipe result. Box extended to 19:20 UTC.
+
+## 2026-11-14 17:13 UTC: UNITFARMER2 FINISHES (6.69B, 38.73 s; v5 weights + the patience cap) and SIDISTIC FINISHES with v5 (5.06B); v5 has now finished five maps
+
+### UNITFARMER2 FINISHES (warm instrument `ab7c_w6`)
+
+| eval | grader best / median | finishes | best time |
+|---|---|---|---|
+| 6,010.4M / 6,085.9M | 1.9% / 1.8% (the pit) | 0/9 | - |
+| 6,161.4M / 6,236.9M | 39.7% / 40.0% | 0/9 | - |
+| 6,312.4M / 6,387.9M / 6,463.4M | 56.0% / 68.0% / 83.1% | 0/9 | - |
+| 6,538.9M / 6,614.4M | 83.7% / 97.0% | 0/9 | - |
+| **6,689.9M** | **100%** | **6/9** | **38.73 s** |
+| 6,765.4M / 6,840.9M / 6,916.4M / 6,991.9M | 100% | 7/9, 9/9, 8/9, 4/9 | 38.08 s, 37.98 s |
+
+* What ran: `ab7c_ud` (recipe v5 from scratch, seed 0: the dive from 378M, two trough lines, no
+  exit by 3.53B; f541f5a0) resumed at 3,518.5M with ONE flag added, `--auto-spine-patience-max 1e9`
+  (code ab/pmax f81cf37b; the resume restored the weights and the failed-line lists, not the held
+  line). Its searches: 4.08B a beam+ge trough line; 5.23B no line; 5.67B (the cap) an 8,640-state
+  tree line to d 27,225 - the curriculum on it took the greedy out of the pit at 6.16B and to the
+  finish at 6.69B. Fizz's record: 35.17 s; best here 37.98 s (grader, spawn clock).
+* The first unitfarmer2 finish in this project with no human demo, no October checkpoint, no hand
+  edit and one recipe family; but NOT a clean from-scratch result of one frozen recipe (a warm
+  resume with a flag added, and the --end-survive-secs bug U fixed in 878336ff was present). The
+  clean test is v7 (= v6 + the fix) from scratch, launched next on this box.
+
+### SIDISTIC FINISHES with recipe v5 (`ab8s_1`, from scratch)
+
+* First greedy finish at 5,058.9M (2/9, 114.87 s), 1/9 at 5,134.4M (grader; CP7). The fix round:
+  8,380.7M; the frozen recipe 7,248.3M. Search 7 (3.80B) handed back a 14,880-state tree line to
+  d 1,146.
+
+### RECIPE v5 SCOREBOARD (from scratch, one seed per map, grader)
+
+| map | v5 first finish | fix round |
+|---|---|---|
+| petrus | 302.5M | 2,642.9M |
+| celestial | 529.0M | 1,284.0M |
+| blue200 | 831.0M | 1,435M |
+| sidistic | 5,058.9M | 8,380.7M |
+| cannonball | incomplete: 94.8% at 4.08B, box lost at 4.25B (907dea66) | 3,095.9M |
+| unitfarmer2 | v5 alone: dive, no exit by 3.53B; + the cap (resume): FINISH 6.69B | null |
+| princessburglar | null (start room, 2.5B) | null |
