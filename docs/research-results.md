@@ -43253,3 +43253,116 @@ tokens with `--yaw-sigma-max 0.2`, default yaw entropy; 341ed3d2), beside `ab3bc
   so the line is not smoked here (it rides in celestialc_maps.tar.gz).
 * Box: one 4080/5080-class card, about $0.39/h, deadline 2.6 h, watchdog with harvest spec and
   pid file, tunnel http://localhost:8627/. Credit $36.57 at 05:52 UTC.
+
+## 2026-11-14 06:12 UTC: ablation wave 3 - sub-agent U: a no-cull Monte Carlo stage and a bar on failed archive lines (ab/mc 0f73a013); replayed on the saved unitfarmer2 weights the loop hands back the pit exit (or the lip) instead of the trough
+
+Sub-agent U's line of wave 3: two generic pieces for the search loop, built default-off on
+branch ab/mc (0f73a013, from ab/uf2), tested on CPU, and benched offline on the all-in's saved
+unitfarmer2 weights. No training run was launched from this branch.
+
+### What was built (generic; no map constant; both off = byte-identical decisions)
+
+* `tools/auto_spine.py --mc-envs N [--mc-keys-temp 1.5] [--mc-ticks 0]`: a no-cull Monte
+  Carlo stage (October's `beam_tas --elite-frac 1.0 --keys-temp 1.5` from the true start: N
+  rollouts of the policy, keys at logits / 1.5, nothing culled, ranked once at the end). It
+  runs only when the tree's line does not pass the reference, BEFORE the archive stages. Its
+  line passes like the tree's; one that only beats the greedy frontier replaces the tree's
+  fallback when deeper. The archive stages still go first over any fallback, and their roots
+  stay on the tree's line.
+* `train_fast --auto-spine-archive-bar` (+ `auto_spine.py --archive-bar D`): a PATIENCE search
+  (the curriculum held its line for --auto-spine-patience without the greedy passing it)
+  marks the held line failed; if it came from an archive stage (source `beam+ge*`) its end d
+  joins a list, and every later search holds ARCHIVE lines to the deepest failed end (they
+  must end --auto-spine-gain past it). The policy's own lines (tree, Monte Carlo) are judged
+  as before, so the existing fallback hands one of them back when the archive is barred. No
+  route is banned: an archive line that goes 200 u further is accepted.
+* Why this rule and not a ref reset: in the fix round blue200's goal line (fxb200_t1 search 3)
+  and petrus's line (fxpet_t1 search 3) came from the archive in PATIENCE searches after a
+  failed TREE line, with a tree line 252 u past the greedy frontier on blue200; handing the
+  policy's own line back first would have replaced both. Both held lines were tree lines, so
+  the bar does not touch them; princessburglar's crossing (fxpb_t1 search 2) ends 255 u past
+  the failed archive line before it and still passes.
+* The acceptance margin is not a problem at search 5: the greedy frontier there was 30,301
+  (banked), so the Monte Carlo exits (29,834-29,890) beat it by 411-467 u against the gain of
+  200; the tree's platform line beat it by 0.7 u.
+
+### Tests (CPU, droplet)
+
+* `tests/python/test_auto_spine_mc.py`: 12 passed (helpers, wiring order, TRAIN_ONLY, the
+  refusal, the mc() command, and auto_spine's decision replayed with stand-in stages on the
+  real numbers: abuf2_all search 5 -> `mc` fallback 29,834 with the bar, `beam+ge` 28,714
+  without it, the old decision with both off; fxb200_t1 search 3 -> the archive's goal line;
+  fxpb_t1 search 2 -> the archive's crossing).
+* The existing loop suites (test_auto_spine, _async, _energy, _fx, _recheck): 37 passed, 2
+  skipped (no pre-change trainer in the first-parent history, as before).
+* `auto_spine.py --selftest` ok; `record_ckpt.audit_cfg` passes on a run with the flag.
+* CPU smoke of the complete 138-token unitfarmer2 command line (+ the launch extra): rc 0; the
+  Monte Carlo stage ran inside search 1 (elite 64 of 64: nothing culled); search 1 handed back
+  an archive line, the next patience search printed "the held line (beam+ge, end d 29,736)
+  failed its curriculum" and ran with `--archive-bar 29736.4`; run.json carries
+  `auto_spine_archive_bar: 1`.
+* CPU smoke of the WARM instrument's command path (resume a checkpoint the way box.py launch
+  --resume + run_arm.sh ARM_RESUME do, the recipe without --auto-spine-scratch, --obs-normal,
+  --simba, plus --demo-file of a Monte Carlo exit line, SELF_STATES=1): rc 0, "resumed ... at
+  step", the curriculum loads the 2,600-state line; the resumed run.json config differs from
+  the source run's ONLY in auto_spine_scratch, demo_file and steps (298 keys compared).
+
+### Benches (one RTX 4080 SUPER box, 60596937, owner abmc, 04:58-06:08 UTC, about $0.36)
+
+Checkpoints copied from ~/ar_m2/runs/abuf2/ckpts_all, md5 verified on the box (2.0B a962facb,
+3.0B 2693e1de, final 60b665bf). Measurement only; nothing trained.
+
+* (a) When the exit appears (October's Monte Carlo, 4,096 rollouts x 6,000 ticks, seeds 0-2):
+  2.0B: every frontier is the start platform at 2.3 s (d 29,990-30,009, z 864-912), no
+  lineage's best in the pit. 3.0B: the frontier lineages lap the pit (z min -854..-866) and
+  climb its south-east side to the lip, z 467-473 at 19-33 s (d 29,986-30,027), none above
+  z 500. Final 3.5B: 4 of 4 seeds out above z 500 (the earlier three, d 29,834-29,890, and
+  seed 5 below, 29,910).
+* (b) Search 5 replayed (its own inputs: greedy 30,300.6, held trough line 28,936.6, MCTS
+  6 min, archives 5 min each, seed 5; plus --mc-envs 4096 --mc-keys-temp 1.5 and
+  --archive-bar 28,599.4 = the failed archive lines k02 and k04):
+
+  * final weights: tree 30,003 (a fallback); Monte Carlo 29,910, a pit EXIT (2,100 states,
+    16.1 s, z min -878, above z 500 at state 2,080, ends z 512, E 1,183, 1,036 u/s), deeper,
+    the fallback; archives 29,102 and 29,451 (neither past the reference) -> MC exit handed back.
+  * 3.0B weights: tree 30,108 (193 u past the frontier: no fallback); Monte Carlo 30,005, pit
+    to the lip (1,100 states, z 468 rising 175 u/s) -> the fallback; archives 29,321 and
+    28,517 = a TROUGH end (-1,969, -1,089, z 295), past the reference, BARRED -> MC pit line.
+  * final weights with `--ge-boost 1.0;E1.0` (the coordinator's request): tree and Monte Carlo
+    as on the first row (same exit); tail-rooted archives 28,602 and 28,680 (trough ends,
+    z 300-306), energy-rooted 29,462 (lip side, z 530) and 28,430 (trough, z 197): three
+    barred -> MC exit handed back.
+
+* The bar decided the 3.0B replay and the energy run: without it the 3.0B search hands back
+  the trough line ending at (-1,969, -1,089, z 295) and the energy run the trough line at
+  28,430 (the deepest of all) - the k02/k04/k05 dead end again. The energy line was refused
+  by 31 u: a luckier archive past 28,399 would be accepted once more (and then raise the bar).
+* `--ge-boost 1.0;E1.0` on these weights adds trough candidates and no pit exit: the energy
+  roots sit at ticks 9 and 68 of the tree's platform line (losses of 4 u and 0 u).
+* Lines and logs (md5 = box, 118 files, 1.4 GB, mostly archives):
+  ~/ar_m2/runs/abmc/bench_1/{k05r,k05r30,k05rE,mc_*}.
+
+### What this does not cover
+
+* A LEARNED dead end (wave 3's cap-0.1 arm learned its first line to state 0 at 95% and never
+  dove). The bar acts only on a failed ARCHIVE line; a learned tree line is the loop working by
+  the field, and the Monte Carlo stage ranks by the same field (a ledge line at about 29,374
+  outranks any pit line until the policy can exit). Covering it needs a rule on what the
+  curriculum teaches before a dive exists (for instance the existing --auto-spine-delay, so
+  the training's own novelty acts first: the all-in dove at 151.5M-227.0M), untested, and it
+  changes the solved maps' early curriculum, so it would need the regression run.
+* One seed per bench; the Monte Carlo result on 3.0B is a lip line, not an exit; whether the
+  curriculum learns a 2,100-4,400-state pit line is NOT measured (the warm instrument below).
+
+### Proposed next runs (not launched)
+
+* From scratch: the merged candidate's tokens with two edits - ` --mc-envs 4096 --mc-keys-temp
+  1.5` appended to the --auto-spine-args string, and `--auto-spine-archive-bar` - on code ab/mc
+  0f73a013 (or a merge of it); same launch extra; the same tokens on every map.
+* Warm instrument (does the policy learn a handed pit exit?): resume the all-in final (md5
+  60b665bf) with `box.py deploy --branch ab/mc --ckpt .../ckpts_all/ckpt_latest.pt`, copy the
+  exit line (fin_s2's 2,600 states, 19.9 s, saved as abmc_exit_s2.npy, md5 dd455946) to
+  runs/, then `box.py launch --resume --steps 1.5e9 --self-states "<the policy's own Monte
+  Carlo rollout on these weights>" --` the 138 ab/mc tokens without --auto-spine-scratch,
+  --obs-normal 1, --simba 1, plus `--demo-file runs/abmc_exit_s2.npy` and the launch extra.
+  A warm start is the instrument here (the question exists only at the pit), not a result.
