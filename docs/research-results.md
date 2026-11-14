@@ -43779,3 +43779,21 @@ box, 1.7 GB with the archives; md5 lists in ~/ar_m2/runs/abmcw/).
 * The Monte Carlo found an exit at 4.02B (seed 1) and none at 4.85B (seed 2), after 0.68B on the
   trough curriculum; one seed each, the two causes are not separated.
 * One seed, a warm instrument: no claim about a from-scratch run.
+
+## 2026-11-14 08:40 UTC: ablation wave 5 interim - v1-lean dives on unitfarmer2 (continued for the exit); v1 on unitfarmer2 climbs out on the exit side in 8 of 9 episodes at 3.17B (not stable yet)
+
+* `ab5u_1` (unitfarmer2, v1-lean) passes its dive read (fbd7f1fa): 9/9 below z 0 from 227.0M
+  (0/9 to 151.5M), 9/9 through 604.5M. It is CONTINUED past its 0.6B cut, written now, for a
+  second question: does v1-lean leave the pit (cut 5B if no greedy exit; box extended to 11:40
+  UTC). Its search 2 (578.3M) handed back a TREE line of 2,189 states that ends in the trough
+  north of the pit (-1,755, -1,205, z 196, d 28,315) and the curriculum learns it (87.8% at
+  rows 1,308-2,188): the archive bar does not cover a policy-derived line, so this run measures
+  whether a LEARNED trough line costs the dive.
+* `ab4u_1` (unitfarmer2, v1) at 3.17B: 8 of 9 greedy episodes climb out above z 500 after the
+  floor, at (-1,880..-2,070, -2,700..-2,880, z 518-577), October's exit side; one ends its
+  31-56 s standing there (z 562), two rise to z 919-973 and drift north; grader best 8.2% (the
+  pit laps read 1.9-2.8%); the next eval (3.25B) 0 of 9. Search 4 (2.80B) handed back the
+  Monte Carlo stage's 292-state start-platform line (d 29,980; the shallow fallback, learned at
+  97%), which replaced the trough line in the curriculum. Box extended to 11:40 UTC.
+* `ab5c_1` (celestial, v1-lean) at 0.63B: 29-36% (the fork); search 2 (581.4M) handed back a
+  Monte Carlo line of 3,500 states past the fork (d 39,325).
