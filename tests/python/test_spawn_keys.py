@@ -98,3 +98,14 @@ def test_the_trainer_flag_is_wired():
     assert i_set < i_swap < i_fb < i_drop
     import record_ckpt
     assert "auto_spine_keys" in record_ckpt.TRAIN_ONLY
+
+
+def test_sil_rides_the_per_env_temperatures_untempered():
+    """ab/sil: --sil-coef is allowed beside --front-temp, --demo-front-temp and
+    --respawn-greedy-temp (the recipe carries the first and the third), scored untempered; only
+    --sil-tempered, which needs the per-row temperature the buffer does not keep, is refused."""
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert src.count('("--sil-coef with --sil-tempered",') == 3
+    assert src.count('("--sil-coef", float(args.sil_coef or 0.0) > 0.0),') == 2   # the others
+    i = src.index("if float(args.front_temp) != 0.0:")
+    assert "--sil-coef rides along UNTEMPERED" in src[i:i + 400]

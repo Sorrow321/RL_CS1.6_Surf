@@ -9753,11 +9753,16 @@ def main() -> None:
         raise SystemExit("--front-contact reads the --front-temp band on the --ratchet-contact "
                          "record: it needs --front-temp > 0 and --ratchet-contact 1")
     if float(args.front_temp) != 0.0:
+        # --sil-coef rides along UNTEMPERED (ab/sil, 2026-11-14): its buffer keeps no per-row
+        # temperature, so a stored row is scored under the plain policy - "do more of what
+        # beat the critic"; only --sil-tempered needs the per-row T and is refused
         _bad = [f for f, on in (("--maps", args.maps),
                                 ("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
                                 ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
-                                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                                ("--sil-coef with --sil-tempered",
+                                 float(args.sil_coef or 0.0) > 0.0
+                                 and bool(int(args.sil_tempered or 0))),
                                 ("--cc-temp-scale", args.cc_temp_scale),
                                 ("--crl", getattr(args, "crl", None)),
                                 ("--yaw-cond", args.yaw_cond),
@@ -9778,7 +9783,9 @@ def main() -> None:
                                 ("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
                                 ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
-                                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                                ("--sil-coef with --sil-tempered",
+                                 float(args.sil_coef or 0.0) > 0.0
+                                 and bool(int(args.sil_tempered or 0))),
                                 ("--cc-temp-scale", args.cc_temp_scale),
                                 ("--crl", getattr(args, "crl", None)),
                                 ("--yaw-cond", args.yaw_cond),
@@ -9816,7 +9823,9 @@ def main() -> None:
         _bad = [f for f, on in (("--maps", args.maps),
                                 ("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
-                                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                                ("--sil-coef with --sil-tempered",
+                                 float(args.sil_coef or 0.0) > 0.0
+                                 and bool(int(args.sil_tempered or 0))),
                                 ("--cc-temp-scale", args.cc_temp_scale),
                                 ("--crl", getattr(args, "crl", None)),
                                 ("--yaw-cond", args.yaw_cond))

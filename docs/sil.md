@@ -77,3 +77,11 @@ below the critic, detaches the gap in the policy term and its value term
 raises `V`; the CPU smoke runs, logs the columns, prints the note and
 resumes; and the flag-off trainer reproduces the parent commit's trainer on
 the toy set (config dump, CSV header, every non-timing column).
+
+## With the per-env temperatures (ab/sil, 2026-11-14)
+
+`--front-temp`, `--demo-front-temp` and `--respawn-greedy-temp` (the recipe carries the first and
+the third) used to refuse `--sil-coef`. They now accept it UNTEMPERED: the buffer keeps no per-row
+temperature, so a stored row - possibly drawn hot - is scored under the plain policy ("do more of
+what beat the critic"). `--sil-tempered` with any of them is still refused. CPU smoke of the full
+unitfarmer2 command line with `--sil-coef 0.1`: rc 0, the buffer fills (`sil <rows> +<kept>`).
