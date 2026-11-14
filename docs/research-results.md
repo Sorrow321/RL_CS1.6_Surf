@@ -46043,3 +46043,118 @@ Interim reads at 22:10 UTC; nothing is final. Finishes and percentages are the g
 ### Launched: recipe v8 candidate on unitfarmer2 (`abv8u_1`, b828f96a)
 
 * RTX 5080 box 60701154 ($0.337/h), tunnel http://localhost:8643/, watchdog to 01:02 UTC.
+
+## 2026-11-14 22:17 UTC: princessburglar separation (sub-agent U): --yaw-entropy 0 alone also passes the far-wall impact on warm weights, ~250M steps later; the band's precise rows are the faster route and need no entropy change (--yaw-entropy-progress withdrawn); arm (ii) not run; an 85-minute idle box (U's own report)
+Sub-agent U, wave 10: which of w9's two changes crossed princessburglar's pit?
+(the first three sections were written before the run; the results were added after it).
+
+### The question and the arms
+
+w9 (ledger 9e620cb6) ran two changes at once on one warm instrument and the greedy from the
+true start crossed the pit (3/9, then 8/9 x3). This wave runs them APART on the same instrument:
+
+* Weights: P's abpbi1_1 ckpt_latest (md5 5290e1a6, step 5,989,466,112). Line: as_t3_E (md5
+  e164025a; SELF_STATES=1). Curriculum: P's arm-(i) flags (`--demo-success-d 100 --demo-window
+  5 --demo-grow 5 --demo-grow-max 40 --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50
+  --demo-front-frac 0.5 --demo-match-band`). Code ab/yawabs c8595e54. 1.0B steps after the
+  resume (box.py --steps 1e9, the trainer stops itself), one seed each, one box, in sequence.
+* Arm (i) `abyaw_2`: + `--yaw-entropy 0` alone.
+* Arm (ii) `abyaw_3`: + `--demo-front-temp 0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks
+  40` alone (the yaw entropy at its default).
+* Read-outs, as w9's table: success on the impact bands [1538-1547]; the step at which the
+  walk-back passes the impact rows (<= 1,537), reaches and passes the launch (<= 1,470, <=
+  1,446) and reaches the start room (<= 180); greedy crossings from the true start per eval
+  (min d <= 55,197, the spine's success line); the yaw sigma over the run.
+
+### What w9's own log says about the band noise (before the runs)
+
+* The band rows drew at 0.066 against the policy's sigma: 0.17x at the resume (0.385), 0.28-0.31x
+  while the impact bands were worked (0.211-0.233, 6.07-6.26B), 0.37-0.60x on the launch rows,
+  0.84x at the first crossing eval and 1.4x at the end (0.048). So during the hard bands the
+  band rows were QUIETER than every other row in the batch (and their keys hotter, x1.5): the
+  candidate mechanism is "precise yaw on the band", not "noise on the band".
+* Arm (ii) isolates that: with the default entropy the policy's sigma should stay near 0.39, so
+  the band rows draw at ~0.17x it. Arm (i) isolates the other reading: a precise policy
+  everywhere (sigma down to ~0.2 and below), the band rows drawn at the policy's own sigma.
+* Predictions, stated now: if arm (ii) passes the impact, the recipe needs no entropy change
+  (and the greedy-gated `--yaw-entropy-progress` is moot: from scratch the greedy sits in the
+  room through the walk-back, so the gate would not open in time). If only arm (i) passes, the
+  precision has to come from somewhere other than the greedy frontier.
+
+### A refusal found on the way (fixed before the launch)
+
+`--demo-front-temp` refused a recipe run: its check ("no --demo-file", not args.demo_file) runs
+at train_fast ~9903, and `--auto-spine-scratch` writes its first spine into demo_file only at
+~12571, so v7 + the band flags from scratch exited at startup. Fixed on ab/yawabs c8595e54 (the
+check accepts --auto-spine-scratch); CPU smoke of the recipe's scratch path with the band flags
+on princessburglar: ab7c_ud's v5 flag list + the v6 cap + the three band flags, from
+scratch, rc 0; run.json carries demo_front_temp 0.5, demo_front_yaw_abs 0.066 and
+auto_spine_scratch 1; "band rows drawn at yaw sigma 0.066 = the policy's 0.2 x 0.33" (the v5
+cap 0.2: the band rows are a third of the policy's sigma from the first iteration).
+
+### Results (written after the run)
+
+* Box 60687668 (RTX 3090, Malaysia, $0.389/h, ~212k steps/s), ab/yawabs c8595e54, 19:25-22:13
+  UTC, $1.09; released, gone from vastai and from the fleet registry, tunnel stopped.
+* Arm (i) abyaw_2 ran its full 1.0B (5,989,466,112 -> 6,989,807,616; the trainer stopped itself
+  at 20:47 UTC). Bundle: ~/ar_m2/runs/abyaw/abyaw_2/ (launch log, run.json, progress.csv, 14
+  greedy evals, ckpt_latest md5 8a359d1a).
+* Arm (ii) abyaw_3 was NOT run. The box sat idle from 20:47 to 22:13 UTC (85 min, ~$0.55). My
+  watch expired at ~20:06 and I did not re-arm it, so I was not told that arm (i) had ended.
+  That broke the 5-minute idle rule. At 22:12 arm (ii) would have taken ~$0.6 more than the
+  $1.5 budget allowed, so the box was bundled and released (the operator's fallback).
+
+| read-out | P's arm (i): entropy default, no band | abyaw_2: entropy 0 alone | w9 abyaw_1: both |
+|---|---|---|---|
+| band [1543,1547] | 7.6% / 82 visits | 20.5% / 75 | 20.9% / 32 |
+| band [1538,1542] | never measured | 18.4% / 52 | 19.0% / 36 |
+| impact band left for good | never | ~6.60B (+610M) | ~6.35B (+360M) |
+| launch reached (<= 1,470) / passed (<= 1,446) | never | 6.609B / 6.695B | 6.370B / 6.478B |
+| start room (<= 180) | never | not reached (row 783 at the cut) | 6.984B |
+| greedy crossings (of 9, per eval) | 0 in 14 evals | 0 x13, then 2 | 0 x10, 3, 8, 8, 8 |
+| yaw sigma | 0.475 -> 0.35-0.42 | 0.385 -> 0.21 -> 0.15 -> 0.061 | 0.385 -> 0.22 -> 0.048 |
+
+Both arms first reached row 1,537 at the same step (6.069B, an overshoot of a 40-row step) and
+then backed off to the impact band. Success on the impact band, [1538,1547], per 50M-step window,
+next to the policy's yaw sigma at that time:
+
+| window | w9: band rows at 0.066 | policy sigma | arm (i): rows at the policy's sigma | sigma |
+|---|---|---|---|---|
+| 6.05B | 12.7% | 0.232 | 12.0% | 0.216 |
+| 6.10B | 16.9% (first advances) | 0.227 | 13.8% (no advance) | 0.215 |
+| 6.15B | 16.3% | 0.216 | 15.6% | 0.211 |
+| 6.20B | 18.7% | 0.216 | 16.1% | 0.206 |
+| 6.25B | 23.5% | 0.210 | 18.2% | 0.185 |
+| 6.30B | 29.2% (left the band) | 0.186 | 16.6% (first advances) | 0.173 |
+| 6.35B-6.55B | - | - | 20.3, 21.1, 24.2, 23.4, 25.7% | 0.157-0.133 |
+
+The two crossing episodes of arm (i) (6.971B: min d 55,024 and 54,871, 3.72% and 3.99%) both
+end just past the pit's west end (x 501-654, z ~3,400), the same place as w9's. Six of the other
+seven end in the pit (3.19-3.25%) and one in the room.
+
+### What it says
+
+* `--yaw-entropy 0` alone gets the walk-back past the far-wall impact. P's default-entropy arm
+  never did (7.6% on [1543,1547], policy sigma 0.35-0.42). Arm (i) also gets the greedy over
+  the pit once, at the cut (2/9).
+* The band rows' precision is the faster way past it. Through 6.25B both runs had the same
+  policy sigma (0.21-0.23). The band rows drawn at 0.066 scored 1-5 points more on the impact
+  band (6.10-6.25B). They advanced from 6.10B instead of 6.30B and left the band ~250M steps
+  sooner. Arm (i) reached w9's rate only after its own sigma fell to ~0.15. w9 stayed ahead
+  after that: the launch ~240M / ~220M steps sooner, the start room within the 1.0B (arm (i)
+  stopped at row 783), and 8/9 crossings against 2/9 at the cut.
+* Both runs' success also rose with training at a fixed band sigma (w9: 12.7% -> 29.2% at
+  0.066). So this is not a dose-response in sigma. It is a lead of a few points at matched
+  steps, which a 20% advance rate turns into ~250M steps.
+* For the recipe: v7 keeps the default entropy and the 0.2 cap. Its policy sigma therefore sits
+  near 0.2, the level at which arm (i)'s impact rows scored 13.8-16.1% (6.10-6.20B), below the
+  advance rate. The band flags draw those rows at 0.066 without taking noise from the rest of
+  the batch. The operator's abpbc_1 (v7 + the three band flags, from scratch) is past the room
+  at every eval since 3.32B (6.7-6.9% of d0, the operator's report), which agrees. No entropy
+  change is needed. My w9 suggestion of `--yaw-entropy-progress` is withdrawn: the greedy gate
+  would open only after the crossing.
+* Caveats: one seed per arm; arm (ii) (the band alone on these weights) was not run. These
+  weights keep the 0.5 cap and a policy sigma of ~0.385, which would put the band rows at 0.17x
+  the policy. So "the band alone passes the impact under a NOISY policy" is not shown. The band
+  counts are curriculum events at a 20% threshold and react strongly to small differences in
+  rate.
