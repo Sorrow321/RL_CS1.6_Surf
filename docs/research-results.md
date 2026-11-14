@@ -46608,3 +46608,22 @@ Finishes from the grader (`autoresearch/score.py` in wt/ab9w).
 * Box 60637836 KEPT for the v9 regression (next entry). Bundle ~/ar_m2/runs/ab7c/ab7c_v7 (113
   evals, run.json, progress, launch log) + ckpts_v7 + auto_v7 (k01-k08 lines and logs), BUNDLE OK
   (md5 = box).
+
+## 2026-11-14 23:03 UTC: PRE-LAUNCH the v9 candidate's regression on petrus, celestial, blue200 (one box, in turn) and sidistic
+
+The v9 candidate's regression on the maps it has to keep, written before the launches.
+
+* The same 132 tokens as 3085ae4b (only --maxvel follows the map; 4000 on all four), code ab/yawabs
+  c8595e54, from scratch, seed 0. Worktrees ~/ar_m2/wt/abv9p (petrus, ab/abv9p ea527daa), abv9l
+  (celestial, e3fc46fc), abv9b (blue200, b83ecaae), abv9s (sidistic, 1af2e289); each list was
+  checked equal to the cannonball and unitfarmer2 v9 lists.
+* One after the other on the kept RTX 5080 box 60637836 (owner ab7c, so the runs are ab7c_p9,
+  ab7c_l9, ab7c_b9), tunnel :8637: petrus, then celestial, then blue200. Sidistic waits for a free
+  box (it needs billions of steps).
+* Bars (v5 from scratch / fix round): petrus 302.5M / 2,642.9M; celestial 529.0M / 1,284.0M;
+  blue200 831.0M / 1,435.0M; sidistic 5,058.9M / 8,380.7M.
+* Read: the first greedy finish from the grader run in each map's worktree.
+* Cuts (fixed now): the first finish + 2 evals; or petrus 1.5B, celestial 2.0B, blue200 2.5B,
+  sidistic 9.0B with no finish (a regression, reported as such).
+* No CPU smoke per map: the lists equal the unitfarmer2 v9 list that ran rc 0 (3085ae4b), and
+  celestial / blue200 cannot be smoked on a CPU (their face-id caches need the GPU).
