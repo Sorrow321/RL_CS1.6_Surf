@@ -43690,3 +43690,92 @@ bonuses paid; settings in run.json: bonus 50, no band flags, no auto-spine, cap 
 * Bundle (box.py pull, checkpoint md5 = box 4857c9a2): `~/ar_m2/runs/abpbi3/abpbi3_1/`
   (run.json, progress.csv, launch log, 14 evals) + `local_md5_abpbi3_1.txt`. Branch ab/pbi3
   127597d1. Code for (B): ab/ff 2bdf492f (pushed), smoke log in scratchpad `abl/pbx/ff/`.
+
+## 2026-11-14 08:36 UTC: ablation wave 4 - unitfarmer2 warm instrument (sub-agent U, abmcw_w1): handed its own Monte Carlo pit exit, the curriculum learns the last 0.5 s of the climb and stalls at its bottom; the greedy never leaves the pit in 1.5B steps; the bar is not kept across a resume
+
+Written BEFORE the launch. The warm instrument of wave 3 (sub-agent U, ordered by the operator
+after the ab/mc benches, ledger a6383c75): does the all-in policy LEARN a handed pit exit, and
+what does the loop do after it? An instrument, not a result: the question only exists at the
+pit, so the run starts there; the from-scratch run is the test.
+
+### The run
+
+* Owner `abmcw`, run `abmcw_w1`, branch ab/mcw (bd484e43 = ab/mc 0f73a013 + config), ONE box.
+* Weights: the all-in's final unitfarmer2 checkpoint (abuf2_all, md5 60b665bf, step
+  3,493,855,232; trained from scratch with the 137 all-in tokens), pushed by `box.py deploy
+  --ckpt` (md5 verified on the box). `box.py launch --resume --steps 1.5e9`: the trainer stops
+  1.5e9 steps after the resume.
+* Flags (passed after `--`, a resume passes no recipe itself): the ab/mc 138 tokens (the
+  all-in + ` --mc-envs 4096 --mc-keys-temp 1.5` in --auto-spine-args + --auto-spine-archive-bar)
+  WITHOUT --auto-spine-scratch (the first spine is the exit line, not the spawn) and without
+  --obs-normal 1 / --simba 1 (architecture keys, restored from the checkpoint), plus
+  `--demo-file runs/abmc_exit_s2.npy`; the launch extra `--auto-spine-mcts-args '--mcts-mix-rule
+  sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2'`. 135 tokens + the extra.
+* The first spine (SELF_STATES=1): the frontier rollout of `beam_tas --elite-frac 1.0
+  --keys-temp 1.5` (seed 2) on these SAME weights - the policy's own Monte Carlo rollout, no
+  demo: 2,600 states, 19.9 s, pit floor z -872, out above z 500 at state 2,595, ends at
+  (-1,730, -2,771, z 504), d 29,857 (the trainer reads 29,862; success line 29,962), md5
+  dd455946 (~/ar_m2/runs/abuf2/bench_all/fin_s2, ledger c9a3f657).
+* Local check (CPU): the same command path resumed a smoke checkpoint, rc 0, the curriculum
+  loaded the 2,600-state line, the resumed run.json config differs from its source only in
+  auto_spine_scratch, demo_file and steps (298 keys compared).
+
+### Reads (fixed before the launch)
+
+* The walk-back: the lowest start row (tau) of the curriculum on the 2,600-state line over
+  time; LEARNED = tau at 0 (or the greedy past the success line, a quorum).
+* The greedy: per eval, episodes OUT of the pit (above z 500 after the pit floor); where they go
+  after the exit (end positions, d).
+* Every search: which stage handed back what (tree, Monte Carlo, archive), the archive bar.
+* Finishes only from the grader (`autoresearch/score.py`).
+* Cut: 1.5e9 steps after the resume (the trainer's own stop), or earlier if the step count
+  stands still for 10 minutes.
+
+### Budget and box
+
+* One box, the cheapest passing card, deadline 2.5 h, watchdog registered with --harvest and
+  --pid-file, dashboard on the box (8600) and the tunnel on local port 8631. At most $1.5;
+  credit floor $15 (credit $35.96 at 06:15 UTC).
+
+### Result (written after the cut)
+
+The run: box 60604702 (RTX 3090, $0.356/h), resumed at 3,493,855,232, stopped by itself at
+4,994,367,488 (230k steps/s), 20 evals; released 08:34:49 UTC (about $0.82, deadline extended
+once to 09:15 so search 2 could finish); bundle ~/ar_m2/runs/abmcw/abmcw_w1 (95 files, md5 =
+box, 1.7 GB with the archives; md5 lists in ~/ar_m2/runs/abmcw/).
+
+* **The handed exit was NOT learned.** The walk-back on the 2,600-state line: 2,594 -> 2,524 in
+  10M steps (95-100%: the last half second of the climb), 2,404 at 3.628B (24%: the bottom of
+  the climb, z -617, 1.4 s before the exit), then 2,404-2,464 at 2-46% until search 1 replaced
+  the line at 4.171B. Not one of the 2,400 lap states before it was reached.
+* **The greedy never left the pit**: in the pit 9 of 9 at all 20 evals; above z 500 after the
+  floor 0 of 9 at 19 evals; at 4.853B one episode touched z 537 on the pit's SOUTH wall
+  (-1,689, -3,564) at 25.1 s and fell back (the exits leave at (-1,730..-1,800,
+  -2,770..-2,900)). Grader: 0 finishes in 180 episodes, best 2.48% (4.098B).
+* **Search 1** (patience, 4.023B; greedy 30,240, held exit line 29,862; NO bar - no archive
+  line had failed in this process): tree 30,038 (fallback); Monte Carlo a pit EXIT (3,200
+  states, 24.5 s, out at state 3,168, z 523, d 29,939; the deeper fallback); archive (held)
+  28,518 = the TROUGH (2,920 states, never in the pit, ends (-1,971, -1,088, z 299)) -> handed
+  back at 4.171B. Its walk-back: 2,919 -> 649 in 0.21B (22-100%), then 389-449 at 0-56% to the
+  cut; the greedy kept diving.
+* **Search 2** (patience, 4.853B): the trainer printed "the held line (beam+ge, end d 28,518)
+  failed its curriculum; archive lines must now end 200 u past 28,518" and ran with
+  `--archive-bar 28518.0`. The trainer reached its cut at 4.994B and killed the search in its
+  second archive stage; the same command completed offline on the box (auto/k02m): tree 29,978
+  (fallback, 254 states, the platform), Monte Carlo 30,101 (the platform at 2.3 s: NO exit on
+  the 4.85B weights, seed 2), archives 28,527 and 28,423 (trough, not past 28,318) -> the
+  tree's platform line would be handed back (the fix round's open item 4, the shallow fallback).
+
+### What it says
+
+* The all-in policy does not learn a handed 2,600-state pit exit in 0.53B steps: the backward
+  curriculum teaches the last 1.4 s of the climb and stalls at its bottom; the 15 s of laps
+  before it are never walked. A Monte Carlo exit is a rare rollout of the policy (about 1 in
+  4,096 on these weights), not yet a habit the curriculum can grow backward from.
+* The bar works as written (armed by the failed trough line at search 2; both trough lines
+  refused there), but it is armed only by a failed ARCHIVE line and lives in the trainer
+  process: after a resume - and once in any run - the first archive line, the trough, is
+  adopted; here it replaced the exit curriculum after 0.53B.
+* The Monte Carlo found an exit at 4.02B (seed 1) and none at 4.85B (seed 2), after 0.68B on the
+  trough curriculum; one seed each, the two causes are not separated.
+* One seed, a warm instrument: no claim about a from-scratch run.
