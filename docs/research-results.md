@@ -45959,3 +45959,41 @@ per greedy eval, the furthest row of that line each episode passes within 96 u o
 * One box for the three arms: 60689026 (RTX 5090, $0.571/h), up 19:39:50 to 21:34:52 UTC,
   about $1.10 of the $2.5 budget. Destroyed (gone from `vastai show instances`), released from
   the watchdog, tunnel 8633 stopped. Account credit $37.20 at ~21:50 UTC (shared).
+
+## 2026-11-14 22:01 UTC: PRE-LAUNCH recipe v8 candidate (v7 - spawn rows, novelty gate LO 0.05, band yaw flags; 128 tokens) from scratch on unitfarmer2
+
+The first run of the RECIPE v8 CANDIDATE, written before the launch.
+
+### v8 candidate = v7 with three changes, each from this round's evidence
+
+* `--int-coef-progress 2.5:0.05:0.1` (was 2.5:0.25:0.1): novelty unchanged in the first 10% of
+  the spawn's distance, 0.05 beyond. Cannonball with this one change (`ab8n_cq`) passed the
+  205,440 u wall at 1.66B (v5: never in 6.3B) and reaches 99.8% of the route by 3.78B (grader
+  best; no finish yet at 3.93B); novelty fell from 45-100% to about 12% of the return there.
+* `--demo-front-temp 0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks 40`: curriculum band
+  spawns draw yaw at an absolute sigma of 0.066 (precise band rows). On warm princessburglar
+  weights this (with yaw entropy 0) took the greedy across the pit from the true start (9e620cb6);
+  from scratch on princessburglar inside v7 (`abpbc_1`, running) the walk-back on its held tree
+  line went from row 1,315 to row 385 of 1,536 by 3.0B.
+* The greedy-death and front-perturbed spawn rows dropped (`--respawn-greedy*`,
+  `--respawn-front-perturb*`, 25 tokens; sub-agent P, cc22342a): they take half of the non-start
+  spawns, so a held line gets about 45% of the starts instead of 90%, and princessburglar leaves
+  its room only by walking a held line back to the spawn. Never ablated on unitfarmer2: every
+  run that dove had them.
+* 147 - 25 + 6 = 128 tokens, code ab/yawabs c8595e54; builder abl/launch/mkcfg_v8.py +
+  mk_wave11.sh. ONE list for every map; only --maxvel follows the map. Launch extra unchanged.
+
+### The run: unitfarmer2 from scratch (`abv8u_1`)
+
+* Why unitfarmer2 first: it is the map most likely to break (the dive has only ever been seen
+  with the spawn rows on). Worktree ~/ar_m2/wt/abv8u, branch ab/abv8u 2157f956; seed 0; one box
+  (5080 / 4080S / 3090 class), watchdog with harvest spec + pid file, dashboard tunnel.
+* Reads: the dive (9/9 greedy below z 0; v7: from 378M), the exit (above z 500 after the floor
+  AND the grader past 2%), the searches (stage, where each line ends: the trough north of the
+  pit is the known dead end), finishes from the grader run in this worktree.
+* CPU smoke of the complete command line (the launcher's scratch pins + 128 tokens + the launch
+  extra, unitfarmer2, 40,960 steps, worktree wt/abv8u): rc 0, the gate reads 0.05.
+* Cut (fixed now): 1.0B if no greedy episode has gone below z 0 (the dive is broken: stop and
+  report); otherwise 8B, or the first finish + 5 evals.
+* The uf2 v7 run beside it (`ab7c_v7`) is at 6.5B with five search lines, all in the trough
+  or on the platform, and no exit; it stops at its 8B cut.
