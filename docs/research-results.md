@@ -44657,3 +44657,19 @@ the maps the fix-round recipe finishes, one arm per map as boxes free up.
   one) and the 300M search delay; they are re-run with v5 if the budget allows.
 * `ab4u_v4` (unitfarmer2, v4 without the delay) stopped by pid at 1,696.1M: 0/9 below z 0 to
   1.66B (its 1.5B no-dive cut), BUNDLE OK; its box (60604616, RTX 5080) runs petrus.
+
+## 2026-11-14 13:30 UTC: ablation wave 8 interim - PETRUS FINISHES with recipe v5 at 302.5M (fix round 2,642.9M)
+
+* `ab4u_pet5` (petrus, recipe v5; pre-launch 3938fb09) FINISHES: first greedy finish at 302.5M
+  (3/9, 31.95 s), before its first search (the 300M delay; search 1 at 307.2M then handed back a
+  4,154-state line to the goal in 12 s); 7/9 at 378.0M, 5/9, 8/9, 7/9, 7/9 to 680.0M, best
+  30.90 s (grader). The fix round: 2,642.9M (best 33.10 s); the frozen recipe 3,246.9M; the
+  older petrus recipes 0.50-1.01B, best 31.93 s. Stopped by pid at 702.5M (answered), BUNDLE OK;
+  the box (60604616, RTX 5080) runs blue200 v5 next (`ab4u_b5`, written now; read: the first
+  finish, cut 2.0B; v3 finished it at 906.5M), then celestial v5 if a box is free.
+* `ab7b_pb5` (princessburglar, v5): the greedy is at the start-room spot (664-749, -2,856) at
+  302.5-453.5M; search 1 (after the delay, ended 476.6M) handed back a beam+ge line of 2,605
+  states into the pit (end d 55,349), which the curriculum now holds.
+* `ab7c_ud` (unitfarmer2, v5): 9/9 in the pit at every eval from 378.0M to 1.43B, highest after
+  the floor z 69-246, not out yet; its search-1 trough line is walked back to rows 2,020-7,200
+  at 59.9%.
