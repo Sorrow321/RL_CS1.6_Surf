@@ -44836,3 +44836,24 @@ commit (f81cf37b).
   steady search cadence on these weights find the SE-lip exit line that v1's search 5 found
   (3.28B), and does the curriculum hold the exit (the rehearse rule is on)? An instrument, not a
   recipe result; v6 (= v5 + the cap) is run from scratch only if it does.
+
+## 2026-11-14 14:58 UTC: ablation wave 8 - CELESTIAL FINISHES with v5 at 529.0M; v5 has finished petrus, celestial and blue200, each earlier than the fix round; PRE-LAUNCH v6 (v5 + the patience cap) on unitfarmer2
+
+* `ab4u_c5` (celestial, recipe v5) FINISHES: 41.1% at 151.5M (past the fork), first greedy
+  finish at 529.0M (3/9, 48.37 s), 2/9 at 604.5M (grader). v3: 755.5M; fix round: 1,284.0M.
+  Stopped by pid at 672.7M (answered), BUNDLE OK.
+* RECIPE v5 SCOREBOARD (from scratch, one seed per map, grader): petrus 302.5M, celestial
+  529.0M, blue200 831.0M - each earlier than the fix round (2,642.9M; 1,284.0M; 1,435M).
+  cannonball (2.49B, 47-69%, no finish; fix round 3,095.9M) and sidistic (2.0B; 8,380.7M)
+  running; unitfarmer2 dives, no exit (3.53B); princessburglar in the start room (1.89B).
+
+### Written BEFORE the launch: recipe v6 on unitfarmer2
+
+| run | recipe | read | cut |
+|---|---|---|---|
+| `ab4u_u6` | v6 = v5 + `--auto-spine-patience-max 1e9` (147 tok.) | dive, exit, finish | 8B |
+
+* On celestial's freed box (60604616). The cap (f541f5a0) forces a search after 1B steps
+  without a quorum; ab7c_ud held its first trough line 2.6B steps without one. Beside it the
+  warm instrument `ab7c_w6` asks the same question from ab7c_ud's 3.53B weights.
+* CPU smoke of the 147-token line rc 0 (40,960 steps), code ab/pmax f81cf37b.
