@@ -44070,3 +44070,43 @@ fork, 75M steps apart; within one eval the greedy is one-sided in 25 of 30 / 13 
   ab3cc's k03 got (row 1,345, its split at ~1,748), which its greedy never followed for long.
   Watch whether this greedy does.
 * The run's int/ep is 150-183 against rew 165-180 at 1.58B; unstuck T 0.50.
+
+## 2026-11-14 09:40 UTC: ablation wave 6 PRE-LAUNCH - the unitfarmer2 v1 run lost its exit after 3.85B; v1-lean with the novelty weight back at 0.25 on celestial (the fork) and unitfarmer2 (the dive)
+
+### Read
+
+* `ab4u_1` (unitfarmer2, v1) LOST the exit: every eval from 4.30B to 4.61B is back in the pit
+  (grader 1.8-1.9%, 0 of 9 above z 500 after the floor). The curriculum on search 6's long
+  Monte Carlo line (11,100 states) sits at its far end (rows 8,704-11,099, success 1.0%), far
+  from the exit, which the policy had at 3.70B and 3.85B and no curriculum spawn holds.
+* `ab5c_1` (celestial, v1-lean) at 1.84B: 23-30%, still at the fork, with two Monte Carlo
+  lines past it (581M, d 39,325; 1,108M, d 35,062). Two recipes built from the all-in groups
+  (`ab3cc_1`, `ab5c_1`) now stall at the fork where the fix round (680M) and the frozen recipe
+  (755-831M) passed it; with death and energy K 12 out of the second, the stall is less likely
+  a line lottery and more likely one of the remaining training changes.
+
+### Wave 6, written BEFORE the launch: the novelty weight
+
+* Sub-agent P's celestial read (c42b7a11): in the two stalled runs novelty is 71-117% of the
+  episode return (int-coef 2.5) against 1-11% in the runs that passed the fork (0.25), and the
+  greedy switches fork sides 9-22 times where the passing runs hold one. The all-in's novelty
+  group changed both the WEIGHT (0.25 -> 2.5) and the KEY (view 8 / speed 3 -> view 0 / speed 8,
+  weighted up); the unitfarmer2 dive needed the group (a5a24c58), not separated further.
+* `ab5u_1` (unitfarmer2, v1-lean) stopped by pid at 2,135.4M to free its box: dives 9/9 from
+  227.0M, in the pit to the end (one lip touch, z 515 at 1.13B), its trough tree line (search 2)
+  not learned (3-11%); BUNDLE OK, box released 09:39 UTC.
+
+| owner / run | map | recipe | read | cut |
+|---|---|---|---|---|
+| `ab6c_1` | celestial | v1-lean with `--int-coef 0.25` (132 tokens) | fork, finish | 2.5B |
+| `ab6u_1` | unitfarmer2 | the same 132 tokens | the start dive | 0.6B |
+
+* If celestial passes the fork AND unitfarmer2 still dives, the weight was the problem and the
+  key does the dive; if unitfarmer2 does not dive at 0.25, the dive needs the weight and a
+  generic rule for it (for example novelty that grows only while the run is stuck) is next.
+* The same tokens as the smoked v1-lean line with one value changed. A second variant was
+  built and smoked but NOT launched: v1-lean + `--act-every 5` (38.3 ms decisions at the 7.63
+  ms tick, near the recipe's 40 ms; branch ab/ab6k, CPU smoke rc 0, 26.1 Hz printed).
+* Two 4080/5080-class boxes (~$0.39/h), deadlines 2.6 h and 1.2 h, watchdog with harvest spec
+  and pid file; tunnels http://localhost:8635/ (celestial) and :8636 (unitfarmer2).
+  Credit about $30.9 at 09:40 UTC.
