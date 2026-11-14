@@ -4161,6 +4161,45 @@ AUTO_SPINE_OWN_FLAGS = frozenset((
     "--failed-fallback", "--archive-ban", "--archive-ban-r", "--dead-end-ban"))
 
 
+
+def parse_int_coef_progress(spec) -> tuple:
+    """--int-coef-progress 'HI:LO:P' -> (HI, LO, P): HI, LO >= 0, 0 < P <= 1."""
+    try:
+        hi, lo, p = (float(x) for x in str(spec).split(":"))
+    except ValueError:
+        raise SystemExit(f"--int-coef-progress HI:LO:P (three numbers), got {spec!r}")
+    if not (hi >= 0.0 and lo >= 0.0 and 0.0 < p <= 1.0):
+        raise SystemExit(f"--int-coef-progress HI:LO:P needs HI, LO >= 0 and 0 < P <= 1, "
+                         f"got {spec!r}")
+    return hi, lo, p
+
+
+def int_coef_at(progress, hi: float, lo: float, p: float) -> float:
+    """--int-coef-progress: the novelty coefficient at frontier ``progress`` (a fraction of the
+    spawn's d): HI at 0 or less (and with no reading yet, NaN), falling linearly to LO at ``p``,
+    LO beyond."""
+    x = float(progress)
+    x = 0.0 if x != x else min(max(x / float(p), 0.0), 1.0)
+    return float(hi) + (float(lo) - float(hi)) * x
+
+
+def greedy_frontier_progress(eps, field, d0, g_step: float, vmax: float) -> float:
+    """--int-coef-progress: the greedy eval's frontier as a fraction of the spawn's d ``d0`` -
+    1 - the median over its episodes of the CONTACT-BANKED deepest d (banked_min_d: a fatal dive
+    after the last map contact does not count; the frontier --auto-spine-banked reads). NaN when
+    no episode has a reachable d."""
+    bests = []
+    for e in eps:
+        d = np.asarray(field.sample(np.asarray(e[:, 1:4], np.float64)), np.float64)
+        d = np.where(d < field.reach_max - 0.5 * field.cell, d, np.inf)
+        b = banked_min_d(d, np.asarray(e[:, 6], np.float64), g_step, 1.0, vmax)
+        if np.isfinite(b):
+            bests.append(float(b))
+    if not bests or not d0:
+        return float("nan")
+    return 1.0 - float(np.median(bests)) / float(d0)
+
+
 def is_archive_source(source) -> bool:
     """--auto-spine-archive-bar: a spine an ARCHIVE stage handed back (auto_spine's source
     ``beam+ge``, ``beam+ge2``, ``beam+ge_energy``, ...): a chain of the explorer's uniform actions
@@ -7720,6 +7759,17 @@ def main() -> None:
                          "factor, at most 4x per iteration, clamped to [1e-4, 1e4]). Saturated "
                          "counts no longer silence it: the coefficient grows as they do "
                          "(the user, 2026-09-28). 0 (default) = off. ckpt restores")
+    ap.add_argument("--int-coef-progress", default=None, metavar="HI:LO:P",
+                    help="the count novelty's coefficient follows the run's own frontier: HI "
+                         "while the greedy eval's frontier progress (1 - the median contact-banked "
+                         "deepest d of its episodes / the spawn's d) is 0, falling linearly to LO "
+                         "at progress P, LO beyond; re-read at every greedy eval, x (1 + T) under "
+                         "--unstuck as --int-coef is. Replaces --int-coef's value (which must be "
+                         "> 0: it turns the novelty on). ab/intp, 2026-11-14: unitfarmer2 dives "
+                         "only with 2.5 (its frontier sits at 1-4%% of d0 for billions of steps), "
+                         "celestial passes its fork only with 0.25 (25-30%%): 2.5:0.25:0.1 for "
+                         "every map. Off = byte-identical; config only when on; the coefficient "
+                         "and the reading are checkpointed, the flag is not restored")
     ap.add_argument("--int-split", action="store_true",
                     help="two-head critic with a NON-EPISODIC intrinsic return "
                          "(Burda et al., RND, ICLR 2019 sec. 2.3; docs/int_split.md): "
@@ -11192,6 +11242,23 @@ def main() -> None:
         print(f"--int-match {IMATCH:g}: the novelty coefficient (from --int-coef "
               f"{float(args.int_coef):g}) is rescaled after every iteration so the novelty paid "
               f"tracks {IMATCH:g} x |the rest of the reward| over the same ticks")
+    # --int-coef-progress: the novelty coefficient interpolated by the greedy frontier's progress
+    INTP = (parse_int_coef_progress(args.int_coef_progress)
+            if args.int_coef_progress is not None else None)
+    if INTP is not None:
+        if not float(args.int_coef or 0.0) > 0.0:
+            raise SystemExit("--int-coef-progress sets the count novelty's coefficient: it needs "
+                             "--int-coef > 0 (which turns the novelty on)")
+        if IMATCH:
+            raise SystemExit("--int-coef-progress and --int-match both set the novelty "
+                             "coefficient - pick one")
+        if args.maps or D.enabled:
+            raise SystemExit("--int-coef-progress reads ONE map's greedy frontier on the main "
+                             "rank: not implemented with --maps or --ddp")
+        print(f"--int-coef-progress {INTP[0]:g}:{INTP[1]:g}:{INTP[2]:g}: the novelty coefficient "
+              f"(not --int-coef {float(args.int_coef):g}) is {INTP[0]:g} at frontier progress 0, "
+              f"falling linearly to {INTP[1]:g} at {INTP[2]:.0%} of the spawn's d, read at every "
+              f"greedy eval (the median contact-banked deepest d)")
     if args.int_gamma is None:
         args.int_gamma = 0.99
     if args.int_vf is None:
@@ -15914,6 +15981,8 @@ def main() -> None:
                                "int_adv_coef": float(args.int_adv_coef)})
     if IMATCH:
         meta["config"]["int_match"] = IMATCH
+    if INTP is not None:
+        meta["config"]["int_coef_progress"] = [float(v) for v in INTP]
     if CRL:
         # --crl, written ONLY when on (a control's config dump gains no key):
         # the flag, every knob a resume restores, and - provenance only - the
@@ -18619,6 +18688,44 @@ def main() -> None:
     # the temperature scales (docs/unstuck.md). unstuck_T is the T the
     # CURRENT iteration's rollout runs at; the observe() call at the end of
     # each iteration sets the next one.
+    # --int-coef-progress: the coefficient and the frontier reading it came from (checkpointed).
+    # Every slot's novelty starts at it - HI on a fresh run - and --unstuck's base reads it below
+    INTP_ST = {"progress": float("nan"), "coef": None if INTP is None else float(INTP[0]),
+               "eval": None}
+    if INTP is not None:
+        if ck is not None and ck.get("int_coef_progress") is not None:
+            _icp = ck["int_coef_progress"]
+            INTP_ST.update(progress=float(_icp.get("progress", float("nan"))),
+                           coef=float(_icp["coef"]))
+            print(f"--int-coef-progress: restored the novelty coefficient {INTP_ST['coef']:.4g} "
+                  f"(greedy frontier {INTP_ST['progress']:.2%} of the spawn's d)", flush=True)
+        for _s in slots:
+            _s.reward_fn.int_coef = float(INTP_ST["coef"])
+
+    def _int_progress_after_eval(ev_path):
+        """--int-coef-progress: the greedy eval just written sets the novelty coefficient from
+        its frontier progress (x (1 + T) under --unstuck's novelty scaling)."""
+        from surfgym.route import episodes_from_traj
+        _s0 = slots[0]
+        _fd = _s0.reward_field if _s0.reward_field is not None else _s0.goal_field
+        eps = [e for e in episodes_from_traj(ev_path) if len(e)][:max(1, int(args.eval_eps or 9))]
+        _gs = -float(_s0.core.config.phys.sv_gravity) * float(TICK.ms) / 1000.0
+        prog = greedy_frontier_progress(
+            eps, _fd, float(getattr(_s0, "rf_d0", None) or getattr(_s0, "d0", None) or 0.0),
+            _gs, float(_s0.core.config.phys.sv_maxvelocity))
+        if prog != prog:
+            return
+        c = int_coef_at(prog, *INTP)
+        INTP_ST.update(progress=float(prog), coef=float(c))
+        if INT_BASE is not None:
+            INT_BASE[:] = [c] * len(INT_BASE)
+        mult = (1.0 + float(unstuck_T)) if UNSTUCK_INT else 1.0
+        for _s in slots:
+            _s.reward_fn.int_coef = c * mult
+        print(f"[{global_step:>13,d}] --int-coef-progress: greedy frontier {prog:.2%} of the "
+              f"spawn's d -> novelty coefficient {c:.4g}"
+              + (f" (x {mult:.2f} under --unstuck)" if mult != 1.0 else ""), flush=True)
+
     unstuck_sched, unstuck_T, INT_BASE, UR = None, 0.0, None, None
     # --unstuck-reach eval: the last greedy frontier not yet observed (NaN =
     # no new reading)
@@ -18855,6 +18962,11 @@ def main() -> None:
             # --auto-spine-archive-bar (ab/v2): the failed lines' ends and the held line's source,
             # so a resume keeps refusing what failed
             state["auto_spine_failed"] = auto_failed_state(AUTO, demo.S[-1]["origin"])
+        if INTP is not None:
+            # --int-coef-progress: the coefficient and its frontier reading, so a resume keeps
+            # the novelty the run had reached until its next greedy eval
+            state["int_coef_progress"] = {"progress": float(INTP_ST["progress"]),
+                                          "coef": float(INTP_ST["coef"])}
         if FRONTIER and frontier_sched is not None:
             # --respawn-frontier-grow: same reason. A resume that forgot the
             # plateau clock would hand the run a fresh patience window and
@@ -22555,6 +22667,8 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 if AUTO_SPINE and _i == 0 and not _s.heldout:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
+                if INTP is not None and _i == 0 and not _s.heldout:
+                    INTP_ST["eval"] = path  # --int-coef-progress: read after the eval block
                 if args.auto_finish and _i == 0 and not _s.heldout:
                     AFIN["eval"] = path     # --auto-finish: read after the eval block
                 st = episode_stats(path)
@@ -22840,6 +22954,13 @@ def main() -> None:
             except Exception as _ex:         # a failed search never ends the run
                 AFIN["retry_at"] = int(global_step + float(args.auto_finish_retry))
                 print(f"!! auto-finish: {type(_ex).__name__}: {_ex}", flush=True)
+        if INTP is not None and INTP_ST["eval"] is not None:
+            # --int-coef-progress: the greedy eval just written sets the novelty coefficient
+            _ipp, INTP_ST["eval"] = INTP_ST["eval"], None
+            try:
+                _int_progress_after_eval(_ipp)
+            except Exception as _ex:         # a failed reading keeps the coefficient
+                print(f"!! --int-coef-progress: {type(_ex).__name__}: {_ex}", flush=True)
         if AUTO_SPINE and AUTO["eval"] is not None:
             # --auto-spine: the greedy eval just written decides whether to search
             _ap, AUTO["eval"] = AUTO["eval"], None

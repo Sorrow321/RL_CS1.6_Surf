@@ -205,6 +205,8 @@ TRAIN_ONLY = frozenset({
     "ramp_reach_bonus",
     # --int-match: the novelty coefficient's per-iteration rescaling - TRAINING only
     "int_match",
+    # --int-coef-progress: the novelty coefficient set from the greedy frontier - TRAINING only
+    "int_coef_progress",
     # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
     "ramp_offtarget_pen",
     # --ramp-pairs' provenance per map (the pairs themselves are MIRRORED) - metadata
