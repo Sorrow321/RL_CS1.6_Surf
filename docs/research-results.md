@@ -44605,3 +44605,37 @@ Every spine swap in the four finishing runs, by the same reading:
 * Runs on celestial's kept box (60637836, RTX 5080; run names must start with its owner, hence
   `ab7c_ud`), watchdog re-registered, tunnel http://localhost:8637/. CPU smoke rc 0, 40,960 steps,
   'no search before step 300,000,000' printed.
+
+## 2026-11-14 12:59 UTC: ablation wave 8 PRE-LAUNCH - the 300M-step search delay gives unitfarmer2 its dive back (v4 + delay dives 9/9 at 378M; without it none by 1.36B); blue200 v3 finishes (906.5M); recipe v5 = v4 + delay on princessburglar
+
+### Read
+
+* `ab7c_ud` (unitfarmer2, v4 + `--auto-spine-delay 3e8`; pre-launch f076bf60) DIVES: 0/9 below
+  z 0 to 302.5M, 9/9 from 378.0M (to 604.5M so far); its first search (438.3M, after the delay)
+  handed back a 7,201-state trough line (end d 28,333) that the curriculum does not learn (0.9%).
+  `ab4u_v4` (the same recipe without the delay): 0/9 to 1.36B, its search-2 platform line learned
+  from state 0 (97.7%). The delay is what separates them.
+* `ab7b_1` (blue200, recipe v3): first greedy finish 906.5M (9/9; best 12.80 s at 1,057.5M),
+  after search 2's beam+ge line to the goal (553.6M); before it 64.7-69.8% from 302.5M. Fix round
+  1,435M; v1 302.5M. No regression against the fix round. Stopped by pid at 1,123.0M, BUNDLE OK;
+  its box (RTX 4070S Ti, $0.184/h) is kept for princessburglar below.
+* `ab7p_1` (princessburglar, recipe v4, RTX 3090 at 186k steps/s) stopped by pid at 469.8M to
+  move princessburglar to v5; BUNDLE OK after a second checkpoint copy (the box's uplink broke an
+  rsync; md5 ed7720b3 = box); box released 12:58 UTC.
+
+### Recipe v5, written BEFORE the launch
+
+* v5 = v4 + `--auto-spine-delay 3e8` (145 tokens; code ab/v4 b784f84c): the first search waits
+  300M steps, so it searches a trained policy (a random policy's first line is a lottery that
+  decided princessburglar's start room, 20a23c95, and unitfarmer2's dive, above). `ab7c_ud` IS
+  v5 on unitfarmer2.
+
+| owner / run | map | read | cut |
+|---|---|---|---|
+| `ab7b_pb5` | princessburglar | room exit, pit, crossing, finishes | 5B; 2.5B if still in the room |
+
+* On blue200's kept box (run names start with the box owner); watchdog re-registered with the
+  new harvest spec; tunnel http://localhost:8638/. CPU smoke of the 145-token princessburglar
+  line rc 0 (40,960 steps; "no search before step 300,000,000"). Credit $27.07 at 12:58 UTC.
+* The v5 regression on the other maps (blue200, celestial, petrus, cannonball, sidistic)
+  follows on boxes as they free up; v3 already finished celestial (755.5M) and blue200 (906.5M).
