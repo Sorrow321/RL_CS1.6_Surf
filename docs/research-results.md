@@ -44872,3 +44872,83 @@ commit (f81cf37b).
   drew a 4,637-state trough TREE line at 436.2M that its curriculum learns (98%) and dives 3/9 at
   604.5M. Every search on this map so far ranks the trough (d 28,2xx-28,9xx) deeper than the pit exit
   (d ~29,5xx-29,9xx), and the trough is wider than the 128 u ban.
+
+## 2026-11-14 15:50 UTC: ablation wave 8 - sub-agent U (offline, 26 runs): a tail ban cannot separate the unitfarmer2 trough from its exit, and the dead-end ban of v4-v6 would have refused the one exit line ever learned (a KNOWN RISK of the recipe)
+Sub-agent U, wave 8 (offline: no box, no build). The TAIL BAN, replayed on every saved line in
+reach. Verdict: it cannot work on these maps - the trough's way in is the exit - and today's
+dead-end ban (its T = 0 cell) has the same defect.
+
+### The rule as replayed
+
+* A held SEARCH line fails when a patience search starts while it is held (the 2-row spawn spine
+  never counts). Its last T s of states are recorded (130.4 rows/s at 7.63 ms, 100 at 10 ms).
+* A later line of any stage is refused when its END lies within R of any recorded state, counting
+  only tails on record when that line's search started. ab7c_w6 inherits ab7c_ud's tails up to
+  3.53B (as ab/v2 persists dead ends).
+* T = 0 is the end alone: today's --auto-spine-dead-end-ban at R = 128 (on in v4-v6). Every
+  result below is unchanged by the ban's live test (failed end still beyond greedy - gain).
+* Data: launch logs and adopted spines, 26 lineages, 63 adopted lines, 31 failures (uf2 23, pb 5,
+  blue200 / petrus / cannonball 1 each). Read-only copies (15:2x UTC) from boxes ab4u (ab4u_1, _v4,
+  _u6, _pet5, _b5, _c5), ab7c (ab7c_1, _ud, _w6), ab8s_1, ab8n_1; local bundles abuf2_all, ab5u_1,
+  m6sib_uf2, fxuf2_t1, abpb_all, ab7b_pb5, ab7b_1, fxpb_t1-t3, fx{b200,cel,pet,can,sid}_t1; P's
+  as_t3_E. Scripts: scratchpad tbs/tailban.py, tails.py, vel.py, k05cut.py.
+* Trough re-entry = a trough line adopted with a failed trough line on record in its lineage: 6
+  listed (abuf2_all k04, k05; ab4u_1 k03; ab5u_1 k03; ab7c_ud k02; ab7c_w6 k01) and 10 unlisted,
+  same floor (ab4u_v4 k03; fxuf2_t1 k03-k05; m6sib_uf2 k03-k08).
+
+### The grid (re-entries refused: listed + unlisted; then the must-stay-open lines refused)
+
+| T \ R | 128 | 256 | 512 |
+|---|---|---|---|
+| 0 (today) | 0/6 + 5/10; exit | 2/6 + 7/10; exit | 5/6 + 10/10; exit |
+| 1 s | 2/6 + 7/10; exit | 2/6 + 7/10; exit | 6/6 + 10/10; exit, fxpb_t1 k02 |
+| 2 s | 2/6 + 7/10; exit | 2/6 + 7/10; exit | 6/6 + 10/10; exit, fxpb_t1 k02 |
+| 4 s | 2/6 + 7/10; exit | 2/6 + 7/10; exit | 6/6 + 10/10; exit, fxpb_t1 k02, ab7b_pb5 k02 |
+
+"exit" = ab4u_1 k05, the SE-lip line (end (-1,776, -2,423, 557), d 29,502), the only line that ever
+took a uf2 greedy out of the pit (frontier 22,020 within 0.2B of its adoption).
+
+END to the nearest tail on record (u, T = 0 / 1 / 2 / 4):
+* listed: abuf2_all k04 587/414/367/337, k05 403; ab4u_1 k03 296; ab5u_1 k03 282; ab7c_ud k02
+  182/20/20/20; ab7c_w6 k01 185/14/14/14 (ab7c_ud k01's tail, inherited).
+* unlisted: ab4u_v4 k03 365; fxuf2 k03 465, k04 135/21/21/21, k05 69; m6sib k03 68, k04 31, k05
+  114, k06 37, k07 355, k08 150/71/71/71.
+* must stay open: ab4u_1 k05 80 at every T (the END of its own lip tree line k01: failed 0.53B,
+  d 29,580, still live at search 5 - greedy 30,218); ab4u_1 k06 4,850; fxpb_t1 k02 (crossing)
+  599/470/466/382; ab7b_pb5 k02 (crossing) 665/665/665/465; fxb200_t1 k03 (goal line) 1,652;
+  fxpet_t1 k03 4,167. The other 29 lines (5 pb, 24 on the finishing maps, ab8s/ab8n live
+  included) had no failure on record: their searches were quorum searches.
+* other lines refused: ab4u_1 k04 (Monte Carlo, 169 u from k01's 1-s tail) at R >= 256;
+  abuf2_all k03 (307-450 u) at R = 512, T >= 1.
+
+### Why it cannot work
+
+1. The trough's way in is the exit. ab4u_1's exit ENDS 80 u from where its failed lip line k01
+   ENDED, so no T helps and every R >= 80 refuses it. Both ends survive v3's
+   --end-survive-secs 1 unchanged (both flights "land"): today's dead-end ban would have refused
+   the exit at ab4u_1's search 5 too. Latent in v6: no lip line has failed in ab4u_u6 or ab7c_w6.
+2. Trough lines fly over the exit spot on their way in: across lineages the 4-s tails of 7 of 22
+   failed trough lines (ab5u_1 k03, fxuf2 k03-k05, m6sib k03, k04, k07) START 18-32 u from the
+   exit's end (m6sib k04's 2-s tail 26 u; abuf2_all k01's 1-s tail 74 u). A longer tail bans more
+   of the exit's approach, not more of the trough.
+3. The tail does not sweep the floor. Trough lines arrive from the south and stop at their end;
+   at R <= 256 a tail adds 4 refusals over today's rule (14-71 u, re-entries landing on the
+   previous line's own approach). The 24 trough ends spread over x -2,373..-1,339,
+   y -1,714..-945 (1,291 u apart at most); 7 re-entries land 282-465 u from every earlier tail.
+4. R = 512 closes all 16 but refuses princessburglar's crossings. Every re-entry needs R >= 465;
+   fxpb_t1's crossing needs R < 470 / 466 / 382 (T 1 / 2 / 4); the exit needs R < 80.
+5. Failed is not dead. The lip line failed at 0.53B and the same spot (k05) was learned within
+   0.2B at 3.28B; fxpb_t1's crossing failed at 3.10B and as_t3_E (the instruments' crossing) ends
+   99 u from it (83 u from ab7b_pb5 k01's 1-s tail). The only separators in these files rest on
+   ONE exit: time (re-entries 0.12-1.66B after the failure they repeat; the exit 2.64B after
+   k01's) and end velocity (refused re-entries within 689 u/s of the failed end; the exit
+   1,031 u/s from k01 - it crosses the lip airborne at 916 u/s, k01 stood on it at 249 u/s).
+
+### Recommendation
+
+* Do not build the tail ban, at any T or R in the grid.
+* Do not fit a guard to today's dead-end ban from one exit (an expiry or a velocity term would be
+  a threshold read off unitfarmer2's single exit). Record the conflict instead: on unitfarmer2 a
+  failed lip line closes the exit for v4-v6 until the greedy comes within 200 u of its d.
+* A ban that could tell a trough from an exit would have to judge the END (is there a way on
+  from it?), not the curriculum's failure, which is the same signal for both. Unmeasured.
