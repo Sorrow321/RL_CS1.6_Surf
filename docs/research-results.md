@@ -45340,3 +45340,71 @@ trunk with the yaw-mean head zeroed and --yaw-entropy 0, not from a flag; the re
 keeps the sigma at its cap (0.2 in v5, 0.5 in the pb tries) for the room's sake. Not measured: the
 band with an absolute 3.8 deg noise on a precise policy. Sub-agent P's xLOOP (a fresh network,
 uniform spawns along a crossing line) is a different question and is not duplicated here.
+
+## 2026-11-14 18:59 UTC: PRE-LAUNCH wave 10 - cannonball v5 never passes the wall (0/9 on the route in every eval read); novelty is 10x louder there than on any finished map; one-change arm: recipe v7 with the novelty gate's LO 0.05
+
+Why cannonball does not finish with recipe v5, and the one-change arm that tests it. Written
+BEFORE the launch; the cut is fixed here.
+
+### What the v5 run actually did: it never passes the wall
+
+The grader's best of 92-95% (ab8n_1 to 4.25B, the resume ab8n_r 4.0-4.98B) is flattered by a
+dive. Read on the route (`tools/eval_honesty.py --order-only 16`, the champion route as a
+MEASUREMENT only):
+
+| run | step | order-only max | past 205,440 u (the wall) | where the misses go |
+|---|---|---|---|---|
+| fix round fxcan_t1 | 2,869.4M | 217,934 | 8/9 | the wall (d ~6,500), then the final descent |
+| v5 ab8n_1 | 4,077.4M | 200,825 | 0/9 | off the route at 85-87% into a pocket at d ~13,900 |
+| v5 ab8n_r | 4,605.9M | 197,906 | 0/9 | the same pocket, (-2,500, 5,000, z -2,800), at 68-86 s |
+
+* Every v5 eval read so far is 0/9 past 205,440 u; the fix round had 8/9 at 2.87B and its first
+  finish at 3,095.9M (the frozen recipe: past the wall at 1.737B, first finish 2,718.4M).
+* The resume's search 2 (4,760.5M, tree) handed back a 9,090-state line that ends standing on a
+  floor in the same pocket (-2,849, 4,816, z -3,196), d 14,264: the curriculum restarted at its
+  end and holds it at 0% success; the eval median fell from 92.7% (4,605.9M) to 24.5% (4,983.4M).
+
+### The difference that stands out: novelty is 10x louder on cannonball than anywhere else
+
+`int` (novelty return per training episode) against `rew` from the step lines:
+
+| run (map) | int / ep | rew / ep | share | finished? |
+|---|---|---|---|---|
+| fx try 1 (cannonball, novelty 0.25, fix-round key) | 0.3-2.7 | 6-14 | 5-20% | yes |
+| v5 (cannonball, gate LO 0.25, all-in key) | 20-47 | 19-57 | 45-100% | no |
+| v5 (sidistic) | 5.3-6.9 | 42-49 | 12-15% | yes |
+| v5 (celestial) | 6-11 | 36-47 | 15-25% | yes |
+| v5 (petrus) | 0.7-1.5 | 38-52 | 2-4% | yes |
+| v5 (blue200) | 0.05-0.4 | 65-122 | under 1% | yes |
+| v5 weights + cap (uf2 after the exit) | 2.3-3.6 | 27-93 | 4-9% | yes |
+
+* Why cannonball: the all-in key pays a new cell times (1 + 3 x speed / 4000) (`--int-speed-
+  weight 3 --int-speed-weight-up`), and cannonball is the fastest and largest map (3,000-3,900
+  u/s on a 231,680 u route): about 3.5x per new cell against 1.5-2x on the slow maps, and new
+  cells come fast. The key temperature multiplies novelty by 1 + T, and T sits at its 0.5
+  maximum on every v-recipe run (the keytemp group: patience 2e7, reach res).
+* Training episodes killed for stalling: v5 cannonball 20-41%, fix round 1-8%, every other v5
+  map 0-10%.
+* Celestial already showed this failure: novelty at 71-117% of the return made its greedy
+  switch fork sides (dff52bee); the progress gate fixed it there by dropping the coefficient to
+  0.25 past 10% progress. On cannonball 0.25 is still loud.
+
+### The arm (one change, from scratch, one seed)
+
+* `abcnq_1`: recipe v7 (147 tokens, code ab/probe 878336ff) with `--int-coef-progress
+  2.5:0.05:0.1` instead of `2.5:0.25:0.1`: novelty stays at 2.5 while the greedy is in the
+  first 10% of the spawn's distance (unitfarmer2's pit, princessburglar's room) and falls to
+  0.05 beyond (was 0.25), about the fix round's novelty share on cannonball. One constant, the
+  same on every map if it is kept; `--maxvel 4000`; launch extra unchanged; RTX 5090 (the map's
+  search needs 32 GB). Worktree ~/ar_m2/wt/abcnq, branch ab/abcnq 22c0bb99.
+* Prediction if the hypothesis is right: the novelty share falls to about 10-20% and the greedy
+  passes 205,440 u by about 3B steps, then finishes. If it is wrong: 0/9 past the wall again.
+* Read: the step of the first eval with a greedy episode past 205,440 u (order-only), the first
+  greedy finish (grader, run in this worktree), int / ep and the stall share.
+* Cut (fixed now): 3.5B steps if no greedy episode has passed 205,440 u in any eval; otherwise
+  the first finish + 5 evals, or 6.0B.
+* CPU smoke of the complete command line with the changed gate (the unitfarmer2 line, 40,960
+  steps, worktree wt/ab9w = the same code): rc 0, "falling linearly to 0.05 at 10% of the
+  spawn's d", the coefficient read at every greedy eval.
+* Not changed: the keytemp group (T 0.5) and the greedy / front-perturbed spawn rows, which are
+  also new against the fix round; if this arm fails, they are next.
