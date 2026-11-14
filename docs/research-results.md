@@ -42901,3 +42901,74 @@ all-in's final weights that changes the reading. Every box is released.
   k01-k05 logs and lines; `bench_all/` mc1, mc2, mc3_s1, mc3_s2, fin_s0..2 logs and frontier
   lines) and /home/steam/ar_m2/runs/abu2nl (`abu2nl_1/` 35 evals, three checkpoints,
   `bench_1/` nl1_s0, nl1_s1). Credit $38.94 at 05:54 UTC; the round so far cost about $3.50.
+
+## 2026-11-14 04:19 UTC: ablation round wave 3 PRE-LAUNCH - the all-in without --yaw-entropy 0 (cap kept) on unitfarmer2, princessburglar and blue200; two sub-agents build and bench a Monte Carlo search stage and read princessburglar
+
+Written BEFORE the launch. The user (2026-11-14): "keep doing it until you beat the task ...
+we already have all the pieces, we just need to put them together ... experiment more and more
+and more", with two or three sub-agents and the credit left ($38.93 at 04:09 UTC, $10 reserve).
+
+### The plan of wave 3
+
+* **Sub-agent U** builds, generically and default off, a no-cull Monte Carlo stage in
+  `tools/auto_spine.py` (October's `beam_tas --elite-frac 1.0 --keys-temp 1.5`, after the
+  tree, before the archives) and a rule for a line whose curriculum failed (it stops being
+  the reference and is not handed back again), then benches both offline on the all-in's
+  final unitfarmer2 weights (md5 60b665bf), where the Monte Carlo search exits the pit in
+  3 of 3 seeds and the loop handed back trough dead ends (ledger c9a3f657).
+* **Sub-agent P** reads the princessburglar bundles (all-in, fix-round tries 1-3, October's
+  notes) for why the all-in stays in the start room and why the policy cannot learn the
+  launch from a handed crossing line, and benches the no-cull Monte Carlo on pb weights.
+* **The operator** (this entry) runs three arms now, below.
+
+### Wave 3 arms (from scratch, seed 0; the all-in WITHOUT `--yaw-entropy 0`, 135 tokens)
+
+Why this variant: the yaw group cuts both ways. On unitfarmer2 the dive needs it (without it
+the yaw sigma rose to 1.20 and the greedy flew search line 1, ledger a5a24c58); on
+princessburglar the all-in collapsed the yaw sigma to 0.01-0.05 and never left the start room
+(64cc18fb), while the cap alone (fix-round try 3) left it at 1.36B with sigma 0.24-0.48. The
+entropy term set to 0 is the half that lets the sigma collapse; the cap is the half that stops
+the climb to 1.2. So the candidate keeps the cap (`--yaw-sigma-max 0.5`) and the default yaw
+entropy. Every other group of the all-in stays (death, novelty, energy 12, greedy, front,
+keytemp, tick 7.63 ms); the launch extra is unchanged.
+
+| owner / run | map | question | cut |
+|---|---|---|---|
+| `ab3uy_1` | surf_unitfarmer2 | does the cap alone keep the dive? | 0.6B |
+| `ab3py_1` | princessburglar_b26 | does the greedy leave the start room? | 2.0B if not; 4.0B |
+| `ab3b2_1` | edgeflow_blue200 | REGRESSION: does it still finish? | 3.0B |
+
+* Dive read (fixed now, as in 9f984fb2): YES = 9 of 9 greedy episodes below z 0 by 0.6B; NO =
+  none below z 0 by 0.6B (the all-in: first 151.5M, 9/9 at 227.0M).
+* princessburglar read: out of the start room (as fix-round try 3 read it: 1.36B), then where
+  the episodes end (pit floor / east ledge / beyond), searches and lines.
+* blue200 read: the first greedy finish from the grader (`autoresearch/score.py`), against the
+  fix round's try 1 at 1.435B (180 of 180 after); a null to 3.0B is a regression of the groups
+  on this map (the frozen recipe never finished it).
+* One seed each: a difference of a few evals is noise; dive versus no dive, room versus no
+  room and finish versus no finish are what this wave can carry.
+* The same 135 tokens on every map; only --maxvel follows the map (3500 on unitfarmer2 and
+  princessburglar, 4000 on blue200, as in the fix round).
+
+### Local checks (CPU)
+
+* The COMPLETE command lines (the launcher's scratch pins + the 135 tokens + the launch extra,
+  shrunk by smoke overrides at the end) on CPU, 40,960 steps each: unitfarmer2 and
+  princessburglar rc 0, no refusal; the trainer prints the cap ("--yaw-sigma-max 0.5: the yaw
+  head's sigma is capped at 0.5") and no yaw-entropy line; tick [8,8,7] = 7.667 ms; the greedy
+  and front respawn rows are on.
+* blue200 cannot be smoked here: its faceid cache bakes only on a GPU (the fix round baked it on
+  a box; the tarball blue200c_maps.tar.gz carries it). Its 135 tokens are the same as the two
+  smoked lines but --maxvel 4000.
+* Config branches ab/ab3uy (41c81c47), ab/ab3py (7e4a2f53), ab/ab3b2 (c2f6a3f5), each = ab/uf2's
+  code (fx/sib b2a5259b with the yaw cap) + the map's fix-round config with the 135 tokens.
+
+### Budget and boxes
+
+* Credit $38.93 at 04:09 UTC, reserve $10. Three 4080/5080-class boxes at about $0.31/h:
+  unitfarmer2 1.2 h, princessburglar 4.0 h, blue200 3.2 h deadlines, about $2.6 if all run out.
+  The sub-agents may rent one bench box each (at most $3 each, deadline 2 h); the watchdog's cap
+  of five boxes holds all five.
+* Every box: the droplet watchdog with a harvest spec and the trainer's pid file, the dashboard
+  on the box and a tunnel here (http://localhost:8621/ unitfarmer2, :8622 princessburglar,
+  :8623 blue200).
