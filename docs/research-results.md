@@ -43013,3 +43013,162 @@ their launch.
 * Only the cap's value differs from the smoked `ab3uy` line (same tokens). A cap is ONE value
   for every map; if one dives, the same value is then tested on princessburglar and blue200
   before it is called anything.
+
+## 2026-11-14 05:30 UTC: ablation wave 3 - princessburglar read (sub-agent P, measurement only): the start-room stall is the first search line frozen by the current-line reference, the launch is not learned from a handed line, Monte Carlo does not cross, energy-rooted archives crossed once from the pit
+
+Sub-agent P of wave 3 (measurement only, no training run): why princessburglar fails under the
+all-in and the fix-round tries, read from the bundles (`~/ar_m2/runs/abpb`, `~/ar_m2/runs/fxpb`)
+and benched on one box (owner `abpbm`, branch `ab/pbm` 058bd279 = ab/pb + a bench-only
+`record_ckpt --spawn-keys`, off = byte-identical). Frozen copies, md5 = the bundles; nothing
+here trains. One seed per bench.
+
+### 1. Why the all-in never leaves the start room (fix-round try 3 left it at 1.36B)
+
+It is the first line, not the training groups. In all three runs the first search fires at the
+first eval (524,288 steps, random weights):
+
+| run | first line (search 1) | walk-back | later searches |
+|---|---|---|---|
+| try 3 | tree, 2,997 rows, d 55,897 (room exit) | row 0 by 1.60B | 6 from the pit, none |
+| try 1 | archive, 4,242 rows, 55,353 (pit) | stuck 3,196-3,206 | 2nd: a crossing, stuck at launch |
+| all-in | archive, 6,383 rows, 55,107 (crossing) | min row 5,067 | 2-4: none (current ref) |
+
+* The all-in's line crosses the pit at rows ~4,300-4,600, then spends 1,704 rows (13.1 s) on the
+  east ledge gaining 200 u of record (55,306 -> 55,107; the archive's deepest held cell is at the
+  end of that wander). The walk-back stalled inside that tail for 1.8B steps and never reached the
+  crossing or the start room.
+* `--auto-spine-current-ref` then froze it: searches 2 and 3 (680M, 1.36B) DID find archive lines
+  out of the room into the pit (d 55,345-55,361, ~1,650 u past the greedy frontier 57,004), and
+  both were refused because a new line had to end below 55,107 - 200 = 54,907. The fix round's
+  open items 4/5 again; the failed-line rule sub-agent U builds would have let them in.
+* The greedy at 2.04B stands near the staircase foot (729, -2,856, 3,652), top speed 80 u/s, in
+  all 28 evals: no curriculum spawn ever sat in the room. Yaw sigma 0.298 -> 0.044 (420M) ->
+  0.010 (2.06B); nothing shows the sigma caused the room stall.
+* So the operator's `ab3py_1` (all-in minus `--yaw-entropy 0`) is confounded by the same lottery:
+  its first search, on random weights, decides whether it gets a learnable room line.
+
+### 2. Why the policy cannot learn the launch from a handed crossing line
+
+* Try 1's curriculum on its crossing line oscillated for 2B steps (2.9B-4.8B) between bands
+  [1842,1846] (12-15%, later 33-37%) and [1837,1841] (0.0-0.3% on all 303 visits): rows 1834-41 are
+  the ridge's rising end, the launch (vz 165 -> 338, |vh| 710 -> 597, ducked, strafe right held).
+* Core test (droplet, no policy): restored at row 1838, the player stays ON the ridge (vz held at
+  298-305) only with the strafe key held into the ramp and the view along the velocity; with no
+  strafe, left strafe or the view turning 10 deg/tick it leaves the ridge in one tick and falls at
+  gravity (vz 290 -> 258 in 6 ticks). Duck alone changes nothing over 8 ticks.
+* The recipe's spawns do not restore held keys: `auto_spine.py` writes `spine.keys.npy` for every
+  line, but `train_fast` loads a new spine's keys only when `--demo-keys` was given at launch,
+  which an `--auto-spine-scratch` launch never has (run.json `demo_keys` null in all three runs;
+  `keys_hold_spawn_duck` off). Every curriculum spawn starts neutral.
+* But the keys are not what blocks it. Policy bench (`record_ckpt --spawn-states`, one row, 12 s;
+  success = record d <= the curriculum's success line; cross = far ledge top, x > 850, z > 3,420):
+
+| weights | row | episodes | neutral keys | the line's keys |
+|---|---|---|---|---|
+| try 1 3.0B (yaw sigma 2.65) | 1838 | 128 stoch. | 0 (cross 2.3%) | 0 (cross 5.5%) |
+| same | 1838 | 8 greedy | 0 | 0 |
+| same, yaw sigma x 0.19 | 1838 | 128 stoch. | 0 (cross 1.6%) | 0 (cross 2.3%) |
+| same | 1832 | 128 stoch. | 0 (cross 0%) | 0 (cross 0%) |
+| same | 1844 | 128 stoch. | 1 (cross 96.9%) | 6 (cross 74.2%) |
+| try 3 5.0B (cap, sigma 0.48) | 1838 | 8 greedy | 0 | 0 |
+| same | 1838 | 128 stoch. | 0 (cross 0.8%) | 0 (cross 1.6%) |
+| same | 1844 | 8 greedy | 0 (cross 5/8) | 0 (cross 4/8) |
+| same | 1844 | 128 stoch. | 0 (cross 40.6%) | 0 (cross 33.6%) |
+| all-in 2.0B (sigma 0.010), own line | 5263 / 5269 | 128 stoch. | 94 / 89 | 92 / 81 |
+
+  Both pit-era policies override the held keys at their first decision: try 1's greedy view
+  swings left at the 10 deg/tick ceiling from the spawn (its yaw sigma sat at the 2.718 clamp
+  for 2B steps, so its mean view was never pressed to be precise); try 3's releases strafe and
+  duck. Neither has learned the launch, and from the launch row neither samples it (0 of 768
+  stochastic and 0 of 32 greedy episodes reach the success line; 0.8-5.5% even reach the far
+  ledge; from 6 rows later, past the launch, 34-97% do). The all-in's own ledge band shows no
+  keys effect either. Restoring the keys is a correct bookkeeping fix, not the missing piece.
+* The reward does not prefer the line either: the pit's best floor reads d ~55,300 (benches and
+  Monte Carlo below: 55,300-55,312), deeper on the field than the far ledge (55,386-55,565) until
+  the line has ridden the ledge for 4 s. From the launch row (d 55,822) the line's record is
+  55,386 at +1.4 s, then flat until +5.5 s (55,300), its success line 55,198 at +5.9 s; the pit
+  pays its ~520 u at once and is never taken back. October's lineage needed
+  `--demo-success-bonus 50` for exactly this (its NOTES: "the ratchet alone prefers the pit even
+  for a policy that could fly the line perfectly").
+* October's pit crossing (pbr2b3, old core, warm sidistic lineage; NOTES lines 425-720): a search
+  line plus, on the curriculum, `--keys-hold-spawn-duck`, `--demo-success-bonus 50`, the canonical
+  view (now in auto_spine), `--demo-front-temp 0.5 --demo-front-view 6 --demo-front-ticks 40` (a
+  3.8 deg yaw sigma on band spawns for 0.4 s: what cracked its wall-bounce band after 1.5B steps
+  at 0%), `--demo-cooldown 5 --demo-grow-max 40` (in the recipe), `--demo-rate 0.5`, `--yaw-entropy
+  0` - generic flags; the HAND parts were cutting the run-up off the line (a per-map edit) and
+  picking 64 tunnel-exit roots for the search.
+
+### 3. Does the no-cull Monte Carlo cross? No
+
+`beam_tas --elite-frac 1.0 --keys-temp 1.5 --envs 4096 --max-ticks 6000` from the true start:
+
+| weights | seeds | frontier |
+|---|---|---|
+| try 3 5.0B (pit floor) | 0, 1, 2 | d 55,310-55,312 at 8-9 s, in the pit (808, -3,285, 3,367) |
+| all-in 2.0B (room) | 0, 1 | d 56,913 / 56,906 at 9.2 / 10.7 s, on the doorway slabs |
+
+On this map the pit floor is the field's local optimum and a crossing only reads deeper after
+4 s on the far ledge, so a search ranked on d (this one, the tree, the archive's deepest cell)
+cannot select a crossing unless it also rides the ledge. The mechanism that exits unitfarmer2's
+pit does not transfer here as it stands.
+
+### 4. A crossing line found FROM THE PIT: energy roots (one seed)
+
+`tools/auto_spine.py` with try 3's own search 7 arguments (greedy frontier 55,363, current line
+55,897, held + contact archives of 5 min) on try 3's final weights, seed 1, tree 2 min, with ONE
+change: `--ge-boost E1.0` (roots before the tree line's largest energy losses, an existing stage
+kind) instead of the recipe's `1.0` (roots in the last 4 s before the stall). The first archive
+stage (held) handed back a CROSSING line: 2,664 rows (26.6 s), end d 55,097 (gain 266 over the
+frontier), replayed exactly (32 of 32 links). Roots: 16 in the start room, 32 on the upper level
+before the drop (losses -207 u at tick 471, -68 u at 567). The chain leaves from row 378, (211,
+-3,122, 3,732) at 314 u/s: east along the upper corridor, a run-up west at ~390 u/s, the drop,
+the ridge launch (15.0 s: 530 u/s, vz +197), the far ledge at 16.5 s (55,356), 55,285 at 18.0 s,
+then 7.5 s along the ledge north and west to 55,097. The archive broke the pit plateau only at 3.4
+of its 5 minutes. Try 3's six searches with tail roots (12 archive stages from states in the pit)
+found none. One seed: October's command crossed on 3-4 of 6 seeds, late in the budget each time.
+
+### Ranked generic changes for princessburglar (none tested in training)
+
+1. **The failed-line rule** (sub-agent U's build): a held line whose walk-back stalls is dropped
+   and stops being the reference. Here it would have let the all-in's searches 2-3 hand back
+   room-to-pit lines; try 3 shows such a line is learned (row 0 at 1.60B) and takes the greedy out
+   of the room. Search side only: no effect on unitfarmer2's dive.
+2. **Energy-rooted archive stage**: in the recipe's `--auto-spine-args` string replace
+   `--ge-boost 1.0` by `--ge-boost 1.0;E1.0` (the tail stage first; when it finds nothing, the
+   same archives rooted before the line's largest energy losses). The only change in this wave
+   that produced a crossing from a pit-bound policy (1 of 1 seed, against 0 of 6 tail-rooted
+   searches). Generic (an existing stage kind, no map value); costs up to 10 more minutes per
+   search, beside the training. Its one earlier use (pbr5b2, 56.6% gate) was a null. Unknown on
+   unitfarmer2; search side only.
+3. **Teach the launch** once a line exists (October's curriculum, generic flags):
+   `--demo-front-temp 0.5 --demo-front-view 6 --demo-front-ticks 40` (exploration on the band:
+   no current policy samples the launch, 0 of 768) and a payoff for the line over the pit,
+   `--demo-success-bonus 50`. The bonus pays dead-end lines too (why the sidistic program
+   removed it; on unitfarmer2 it would pay the trough lines): only beside the failed-line rule,
+   and sidistic + unitfarmer2 must be re-run with it. Band temperature acts on curriculum band
+   spawns for 0.4 s; it should not touch unitfarmer2's greedy dive (not measured).
+4. **Keep `--yaw-sigma-max 0.5`**: without it the yaw sigma sits at the 2.718 clamp on this map
+   and the view at the launch swings at the 10 deg/tick ceiling. `--yaw-entropy 0` is not
+   implicated by these bundles (October's sigma-0.01 policy learned its crossing); unitfarmer2's
+   dive needed the yaw group, whose cap-alone half `ab3uy_1` is testing.
+5. **Held keys on spine spawns**: load every auto-spine line's `spine.keys.npy` (today only with a
+   launch-time `--demo-keys`, which `--auto-spine-scratch` never has; a few lines in train_fast)
+   and `--keys-hold-spawn-duck`. Correct and cheap, no measured effect on these policies.
+6. The no-cull Monte Carlo stage: no crossing here (3 of 3 seeds on the pit floor, 2 of 2 in the
+   room); harmless to add for unitfarmer2.
+
+Not recommended: cutting a line at its first state within --gain of its deepest point (it would
+drop the all-in line's 13.1 s ledge tail, but the cut line's success line, 55,406, is met by
+falling to the pit floor, ~55,300, so the curriculum would teach the pit).
+
+### Box, cost, files
+
+* Box 60594985 (RTX 5080, $0.38/h; owner `abpbm`, watchdog registered with harvest spec and pid
+  file, dashboard tunnel :8632) 04:40-05:27 UTC; a first offer (60594194, RTX 4080S) failed
+  readiness after 330 s (still loading), was blocklisted and destroyed by box.py. About $0.33 in
+  all. Released and verified gone (`vastai show instances`); tunnel stopped by PID.
+* Files (tarball md5 = box): `~/ar_m2/runs/abpbm/part1/` (keys benches: `keys_summary*.txt`,
+  logs, gzipped recordings; Monte Carlo `mc_t3_s0..2`, `mc_ab_s0..1` with `beam_frontier.npz`),
+  `~/ar_m2/runs/abpbm/part2/as_t3_E/` (the energy-root search: `spine.npy` md5 in `spine.json`,
+  `spine.keys.npy`, `ge/archive.npz`, `ge/line.npy`, logs). `kt1_1840_neutral` was stopped
+  half way (CPU contention) and is not used. Scripts: scratchpad `abl/pbx/`.
