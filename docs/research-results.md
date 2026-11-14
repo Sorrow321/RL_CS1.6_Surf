@@ -44264,3 +44264,72 @@ start row tau (the launch is the line's last contact, row 2,405):
 * For the integration: persist the archive bar across a resume (a resumed run re-adopts a trough
   line once), and `--auto-spine-keys` is a bookkeeping fix worth merging on its own (every
   curriculum spawn of the recipe was neutral).
+
+## 2026-11-14 10:50 UTC: CORRECTION - the unitfarmer2 Monte Carlo "pit exits" (c9a3f657 and after) are DEATHS: each line ends mid-air at the lip and touches the teleport over the pit 0.1-0.4 s later; sub-agent U adds --end-survive-secs (ab/v3 5d304af7)
+
+Sub-agent U, wave 6 (no box; $0). Branch ab/v3 = ab/v2 (6d9b48b0, sub-agent P's integration) +
+ab/sil's two commits (b3ae79b5 `--auto-spine-keys` + the held-key bench, 70e9165e self-imitation
+beside the per-env temperatures; the conflicts were both-sides additions to the flag lists) + a
+new search rule (5d304af7). Pushed.
+
+### CORRECTION: the unitfarmer2 Monte Carlo "pit exits" are deaths
+
+* Every Monte Carlo "exit" line ends mid-flight at z 504-612 with the deepest d of its rollouts.
+  Flown forward from that last state (physics only, neutral keys) under the race rule
+  (teleport fail: any touch of a teleport with a destination fails the episode, as every recipe
+  run trains), all four measured tips touch the teleport over the pit 12-52 ticks (0.1-0.4 s)
+  later at z 506-601 and end as a FAIL (fin_s0, fin_s1, fin_s2 = the exit line abmc_exit_s2 the
+  warm instruments were handed, and the search-5 replay's line). Without the rule the same touch
+  sends the player to the spawn. The trigger_teleport's box spans the pit's top
+  (x -2,896..-1,456, y -3,952..208, z up to 613).
+* So "Monte Carlo exits the pit in 3 of 3 seeds" (ledger c9a3f657) and every later "Monte Carlo
+  exit" (the ab/mc search-5 replays, the abmcw_w1 and absil_w1-w3 instruments' first spine) are
+  the tip of a rollout about to die - the classic death-dive that flatters d, in the air.
+* Also wrong in wave 5 (w5 body): the bench's "out above z 500" counted flights that fell back -
+  every one whose first contact afterwards was read lands on the pit floor (z -630 to -740).
+* What the warm instruments measured is therefore a curriculum teaching a climb INTO the teleport
+  while the death charge (kappa 1, 2 s window) takes back the climb's reward: the stall at the
+  launch row is the two pulling against each other, not only a choice the policy rarely makes.
+* The search has NOT found a pit exit on these weights. A real one exists: recipe v1's run left
+  the pit at 3.70B, 9 of 9 (ledger 29cd52d0).
+
+### The rule (auto_spine.py `--end-survive-secs S`, default 0 = off, unchanged when off)
+
+* A tree / beam / Monte Carlo line whose END is in the air (its last map contact more than a
+  decision before it) is flown forward from its end with neutral keys under the teleport-fail
+  rule; if the flight ends as a fail within S seconds the line is cut back to its LAST CONTACT,
+  the last state the map held. Finishing lines are kept whole as before; a held end is never
+  probed. The curriculum's success line is read at the line's end, so it now sits on that held
+  state. One constant for every map (S = 1.0 s). No trainer flag (it rides `--auto-spine-args`),
+  so nothing to mirror in record_ckpt.
+
+### Evidence (physics only; the scratchpad's v3/end_audit.py)
+
+* unitfarmer2's Monte Carlo lines (7: the final weights x 3 seeds, the search-5 replays at
+  3.0B and 3.5B, abmcw_w1's searches 1 and 2): 7 of 7 end in a fatal flight and are cut to their
+  last contact, d 31,354-31,379 (the 4.85B platform line: 30,352); none then beats the greedy
+  frontier (~30,300), so none would be handed back.
+* The spines the loop ADOPTED on the maps it finishes - blue200 (fx k01-k03), celestial (fx
+  k01-k04, ab6c k02), petrus (fx k01-k03): 2 of 12 end in a fatal flight; the other 10 are
+  unchanged, among them both lines that reach the goal (blue200 k03, celestial fx k04) and all of
+  petrus.
+* The two cut: blue200 fx k02 (the failed tree line before its goal line; d 1,661 -> 1,982) and
+  celestial ab6c k02, the line its finish at 906.5M came from (its last 2.5 s, a fall to z -4,607,
+  are cut: d 5,734 -> 8,721). Whether the shorter ab6c line changes that finish is NOT measured -
+  it needs the regression run.
+
+### Tests
+
+* tests/python/test_fatal_end.py, 3 passed: the probe on the real map (the measured tip dies, the
+  spawn lands), the cut on a synthetic ride-launch-fly line, off = untouched, a held end never
+  probed, and auto_spine's decision at search 5's numbers (the Monte Carlo tip is cut and is no
+  fallback; the tree's line is). With ab/v2's and ab/sil's suites: 91 passed; `--selftest` ok.
+* CPU smoke of the complete command line (the 138 tokens with `--end-survive-secs 1.0` in
+  `--auto-spine-args`, ab/v2's `--auto-spine-failed-fallback --auto-spine-archive-ban 128
+  --auto-spine-dead-end-ban`, `--auto-spine-keys`): rc 0; the probe ran in the search (its smoke
+  lines land: unchanged); the keys loaded at the first swap; the dead-end ban recorded.
+
+### Not run
+
+* The warm instrument (2): its first spine IS the death line, and a `--demo-file` spine bypasses
+  the search's rule, so it could only measure the same climb into the teleport. Budget unspent.
