@@ -46627,3 +46627,44 @@ The v9 candidate's regression on the maps it has to keep, written before the lau
   sidistic 9.0B with no finish (a regression, reported as such).
 * No CPU smoke per map: the lists equal the unitfarmer2 v9 list that ran rc 0 (3085ae4b), and
   celestial / blue200 cannot be smoked on a CPU (their face-id caches need the GPU).
+
+## 2026-11-14 23:39 UTC: v9 WITHDRAWN (no unitfarmer2 dive by its 1.0B cut; v8 and v9 dropped the spawn rows, every run that dove had them) + PRE-LAUNCH recipe v10 candidate (v7 + novelty LO 0.05 + band yaw flags + death charge, rows kept) on unitfarmer2, cannonball, petrus
+
+The v9 candidate is withdrawn on its own pre-registered cut, and v10 replaces it. Written before the
+launches.
+
+### v9 on unitfarmer2 (`abv8u_v9`): NO DIVE by its 1.0B cut
+
+* 0 of 9 greedy episodes below z 0 in every eval to 981,991,424; stopped by pid at 1,008,730,112
+  (the cut of 3085ae4b). Its search 1 (412M, tree) handed back a 9,057-state line (end d 28,574)
+  whose walk-back sat at rows 3,201-3,251 (7-28%).
+* v8 (no rows, no death charge; `abv8u_1`): no dive by 680.0M either (stopped as superseded).
+  v7 (rows on) dove at 378M; every unitfarmer2 run that ever dove had the greedy-death and
+  front-perturbed spawn rows (sub-agent P said so before the change: cc22342a). One seed each, but
+  the common factor of the two no-dive runs is the dropped rows. Also against dropping them: on
+  princessburglar the front-perturbed rows carried abpbc_1's TRAINING frontier past the x -1,015
+  wall (reservoir min d 49,987 = 12.5% at 4.35-4.46B; sub-agent U), October's beam-4 pattern.
+* So the rows stay. P's point that they halve a held line's share of starts stands; it is a cost
+  the recipe pays for the dive.
+
+### v9 on cannonball (`ab8n_v9`) and petrus (`ab7c_p9`): stopped as superseded, not results
+
+* Cannonball v9 to about 1.1B: no greedy past the wall yet (searches: 0.48B Monte Carlo to d
+  100,876; 0.77B tree to d 13,737); petrus v9 to about 0.7B: grader 46-48%, no finish (its search 1
+  line was discarded as stale; v5 finished petrus at 302.5M). Bundled.
+
+### PRE-LAUNCH: recipe v10 candidate on unitfarmer2, cannonball and petrus
+
+* v10 = v7 (147 tokens, rows kept) with `--int-coef-progress 2.5:0.05:0.1` + `--demo-front-temp
+  0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks 40` + `--death-charge 1 --death-charge-window
+  2` = 157 tokens, code ab/yawabs c8595e54, builder abl/launch/mkcfg_v10.py + mk_wave13.sh. ONE
+  list for every map; only --maxvel follows the map. From scratch, seed 0.
+* Runs (the same three boxes): `abv8u_x10` unitfarmer2 (5080 60701154, wt/abx10u 848ce332,
+  :8643); `ab8n_x10` cannonball (5090 60678705, wt/abx10c f17fa599, :8640); `ab7c_x10` petrus
+  (5080 60637836, wt/abx10p 005e7de4, :8637).
+* Cuts (fixed now): unitfarmer2 - 1.0B if no greedy below z 0, else 9B or the first finish + 5
+  evals; cannonball - 3.5B if no greedy past 205,440 u on the route, else the first finish + 5
+  evals or 6.0B; petrus - the first finish + 2 evals, or 1.5B. Then celestial, blue200, sidistic
+  and princessburglar with the same list (their worktrees are made from mkcfg_v10.py).
+* CPU smoke of the complete v10 command line (unitfarmer2, 40,960 steps, wt/abx10u): rc 0. The
+  cannonball and petrus lists differ from it only in --maxvel.
