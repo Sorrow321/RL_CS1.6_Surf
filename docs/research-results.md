@@ -43235,3 +43235,21 @@ line whose walk-back fails, and the reference it sets), on two runs with differe
 The failed-line rule (sub-agent U) and the energy-rooted archive stage (P, 20a23c95) are the
 search-side candidates; whether the curriculum can teach the launch at all is P's instrument,
 running now (`abpbi*`, warm from fix-round try 3's weights with its own crossing line).
+
+## 2026-11-14 05:53 UTC: ablation wave 3 PRE-LAUNCH - celestial regression probe of the cap-0.2 training side (ab3cc_1)
+
+Written BEFORE the launch: a second regression probe of the candidate training side (the 135
+tokens with `--yaw-sigma-max 0.2`, default yaw entropy; 341ed3d2), beside `ab3bc_1` (blue200).
+
+| owner / run | map | read | cut |
+|---|---|---|---|
+| `ab3cc_1` | surf_src_celestial | first greedy finish from the grader | 2.5B, or 2 evals after a 9/9 |
+
+* The fix round's try 1 finished celestial first at 1,284.0M (frozen recipe 1,586.0M); a first
+  finish within twice that (2.57B) is no regression of the training groups on this map, none
+  by 2.5B is one. One seed. The search loop is the fix round's (no new stage yet).
+* Same tokens as the smoked unitfarmer2 and princessburglar lines but `--maxvel 4000` (the
+  fix round's celestial value) and the 0.2 cap; celestial's faceid cache bakes only on a GPU,
+  so the line is not smoked here (it rides in celestialc_maps.tar.gz).
+* Box: one 4080/5080-class card, about $0.39/h, deadline 2.6 h, watchdog with harvest spec and
+  pid file, tunnel http://localhost:8627/. Credit $36.57 at 05:52 UTC.
