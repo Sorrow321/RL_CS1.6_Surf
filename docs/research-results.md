@@ -46563,3 +46563,48 @@ Energy height h = z + |v|^2/1600. Gate numbers are October's.
   after either launch except this note and the stop step above. Bundles (BUNDLE OK, md5 = box):
   ~/ar_m2/runs/ab8n/ab8n_cq (+ ckpts_cq, auto_cq) and ~/ar_m2/runs/abv8u/abv8u_1 (v8 on uf2:
   0 of 9 below z 0 in every eval to 680.0M, stopped as superseded, not a result).
+
+## 2026-11-14 23:02 UTC: UNITFARMER2 FINISHES FROM SCRATCH with recipe v7 (first greedy finish 9/9 at 7,927,758,848 steps; 68 of 72 after it; best 46.05 s) - no warm start, no demo, no hand edit
+
+Run `ab7c_v7`: recipe v7 (147 tokens = v5 + `--auto-spine-patience-max 1e9`, code ab/probe 878336ff;
+pre-launch 398ca1fc) from scratch on surf_unitfarmer2, seed 0, one RTX 5080 (box 60637836), no warm
+start, no demo, no hand edit. Stopped by pid at 8,469,348,352 (23:00 UTC), past its cut (the first
+finish + 5 evals = the eval of 8,305.2M; the cut was moved from 8B to this rule at 7.10B, d58264ce).
+Finishes from the grader (`autoresearch/score.py` in wt/ab9w).
+
+### Result: UNITFARMER2 FINISHES FROM SCRATCH WITH THE RECIPE
+
+* **First greedy finish: 9 of 9 at 7,927,758,848 steps** (best 47.35 s).
+* Every eval after it finishes: 9, 9, 9, 8, 6, 9, 9 of 9 to 8,456.2M = **68 of 72 (94%)** over the 8
+  evals from the first finish; best **46.05 s** (8,456.2M). The record (Fizz) is 35.17 s; the warm
+  instrument ab7c_w6 (v5 weights + the cap) had 37.98 s.
+* Before it: the dive from 378M (9/9 in the pit), climbs above z 500 now and then from 3.85B (grader
+  1.9%), the exit from the training side at 7.10B (grader 48.6% -> 54.9% -> 67.8% -> 83-85%), 98.5%
+  at 7,852.3M, then the finish.
+* The loop's lines: k01 (0.44B, tree, trough), k02 (2.15B, archive, trough), k03 (3.74B, tree,
+  trough side), k04 (4.87B, Monte Carlo, 299 states on the platform), k05 (5.85B, archive, the
+  trough - the route out of the pit crosses it, sub-agent P b8dbefbc; walked back to state 0 at
+  7.04B, when the greedy passed its success line 9/9), search 6 no line, k07 (7.43B, tree, 4,194
+  states to d 10,258: the line after the exit), search 8 no line; from 8,154.3M "9/9 greedy
+  episodes FINISH: no search".
+* The patience cap (1e9) is what the warm instrument needed; here it bounded each held line. No
+  operator action changed the run between the launch and the stop except the cut rule (said above).
+
+### What it means for the recipe
+
+* Unitfarmer2, the exploration benchmark (CLAUDE.md 0), is finished from the true start by one
+  recipe with the same flags as the other maps (only --maxvel 3500 follows the map), champion-free.
+  One seed.
+* v7 scoreboard so far: unitfarmer2 7.93B (this run). Petrus, celestial, blue200 and sidistic
+  finished with v5 (302.5M, 529.0M, 831.0M, 5.06B); v7 adds only the patience cap and the
+  end-survive bug fix to v5, so they are expected to hold, NOT measured. Cannonball: v5 never passed
+  the wall; v7 + novelty LO 0.05 passed it but did not finish (3085ae4b). Princessburglar: v7 + the
+  band flags reaches 6.7-6.9% from scratch (d58264ce), no finish.
+* The candidate now running (v9 = v7 - spawn rows + LO 0.05 + band flags + death charge) must
+  repeat this finish on unitfarmer2 (`abv8u_v9`) before it replaces v7.
+
+### Box and bundle
+
+* Box 60637836 KEPT for the v9 regression (next entry). Bundle ~/ar_m2/runs/ab7c/ab7c_v7 (113
+  evals, run.json, progress, launch log) + ckpts_v7 + auto_v7 (k01-k08 lines and logs), BUNDLE OK
+  (md5 = box).
