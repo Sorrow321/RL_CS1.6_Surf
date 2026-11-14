@@ -44559,3 +44559,13 @@ Every spine swap in the four finishing runs, by the same reading:
 * `ab7c_1` (celestial, v3) and `ab7b_1` (blue200, v3) run as the regression checks; the
   rehearse rule fires only on a quorum line that extends the held line, which none of the
   finishing runs' line swaps did (U), so v3 there stands in for v4. Credit about $28.7.
+
+## 2026-11-14 11:58 UTC: ablation wave 7 interim - CELESTIAL FINISHES with recipe v3 (ab7c_1, first greedy finish 755.5M, 4/9, 47.46 s)
+
+* `ab7c_1` (celestial, recipe v3, 139 tokens on ab/intp; pre-launch c8678de2): 83.5% at 529.0M,
+  83.7% at 680.0M, first greedy finish at 755.5M (4/9, best 47.46 s, grader). Earlier than
+  v1-lean at 0.25 (ab6c 906.5M) and the fix round (1,284.0M). The novelty gate read 0.25 past
+  the fork as P predicted; search 2 (574.1M) a 5,798-state tree line to d 5,834. Running on to
+  confirm 9/9 within its 2.5B cut.
+* `ab7b_1` (blue200, v3) at 151.5M: 65.6%, no finish yet. `ab4u_v4` (unitfarmer2, v4) at
+  151.5M: no dive yet (the 2.5-weight runs dove 151-227M).
