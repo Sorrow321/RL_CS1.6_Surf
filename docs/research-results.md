@@ -43172,3 +43172,42 @@ falling to the pit floor, ~55,300, so the curriculum would teach the pit).
   `~/ar_m2/runs/abpbm/part2/as_t3_E/` (the energy-root search: `spine.npy` md5 in `spine.json`,
   `spine.keys.npy`, `ge/archive.npz`, `ge/line.npy`, logs). `kt1_1840_neutral` was stopped
   half way (CPU contention) and is not used. Scripts: scratchpad `abl/pbx/`.
+
+## 2026-11-14 05:47 UTC: ablation wave 3 - unitfarmer2 cap probes: a yaw cap of 0.2 with the default yaw entropy DIVES 9/9 from 151.5M (as early as the all-in); cap 0.1 dives only from 680M, cap 0.5 not by 680M
+
+The two unitfarmer2 cap probes of 2c6ef1e0 are read (dive rule of ef3da016: YES = 9 of 9 greedy
+episodes below z 0 by 0.6B, NO = none by 0.6B, anything else reported as it is).
+
+### Read
+
+| arm | yaw cap | greedy in the pit | verdict at 0.6B |
+|---|---|---|---|
+| `ab3uy_1` (2c6ef1e0) | 0.5 | 0/9 in all evals to 680.0M | NO |
+| `ab3u2_1` | 0.2 | 9/9 in every eval from 151.5M to 680.0M | YES |
+| `ab3u1_1` | 0.1 | 0/9 to 604.5M, then 9/9 at 680.0M, 755.5M, 831.0M | NO (dives later) |
+| all-in (abuf2_all, `--yaw-entropy 0`) | 0.5 | 3/9 at 151.5M, 9/9 from 227.0M | (reference) |
+
+* Every dive is the start dive: the greedy enters the pit 2.8-3.4 s after the spawn at
+  (-1,850..-2,480, -3,260..-3,320), not a fall from the trough.
+* `ab3u2_1` (cap 0.2, default yaw entropy): the yaw sigma sat at the 0.2 cap and then FELL by
+  itself to 0.063-0.067 (405M-669M); search 1 (91.8M) handed back a 9,313-state beam line that
+  the curriculum did not learn (2.1-28% at its end); search 2 (628.1M) a 760-state beam+ge line
+  (0% at its newest starts). Highest point after entering the pit: z 426 (529.0M), 256 (604.5M);
+  never out.
+* `ab3u1_1` (cap 0.1): search 1 (110.6M) handed back a 4,320-state beam line round the platform
+  that the curriculum learned to state 0 (95%); the greedy flew it and the trough beyond it
+  (greedy frontier 28,522 at 264M, search 2 discarded as stale); the start dive appeared
+  between 604.5M and 680.0M with no new line in between (search 3's line came at 715.7M).
+* Read across the four arms (one seed each): the start dive comes with a yaw sigma held near
+  0.2 or falling through it (cap 0.2; the all-in from 0.30 to 0.17 at its first dive), late at
+  0.1 (after the policy had learned a line round the platform), and not by 0.68B at 0.5. A cap
+  of 0.2 with the default yaw entropy does what the all-in's `--yaw-entropy 0` did for the dive,
+  without the collapse to 0.01 that the all-in showed on princessburglar.
+* Both stopped by pid (686.8M, 888.1M), BUNDLE OK (checkpoints, evals, run.json, progress,
+  launch log, search lines), boxes 60597235 and 60597315 released 05:46 UTC, tunnels stopped.
+
+### Next
+
+* The candidate training side is now the 135 tokens with `--yaw-sigma-max 0.2` (no
+  `--yaw-entropy 0`). `ab3bc_1` (blue200, the same tokens with the 0.2 cap) checks it on a map
+  that finishes; princessburglar's stall is the first-line lottery (20a23c95), not the yaw.
