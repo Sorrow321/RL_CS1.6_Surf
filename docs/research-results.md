@@ -44952,3 +44952,19 @@ END to the nearest tail on record (u, T = 0 / 1 / 2 / 4):
   failed lip line closes the exit for v4-v6 until the greedy comes within 200 u of its d.
 * A ban that could tell a trough from an exit would have to judge the END (is there a way on
   from it?), not the curriculum's failure, which is the same signal for both. Unmeasured.
+
+## 2026-11-14 15:57 UTC: ablation wave 8 - unitfarmer2 v6 from scratch stopped at 1.42B (trough tree lines learned from state 0, the dive lost); sub-agent U builds a way-on probe for candidate lines
+
+* `ab4u_u6` (unitfarmer2, recipe v6 = v5 + the patience cap; pre-launch 3670aaa5): 0/9 below z 0 in
+  every eval but one (3/9 at 604.5M) to 1,359.5M. Search 1 (436.2M) a 4,637-state trough tree
+  line (d 28,360, learned 98%); search 2 (1,268.3M) a 755-state tree line deeper into the trough
+  (d 27,675), learned from state 0 (80%): the greedy follows it and never dives. Stopped by pid at
+  1,424.0M, BUNDLE OK, box 60604616 released 15:57 UTC. With ab7c_ud (v5) this is the second
+  delay-recipe run whose loop hands the trough first; the dive survives only while the trough
+  line is NOT learned.
+* Next (sub-agent U, offline first): a generic way-on probe - a short forward exploration from a
+  candidate line's end that must reach deeper than the end before the line is accepted - tested on
+  the uf2 trough ends, the uf2 exit (ab4u_1 k05), princessburglar's lines and the finishing maps'
+  lines before it can join a recipe.
+* Running: `ab7c_w6` (warm + cap), sidistic v5 (3.55B), cannonball v5 (4.08B, 94.8%, no finish
+  yet). Credit $21.63 at 15:54 UTC.
