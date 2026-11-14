@@ -43530,3 +43530,44 @@ backward curriculum teach the princessburglar launch when it is handed a crossin
   abpbi2_1/` (the same, ckpt_latest md5 fd0fe74c); md5 lists next to them. Config branches
   ab/pbi1 b5671ead and ab/pbi2 98802e2d (from ab/pbm 058bd279); scripts in scratchpad
   `abl/pbx/launch/` and `abl/pbx/smoke/`.
+
+## 2026-11-14 08:04 UTC: ablation wave 4/5 - celestial NULL with the cap-0.2 training side (stuck at the fork to 2.87B); wave 5 PRE-LAUNCH: v1-lean (no death charge, energy K 3) on celestial and the unitfarmer2 dive
+
+### Read: celestial with the cap-0.2 training side (`ab3cc_1`, pre-launch 68cf8ed9) - NULL
+
+* No greedy finish by the 2.5B cut (stopped by pid at 2,887,254,016; the cut was overrun by
+  0.39B while I watched the unitfarmer2 run, the verdict is the same at 2.49B). Grader best per
+  eval 25-35% from 151.5M to the end, two evals at 40.6-40.9% (1.284B, 1.435B): the greedy
+  reaches the fork at about 30% and goes no further. The fix round's try 1 (89 tokens, 10 ms)
+  passed the fork at 680M (61.7%) and finished at 1,284.0M.
+* Searches (the fix round's loop): lines at 113.2M (d 59,095), 262.7M (43,418), 414.7M
+  (39,940) and 1,547.7M (4,777 states to d 20,919, about 66% of the map); the curriculum on
+  line 3 oscillated at rows 1,355-1,480 (success 1.4-65.7%) for 1.1B steps and never walked it
+  back through the fork; line 4's walk-back started at its end. BUNDLE OK (ckpts 1.0B, 2.0B,
+  latest, 39 evals, k01-k05); box 60602279 released 07:59 UTC; tunnel stopped.
+* So the candidate training side (the all-in groups without `--yaw-entropy 0`, cap 0.2) does
+  NOT finish celestial in 2.5B on this seed, where the fix-round recipe did in 1.28B. One seed:
+  the fork is passed only by a search line on its mirrored side (m7: "plain recipes never in
+  3B"), so a line lottery cannot be told from a regression by this run alone.
+
+### Wave 5, written BEFORE the launch: v1-lean
+
+* Two of the all-in's groups are not needed for the unitfarmer2 dive (a5a24c58): the death
+  charge (the dive came 2x later without it) and energy K 12 (October's unitfarmer2 value; the
+  recipe's 3 finished five maps). v1-lean = recipe v1 WITHOUT `death` and WITH `--energy-pot 3`
+  (132 tokens; novelty, keytemp, greedy, front, tick, the 0.2 cap and the v1 search loop stay).
+
+| owner / run | map | read | cut |
+|---|---|---|---|
+| `ab5c_1` | surf_src_celestial | first greedy finish (grader); the fork (> 40%) | 2.5B |
+| `ab5u_1` | surf_unitfarmer2 | the start dive (9/9 below z 0) | 0.6B |
+
+* If `ab5c_1` finishes and `ab5u_1` dives, v1-lean replaces v1 as the candidate; if celestial
+  stays at the fork, one of the remaining groups (novelty, keytemp, the respawn rows, the tick)
+  or the line lottery is next, read on the same map.
+* Local check: the 132-token unitfarmer2 line on CPU on the ab/mc code, 40,960 steps: rc 0,
+  no refusal, the 0.2 cap printed, no death-charge line; celestial's
+  line is the same tokens with --maxvel 4000 (its faceid cache bakes only on a GPU).
+* Two 4080/5080-class boxes, about $0.39/h each, deadlines 2.6 h and 1.2 h, watchdog with
+  harvest spec and pid file; tunnels http://localhost:8629/ (celestial) and :8630
+  (unitfarmer2). Credit $33.8 at 08:00 UTC.
