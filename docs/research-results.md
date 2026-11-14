@@ -45408,3 +45408,118 @@ MEASUREMENT only):
   spawn's d", the coefficient read at every greedy eval.
 * Not changed: the keytemp group (T 0.5) and the greedy / front-perturbed spawn rows, which are
   also new against the fix round; if this arm fails, they are next.
+
+## 2026-11-14 19:02 UTC: princessburglar RESTART instrument (sub-agent P, the user's xLOOP reading): a fresh network with spawns spread uniformly along a crossing line learns only the line's far side; null at 1.5B in both arms, the greedy never leaves the start room
+Written BEFORE the launch (sub-agent P). An INSTRUMENT, not a recipe result: the user's xLOOP
+reading ("the distribution is the key", Round 27 addenda 2-4: a FRESH network trained on spawns
+spread UNIFORMLY along the best line's states compounded on cannonball 24% -> 42% -> 67% ->
+88.7% in four rounds) on princessburglar's crossing, where recipe v5 is null (2.5B, start room)
+and the backward walk-back stalls 0.2 s before the far-wall impact (waves 3-4, 8).
+
+### The arms (one seed each, FROM SCRATCH, princessburglar, the v5 training side)
+
+* Tokens: recipe v5 (ab/ab8p config, 145 tokens, code ab/v4 b784f84c) with the search loop
+  (every --auto-spine* flag with its value) and the backward walk (--demo-window
+  5, --demo-grow 5, --demo-grow-max 40, --demo-cooldown 5, --demo-rate 0.2, --demo-min-ep 50,
+  --demo-front-frac 0.5, --demo-match-band, --demo-rehearse 0.25 / 256) taken out: 96 of 145 kept
+  (novelty with --int-coef-progress 2.5:0.25:0.1, energy, unstuck, greedy-death and
+  front-perturbed spawn rows, yaw cap 0.2, 7.63 ms, maxvel 3500, --demo-success-d 100). Added: the
+  spine-testbed / xLOOP uniform spine `--demo-file LINE --demo-keys LINE.keys --demo-window n
+  --demo-rate 2.0 --demo-min-ep 1e9` (the window is the whole line and never moves: every demo
+  draw is uniform over its rows, each spawn holding the line's keys) and the read-out
+  `--demo-report-bands` (ab/loop 5869d6c9, below).
+* Pool per iteration: 10% map start (--respawn-frac 0.9), and of the rest 25% greedy-death rows,
+  25% front-perturbed rows and the remaining ~50% uniform along the line (~45% of all spawns).
+* Lines (policy-derived, no demo; declared SELF_STATES with their provenance):
+
+| run | line | rows | end d | launch / landing rows | provenance |
+|---|---|---|---|---|---|
+| `abl1_1` | as_t3_E | 2,664 (10 ms) | 55,097 | 1,428-1,470 / 1,538-1,575 | fxpb_t3 search |
+| `abl2_1` | pb5_k02 | 4,347 (7.63 ms) | 55,113 | 2,740-2,800 / 2,881-2,925 | ab7b_pb5 search 2 |
+
+  Both cross the pit (room -> ridge -> launch -> far wall -> far side), md5 e164025a / 30850249
+  (keys 6521e1e3 / 98b60694).
+* Read-outs: the success at the launch, flight, landing and ledge rows (`demo bands`, the
+  curriculum's own success test: the line's end + 100), the deciles; the greedy from the true
+  start: far ledge (x > 850, 3,420 < z < 3,560 east of the pit) and finishes from the grader.
+  Cut at 1.5e9 steps (`--steps 1.5e9`), or a step count standing still for 10 minutes.
+
+### The code (ab/loop 5869d6c9, from ab/ab8p; off = byte-identical)
+
+* `train_fast --demo-report-bands A:B[,C:D...]`: beside the per-decile report, the episodes and
+  finish rate of those spine row ranges (the launch and the landing share one decile of a
+  2,664-row line). A read-out only; config only when set; record_ckpt TRAIN_ONLY.
+* tests/python/test_demo_report_bands.py, 4 passed (the report, the uniform window spanning the
+  line, the wiring, the mirror).
+
+### Local checks (CPU, shrunk only by overrides at the end)
+
+* Both complete lines (the launcher's scratch pins + the arm's 108 tokens) ran 20,480 steps, rc 0:
+  "demo curriculum: 2664 (4347) states ... window 2664 (4347), advance/backoff at 200%", "demo
+  starts [0,2663]/2664", the line's keys loaded ("2615 of 2664 rows hold something other than
+  neutral"; 4181 of 4347), no auto-spine line, the novelty coefficient read at every eval;
+  run.json carries demo_window n, demo_rate 2.0, demo_min_ep 1e9, the keys, the bands. Arm 1 to
+  212,992 steps: the band counts fill ([1428,1470] 4 eps, [1576,1800] 25 eps; the deciles 22-55
+  eps, the last one 44% success).
+
+### Boxes and budget
+
+* Two boxes, rented with 1 box live on the fleet: `abl1` = 60676247 (RTX 5080, $0.309/h,
+  ready 17:31:52 UTC), `abl2` = 60676295 (RTX 3090, $0.356/h, ready 17:34:02); both healthy
+  (gpu_health), deployed on ab/loop 5869d6c9, lines md5-checked on the boxes, launched through
+  `box.py launch --no-recipe --self-states "<provenance>"` (run_arm.sh SCRATCH + the record gate:
+  passed, 4 recordings) at ~17:37 UTC; watchdog registered with the harvest spec and pid file
+  (abl1 until 19:31, abl2 extended at once to 20:16 for the slower card); dashboards on the boxes
+  (port 8600) tunnelled to http://localhost:8633/ (abl1) and http://localhost:8634/ (abl2). Cap
+  $2 for both; credit $20.05 at the start.
+
+### Results (written after the runs)
+
+Both arms ran to 1,500,512,256 steps (abl1 at 407k steps/s, ended 18:38 UTC; abl2 at 307k, ended
+18:58), were pulled with their final checkpoints (md5 83777cb8 / fa523273 = box) and released.
+
+| spine success (END test) | abl1 (as_t3_E) 0.21 / 0.63 / 1.05 / 1.47B | abl2 (pb5_k02) same steps |
+|---|---|---|
+| launch band | 0 / 0 / 0 / 0% | 0 / 0 / 0 / 0% |
+| flight band | 3 / 2 / 1 / 1% | 0 / 0 / 0 / 0% |
+| landing band | 0 / 0 / 0 / 0% | 0 / 0 / 0 / 0% |
+| far side just after it | 2 / 1 / 0 / 0% | 5 / 2 / 8 / 12% |
+| deciles 0-60% | 0-4% | 0-1% |
+| decile 70% | 37 / 21 / 14 / 9% | 19 / 20 / 35 / 44% |
+| deciles 80% / 90% | 11-32% / 60-81% | 79-88% / 100% |
+
+* Only the line's last 20-30% (the far side after the landing) is ever succeeded from; nothing
+  before the landing, in either arm, at any step. abl1's far-end success PEAKED at 0.42-0.63B
+  and then fell (90% decile 81% -> 62%, 70% decile 37% -> 9%); abl2's 70% decile rose slowly
+  (19% -> 44%).
+* The greedy from the true start never left the start room: 0 of 9 episodes on the far side in
+  all 20 evals of each arm, grader 0.0-0.4%, 0 finishes; the median episode ends in the room
+  (z 3,634-3,678).
+* The training side: the yaw sigma sat at its 0.2 cap for the whole of both runs (0.199-0.200,
+  0.17 at abl1's end); the unstuck temperature at its 0.5 maximum from ~0.1B; novelty 2-4 per
+  episode, most of the training reward (2-3); the novelty gate read 0.2-0.4% (coefficient 2.44).
+
+### What the instrument says
+
+* The user's distribution reading does not carry over to this crossing at this budget. Spawns
+  spread uniformly along a handed crossing line, on a fresh network with the v5 training side,
+  teach the part of the line from which its END is reached within a few seconds (the far side)
+  and nothing before the far-wall landing; the backward walk-back on warm weights reached 0.2 s
+  before the same landing in 134-275M steps (waves 3-4). xLOOP's compounding on cannonball rode
+  on each round's GREEDY line getting further; here the greedy never leaves the start room, so a
+  next round would inherit a start-room line.
+* No generic rule is proposed from this: neither arm worked. Two observations to carry: (1) the
+  success test (the line's END) gives a fresh network no signal from the launch or the landing -
+  the same test the backward walk uses, which reaches them by moving the band, not by spreading
+  it; (2) v5's yaw cap 0.2 held the yaw sigma at the cap throughout, the setting fix-round try 3
+  raised to 0.5 to leave this start room (1.36B against 2.94B frozen).
+* One seed per arm; both are instruments, not recipe results.
+
+### Cost
+
+* abl1 60676247 (RTX 5080, $0.309/h) 17:31:52-18:39:18 UTC, about $0.35; abl2 60676295 (RTX 3090,
+  $0.356/h) 17:34:02-18:59:22, about $0.51; about $0.86 in all. Both destroyed and verified gone
+  (`vastai show instances`); tunnels 8633 / 8634 stopped; watchdog entries gone.
+* Bundles: `~/ar_m2/runs/abl1/abl1_1/` and `~/ar_m2/runs/abl2/abl2_1/` (run.json, progress.csv,
+  launch log, 20 greedy evals each, ckpt_final). Code ab/loop 5869d6c9 (pushed); scripts in the
+  scratchpad `abl/loop/`.
