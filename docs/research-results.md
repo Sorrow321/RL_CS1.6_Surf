@@ -42972,3 +42972,44 @@ keytemp, tick 7.63 ms); the launch extra is unchanged.
 * Every box: the droplet watchdog with a harvest spec and the trainer's pid file, the dashboard
   on the box and a tunnel here (http://localhost:8621/ unitfarmer2, :8622 princessburglar,
   :8623 blue200).
+
+## 2026-11-14 05:01 UTC: ablation wave 3 interim - the all-in without --yaw-entropy 0 FINISHES blue200 (302.5M, 9/9 from 378M) but does NOT dive on unitfarmer2 (sigma at the 0.5 cap); two cap probes launched
+
+Two wave-3 arms are read (rules fixed in ef3da016) and two probes are launched, written before
+their launch.
+
+### Read
+
+| arm | read | verdict |
+|---|---|---|
+| `ab3b2_1` blue200 | first finish 302.5M (5/9, 15.67 s); 9/9 at 378-605M; best 12.96 s | FINISHES |
+| `ab3uy_1` unitfarmer2 | 0 of 9 greedy episodes below z 0 in all 10 evals to 680.0M | NO dive |
+
+* blue200 finishes far earlier than the fix round (1.435B, best 14.18 s); unitfarmer2 does not
+  dive with the cap alone.
+* blue200 (grader `autoresearch/score.py`, finishes counted from the trajectory files): no
+  regression from the all-in's groups on this map; one seed. Stopped by pid at 719.3M (the
+  question was answered; the 3.0B cut was a ceiling), BUNDLE OK, box 60592767 released 04:57.
+* unitfarmer2: the yaw sigma climbed to the 0.5 cap by 105M and stayed there (the all-in with
+  `--yaw-entropy 0`: 0.30 -> 0.17 at its first dive (151.5M) -> 0.05 from 260M). Search 1
+  (117.4M) handed back a beam line round the platform (2,160 states, end d 29,660) and search 2
+  (465.6M) a beam+ge line to d 28,521; the greedy flew the lines, never the dive. Stopped by pid
+  at 743.4M, BUNDLE OK, box 60592590 released 04:57.
+* The yaw sigma on the maps that finish FALLS by itself under the default entropy (fix round:
+  blue200 0.02-0.10, celestial 0.06-0.07, petrus 0.04, cannonball 0.07; this blue200 run 0.09 at
+  650M); on unitfarmer2 and princessburglar it CLIMBS to whatever ceiling it is given (0.5 cap
+  here and in fix-round try 3, the 2.718 clamp without a cap). The unitfarmer2 dive came only
+  with a low sigma; princessburglar left its start room only with a moderate one (try 3,
+  0.24-0.48) and not with a collapsed one (all-in, 0.01-0.05). Whether one ceiling serves both
+  is what the probes below and `ab3py_1` measure.
+
+### Probes launched (unitfarmer2, from scratch, seed 0, dive read at 0.6B as in ef3da016)
+
+| owner / run | recipe | question |
+|---|---|---|
+| `ab3u2_1` | the 135 tokens with `--yaw-sigma-max 0.2` | does a sigma held at 0.2 dive? |
+| `ab3u1_1` | the 135 tokens with `--yaw-sigma-max 0.1` | does a sigma held at 0.1 dive? |
+
+* Only the cap's value differs from the smoked `ab3uy` line (same tokens). A cap is ONE value
+  for every map; if one dives, the same value is then tested on princessburglar and blue200
+  before it is called anything.
