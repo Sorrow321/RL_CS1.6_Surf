@@ -45627,3 +45627,47 @@ Recommendation (one line): add `--yaw-entropy-progress 1:0:P` (yaw-precise once 
 start) and `--demo-front-yaw-abs 0.066` to a recipe candidate and run it from scratch on
 princessburglar and on one map that already finishes (blue200 or petrus) before calling it v7;
 to separate the two, rerun this instrument with `--yaw-entropy 0` alone.
+
+## 2026-11-14 19:30 UTC: cannonball v5 resume FINAL (6.3B, no finish, never past the wall; its 5090 now runs the quiet-novelty arm as ab8n_cq) + PRE-LAUNCH princessburglar from scratch, recipe v7 + band yaw noise (abpbc_1)
+
+Two things in one entry, both decided before the launches they describe.
+
+### Cannonball v5 resume FINAL (ab8n_r): no finish, never past the wall
+
+* `ab8n_r` (v5, resumed at 4.0B from the watchdog's harvest after the box was lost, 907dea66) ran
+  to its fixed end, 6,301,417,472 steps (19:22 UTC). 0 finishes. Grader best 92.4-93.3% in
+  most evals, 68-69% in the rest, median 24.5-92.7%; on the route 0/9 past 205,440 u in every
+  eval read (14ab25d3). Its search 2 line (a dive into the off-route pocket, d 14,264) held the
+  curriculum at 0% from 4.76B; search 3 ran at 5.59B. Bundle ~/ar_m2/runs/ab8n/ab8n_r +
+  ckpts_r + auto_r (BUNDLE OK, md5 = box). The box (5090, 60678705) is KEPT and redeployed with
+  the quiet-novelty arm of 14ab25d3: run `ab8n_cq` (= `abcnq_1` of that entry; the run name
+  must start with the box's owner), worktree ~/ar_m2/wt/abcnq, the cut written there.
+
+### PRE-LAUNCH: princessburglar from scratch, recipe v7 + band yaw noise (abpbc_1)
+
+* What it tests: whether the change that made the greedy cross princessburglar's pit on warm
+  weights (9e620cb6; sub-agent U) works FROM SCRATCH inside the recipe, with the yaw entropy
+  left at its default. U's log says the band rows were QUIETER than the policy while the hard
+  bands were learned (absolute 0.066 = 0.17x the policy's sigma at the resume, 0.28-0.31x on
+  the impact bands, 0.37-0.60x on the launch): precise yaw on the band (keys hotter), not
+  noise. With v7's yaw cap 0.2 the band rows draw at about 0.33x the policy. U separates the
+  two warm changes (yaw entropy 0 alone; band flags alone) on one box beside this run.
+* Tokens: recipe v7 (147, maxvel 3500) + `--demo-front-temp 0.5 --demo-front-yaw-abs 0.066
+  --demo-front-ticks 40` = 153 tokens, code ab/yawabs c8595e54 (U's two flags, default off,
+  and the fix that lets `--demo-front-temp` run with `--auto-spine-scratch`: the first
+  candidate on f000d45a was refused at startup by a pre-existing check, caught by the CPU
+  smoke). Worktree ~/ar_m2/wt/abpbc, branch ab/abpbc 01293a30 (ab/abpbb 27ae79ed is the
+  refused first try, not launched). Launch extra unchanged. From scratch, seed 0, one box.
+* The three flags act only on the backward curriculum's frontier-band spawns (S = 0.066 is
+  October's band noise, 0.011 x 6): the same values on every map if they are kept.
+* Bars: v5/v7 never left the start room in 2.5B (ab7b_pb5; its walk-back stalled at rows
+  3,611-3,616 of the crossing line pb5_k02, after the landing); fix try 3 left the room at 1.36B,
+  the frozen recipe at 2.94B; no from-scratch run on the fixed core has crossed the pit.
+* Reads: the curriculum's lowest band on each held line (does it pass the landing, the impact,
+  the launch?); the step at which the greedy leaves the start room; greedy pit crossings (far
+  ledge: x > 850, 3,420 < z < 3,560 east of the pit); finishes from the grader run in this
+  worktree; the yaw sigma.
+* CPU smoke of the complete command line (the launcher's scratch pins + 153 tokens + the launch
+  extra, princessburglar, 40,960 steps, worktree wt/abpbc): rc 0.
+* Cut (fixed now): 3.0B steps if the greedy has never left the room AND no held line's walk-back
+  has passed its landing band; otherwise on to 10B, or the first finish + 5 evals.
