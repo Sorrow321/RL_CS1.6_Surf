@@ -245,6 +245,9 @@ def flight_fate(map_path, state, tick_ms, maxvel, secs: float):
         core.reset(0)
         _PROBE[key] = core
     st = clean(np.asarray(state).reshape(-1)[:1])[0]
+    # a full reset first: set_state does not clear the episode's push-once triggers and stuck
+    # bookkeeping, so on a reused core a flight after one that died read "dies" too
+    core.reset(0)
     core.set_state(0, st)
     act = np.zeros((1, 6), np.int32)
     act[0, 2] = act[0, 3] = 1                         # forward / side bins: neutral

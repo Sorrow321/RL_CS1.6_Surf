@@ -79,6 +79,22 @@ def test_the_probe_on_the_real_map():
 
 
 @needs_uf2
+def test_a_reused_core_does_not_carry_a_death():
+    """flight_fate keeps one core per map: before ab/probe a flight checked after one that died
+    read "dies" too (set_state keeps the episode's push-once triggers and stuck bookkeeping), so
+    in a search the Monte Carlo line's end was judged by whatever the tree line's end did. The
+    two real end states: ab4u_1 search 6's Monte Carlo line (it dies) and ab4u_u6 search 2's
+    tree line (it lands), both the loop's own lines."""
+    import auto_spine as A
+    z = np.load(ROOT / "tests" / "python" / "data" / "flight_reuse_cases.npz", allow_pickle=False)
+    A._PROBE.clear()
+    assert A.flight_fate(UF2, z["lands"], TICK, 3500.0, 1.0) == "lands"
+    assert A.flight_fate(UF2, z["dies"], TICK, 3500.0, 1.0) == "dies"
+    assert A.flight_fate(UF2, z["lands"], TICK, 3500.0, 1.0) == "lands"
+    assert A.flight_fate(UF2, z["dies"], TICK, 3500.0, 1.0) == "dies"
+
+
+@needs_uf2
 def test_the_cut():
     import auto_spine as A
     line = _flying_line()
