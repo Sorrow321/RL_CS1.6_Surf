@@ -29,6 +29,9 @@ A third (ab/ff, 2026-11-14), off by default: --failed-fallback ENDS, in a patien
 the held line failed, lets an archive line that beats the greedy frontier but not the held line's
 end be handed back when no other line is, if it ends at least --gain away from every failed
 archive end (stepping_stone()).
+A fourth (ab/ban, 2026-11-14), off by default: --archive-ban POINTS refuses an archive line
+whose chain passes within --archive-ban-r of the END POSITION of an archive line whose curriculum
+failed (chain_near()), as a pass AND as a --failed-fallback.
 
 No constant here comes from a map: every threshold is a field distance margin, a time, or a
 search budget, and the same flags run on any map. No demo or record data enters (CLAUDE.md
@@ -237,6 +240,28 @@ def stepping_stone(de: float, greedy_d: float, gain: float, ends) -> bool:
     failed 28,599 / 28,937)."""
     return (bool(de < float(greedy_d) - float(gain))
             and all(abs(float(de) - float(f)) >= float(gain) for f in ends))
+
+
+def ban_points(spec) -> np.ndarray:
+    """--archive-ban 'X,Y,Z;X,Y,Z;...' -> (n, 3) float64: the end positions of the archive lines
+    whose curriculum failed; '-' (or empty) -> (0, 3)."""
+    s = "" if spec is None else str(spec).strip()
+    if s in ("", "-"):
+        return np.zeros((0, 3), np.float64)
+    return np.array([[float(v) for v in p.split(",")] for p in s.split(";") if p.strip()],
+                    np.float64).reshape(-1, 3)
+
+
+def chain_near(origins, pts) -> tuple:
+    """--archive-ban: (the smallest distance from any of ``origins`` (n, 3) to any of ``pts``
+    (m, 3), the row of ``origins`` it is at); (inf, -1) when either is empty."""
+    o = np.asarray(origins, np.float64).reshape(-1, 3)
+    p = np.asarray(pts, np.float64).reshape(-1, 3)
+    if not len(o) or not len(p):
+        return float("inf"), -1
+    dd = np.min(np.linalg.norm(o[:, None, :] - p[None, :, :], axis=2), axis=1)
+    i = int(np.argmin(dd))
+    return float(dd[i]), i
 
 
 def beats_greedy(de: float, greedy_d: float, gain: float, finished: bool = False) -> bool:
@@ -641,6 +666,15 @@ def main(argv=None) -> int:
                          "trainer's --auto-spine-archive-bar): a Go-Explore line must end below "
                          "min(the reference, this) - --gain; the policy's own lines are not held "
                          "to it. Absent = as before")
+    ap.add_argument("--archive-ban", default=None, metavar="POINTS",
+                    help="the END POSITIONS of the archive lines whose curriculum failed, "
+                         "'X,Y,Z;X,Y,Z' (the trainer's --auto-spine-archive-ban): an archive line "
+                         "whose chain (from its root on) passes within --archive-ban-r of one of "
+                         "them is refused, as a pass and as a --failed-fallback; the policy's own "
+                         "lines are not. Absent = as before")
+    ap.add_argument("--archive-ban-r", type=float, default=128.0,
+                    help="--archive-ban: the radius (u), one constant on every map (2 archive "
+                         "cells of 64 u)")
     ap.add_argument("--failed-fallback", default=None, metavar="ENDS",
                     help="a PATIENCE search after the held line failed (the trainer's "
                          "--auto-spine-failed-fallback): ENDS = the end d of every failed archive "
@@ -713,6 +747,10 @@ def main(argv=None) -> int:
     res.update(info)
     best_src = fallback = None
     arch_cands = []        # --failed-fallback: archive lines that did not pass, (src, line, d)
+    ban = ban_points(a.archive_ban)
+    if len(ban):
+        res.update(archive_ban=[[round(float(v), 1) for v in p] for p in ban],
+                   archive_ban_r=float(a.archive_ban_r))
     if line is not None and len(line):
         d = field_d(field, line)
         fin = bool(info.get("beam_finished"))
@@ -865,6 +903,18 @@ def main(argv=None) -> int:
                       f"{kind + ' archive, ' if kind else ''}"
                       f"speed x {boosts}): {len(gl)} states, best d "
                       f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
+                if len(ban):
+                    # --archive-ban: a chain that runs through where a failed archive line ended
+                    # is refused, as a pass and as a fallback (the policy's own lines are not)
+                    _r0 = int(gi.get("ge_root_index") or 0)
+                    _near, _row = chain_near(gl[_r0:ge_e + 1]["origin"], ban)
+                    res[f"{tag}_ban_dist"] = round(_near, 1)
+                    if _near < float(a.archive_ban_r):
+                        res[f"{tag}_banned"] = 1
+                        print(f"GE stage {k + 1}: its chain passes {_near:,.0f} u from a failed "
+                              f"archive line's end (row {_r0 + _row}; radius "
+                              f"{float(a.archive_ban_r):g}): refused", flush=True)
+                        continue
                 if ge_de < gref - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
                     break
@@ -1024,7 +1074,13 @@ def selftest() -> int:
             ("a line beside a failed end is not", not stepping_stone(28713.5, 30300.6, 200.0,
                                                                      [28599.4, 28936.6])),
             ("a line that does not beat the greedy frontier is not",
-             not stepping_stone(56911.0, 57004.3, 200.0, []))):
+             not stepping_stone(56911.0, 57004.3, 200.0, [])),
+            # --archive-ban: the nearest pass of a chain to a failed archive end
+            ("no ban points parse", ban_points("-").shape == (0, 3)),
+            ("ban points parse", ban_points("1,2,3;4,5,6").tolist() == [[1, 2, 3], [4, 5, 6]]),
+            ("the nearest pass", chain_near([[0, 0, 0], [10, 0, 0], [20, 0, 0]],
+                                            [[12, 3, 4]])[1] == 1),
+            ("no points, no pass", chain_near([[0, 0, 0]], np.zeros((0, 3)))[0] == float("inf"))):
         print(("ok   " if cond else "FAIL ") + name)
         ok &= bool(cond)
     return 0 if ok else 1

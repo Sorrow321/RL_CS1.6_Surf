@@ -4147,7 +4147,7 @@ AUTO_SPINE_OWN_FLAGS = frozenset((
     "--ckpt", "--map", "--field", "--out", "--greedy-d", "--current-d", "--gain", "--beam-ticks",
     "--envs", "--ge-minutes", "--act-every", "--seed", "--branch-tick", "--timeout", "--maxvel",
     "--energy-gain", "--explorer", "--mcts-minutes", "--mcts-extra", "--archive-bar",
-    "--failed-fallback"))
+    "--failed-fallback", "--archive-ban", "--archive-ban-r"))
 
 
 def is_archive_source(source) -> bool:
@@ -5326,6 +5326,15 @@ def main() -> None:
                          "Carlo) are judged as before. ab/mc, 2026-11-14: abuf2_all's loop handed "
                          "back three archive lines through unitfarmer2's trough (searches 2, 4, "
                          "5), each deeper on the field than the pit exit and none learned. Off = "
+                         "byte-identical; config only when on; never restored")
+    ap.add_argument("--auto-spine-archive-ban", type=float, default=None, metavar="R",
+                    help="--auto-spine-archive-bar: also record the END POSITION of every archive "
+                         "line whose curriculum failed; every later search refuses an archive "
+                         "line whose chain passes within R u of one (auto_spine.py --archive-ban, "
+                         "as a pass and as a --failed-fallback). One R on every map (128 = two "
+                         "archive cells). ab/ban, 2026-11-14: recipe v1's unitfarmer2 run ab4u_1 "
+                         "adopted a second trough line (search 3, d 28,255) that cleared the d-bar "
+                         "by 62 u and ran within 112 u of the failed trough line's end. Off = "
                          "byte-identical; config only when on; never restored")
     ap.add_argument("--auto-spine-failed-fallback", action="store_true",
                     help="--auto-spine-archive-bar: a PATIENCE search after the held line FAILED "
@@ -12493,6 +12502,12 @@ def main() -> None:
                                             and float(args.auto_spine_patience) > 0):
         raise SystemExit("--auto-spine-archive-bar marks a line failed at a PATIENCE search: give "
                          "--auto-spine and --auto-spine-patience")
+    if args.auto_spine_archive_ban is not None:
+        if not args.auto_spine_archive_bar:
+            raise SystemExit("--auto-spine-archive-ban records the failed archive lines of "
+                             "--auto-spine-archive-bar: give it")
+        if not float(args.auto_spine_archive_ban) > 0.0:
+            raise SystemExit("--auto-spine-archive-ban R: the radius must be > 0")
     if args.auto_spine_failed_fallback and not args.auto_spine_archive_bar:
         raise SystemExit("--auto-spine-failed-fallback reads the failed archive ends of "
                          "--auto-spine-archive-bar: give it")
@@ -15737,6 +15752,8 @@ def main() -> None:
             meta["config"]["auto_spine_archive_bar"] = 1
         if args.auto_spine_failed_fallback:
             meta["config"]["auto_spine_failed_fallback"] = 1
+        if args.auto_spine_archive_ban is not None:
+            meta["config"]["auto_spine_archive_ban"] = float(args.auto_spine_archive_ban)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -17037,8 +17054,22 @@ def main() -> None:
                       f"{_held:,.0f}) failed its curriculum; archive lines must now end "
                       f"{float(args.auto_spine_gain):g} u past {archive_bar(_fa):,.0f}",
                       flush=True)
+                if args.auto_spine_archive_ban is not None:
+                    # --auto-spine-archive-ban: where that failed archive line ended
+                    _hp = [float(v) for v in np.asarray(demo.S[-1]["origin"], np.float64)]
+                    AUTO.setdefault("failed_arch_pos", []).append(_hp)
+                    print(f"[{global_step:>13,d}] auto-spine: archive chains within "
+                          f"{float(args.auto_spine_archive_ban):g} u of its end "
+                          f"({_hp[0]:,.0f}, {_hp[1]:,.0f}, {_hp[2]:,.0f}) are refused from now on",
+                          flush=True)
             if archive_bar(_fa) is not None:
                 cmd += ["--archive-bar", f"{archive_bar(_fa):.1f}"]
+            if args.auto_spine_archive_ban is not None and AUTO.get("failed_arch_pos"):
+                # one token with '=': a position may start with a minus sign
+                _pts = ";".join(",".join(f"{v:.1f}" for v in _p)
+                                for _p in AUTO["failed_arch_pos"])
+                cmd += ["--archive-ban" + "=" + _pts,
+                        "--archive-ban-r", f"{float(args.auto_spine_archive_ban):g}"]
             if args.auto_spine_failed_fallback and pat and not quorum:
                 # --auto-spine-failed-fallback: the held line failed, so an archive line short of
                 # every failed end may be handed back when nothing else is (auto_spine.py)
@@ -17301,6 +17332,8 @@ def main() -> None:
             # on an archive line bars later archive lines) and the bar so far
             AUTO["src"] = res.get("source")
             _en["failed_archive_ends"] = [float(v) for v in AUTO.get("failed_arch", [])]
+            if args.auto_spine_archive_ban is not None:
+                _en["failed_archive_pos"] = [list(_p) for _p in AUTO.get("failed_arch_pos", [])]
         if args.auto_spine_energy is not None:
             # an energy spine is taught with the energy success rule, a depth spine without it
             DEMO_H_MIN = spine_energy_rule(res, demo.S[-1], float(args.auto_spine_energy))
