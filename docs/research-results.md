@@ -44333,3 +44333,18 @@ new search rule (5d304af7). Pushed.
 
 * The warm instrument (2): its first spine IS the death line, and a `--demo-file` spine bypasses
   the search's rule, so it could only measure the same climb into the teleport. Budget unspent.
+
+## 2026-11-14 11:07 UTC: ablation wave 6 - unitfarmer2 does NOT dive at novelty weight 0.25 (0/9 to 0.6B); one fixed weight cannot serve unitfarmer2 and celestial
+
+* `ab6u_2` (unitfarmer2, v1-lean with `--int-coef 0.25`, the novelty key of the all-in kept;
+  pre-launch d85659be; relaunch of the void ab6u_1) does NOT dive: 0 of 9 greedy episodes below
+  z 0 in every eval to 604.5M (the 2.5-weight runs: 9/9 by 227.0M in four runs). Its search 1
+  (123.2M) handed back a 2,393-state beam line round the platform (end d 29,221) that the
+  curriculum learned to state 0 (95.7%); the greedy flies it. Stopped by pid at 625.5M, BUNDLE
+  OK, box released 11:07 UTC.
+* So on this pair of maps one fixed novelty weight cannot serve both: unitfarmer2's dive needs
+  2.5 (four of four runs) and does not come at 0.25 by 0.6B; celestial's fork needs 0.25 (it
+  stalls 2.2B+ at 2.5 in two runs and finishes at 906.5M at 0.25). What differs is where the run
+  is stuck: unitfarmer2 at its start (frontier progress a few % of d0, the pit a dip below the
+  spawn), celestial at about 30%. A progress-gated weight (2.5 near the start, 0.25 past 10% of
+  d0, one setting for every map) is being built by sub-agent P on ab/v3.
