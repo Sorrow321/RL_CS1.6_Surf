@@ -91,9 +91,14 @@ class DemoCurriculum:
         # tau0 (None = the spine's end, the paper's start): a continuation picks the
         # curriculum up where its previous run left it (the position is not checkpointed)
         self.tau = self.n - 1 if tau0 is None else int(np.clip(int(tau0), 0, self.n - 1))
+        self.tau_min = self.tau            # the lowest tau this spine reached (read-only state)
         self.ep = np.zeros(self.n, np.float64)
         self.win = np.zeros(self.n, np.float64)
         self.decay = 0.99
+        # train_fast --demo-rehearse (set_rehearsal; None = off, every draw byte-identical)
+        self.reh = None
+        self.reh_frac = 0.0
+        self.reh_until = -1
         self._cool = 0
         # --demo-cooldown C (20 = the reference implementation's hardcoded value, unchanged):
         # iterations between two moves of tau. At 20 x 524,288 steps per iteration a move costs
@@ -129,6 +134,8 @@ class DemoCurriculum:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.tau = self.n - 1 if tau0 is None else int(np.clip(int(tau0), 0, self.n - 1))
+        self.tau_min = self.tau
+        self.reh = None
         self.ep = np.zeros(self.n, np.float64)
         self.win = np.zeros(self.n, np.float64)
         self._cool = 0
@@ -144,6 +151,28 @@ class DemoCurriculum:
         for i, r in enumerate(self.S):
             rows.setdefault(tuple(np.round(np.asarray(r["origin"], np.float64), 1)), []).append(i)
         return {k: v for k, v in rows.items() if len(v) > 1}
+
+    def set_rehearsal(self, states, frac: float, until: int) -> None:
+        """train_fast --demo-rehearse: while tau stays above row ``until`` of the CURRENT spine,
+        ``frac`` of the frontier-band draws (all draws without --demo-front-frac) come uniformly
+        from ``states`` - the walked part of the spine this one replaced - instead of the band.
+        None = off. Rows from it match no row of the current spine (match -> -1), so they never
+        count in the curriculum's outcomes."""
+        self.reh = None if states is None else np.asarray(states, STATE_DTYPE).copy()
+        self.reh_frac = float(frac)
+        self.reh_until = int(until)
+
+    def _reh_rows(self, n: int):
+        """``n`` rehearsal rows, or None when the rehearsal is off or over (the walk-back has
+        reached the junction row: the spine's own draws cover it from now on)."""
+        if self.reh is None or n <= 0:
+            return None
+        if self.tau <= self.reh_until:
+            print(f"{self.name}: rehearsal over - the walk-back reached row {self.reh_until}, "
+                  f"where this spine passes the end of the one it replaced")
+            self.reh = None
+            return None
+        return self.reh[self.rng.integers(0, len(self.reh), n)]
 
     def _band(self) -> tuple[int, int]:
         """Inclusive [lo, hi] of the frontier band scoring the advance."""
@@ -175,7 +204,14 @@ class DemoCurriculum:
         else:
             idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
-        return np.concatenate([fresh, self.S[idx].copy()])
+        rows = self.S[idx].copy()
+        if self.reh is not None:
+            # --demo-rehearse: the FIRST band draws (the part no later share overwrites)
+            nb = n_front if self.front_frac > 0.0 else n_demo
+            rr = self._reh_rows(int(round(nb * self.reh_frac)))
+            if rr is not None:
+                rows[:len(rr)] = rr
+        return np.concatenate([fresh, rows])
 
     def draw(self, m: int) -> np.ndarray:
         """``m`` spine rows for a share of a pool built elsewhere (train_fast --finish-line): the
@@ -193,7 +229,13 @@ class DemoCurriculum:
                 self.rng.integers(d_lo, d_hi + 1, m - n_front)])
         else:
             idx = self.rng.integers(d_lo, d_hi + 1, m)
-        return self.S[idx].copy()
+        rows = self.S[idx].copy()
+        if self.reh is not None:
+            nb = n_front if self.front_frac > 0.0 else m
+            rr = self._reh_rows(int(round(nb * self.reh_frac)))
+            if rr is not None:
+                rows[:len(rr)] = rr
+        return rows
 
     def match(self, origins: np.ndarray) -> np.ndarray:
         """Demo index of each position, -1 if not a demo spawn."""
@@ -236,6 +278,7 @@ class DemoCurriculum:
                     self._step = self.grow
             if moved:
                 self._cool = self.cooldown
+                self.tau_min = min(self.tau_min, self.tau)
         d_lo, d_hi = self._draw()
         self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
                           f"(frontier band [{lo},{hi}]) "

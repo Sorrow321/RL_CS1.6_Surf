@@ -163,6 +163,8 @@ TRAIN_ONLY = frozenset({
     "auto_spine_dead_end_ban",
     # --auto-spine-keys (ab/sil): the TRAINING spine spawns' held keys
     "auto_spine_keys",
+    # --demo-rehearse / -r (ab/rh): a share of the TRAINING curriculum's starts on a learned line
+    "demo_rehearse", "demo_rehearse_r",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
