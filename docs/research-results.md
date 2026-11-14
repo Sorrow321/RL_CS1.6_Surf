@@ -43366,3 +43366,40 @@ Checkpoints copied from ~/ar_m2/runs/abuf2/ckpts_all, md5 verified on the box (2
   Carlo rollout on these weights>" --` the 138 ab/mc tokens without --auto-spine-scratch,
   --obs-normal 1, --simba 1, plus `--demo-file runs/abmc_exit_s2.npy` and the launch extra.
   A warm start is the instrument here (the question exists only at the pit), not a result.
+
+## 2026-11-14 06:15 UTC: ablation wave 4 PRE-LAUNCH - recipe v1 (cap 0.2, Monte Carlo stage, energy-rooted archives, failed-archive bar) from scratch on unitfarmer2; blue200 with the 0.2 cap finishes at 378M
+
+Written BEFORE the launch. Wave 4 starts with the first run of the merged candidate.
+
+### Read first: blue200 with the 0.2 cap (`ab3bc_1`, pre-launch 341ed3d2)
+
+* First greedy finish 378.0M (9/9, 15.62 s), 9/9 at 453.5M and 529.0M, best 14.51 s (grader).
+  With the 0.5 cap (`ab3b2_1`): 302.5M (5/9), 9/9 from 378.0M, best 12.96 s; the fix round:
+  1.435B, 14.18 s. No regression from the cap on this map (one seed; one eval apart). Stopped
+  by pid at 582.5M, BUNDLE OK, box 60601641 released 06:14 UTC.
+
+### Recipe v1 (136 tokens, the same on every map; only --maxvel follows the map)
+
+* Training side: the 89 try-1 tokens + the all-in groups (death, novelty, energy 12, greedy,
+  front, keytemp, tick 7.63 ms) WITHOUT `--yaw-entropy 0`, with `--yaw-sigma-max 0.2`
+  (341ed3d2: dives 9/9 from 151.5M; blue200 finishes at 378.0M).
+* Search side, code ab/mc 0f73a013 (a6383c75): `--mc-envs 4096 --mc-keys-temp 1.5` (the no-cull
+  Monte Carlo stage) and `--ge-boost 1.0;E1.0` (the energy-rooted archive stage, 20a23c95)
+  inside the --auto-spine-args string, and `--auto-spine-archive-bar`. Launch extra unchanged.
+
+### The run
+
+| owner / run | map | reads | cut |
+|---|---|---|---|
+| `ab4u_1` | surf_unitfarmer2 | dive, exit, finishes | 8B; 1.0B if no dive; 5B if no exit |
+
+* Reads: the start dive (first eval with 9/9 below z 0); the exit (a greedy episode back above
+  z 500 after the floor, and the first 9/9); every search's stage and line, and the bar;
+  where the greedy goes after the exit; finishes from the grader only.
+* Beside it, sub-agent U's warm instrument (`abmcw`, its own entry) asks the narrower question
+  of whether the policy learns a handed exit line, from the all-in's 3.5B weights.
+* One box (RTX 4080/5080 class, about $0.39/h), deadline 4 h, extended while it earns it;
+  watchdog with harvest spec and pid file; tunnel http://localhost:8628/. Credit $36.1.
+* Local check: the complete 136-token command line + launch extra on CPU on the ab/mc code
+  (worktree ab/ab4u d144ce9c), 40,960 steps: rc 0, no refusal, the 0.2 cap printed, searches
+  ran the tree and then the 4,096-rollout Monte Carlo beam_tas call.
