@@ -46158,3 +46158,103 @@ seven end in the pit (3.19-3.25%) and one in the room.
   the policy. So "the band alone passes the impact under a NOISY policy" is not shown. The band
   counts are curriculum events at a 20% threshold and react strongly to small differences in
   rate.
+
+## 2026-11-14 22:19 UTC: the unitfarmer2 'trough' is ON the exit route, not a dead end (sub-agent P): every exit passes through it; no end-region rule can refuse the trough re-hands and keep the exit line - none built
+Sub-agent P, wave 10, second task: a generic rule that stops the search loop handing back lines
+that end where earlier lines' curricula failed (unitfarmer2's "trough cycling"). Offline, no box,
+nothing launched; the two live runs were only read (ssh/scp of logs and lines, ab7c_v7 on
+162.213.119.141:42070, abpbc_1 on 66.44.155.253:43175). NO RULE WAS BUILT: the replay refutes the
+premise. The ab/trough branch was opened at c8595e54 and deleted unused.
+
+### The premise and what the live run did next
+
+* The task's picture (ab7c_v7 to 6.5B): five searches, every line ending in the trough north of
+  the pit (k01 28,333, k02 28,380, k03 28,640, k05 28,680) or on the platform (k04, a 299-state
+  Monte Carlo line, 30,007); the 128 u dead-end ban and the d-bar escaped by ending elsewhere in
+  the trough; no exit line by 6.5B.
+* What happened after (ab7c_v7's launch log, read at 22:15 UTC): k05 was held on. The patience
+  search at 6.34B marked it a dead end, but that search (search 6) handed back nothing (exit 2,
+  6.98B), so k05 stayed. Its walk-back had sat at rows 433-438 from ~6.0B to 6.87B, then ran
+  418 (6.89B) -> 213 (6.95B) -> 93 (7.00B) -> 28 (7.021B) -> 0 (7.038B). At the 7.022B eval the
+  greedy passed k05's success line 9 of 9 (frontier 30,243 at 6.95B -> 24,561), then 10,897 at
+  7.25B (61.3% cover) and 66.1% at 7.32B, where a quorum search (search 7) started.
+* The exit goes THROUGH the trough. Each path was checked against a box around the trough lines'
+  ends (x -2,450..-1,650, y -1,650..-1,000, z 100-450):
+
+| path | in the trough box | closest to a trough line's end | then |
+|---|---|---|---|
+| ab7c_v7 greedy, 7.02B, 9 of 9 episodes | 261-307 rows each | 154-170 u (k05's end) | down to z ~-600 |
+| ab7c_v7 greedy, 7.25B, 9 of 9 | 154-175 rows each | 128-143 u (k05's end) | to x 3,300-3,550 |
+| ab7c_w6 search 3, the TREE line that finished (8,640 rows, 27,225) | rows 7,043-8,153 | 44 u (v7 k03's end) | ends at (-1,147, -604, -531) |
+| ab4u_1 search 6, the exit Monte Carlo line (11,100 rows, 16,423) | rows 1,763-1,803 | 122 u (v7 k03's end) | to x 3,460 |
+
+* So the trough floor is a stop on the exit route, not a dead end. The search lines end there
+  because the route through the trough surfs back and forth over ramps before it goes deeper.
+  On w6's exit line, rows 7,040-8,120 swing between z 300 and 780 and d between 28,500 and
+  29,500. Only then does d fall below the trough floor: 28,103 at row 8,240, 27,535 at 8,360,
+  and the line ends at 27,225. A line cut at its best d therefore ends at a low point in the
+  trough.
+
+### The replay: a region rule cannot refuse the re-hands and keep what led to the exit
+
+* Every end-region rule tried (a ball of radius R around failed ends, refusing lines that do not
+  end --gain deeper) refuses k05 whenever it refuses k02 and k03.
+  * k02 ends 168 u from k01's end. k03 ends 309 u from k01's end and 254 u from k02's. k05 ends
+    572 u from k01's, 614 u from k02's and 427 u from k03's. All are shallower than k01.
+  * With the dead ends of the real history, R > 254 refuses k02 and k03, and R > 427 also
+    refuses k05. Only the window 255-427 u splits them: an accident of these ends, not a
+    principle.
+  * If k02 and k03 had been refused, they would never have failed, and k05 would be measured
+    against k01 alone: R > 309 refuses k03 and R > 572 refuses k05. The other trough candidates
+    whose lines were kept (k02-k06 archive lines) lie 19-760 u from k01's end, so a rule that
+    stopped the cycling outright needs R > 760.
+* Such a rule would have refused k05, the line under which the v7 greedy exited. The task's two
+  requirements ("refuse the trough re-hands", "keep every line that led to a finish") conflict on
+  these lines. That is why nothing was built.
+* The other uf2 runs:
+  * ab7c_w6: search 2 handed back nothing. Its trough candidates were refused by the bans or
+    fell short of the bar and of the stepping-stone gap. The exit came from a deeper TREE line
+    at search 3. A ban does not preclude an exit when the tree can find the continuation.
+  * v7's six trees never found that continuation; each ended on the platform or in the trough.
+  * ab4u_1: k05 (platform, 29,502) ends 80 u from k01's failed end (29,580, failed at 0.53B), and
+    the greedy first left the pit while k05 was held (3.47B). Any radius refuses it; the v7
+    dead-end ban (128 u) already would.
+* princessburglar (abpbc_1, live):
+  * The crossing line k02 (tree, 53,339) ended 1,900 u from the failed room-to-pit end (k01,
+    55,362) and 2,023 u deeper, so any region rule keeps it.
+  * k04 (the line after the crossing, 53,261) ends 173 u from k02's end and only 78 u deeper.
+    k02's dead-end mark is still "live" (the greedy at 53,691 is not within 200 u of it), so any
+    R > 173 with the d-escape refuses k04. The 128 u ban keeps it by 45 u.
+  * Lines that clearly led to the exit or the crossing are all far deeper than any dead end near
+    them (w6 search 3, ab4u_1 search 6, abpbc_1 k02), so a d-escape keeps them under any radius.
+  * The four finishing maps' k01 lines (ab4u_b5, ab4u_c5, ab4u_pet5, ab8s_1) are first searches
+    with no dead end yet, so nothing can refuse them.
+
+### What the data point at instead (an observation, not built)
+
+* In both maps the success came from a line whose walk-back got to (or near) the start before it
+  was replaced, and in both the loop had already tried to replace it:
+  * uf2 v7 k05: marked a dead end at 6.34B with its walk-back at row 438. It survived only
+    because search 6 found nothing, and was walked to row 0 at 7.04B; the exit came at 7.02B.
+  * pb abpbc_1 k02: the patience cap ("patience max: 1.02B") marked it a dead end at 2.72B while
+    its walk-back was moving (1,530 at 1.70B -> 685 at 2.70B -> 150 at 3.30B). Search 3's line
+    (a room-to-pit re-hand, 55,341, 494 u from k01's failed end) replaced it at 3.31B. The greedy
+    crossed at 3.32B (6 of 9 past, frontier 53,691) on what k02's curriculum had taught.
+  * The earlier trough lines were replaced while stuck: k01 at row 245-285 of 7,201 for ~0.6B,
+    k02 at 131-721 of 4,812, k03 at 469-474 of 1,470 for ~1B. k04 (299 rows) was walked to row 0
+    in 0.02B and the greedy still did not pass in the ~1B it was held.
+* So the lever these runs show is WHEN a held line is replaced, not where the next line ends.
+  But no single rule follows cleanly. "Do not replace while the walk-back is moving" would have
+  kept pb's k02, but not v7's k05, which sat at rows 433-438 for 0.87B before it broke through.
+  "A line fails only once walked back to the start" would have held k01 (stuck at 3%) without
+  limit. One seed per run; nothing here is tested.
+
+### Files
+
+* Pulled read-only, without checkpoints or archives:
+  * ab7c_v7 searches k01-k06, the launch log and the 6.95B / 7.02B / 7.25B evals in
+    `~/ar_m2/runs/trough/ab7c_v7/`;
+  * abpbc_1 searches k01-k04 and the launch log in `~/ar_m2/runs/trough/abpbc_1/`.
+* Replay scripts (history.py, cands.py, geom.py, through.py, timeline.py) in
+  `/tmp/claude-1000/-home-steam-ar-pb-wt-pbx/4506c754-e96e-459e-bf18-9528f3f92771/scratchpad/abl/trough/`.
+* Cost $0; no box.
