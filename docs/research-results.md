@@ -46515,3 +46515,51 @@ Energy height h = z + |v|^2/1600. Gate numbers are October's.
   noise on the rows that start on the band, ~0.15 z or less. P's arm (i) at 0.35-0.42 never
   passed. The band flag sets that noise whatever the policy's sigma does. Whether a from-scratch
   run needs the flag, or only a policy that gets precise by itself, is not separated.
+
+## 2026-11-14 22:58 UTC: cannonball quiet-novelty arm FINAL (past the wall from 1.66B, 98.7%, no finish at 6.0B) + PRE-LAUNCH recipe v9 candidate (v8 + the death charge) on cannonball and unitfarmer2
+
+### Cannonball, v7 + novelty gate LO 0.05 (`ab8n_cq`) FINAL: past the wall, 98.7%, no finish
+
+* Stopped by pid at 6,008,340,480 (22:50 UTC), its fixed 6.0B cut (14ab25d3). 0 finishes. Past the
+  205,440 u wall (on the route, order-only) from 1.66B (8/9; v5 never in 6.3B); grader best
+  96.9-99.8% in every eval from 2.64B, median 98.0-98.7% from 4.45B.
+* How the misses end: in the 4.98B eval 5 of 9 episodes reach d 2,650-2,880 at t ~72.5 s around
+  (-8,450, 5,550, z -3,800) and die 0.2 s later at z ~-4,300 (vz -2,280) UNDER the finish plane
+  (y 7,487, x -14,720..-8,064, z -1,824..-352); the fix round's finishers crossed it at x -12,100
+  to -12,700, z -1,130 to -1,290. No line the loop handed back reaches the plane: k05 (Monte
+  Carlo) and k06 (tree) both reach d ~2,100-2,200 inside the fatal dive and are cut back to their
+  last contact (d 10,866 and 6,239); 0 of 4,096 Monte Carlo rollouts and 0 tree rollouts finished
+  in searches 5 and 6 (sub-agent P, read-only). P's full analysis of the last 1.3% follows in its
+  own entry.
+* The change did what it was built for: novelty fell from 45-100% of the return (v5) to about 12%,
+  stall-killed training episodes from 20-41% to 4-13%, and the greedy passes the wall. What is
+  left is the final descent.
+
+### PRE-LAUNCH: recipe v9 candidate = v8 + the death charge, on cannonball and unitfarmer2
+
+* v9 = the 128 tokens of b828f96a (v7 - the spawn rows, novelty gate LO 0.05, band yaw flags) +
+  `--death-charge 1 --death-charge-window 2` (Grzes 2017's correction of potential-based shaping
+  under termination; October's constants; the all-in's `death` group, dropped in v1-lean without
+  evidence against it) = 132 tokens, code ab/yawabs c8595e54, builder abl/launch/mkcfg_v9.py +
+  mk_wave12.sh. ONE list for every map; only --maxvel follows the map.
+* Why: on cannonball the field pays the shortcut dive off the wall under the finish plane (1.9-2.1
+  reward) and pays nothing on the champion route between the wall and route vertex ~1,757; the
+  charge takes back what the last 2 s before a death earned, so the dive loses nearly all of it and
+  a miss on the champion route keeps more (sub-agent P, 63c63d4e). On unitfarmer2 the all-in with
+  the charge dove at 151.5-227M, without it at 453.5M (wave 2, a5a24c58).
+* `abv8u_1` (v8 on unitfarmer2, launched 22:07, b828f96a) is STOPPED as superseded at about 0.6B
+  (no dive yet; v7 dove at 378M): it is not a result. Its box is reused for v9.
+* Runs (from scratch, seed 0):
+  * `ab8n_v9`: cannonball, the 5090 box 60678705 (kept from ab8n_cq; run name from the box's owner),
+    worktree ~/ar_m2/wt/abv9c (ab/abv9c 8871fa22), tunnel :8640. Cut: 3.5B if no greedy episode
+    has passed 205,440 u on the route; else the first finish + 5 evals, or 6.0B.
+  * `abv8u_v9`: unitfarmer2, the 5080 box 60701154 (kept from abv8u_1), worktree ~/ar_m2/wt/abv9u
+    (ab/abv9u b3803ab4), tunnel :8643. Cut: 1.0B if no greedy episode below z 0; else 8B, or the
+    first finish + 5 evals.
+* CPU smoke of the complete v9 command line (unitfarmer2, 40,960 steps, wt/abv9u): rc 0. The
+  cannonball list differs only in --maxvel (no CPU smoke there: the map does not fit one).
+* PROCESS SLIP, said here: this pre-launch text was written at 22:41 UTC, before both launches
+  (abv8u_v9 at 22:43, ab8n_v9 at 22:58), but committed only after them; nothing in it was changed
+  after either launch except this note and the stop step above. Bundles (BUNDLE OK, md5 = box):
+  ~/ar_m2/runs/ab8n/ab8n_cq (+ ckpts_cq, auto_cq) and ~/ar_m2/runs/abv8u/abv8u_1 (v8 on uf2:
+  0 of 9 below z 0 in every eval to 680.0M, stopped as superseded, not a result).
