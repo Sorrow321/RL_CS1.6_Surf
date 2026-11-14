@@ -44857,3 +44857,18 @@ commit (f81cf37b).
   without a quorum; ab7c_ud held its first trough line 2.6B steps without one. Beside it the
   warm instrument `ab7c_w6` asks the same question from ab7c_ud's 3.53B weights.
 * CPU smoke of the 147-token line rc 0 (40,960 steps), code ab/pmax f81cf37b.
+
+## 2026-11-14 15:32 UTC: ablation wave 8 - princessburglar v5 NULL at its 2.5B cut (start room); unitfarmer2 runs with the patience cap keep drawing trough lines
+
+* `ab7b_pb5` (princessburglar, recipe v5; pre-launch fe2a45ec): the greedy never left the start room in
+  34 evals to 2,491.9M (grader 0.3-0.4%, 0 finishes). Search 1 (after the delay, 476.6M) a
+  room-to-pit beam+ge line (2,605 states, d 55,349); search 2 (1,179.6M) a beam+ge3 line that ends
+  past the pit floor (4,347 states, d 55,113), its walk-back at rows 3,611-4,346 (25-62%), never
+  near the room; search 3 (2,020.1M) no line (the reference was line 2's end). Stopped by pid at
+  2,511.3M, BUNDLE OK, box 60639935 released 15:31 UTC.
+* unitfarmer2, two runs with the patience cap (v6): the warm instrument `ab7c_w6` (from ab7c_ud at
+  3.53B) searched at 4.08B and drew a beam+ge TROUGH line again (1,508 states, d 28,518; the
+  resume carried no failed archive end, so no bar); 9/9 in the pit to 4.42B. The from-scratch `ab4u_u6`
+  drew a 4,637-state trough TREE line at 436.2M that its curriculum learns (98%) and dives 3/9 at
+  604.5M. Every search on this map so far ranks the trough (d 28,2xx-28,9xx) deeper than the pit exit
+  (d ~29,5xx-29,9xx), and the trough is wider than the 128 u ban.
