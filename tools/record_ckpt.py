@@ -148,6 +148,8 @@ TRAIN_ONLY = frozenset({
     # --auto-spine-args / -current-ref / -patience-tau / -finish-stop (fx/sib): the TRAINING
     # search's Go-Explore knobs, its reference d, its patience clock and its stop on a
     # finishing greedy
+    # --auto-spine-patience-max (ab/pmax): the TRAINING search's cap on holding a line
+    "auto_spine_patience_max",
     "auto_spine_args", "auto_spine_current_ref", "auto_spine_patience_tau",
     "auto_spine_finish_stop",
     # --auto-spine-archive-bar (ab/mc): the TRAINING search's bar on archive lines after one

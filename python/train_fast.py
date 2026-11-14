@@ -4275,6 +4275,16 @@ def restore_auto_failed(auto: dict, st: dict, held_end) -> bool:
     return False
 
 
+def patience_max_due(step, t_hold, patience_max, quorum) -> bool:
+    """--auto-spine-patience-max N (0 / None = off): True when N steps have passed since
+    ``t_hold`` (the held line's adoption, the last search's start or the last finishing eval)
+    without a quorum, whatever the walk-back does - the trainer then starts a PATIENCE search.
+    --auto-spine-patience-tau restarts the plain patience on every new low of tau, so a walk-back
+    that creeps never lets that one fire."""
+    return bool(float(patience_max or 0.0) > 0 and t_hold is not None and not quorum
+                and step - t_hold >= float(patience_max))
+
+
 def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
     """--auto-spine-recheck: a new spine whose end lies at field distance ``end_d`` is still worth
     adopting when it beats the latest greedy frontier ``greedy_med`` (the median deepest d of the
@@ -5417,6 +5427,16 @@ def main() -> None:
                          "back when the Go-Explore stage finds nothing deeper (m6sib_uf2: line 8 "
                          "replaced the deeper line 7). Off = the greedy frontier alone, "
                          "byte-identical; config only when on; never restored")
+    ap.add_argument("--auto-spine-patience-max", type=float, default=None, metavar="N",
+                    help="--auto-spine: a PATIENCE search also starts when N steps have passed "
+                         "since the held line was adopted (or the last search started) without a "
+                         "quorum, whatever its walk-back does - --auto-spine-patience-tau restarts "
+                         "the patience on every new low of tau, and a walk-back that creeps never "
+                         "lets it fire. ab/pmax, 2026-11-14: unitfarmer2's v5 run ab7c_ud held a "
+                         "trough line 1.98B steps (0.44 -> 2.42B) while its walk-back crept; the "
+                         "longest adoption-to-quorum gap of any learned line in the finishing runs "
+                         "is 0.66B. Off (absent / 0) = byte-identical; config only when on; never "
+                         "restored")
     ap.add_argument("--auto-spine-patience-tau", action="store_true",
                     help="--auto-spine-patience counts from the curriculum's last NEW LOW of tau "
                          "(read at each greedy eval), not from the line's adoption: the "
@@ -12672,6 +12692,10 @@ def main() -> None:
                                               and float(args.auto_spine_patience) > 0):
         raise SystemExit("--auto-spine-patience-tau moves --auto-spine-patience's clock: give "
                          "--auto-spine and --auto-spine-patience")
+    if args.auto_spine_patience_max is not None and (not args.auto_spine
+                                                     or float(args.auto_spine_patience_max) < 0):
+        raise SystemExit("--auto-spine-patience-max N is a rule of --auto-spine's search: give "
+                         "--auto-spine and N >= 0 (0 = off)")
     if args.auto_spine_finish_stop and not args.auto_spine:
         raise SystemExit("--auto-spine-finish-stop is a rule of --auto-spine's search: give it")
     if args.auto_spine_archive_bar and not (args.auto_spine
@@ -15949,6 +15973,8 @@ def main() -> None:
             meta["config"]["auto_spine_current_ref"] = 1
         if args.auto_spine_patience_tau:
             meta["config"]["auto_spine_patience_tau"] = 1
+        if float(args.auto_spine_patience_max or 0.0) > 0:
+            meta["config"]["auto_spine_patience_max"] = float(args.auto_spine_patience_max)
         if args.auto_spine_finish_stop:
             meta["config"]["auto_spine_finish_stop"] = 1
         if args.auto_spine_archive_bar:
@@ -17205,14 +17231,20 @@ def main() -> None:
             AUTO["fin"] = _nf >= int(args.auto_spine_quorum)
             if AUTO["fin"]:
                 # --auto-spine-finish-stop: the greedy finishes the map - no search, and the
-                # patience restarts
+                # patience restarts (and --auto-spine-patience-max's clock with it)
                 AUTO["last"] = int(global_step)
+                AUTO["t_hold"] = int(global_step)
                 print(f"[{global_step:>13,d}] auto-spine: {_nf}/{len(eps)} greedy episodes "
                       f"FINISH (greedy frontier {med:,.0f}): no search", flush=True)
                 return
         quorum = m >= int(args.auto_spine_quorum)
         pat = (float(args.auto_spine_patience) > 0
                and global_step - AUTO["last"] >= float(args.auto_spine_patience))
+        if AUTO.get("t_hold") is None:
+            AUTO["t_hold"] = int(global_step)   # --auto-spine-patience-max: the held line's clock
+        pmax = patience_max_due(global_step, AUTO["t_hold"],
+                                float(args.auto_spine_patience_max or 0.0), quorum)
+        pat = pat or pmax
         go = (quorum or pat) and global_step >= AUTO["retry_at"]
         if go and AUTO.get("proc") is None:
             # --demo-rehearse: a QUORUM search means the held line is learned
@@ -17220,6 +17252,8 @@ def main() -> None:
         print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes past the "
               f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
               f"{med:,.0f}" + ("  -> SEARCH" + (" (patience)" if pat and not quorum else "")
+                               + (f" (patience max: {(global_step - AUTO['t_hold']) / 1e9:.2f}B "
+                                  f"steps on this line)" if pmax else "")
                                if go else ""), flush=True)
         if not go:
             return
@@ -17238,6 +17272,7 @@ def main() -> None:
                      cell=np.float64(_f.cell), reach_max=np.float64(_f.reach_max))
         save_ckpt("latest")
         AUTO["k"] += 1
+        AUTO["t_hold"] = int(global_step)   # --auto-spine-patience-max: a search started
         kdir = adir / f"k{AUTO['k']:02d}"
         # the branched beam forks half a second before the greedy line's median launch into a
         # fatal flight (0 = none: no fatal flight in this eval)
@@ -17597,6 +17632,7 @@ def main() -> None:
         demo_idx[:] = -1
         AUTO["last"] = int(global_step)
         AUTO["retry_at"] = 0
+        AUTO["t_hold"] = int(global_step)   # --auto-spine-patience-max: a new line is held
         if args.auto_spine_patience_tau:
             AUTO["tau_low"] = int(demo.tau)   # the new line's own walk back starts here
         _en = {}
