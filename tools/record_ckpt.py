@@ -161,6 +161,8 @@ TRAIN_ONLY = frozenset({
     # --auto-spine-dead-end-ban (ab/v2): the TRAINING search refuses lines that end where a failed
     # held line ended
     "auto_spine_dead_end_ban",
+    # --auto-spine-keys (ab/sil): the TRAINING spine spawns' held keys
+    "auto_spine_keys",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
@@ -769,6 +771,11 @@ def main(argv=None, build_only: bool = False, device=None):
                          "tools/gate_bench.py spine): every episode starts "
                          "from a uniform draw of these full core states. "
                          "The gate benchmark's pre-gate starts")
+    ap.add_argument("--spawn-keys", default=None, metavar="NPY",
+                    help="--spawn-states + --keys-hold (a bench, tools/band_bench.py): a "
+                         "(states, 3) int array of the HELD keys (fwd, side, duck; engine bins) "
+                         "each --spawn-states row was reached with; an episode spawned on row i "
+                         "starts holding them (train_fast --demo-keys' rule) instead of NEUTRAL")
     ap.add_argument("--eval-stall", type=int, default=None,
                     choices=[0, 1],
                     help="apply TRAINING's stall rule to the recorded "
@@ -2786,6 +2793,19 @@ def main(argv=None, build_only: bool = False, device=None):
     if keys_hold and cfg.get("keys_hold_spawn_duck"):
         # --keys-hold-spawn-duck: a crouched spawn (a --spawn-states row) holds duck, as in training
         _pol.spawn_duck = True
+    if args.spawn_keys:
+        # --spawn-keys: a --spawn-states row's episode starts holding the keys its line held
+        if not (keys_hold and args.spawn_states):
+            raise SystemExit("--spawn-keys needs --spawn-states and a --keys-hold checkpoint")
+        _sk_pool = np.load(args.spawn_states)
+        _sk = np.asarray(np.load(args.spawn_keys), np.int32)
+        if _sk.shape != (len(_sk_pool), 3):
+            raise SystemExit(f"--spawn-keys {args.spawn_keys}: shape {_sk.shape}, the "
+                             f"--spawn-states pool has {len(_sk_pool)} rows (want (n, 3))")
+        _pol.spawn_keys = (np.asarray(_sk_pool["origin"], np.float64), _sk)
+        print(f"--spawn-keys {args.spawn_keys}: a spawn holds its row's keys "
+              f"({int((_sk != np.asarray(train_fast.keyshold.NEUTRAL)).any(axis=1).sum())} of "
+              f"{len(_sk)} rows hold something other than neutral)")
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation

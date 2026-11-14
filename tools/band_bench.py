@@ -13,7 +13,10 @@ reaches the success line (--d-success, or d(spine end) + --success-d like train_
         --modes greedy,stoch,keys2,keys4,view4,all2 --out-dir runs/bench
 
 Modes: greedy (argmax), stoch (the policy's own sampling), keysT (--exec-keys-temp T),
-viewS (--exec-view-scale S), yawS (--exec-view-scale S,1), allT (--exec-temp T).
+viewS (--exec-view-scale S), yawS (--exec-view-scale S,1), allT (--exec-temp T). A mode with the
+suffix "+k" (e.g. greedy+k) spawns every episode holding the keys the line held at its row
+(--keys: the spine's (rows, 3) held keys, record_ckpt --spawn-keys); without it a spawn holds
+NEUTRAL, as the trainer's spine spawns do unless --demo-keys is given.
 """
 from __future__ import annotations
 
@@ -32,6 +35,7 @@ sys.path.insert(0, str(ROOT / "autoresearch"))
 
 
 def mode_flags(m: str) -> list[str]:
+    m = m[:-2] if m.endswith("+k") else m
     if m == "greedy":
         return []
     if m == "stoch":
@@ -58,6 +62,9 @@ def main(argv=None):
     ap.add_argument("--success-d", type=float, default=100.0,
                     help="success line = d(spine end) + this (train_fast --demo-success-d)")
     ap.add_argument("--d-success", type=float, default=None, help="an absolute success line")
+    ap.add_argument("--keys", default=None, metavar="NPY",
+                    help="the spine's (rows, 3) held keys (fwd, side, duck; engine bins): the "
+                         "'+k' modes spawn holding them (record_ckpt --spawn-keys)")
     ap.add_argument("--out-dir", default="runs/bench")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[],
@@ -79,6 +86,10 @@ def main(argv=None):
         lo, hi = (int(x) for x in band.split(":"))
         bf = out / f"band_{lo}_{hi}.npy"
         np.save(bf, spine[lo:hi + 1])
+        kf = None
+        if a.keys:
+            kf = out / f"band_{lo}_{hi}.keys.npy"
+            np.save(kf, np.asarray(np.load(a.keys), np.int32)[lo:hi + 1])
         for m in a.modes.split(","):
             name = f"{Path(a.ckpt).stem}_{lo}_{hi}_{m}"
             tj = out / f"{name}.jsonl"
@@ -86,6 +97,10 @@ def main(argv=None):
                    "--spawn-states", str(bf), "--episodes", str(a.episodes),
                    "--ep-ticks", str(a.ep_ticks), "--out", str(tj), "--seed", str(a.seed)]
             cmd += mode_flags(m) + list(a.extra)
+            if m.endswith("+k"):
+                if kf is None:
+                    raise SystemExit(f"mode {m}: the '+k' modes need --keys")
+                cmd += ["--spawn-keys", str(kf)]
             t0 = time.time()
             r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                                errors="replace", cwd=str(ROOT))
