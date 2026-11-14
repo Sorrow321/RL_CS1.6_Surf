@@ -45523,3 +45523,107 @@ Both arms ran to 1,500,512,256 steps (abl1 at 407k steps/s, ended 18:38 UTC; abl
 * Bundles: `~/ar_m2/runs/abl1/abl1_1/` and `~/ar_m2/runs/abl2/abl2_1/` (run.json, progress.csv,
   launch log, 20 greedy evals each, ckpt_final). Code ab/loop 5869d6c9 (pushed); scripts in the
   scratchpad `abl/loop/`.
+
+## 2026-11-14 19:21 UTC: PRINCESSBURGLAR - the greedy CROSSES THE PIT from the true start for the first time on the fixed core (8/9 in each of the last three evals) - warm instrument with --yaw-entropy 0 + absolute band yaw noise 0.066 (sub-agent U, code ab/yawabs f000d45a); the two changes are not separated
+Sub-agent U, wave 9: October's band yaw noise, rebuilt as an absolute sigma, and one warm
+instrument on princessburglar's far-wall impact. Code ab/yawabs f000d45a (from ab/probe 878336ff),
+both flags default off.
+
+### The two knobs
+
+* `--demo-front-yaw-abs S` (needs `--demo-front-temp`; refused with `--demo-front-view`): spawns
+  on the backward curriculum's frontier band draw the yaw at the ABSOLUTE sigma S (z, the head's
+  own units) for `--demo-front-ticks`, whatever the policy's own sigma. The per-row slot of the
+  existing band temperature holds S / sigma (`band_yaw_mult`, re-read from the weights before
+  every rollout), so the row is drawn and scored by PPO at sigma S, as the band temperature
+  rows are. The keys stay at 1 + T. S = 0.066 is October's band noise (0.011 x 6, pbr2b3). In
+  degrees it depends on the view offset the policy holds (off_warp): ~0.2 deg at offset 0, ~3
+  deg at a 10 deg offset - the same mapping October flew, so the same S reproduces its noise.
+* `--yaw-entropy-progress HI:LO:P` (refused with `--yaw-entropy`, `--maps`, DDP; needs
+  `--view-continuous`): `--yaw-entropy`'s coefficient read off the greedy frontier at every
+  greedy eval (the `--int-coef-progress` reading, P's): HI at progress 0, linearly to LO at
+  fraction P of the spawn's d, LO beyond; 1:0:P keeps today's yaw entropy in the start and drops
+  it past P. The loss gets a 0-d tensor rewritten in place (no recompile); checkpointed and
+  restored like `--int-coef-progress`.
+* record_ckpt TRAIN_ONLY: `demo_front_yaw_abs`, `yaw_entropy_progress`.
+
+### Tests and smokes (CPU)
+
+* tests/python/test_demo_front_yaw_abs.py, 8 passed: the multiplier (S / sigma for any sigma;
+  x6 on October's 0.011, x0.1375 on today's 0.48); the loss with a tensor share equal to the
+  float share (one sigma and one per row); the schedule's parse and values (HI with no reading,
+  linear to LO at P, LO beyond); the recorder's TRAIN_ONLY keys; a princessburglar trainer run with
+  both flags on (8,192 steps, two greedy evals: the band line, the first multiplier line, the
+  schedule line and the eval's reading printed, both keys in run.json, `yaw_entropy` absent); five
+  refusals; and flag off bit-identical to the trainer before the change (878336ff) on config and
+  every progress.csv column but time/, with and without the band temperature on.
+* The neighbouring suites: test_front_temp, test_int_coef_progress, test_yaw_entropy, test_auto_spine_probe
+  and test_fatal_end 29 passed, 12 skipped (as before). test_demo_front_temp's two bit-identity tests skip as
+  before (their pre-change trainer is outside the 200-commit window).
+* CPU resume smoke: a from-scratch princessburglar run on as_t3_E with the instrument's
+  curriculum flags (8,192 steps), then a RESUME of its checkpoint with those flags +
+  `--yaw-entropy 0 --demo-front-temp 0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks 40`:
+  rc 0 both; the resume printed "band rows drawn at yaw sigma 0.066 = the policy's 0.2999 x
+  0.2201" and its run.json carries yaw_entropy 0 and demo_front_yaw_abs 0.066.
+
+### The warm instrument (one box, one seed, princessburglar)
+
+* Box 60678324 (RTX 3090, Malaysia, $0.389/h, ~236k steps/s), deployed ab/yawabs f000d45a,
+  17:53-19:18 UTC, $0.55; released, gone from vastai and the fleet registry.
+  Weights: P's abpbi1_1 ckpt_latest (md5 5290e1a6, step 5,989,466,112: try 3's weights after
+  P's arm (i), whose walk-back stalled 0.2 s before the far-wall impact). Spine: as_t3_E (md5
+  e164025a), P's line (the loop's own search on fxpb_t3's weights; SELF_STATES=1). Curriculum:
+  P's arm-(i) flags (`--demo-success-d 100 --demo-window 5 --demo-grow 5 --demo-grow-max 40
+  --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.5 --demo-match-band`)
+  plus `--yaw-entropy 0 --demo-front-temp 0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks
+  40`. Resumed through box.py launch --resume (run_arm.sh ARM_RESUME, record gate passed);
+  the curriculum restarts at the spine's end, as in P's arms. My BUDGET made --steps the
+  resume + 7.0B (box.py adds it to the checkpoint's step); no schedule reads --steps (lr 3e-4
+  flat), so the run was stopped by pid at 6,994,001,920 (1.0B after the resume, P's cut).
+* Bundle: ~/ar_m2/runs/abyaw/abyaw_1/ (launch log, run.json, progress.csv, 14 greedy evals,
+  ckpt_latest 6.994B md5 3efed962).
+
+| read-out | P's arm (i), recipe curriculum | P's arm (ii), x6 factor + bonus | this run |
+|---|---|---|---|
+| band [1543,1547] (0.2 s before the impact) | 7.6% / 82 visits | 0.2% / 13 | 20.9% / 32 |
+| band [1538,1542] | never measured | never | 19.0% / 36 |
+| lowest band passed | [1548] (5.58B) | [1543] reached, not passed | the line's start, [48] |
+| impact rows passed (<= 1,537) | never | never | 6.069B (+80M) |
+| launch reached (<= 1,470) / passed (<= 1,446) | never | never | 6.370B / 6.478B |
+| start room (<= 180) | never | never | 6.984B |
+| greedy crossings (of 9, per eval) | 0 in 14 evals | 0 (lost the room exit) | 0 x10, 3, 8, 8, 8 |
+| yaw sigma | 0.475 -> 0.35-0.42 | 0.46-0.50 | 0.385 -> 0.22 -> 0.048 |
+
+* The first crossing eval (6.745B, 756M steps after the resume): 3 of 9 greedy episodes from the
+  true start fly the drop, the ridge launch, the flight and the far-wall impact and ride the
+  ledge to d 54,882-54,893 (3.95-3.97%; the spine's success line is 55,197, the pit floor
+  ~55,310). Then 8 of 9 at 6.820, 6.896 and 6.971B (min d 54,410-54,987). The crossing episodes
+  last 7-9 s: the greedy reaches the pit by its own faster route (the line spends ~15 s in the
+  start room and the upper corridor first) and flies the crossing it was taught. All but one die
+  just past the pit's west end (x ~465-610, z ~3,380-3,440); one at 6.971B goes on to 4.79% (x
+  168, z 3,189).
+* The curriculum's bands: the impact rows took ~190M steps (6.066-6.255B), the launch rows
+  ~110M (6.370-6.478B); everything before the run-up passed at 20-55% per band and the walk-back
+  reached the start room in the last ~10M steps.
+
+### What it says
+
+* The walk-back went past the far-wall impact and the launch, and the greedy from the TRUE START
+  crossed the pit: 3/9 at 6.745B, then 8/9 in each of the last three evals. On the fixed core, nothing before this run had crossed the pit
+  with the greedy policy from the true start (fx tries 1-3, the m2 arms, P's arms i and ii).
+* Not separated: two changes ran together on top of P's arm-(i) weights, which had 1.0B more
+  steps of the same curriculum behind them (arm (i) itself sat at rows 1,543-1,553 for its last
+  ~450M steps). The yaw sigma fell from 0.385 to ~0.21 in ~50M steps under --yaw-entropy 0, sat
+  there while the impact bands were worked, and fell again (0.15 at 6.41B, 0.10 at 6.51B, 0.06 at
+  the end) while the launch and the run-up were learned; the band rows drew at 0.066 throughout,
+  i.e. at 0.17-1.1 x the policy's own sigma - quieter than the policy at first, louder at the end.
+  October's regime (a precise policy plus a few degrees on the band) was reached only in the
+  last ~200M steps, after the crossing had already appeared.
+* One seed, one line, one warm start: an instrument, not a recipe result. The crossing episodes
+  die just past the pit's west end (x ~470-600, z ~3,380-3,420), the next fall catch - the gate
+  the loop's own search would take next.
+
+Recommendation (one line): add `--yaw-entropy-progress 1:0:P` (yaw-precise once out of the
+start) and `--demo-front-yaw-abs 0.066` to a recipe candidate and run it from scratch on
+princessburglar and on one map that already finishes (blue200 or petrus) before calling it v7;
+to separate the two, rerun this instrument with `--yaw-entropy 0` alone.
