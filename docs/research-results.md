@@ -44528,3 +44528,34 @@ Every spine swap in the four finishing runs, by the same reading:
 * CPU smoke of the complete command line (the ab/v3 tokens + `--demo-rehearse 0.25`): rc 0, the
   flag announced, run.json carries demo_rehearse 0.25 / 256; its one swap replaced the spawn
   spine, so nothing was rehearsed (by design).
+
+## 2026-11-14 11:48 UTC: ablation wave 7 - unitfarmer2 v1 FINAL (exit at 3.70-3.85B, lost after the line swap, 0 finishes by 8B); PRE-LAUNCH recipe v4 (v3 + rehearse) on unitfarmer2 and princessburglar
+
+### Read: `ab4u_1` (unitfarmer2, recipe v1) FINAL at its 8B cut
+
+* Dive 9/9 from 227.0M; greedy OUT of the pit at 3.70B (9/9, grader 40.4%) and 3.85B (8/9,
+  23.1%) after the curriculum learned search 5's tree line (ends on the ground at the SE lip);
+  back in the pit in every eval from 3.93B to 8.003B (grader 1.7-1.9%), 0 finishes. The swap to
+  search 6's 11,100-state line moved every curriculum start to its far end (sub-agent U,
+  bc1ef0b4); the walk-back reached the exit part only at 7.6B (row 1,524-1,829) and its success
+  there fell to 0%. Stopped by pid at 8,053.6M, BUNDLE OK (checkpoints 1-8B + latest, 107 evals,
+  run.json, progress, launch log, search lines k01-k06; 846 MB).
+
+### Wave 7, written BEFORE the launch: recipe v4 on the two hard maps
+
+* v4 = v3 (c8678de2) + `--demo-rehearse 0.25 --demo-rehearse-r 256` (143 tokens; code ab/v4
+  b784f84c = ab/intp + ab/rh, merged clean, the new tests 25 pass on the merge; CPU smoke of the
+  unitfarmer2 line rc 0, 40,960 steps).
+
+| owner / run | map | reads | cut |
+|---|---|---|---|
+| `ab7u_1` | unitfarmer2 | dive, exit (and whether it holds), searches, finishes | 8B; 1.5B no dive |
+| `ab7p_1` | princessburglar | room exit, pit, crossing line, landing, finishes | 5B; 2.5B no room |
+
+* `ab7u_1` runs on the box `ab4u_1` used (60604616, kept rented and redeployed with ab/ab7u: the
+  market had no passing offer at 11:30-11:47 UTC); `ab7p_1` waits for an offer. Watchdog
+  re-registered with the new harvest spec and pid file; the box's dashboard tunnel
+  http://localhost:8628/ shows the new run; princessburglar's will be :8639.
+* `ab7c_1` (celestial, v3) and `ab7b_1` (blue200, v3) run as the regression checks; the
+  rehearse rule fires only on a quorum line that extends the held line, which none of the
+  finishing runs' line swaps did (U), so v3 there stands in for v4. Credit about $28.7.
