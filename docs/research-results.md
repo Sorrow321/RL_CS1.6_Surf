@@ -46258,3 +46258,126 @@ premise. The ab/trough branch was opened at c8595e54 and deleted unused.
 * Replay scripts (history.py, cands.py, geom.py, through.py, timeline.py) in
   `/tmp/claude-1000/-home-steam-ar-pb-wt-pbx/4506c754-e96e-459e-bf18-9528f3f92771/scratchpad/abl/trough/`.
 * Cost $0; no box.
+
+## 2026-11-14 22:39 UTC: cannonball's last 1.3% (sub-agent P): the field pays a shortcut dive off the wall under the finish plane, the champion route's misses launch too flat; the final-descent barrier is unchanged; the death charge (--death-charge 1 --death-charge-window 2, Grzes 2017) is the generic fix already in the code
+Sub-agent P, wave 11: cannonball's last 1.3% under recipe v7 (run ab8n_cq, novelty gate LO
+0.05, box 97.70.195.221:10972, read-only). Analysis only: no rental, nothing launched. The
+champion route (maps/surf_src_cannonball.route.npz) is used for MEASUREMENT only (eval_honesty,
+wall_profile), and the reference profile is our own finisher (fxcan_t1's 4.00B eval, 6 of 9
+finishes, 10 ms), not a demo. Field: the run's own goalc_32 (--race-no-corner-cut 1).
+
+### Interim (sent before the 22:50 UTC cut): no finish is coming
+
+* At 22:37 UTC the run was at 5.65B steps:
+  * The 5.51B and 5.59B evals: 0 of 9 past k06's success line, 0 in the box.
+  * Training: win 0.00%; the front-perturbed rows finished 0 of 38-46.
+  * k06's walk-back was backing off at row ~5,190 (success 0-6%).
+* Search 7 comes from the patience cap (k06 adopted at 4.68B, plus 1e9, so ~5.68B). The plain
+  patience is held off while the walk-back creeps (--auto-spine-patience-tau). Whatever line it
+  hands back would get under 0.3B of curriculum before the 6.0B cut.
+
+### 1. Where the two routes part
+
+There are two ways off the wall (route vertex ~1,601, the route's field minimum on this stretch,
+d 6,569):
+
+* **Route A, the shortcut.** From the wall's top (or flying over it from its foot), straight at
+  the finish plane.
+* **Route B, the champion's.** Down the final descent (to z -5,155 at vertex 1,660), then a
+  launch off the final ramp into the plane.
+
+| eval | episodes at the end | route | what happens |
+|---|---|---|---|
+| ab8n_cq 4.98B | 5 of 9 | A | eval_honesty order-only 205,440-205,565 u (vertex ~1,605: the wall), then 2.6-6 s of flight to min d 2,649-2,882 around (-8,420, 5,500, z -3,800); all die at z -4,288..-4,339 short of y 7,487 |
+| ab8n_cq 5.06B | 4 of 9 | B | ride the descent like the finisher, miss the launch (table below), die at z -5,374..-5,386 |
+| ab8n_cq 5.13B | 7 of 9 dive below | A | 5 of them at the wall (205,440-205,574 u), 2 before it (77-78%) |
+| fxcan_t1 4.00B | 6 finish | B | launch at vertex 1,726, cross the plane at z -1,335..-1,419 |
+| fxcan_t1 3.10B | 6 finish | B | the same launch, cross at z -1,141..-1,284 |
+
+* Before the wall the routes do not part. At vertices 1,530-1,590, ab8n_cq's furthest episodes
+  are 95-382 u off the route (the finisher 83-137), 2-74 u/s slower and 39-175 u higher than
+  the finisher.
+* At the launch (the last contact past vertex 1,690), route B's two versions:
+
+| | fxcan_t1 finishers (12 episodes) | ab8n_cq 5.06B (4 episodes) |
+|---|---|---|
+| take-off vertex | 1,726 | 1,718-1,722 (earlier on the ramp) |
+| take-off z | -4,001..-4,101 | -4,543..-4,751 (500-700 u lower) |
+| speed / horizontal | 3,397-3,469 / 2,511-2,687 | 3,619-3,693 / 3,287-3,398 |
+| vz / climb angle | +2,165..+2,296 / +39.0..+42.3 deg | +1,446..+1,515 / +23.1..+24.7 deg |
+| heading (90 = +y, toward the plane) | 83.0-86.7 deg | 76.3-80.7 deg (veers east) |
+| the arc | crosses y 7,487 at z -1,141..-1,419 | episode 0's tops out at z -3,410, ~1,600 u under the plane's bottom edge (-1,824), reaches y 5,361, turns back and falls |
+
+* So the take-off differs in angle, not in speed: ab8n_cq leaves the ramp earlier, lower,
+  ~700 u/s faster horizontally and ~700 u/s slower vertically (16 deg flatter), and heads 4-10 deg
+  further east.
+
+### 2. What the loop has handed back
+
+* No line reaches the plane, and no stage has produced a finishing rollout:
+  * k05 (Monte Carlo, 10,661 states) and k06 (tree, 10,156 states) are both ROUTE-B lines. Each
+    rides the descent (vertices 1,668-1,757) and is cut at its last contact on the final ramp
+    (the v7 --end-survive-secs 1.0 cut).
+  * k05 is cut at vertex 1,723, z -4,411, d 10,866, vz +1,448: near the finishers' take-off but
+    360 u lower.
+  * k06 is cut at vertex 1,757, z -2,354, d 6,239, flat (vz -3), 1,527 u off the route.
+  * Their flights after the cut go under the plane (best d 2,104 and 2,221).
+  * Neither finished: 0 of 4,096 Monte Carlo rollouts at keys temperature 1.5, and 0 in the tree.
+  * The Go-Explore stages never ran on this stretch: searches 5 and 6 passed at the Monte Carlo
+    and tree stages.
+* Search 7 (the cap, ~5.68B):
+  * The reference is min(greedy ~10,800, held line 6,239) = 6,239. A non-finishing tree or Monte
+    Carlo line passes only if its last contact is below 6,039, higher up the final ramp than
+    k06's. Otherwise the archive stages get their turn.
+  * A finishing line from any stage is kept whole and passes.
+* The fix round's "finishing line" was itself a ROUTE-A dive. fxcan_t1's search 4 (1.74B, tree,
+  7,177 states, end d 2,885):
+  * last contact at row 6,611 at the foot of the wall (2,678, 4,606, -4,720), d 18,810;
+  * then 5.65 s of ballistic flight over the wall region;
+  * ends IN FLIGHT at (-10,356, 5,406, -3,911), vz -2,117, under the plane.
+
+  fx's greedy finished on route B 1.36B later, by itself. Under v7's --end-survive-secs 1.0,
+  that line would have been cut back to its last contact (d 18,810).
+
+### 3. Yes: the final-descent barrier, unchanged on this field, and the ratchet pays the dive
+
+* d along the route (goalc_32):
+  * 6,569 at vertex 1,601 (the wall);
+  * rising to 14,976 at vertex 1,680 (+8,407 u; CLAUDE.md's 8,408 on the older field);
+  * back below 6,569 only at vertex ~1,757;
+  * 5 at the plane (vertex 1,810).
+* Under --race-ratchet the rise is not charged, but it is not paid either: route B earns nothing
+  from the wall to vertex ~1,757 (~6 s). Route A's flight from the wall is paid immediately, down
+  to d 2,649-2,882.
+* Per episode, at 100/199,000 reward per u and a time penalty of 0.1/s:
+  * a route-A dive earns 3,832-4,265 u (1.9-2.1) and dies at ~72.5 s;
+  * a route-B miss earns about as much in its final flight but dies at ~80 s (-0.8 more time).
+
+  So route A is the better failure by about 1 reward. The finish would pay +50 +3.3, but no
+  training episode has finished (win 0.00%), so the policy has never seen it.
+
+### 4. The generic mechanism already in the code: the death charge
+
+* `--death-charge 1 --death-charge-window 2`: Grzes 2017's correction for shaping under
+  termination, with October's constants (uf2r1b1_dcw). Absent from v7.
+* A death takes back what the ratchet paid in its last 2 s. Measured on these evals:
+  * Each route-A dive gives back 3,832-4,265 u (1.9-2.1): nearly all it earned (its record 2 s
+    before death is 6,525-7,147, the wall).
+  * A route-B miss gives back 1,083-2,314 u (0.5-1.2). It keeps the 0.7-1.4 it earned on the
+    final ramp more than 2 s before death.
+  * A finish is never charged.
+* Route B (the finishing route) becomes the better failure and the finish the best outcome, with
+  the same constants on every map.
+* What it does not do: create a finish. None exists yet in training or in any search.
+* The fix round finished without it (frozen recipe, 10 ms). It is untested on cannonball in this
+  series.
+* The curriculum-side complement, `--demo-success-alive` (pbr6b4: a death-dive that crosses the
+  success line and dies is a failure):
+  * The route-A dives cross k06's success line (6,339) 1.7-1.9 s before dying, so it would need
+    2 s, not the search's 1 s end-survive constant.
+  * The route-B misses cross it at the wall top, ~9 s before dying, so it would not touch them.
+* Files:
+  * pulled read-only into `~/ar_m2/runs/trough/ab8n_cq/`: searches k01-k06 without checkpoints
+    or archives, the launch log, and the 4.53B, 4.91B, 4.98B, 5.06B and 5.13B evals;
+  * scripts (canfield.py and the inline measurements) in
+    `/tmp/claude-1000/-home-steam-ar-pb-wt-pbx/4506c754-e96e-459e-bf18-9528f3f92771/scratchpad/abl/trough/`.
