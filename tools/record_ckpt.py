@@ -209,6 +209,8 @@ TRAIN_ONLY = frozenset({
     "int_match",
     # --int-coef-progress: the novelty coefficient set from the greedy frontier - TRAINING only
     "int_coef_progress",
+    # --demo-report-bands: a TRAINING read-out of the curriculum's success at chosen spine rows
+    "demo_report_bands",
     # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
     "ramp_offtarget_pen",
     # --ramp-pairs' provenance per map (the pairs themselves are MIRRORED) - metadata

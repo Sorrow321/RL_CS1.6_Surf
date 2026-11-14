@@ -5535,6 +5535,11 @@ def main() -> None:
                          "(S, 2S, 4S ... up to this); a backoff moves back by S and resets the "
                          "step to S. Easy stretches cross in a few moves, precise ones at S. "
                          "Config only when set; not restored")
+    ap.add_argument("--demo-report-bands", default=None, metavar="A:B[,C:D...]",
+                    help="--demo-file: beside the curriculum's per-decile report, the episodes and "
+                         "finish rate of these spine row ranges (inclusive), e.g. a line's launch "
+                         "and its landing. A read-out only; off = byte-identical; config only "
+                         "when set")
     ap.add_argument("--demo-keys", default=None, metavar="NPY",
                     help="--demo-file + --keys-hold: a (spine rows, 3) int array of the HELD keys "
                          "(fwd, side, duck in engine bins) each spine row was reached with; an "
@@ -12519,6 +12524,10 @@ def main() -> None:
               f"of every training spawn pool on top of the recipe's own spawn sources")
     if not args.demo_file and (args.demo_cooldown is not None or args.demo_grow_max is not None):
         raise SystemExit("--demo-cooldown / --demo-grow-max pace the --demo-file curriculum")
+    # --demo-report-bands: the spine row ranges whose curriculum success is printed (a read-out)
+    DEMO_BANDS = []
+    if args.demo_report_bands and not args.demo_file:
+        raise SystemExit("--demo-report-bands reads the --demo-file curriculum: give it")
     if not 0.0 <= float(args.demo_front_frac) <= 1.0:
         raise SystemExit("--demo-front-frac must be in [0, 1]")
     if float(args.demo_front_frac) > 0.0:
@@ -12552,6 +12561,18 @@ def main() -> None:
         if args.demo_tau0 is not None:
             print(f"--demo-tau0 {args.demo_tau0}: the curriculum starts at spine state "
                   f"{demo.tau} of {demo.n}")
+        if args.demo_report_bands:
+            # --demo-report-bands: parsed against the spine just loaded
+            try:
+                DEMO_BANDS[:] = [tuple(int(x) for x in _b.split(":"))
+                                 for _b in str(args.demo_report_bands).split(",") if _b.strip()]
+            except ValueError:
+                raise SystemExit(f"--demo-report-bands A:B[,C:D...], got "
+                                 f"{args.demo_report_bands!r}")
+            if not DEMO_BANDS or any(len(_b) != 2 or not 0 <= _b[0] <= _b[1] < demo.n
+                                     for _b in DEMO_BANDS):
+                raise SystemExit(f"--demo-report-bands {args.demo_report_bands}: each A:B needs "
+                                 f"0 <= A <= B < {demo.n} (the spine's rows)")
         print(f"demo curriculum: {demo.n} states from {args.demo_file}, "
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "
@@ -15886,6 +15907,8 @@ def main() -> None:
         meta["config"]["demo_front_frac"] = float(args.demo_front_frac)
     if args.demo_file and args.demo_share is not None:
         meta["config"]["demo_share"] = float(args.demo_share)
+    if DEMO_BANDS:
+        meta["config"]["demo_report_bands"] = [list(_b) for _b in DEMO_BANDS]
     if args.demo_file and args.demo_success_d is not None:
         # --demo-success-d: dumped only when set; a resume restores it
         meta["config"]["demo_success_d"] = float(args.demo_success_d)
@@ -20374,6 +20397,8 @@ def main() -> None:
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
                   + (f"  |  spine-line bonuses {DEMO_BONUS_N[0]:,}" if DEMO_BONUS else ""))
             print(f"  {demo.region_report()}")
+            if DEMO_BANDS:
+                print(f"  {demo.band_report(DEMO_BANDS)}")
         if FINL is not None and it_no % 20 == 1 and FINL.last_info:
             # --finish-line: its band, range and finish rate (the line's own coordinates)
             _flo = FINL._draw()[0]

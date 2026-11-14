@@ -311,6 +311,18 @@ class DemoCurriculum:
                        f"{(w / e if e > 0 else 0.0):.0%}")
         return "demo regions (eps/finish, decile of spine) " + " ".join(out)
 
+    def band_report(self, bands) -> str:
+        """train_fast --demo-report-bands: region_report at chosen spine rows - episodes and
+        finish rate of the rows [a, b] (inclusive) for each (a, b), e.g. a line's launch and
+        its landing, which a decile cannot separate."""
+        out = []
+        for a, b in bands:
+            i, j = max(0, int(a)), min(self.n - 1, int(b))
+            e = float(self.ep[i:j + 1].sum())
+            w = float(self.win[i:j + 1].sum())
+            out.append(f"[{i},{j}]:{e:.0f}/{(w / e if e > 0 else 0.0):.0%}")
+        return "demo bands (eps/finish, spine rows) " + " ".join(out)
+
 
 class RespawnBuffer:
     """Per-env snapshot collector + FIFO state reservoir.
