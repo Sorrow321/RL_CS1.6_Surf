@@ -43892,3 +43892,26 @@ same kind of line on the same map (spawn -> room exit -> pit floor, archive chai
   stayed on the platform / lip (searches 2-4: 29,738-30,112).
 * Watch item: a TREE or Monte Carlo line ending at a recorded failed end (ab3u1's searches 2-3
   were tree lines into the trough); none in ab4u_1 so far.
+
+## 2026-11-14 09:07 UTC: ablation wave 5 interim - UNITFARMER2: the v1 greedy LEAVES THE PIT (9/9 at 3.70B, grader 40.4%) from scratch; the exit still alternates eval to eval
+
+**The greedy leaves the unitfarmer2 pit** in `ab4u_1` (recipe v1, from scratch, seed 0, code
+ab/mc 0f73a013; pre-launch 4d16ef9f), the first time in this series and, as far as the ledger
+shows, the first champion-free, single-recipe, no-hand-edit run to do it.
+
+| eval | greedy out of the pit | grader best / median | where they end |
+|---|---|---|---|
+| 3,171.4M | 8/9 above z 500 (1 stands on the exit side at z 562) | 8.2% / 2.6% | pit / exit side |
+| 3,699.9M | 9/9 | **40.4% / 39.9%** | (1,880..3,630, 3,150..3,700, z -360..-860) after 53-88 s |
+| 3,775.4M | 0/9 | 1.8% | the pit |
+| 3,850.9M | 8/9 | 23.1% / 7.3% | north (-2,400..-1,380, -2,420..+1,600) |
+| 3,926.4M | 0/9 | 1.8% | the pit |
+
+* The exit alternates eval to eval (out at 3.70B and 3.85B, in the pit at 3.78B and 3.93B):
+  the policy sits on the edge of the manoeuvre. 0 finishes so far (grader).
+* The loop: search 4 (2.80B) handed back the Monte Carlo stage's 292-state start-platform
+  line (the shallow fallback), which ended the trough curriculum (k03); search 5 (3.28B) a
+  2,123-state tree line to d 29,502; search 6 (3.60B) a Monte Carlo line of 11,100 states
+  (85 s) to d 16,423 (about 46% of the map's start distance) against a greedy frontier of
+  22,020; the curriculum is at its end (rows 10,484-11,099, 43.2%).
+* Run continues (box extended to 11:40 UTC; cut 8B, or a finish).
