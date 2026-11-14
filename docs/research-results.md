@@ -44110,3 +44110,17 @@ fork, 75M steps apart; within one eval the greedy is one-sided in 25 of 30 / 13 
 * Two 4080/5080-class boxes (~$0.39/h), deadlines 2.6 h and 1.2 h, watchdog with harvest spec
   and pid file; tunnels http://localhost:8635/ (celestial) and :8636 (unitfarmer2).
   Credit about $30.9 at 09:40 UTC.
+
+## 2026-11-14 10:08 UTC: ablation wave 6 interim - celestial: novelty weight 2.5 holds the fork (v1-lean null at 2.5B), weight 0.25 passes it by 378M
+
+* `ab5c_1` (celestial, v1-lean: death off, energy 3, novelty weight 2.5; pre-launch fbd7f1fa)
+  is NULL at its 2.5B cut: stuck at the fork (23-35%) to 2.19B, then past it (55.8% at 2.27B,
+  75.0% at 2.42B and 2.49B, medians 29-75%), 0 finishes. Stopped by pid at 2,521.8M, BUNDLE OK,
+  box released 10:07 UTC. Death charge and energy K 12 were not what held the fork.
+* `ab6c_1` (celestial, the same tokens with `--int-coef 0.25`; pre-launch d85659be) passes the
+  fork by 378.0M: 37.8% at 227.0M, 41.1% at 302.5M, 63.3% at 378.0M (the fix round: 61.7% at
+  680.0M). One seed, but against two all-in-novelty runs that stalled for 2.2B+ steps it is the
+  clearest single effect of this round on celestial: novelty at 2.5 (71-117% of the return,
+  c42b7a11) costs the fork; at 0.25 the fork comes earlier than in the fix round.
+* Open: `ab6u_1` (unitfarmer2, same tokens): 0 of 9 below z 0 at 227.0M, where the 2.5-weight
+  runs dove 9/9; its 0.6B read decides whether the dive needs the weight.
