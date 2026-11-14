@@ -25,6 +25,10 @@ can run by itself (train_fast --auto-spine) instead of an agent choosing cut poi
 Two later rules (ab/mc, 2026-11-14), both off by default: --mc-envs N runs a no-cull Monte
 Carlo stage (mc()) between the tree and the archives, and --archive-bar D holds every archive
 line to the end of an archive line whose curriculum failed (archive_ref()).
+A third (ab/ff, 2026-11-14), off by default: --failed-fallback ENDS, in a patience search after
+the held line failed, lets an archive line that beats the greedy frontier but not the held line's
+end be handed back when no other line is, if it ends at least --gain away from every failed
+archive end (stepping_stone()).
 
 No constant here comes from a map: every threshold is a field distance margin, a time, or a
 search budget, and the same flags run on any map. No demo or record data enters (CLAUDE.md
@@ -215,6 +219,24 @@ def archive_ref(ref: float, bar=None) -> float:
     curriculum failed. A later archive line must go --gain past where the failed one ended;
     the policy's own lines (tree, beam, Monte Carlo) are not held to it."""
     return float(ref) if bar is None else min(float(ref), float(bar))
+
+
+def failed_ends(spec) -> list:
+    """--failed-fallback 'D1,D2,...' -> [D1, D2, ...]: the end d of every archive line whose
+    curriculum failed so far; '-' (or empty) = none (the failed held line was the policy's own)."""
+    s = "" if spec is None else str(spec).strip()
+    return [] if s in ("", "-") else [float(x) for x in s.split(",") if x.strip()]
+
+
+def stepping_stone(de: float, greedy_d: float, gain: float, ends) -> bool:
+    """--failed-fallback: an archive line that did not pass the reference may still be handed back
+    after the held line failed when it beats the GREEDY frontier by --gain and ends at least --gain
+    away from every failed archive end - short of a line the curriculum could not learn (the
+    all-in's princessburglar searches 2-3: room-to-pit lines at 55,345-55,361 behind a failed
+    crossing at 55,107), not the same dead end again (abuf2_all's trough: 28,429-28,714 beside the
+    failed 28,599 / 28,937)."""
+    return (bool(de < float(greedy_d) - float(gain))
+            and all(abs(float(de) - float(f)) >= float(gain) for f in ends))
 
 
 def beats_greedy(de: float, greedy_d: float, gain: float, finished: bool = False) -> bool:
@@ -619,6 +641,13 @@ def main(argv=None) -> int:
                          "trainer's --auto-spine-archive-bar): a Go-Explore line must end below "
                          "min(the reference, this) - --gain; the policy's own lines are not held "
                          "to it. Absent = as before")
+    ap.add_argument("--failed-fallback", default=None, metavar="ENDS",
+                    help="a PATIENCE search after the held line failed (the trainer's "
+                         "--auto-spine-failed-fallback): ENDS = the end d of every failed archive "
+                         "line, comma-separated ('-' = none). When no line passes and neither the "
+                         "tree nor the Monte Carlo line is a fallback, the deepest ARCHIVE line "
+                         "that beats --greedy-d by --gain and ends at least --gain away from every "
+                         "failed end is handed back (stepping_stone()). Absent = as before")
     ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
@@ -683,6 +712,7 @@ def main(argv=None) -> int:
     line_tag = "beam"
     res.update(info)
     best_src = fallback = None
+    arch_cands = []        # --failed-fallback: archive lines that did not pass, (src, line, d)
     if line is not None and len(line):
         d = field_d(field, line)
         fin = bool(info.get("beam_finished"))
@@ -838,6 +868,8 @@ def main(argv=None) -> int:
                 if ge_de < gref - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
                     break
+                if a.failed_fallback is not None:
+                    arch_cands.append((f"beam+{tag}", gl[:ge_e + 1], ge_de))
                 if ge_de < ref - a.gain:
                     # --archive-bar: past the reference, not past where a failed archive line
                     # ended - the curriculum could not learn that region from this policy
@@ -890,6 +922,24 @@ def main(argv=None) -> int:
             else:
                 print(f"energy stage: no cell keeps {a.energy_gain:g} u more than the line "
                       f"({got.get('energy_candidates', 0)} candidates)", flush=True)
+    if best_src is None and fallback is None and a.failed_fallback is not None:
+        # --failed-fallback: the held line failed and nothing else is handed back - the deepest
+        # archive line that beats the greedy frontier and is no failed line's dead end again
+        _ends = failed_ends(a.failed_fallback)
+        res.update(failed_ends=_ends)
+        _ok = [c for c in arch_cands if stepping_stone(c[2], a.greedy_d, a.gain, _ends)]
+        if _ok:
+            fallback = min(_ok, key=lambda c: c[2])
+            res.update(failed_fallback=1)
+            print(f"the held line failed: the archive line {fallback[0]} (d {fallback[2]:,.0f}, "
+                  f"{a.greedy_d - fallback[2]:,.0f} u past the greedy frontier, "
+                  + ("no failed archive end" if not _ends else
+                     "at least " + f"{a.gain:g} u from every failed archive end")
+                  + ") is the fallback", flush=True)
+        elif arch_cands:
+            print(f"the held line failed: no archive line is a stepping stone (each is within "
+                  f"{a.gain:g} u of a failed archive end or short of the greedy frontier)",
+                  flush=True)
     if best_src is None and fallback is not None:
         best_src = fallback
         res.update(fallback=1)
@@ -965,7 +1015,16 @@ def selftest() -> int:
             # --archive-bar: an archive line is held to a failed archive line's end too
             ("no --archive-bar: an archive line meets the reference", archive_ref(800.0) == 800.0),
             ("a deeper bar holds the archive lines", archive_ref(800.0, 600.0) == 600.0),
-            ("a shallower bar changes nothing", archive_ref(800.0, 900.0) == 800.0)):
+            ("a shallower bar changes nothing", archive_ref(800.0, 900.0) == 800.0),
+            # --failed-fallback: a stepping stone short of a failed archive line
+            ("no failed ends parse", failed_ends("-") == [] and failed_ends(None) == []),
+            ("failed ends parse", failed_ends("55106.6,28599.4") == [55106.6, 28599.4]),
+            ("a line short of the failed end is a stepping stone",
+             stepping_stone(55345.0, 57004.3, 200.0, [55106.6])),
+            ("a line beside a failed end is not", not stepping_stone(28713.5, 30300.6, 200.0,
+                                                                     [28599.4, 28936.6])),
+            ("a line that does not beat the greedy frontier is not",
+             not stepping_stone(56911.0, 57004.3, 200.0, []))):
         print(("ok   " if cond else "FAIL ") + name)
         ok &= bool(cond)
     return 0 if ok else 1

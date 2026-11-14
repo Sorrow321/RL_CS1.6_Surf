@@ -4146,7 +4146,8 @@ def banked_min_d(d, vz, g_step: float, tol: float = 1.0, vmax: float = 1e9) -> f
 AUTO_SPINE_OWN_FLAGS = frozenset((
     "--ckpt", "--map", "--field", "--out", "--greedy-d", "--current-d", "--gain", "--beam-ticks",
     "--envs", "--ge-minutes", "--act-every", "--seed", "--branch-tick", "--timeout", "--maxvel",
-    "--energy-gain", "--explorer", "--mcts-minutes", "--mcts-extra", "--archive-bar"))
+    "--energy-gain", "--explorer", "--mcts-minutes", "--mcts-extra", "--archive-bar",
+    "--failed-fallback"))
 
 
 def is_archive_source(source) -> bool:
@@ -5326,6 +5327,17 @@ def main() -> None:
                          "back three archive lines through unitfarmer2's trough (searches 2, 4, "
                          "5), each deeper on the field than the pit exit and none learned. Off = "
                          "byte-identical; config only when on; never restored")
+    ap.add_argument("--auto-spine-failed-fallback", action="store_true",
+                    help="--auto-spine-archive-bar: a PATIENCE search after the held line FAILED "
+                         "may hand back an ARCHIVE line that beats the greedy frontier by "
+                         "--auto-spine-gain but not the held line's end, when no other line is "
+                         "handed back and it ends at least --auto-spine-gain away from every "
+                         "failed archive end (auto_spine.py --failed-fallback: a stepping stone "
+                         "short of a line the curriculum could not learn, never the same dead end "
+                         "again). ab/ff, 2026-11-14: the all-in's princessburglar searches 2 and 3 "
+                         "found room-to-pit archive lines ~1,650 u past the greedy frontier and "
+                         "refused them behind the failed crossing line it held for 1.8B steps. Off "
+                         "= byte-identical; config only when on; never restored")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
     ap.add_argument("--auto-spine-async", action="store_true",
@@ -12481,6 +12493,9 @@ def main() -> None:
                                             and float(args.auto_spine_patience) > 0):
         raise SystemExit("--auto-spine-archive-bar marks a line failed at a PATIENCE search: give "
                          "--auto-spine and --auto-spine-patience")
+    if args.auto_spine_failed_fallback and not args.auto_spine_archive_bar:
+        raise SystemExit("--auto-spine-failed-fallback reads the failed archive ends of "
+                         "--auto-spine-archive-bar: give it")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15720,6 +15735,8 @@ def main() -> None:
             meta["config"]["auto_spine_finish_stop"] = 1
         if args.auto_spine_archive_bar:
             meta["config"]["auto_spine_archive_bar"] = 1
+        if args.auto_spine_failed_fallback:
+            meta["config"]["auto_spine_failed_fallback"] = 1
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -17022,6 +17039,10 @@ def main() -> None:
                       flush=True)
             if archive_bar(_fa) is not None:
                 cmd += ["--archive-bar", f"{archive_bar(_fa):.1f}"]
+            if args.auto_spine_failed_fallback and pat and not quorum:
+                # --auto-spine-failed-fallback: the held line failed, so an archive line short of
+                # every failed end may be handed back when nothing else is (auto_spine.py)
+                cmd += ["--failed-fallback", ",".join(f"{v:.1f}" for v in _fa) or "-"]
         if args.auto_spine_args:
             import shlex as _shlex
             cmd += _shlex.split(str(args.auto_spine_args))

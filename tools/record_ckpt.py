@@ -153,6 +153,9 @@ TRAIN_ONLY = frozenset({
     # --auto-spine-archive-bar (ab/mc): the TRAINING search's bar on archive lines after one
     # failed its curriculum
     "auto_spine_archive_bar",
+    # --auto-spine-failed-fallback (ab/ff): the TRAINING search's stepping-stone fallback after
+    # a held line failed
+    "auto_spine_failed_fallback",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
