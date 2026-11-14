@@ -45212,3 +45212,131 @@ G 200; GOAL = the probe finished. 43 lines from the order + the 6 lines today's 
   stopped after its first finishes (5.06B), BUNDLE OK, box 60648641 released 17:15 UTC.
 * The cannonball v5 resume still waits for an RTX 5090 offer under the cap (no offer passed from
   16:33 to 17:13 UTC).
+
+## 2026-11-14 17:42 UTC: princessburglar history (sub-agent U): the October finish was a warm lineage from the sidistic finisher; the far-wall band was cracked by canonical views + ~3.8 deg band yaw noise on a yaw-precise policy (sigma ~0.011); the precise-yaw + absolute band noise pair is the untested missing piece
+Sub-agent U, wave 9 (analysis only, no box): how princessburglar was finished, step by step, and
+what the recipe v5/v7 (ab/v4 b784f84c + --auto-spine-delay 3e8 + --auto-spine-patience-max 1e9, on
+ab/probe 878336ff) still lacks. Sources: ~/ar_pb/state_pbr_oldcore.json, archive/r1..r9 (each
+round's NOTES.md; the winners' sections are inherited by archive/r1/pbfr1b2/NOTES.md, 4,800 lines),
+the pbx-expert and pbfr1b2 sections there, the memory note on the core fix, and the ab round's
+princessburglar bodies (w3_pb, w3_pbi). Line numbers below are in archive/r1/pbfr1b2/NOTES.md.
+
+### The short answer
+
+* The first fixed-core finish (pbfr1b2_c3, 2026-10-29 12:42 UTC, 2/9 at 69.26 s, 68.837B steps;
+  9/9 at 66.62 s by 13:05) is a WARM RESUME of fx0 = pbEXIT2_r38: a policy that had learned the
+  whole course on the old core over nine rounds and the expert loop. On the fixed core it only had
+  to re-learn the start (the doorway staircase). "Everything after *250 is the old lineage's skill,
+  and gate 2 passes with the old tunnel-exit energy" (l. 4558).
+* The pit (gate 2, 3.2%: the drop, the ridge launch, the flight, the far-wall impact, the ramp
+  U-turn) was learned ONCE, in old-core round 2 (pbr2b3_canon2..4, 2026-10-24 03:14-03:41 UTC),
+  and never again from scratch. Its search line came from Go-Explore (generic, a seed of luck);
+  its LEARNING came from three curriculum details, one of which the recipe does not reproduce.
+* Not a random seed overall: about 25 gates, each with a measured cause, most of them generic and
+  most of those now in the recipe; but also many hand edits (cuts, roots, tau0s, per-gate
+  boosts / energy constants, spawn files) and one inherited condition no flag in v5/v7 restores:
+  a yaw-precise policy (sigma ~0.011-0.017), from the sidistic finisher's warm trunk.
+
+### Timeline to the first fixed-core finish (class: a = generic, in v5/v7; b = generic, not in;
+### c = hand edit / per-map choice; d = luck)
+
+| when (UTC) | step | class |
+|---|---|---|
+| 10-23 r1 | warm from the sidistic finisher, yaw-MEAN head zeroed, --yaw-entropy 0 | b/c |
+| 10-23 r1 | recipe from scratch (pbr1b1_base): stuck in the start room, 0.4% | - |
+| 10-23 r1 | GE from the true spawn finds the entry in 4.4 min (uniform bursts) | b |
+| 10-23 r1 | entry_search with two stage target boxes picked by hand | c |
+| 10-23 r1 | old-core entry = the 62 u ledge (*250 dropped by the core: sim-only) | - |
+| 10-23 r1 | backward curriculum on ONE found 270-tick line -> greedy 3.23% | a |
+| 10-23 r1 | GE --exact-chains from the policy's tunnel exit: line_a past the pit | a, d |
+| 10-24 r1 | curriculum on line_a (grow ~n/100, success bonus, spawn duck, fine steps) | a/b |
+|  | stalled at the far-wall impact (state ~1235) for 1.5B steps | |
+| 10-24 r2 | warm from r1's g2cur6 (3.285B), picked by hand | c |
+| 10-24 r2 | --demo-front-temp 0.5/view 6/ticks 40 ALONE (dft1): band still 0.0-0.4% | - |
+| 10-24 r2 | canonical views + the band yaw noise: bands [1245]..[1175] 26-77% | a + b |
+| 10-24 r2 | --demo-cooldown 5 --demo-grow-max 40: the rest of line_a in ~150M steps | a |
+| 10-24 r2 | spine cut at 780, where the greedy joins it | c |
+| 10-24 r2 | tau0 picks 1240 / 1170 / 350, --demo-rate 0.5 | c / a |
+| 10-24 03:41 | GATE 2 PASSED (3.995): crossing, far-wall landing, U-turn, 9/9 | - |
+| 10-24 r2 | gate 3 by a beam from the true start on the newest weights (100 s) | a |
+| 10-24 r2 | beam + GE chain splices (gate 4); per-call energy K 8 (gate 5) | a / b |
+| 10-24 r3 | gate 8: GE x1.04 boost, roots on 1.6 s around the launch by hand | b / c |
+| 10-24 r3 | --auto-spine born (gate 9 by the trainer); milestones vs erosion | a / b |
+| 10-25 r4 | numba thread fix (50x); tick ramp 10 -> 7.63 ms (gate 10 9/9) | a |
+| 10-25 r4 | held keys at spine spawns (gate 12); view-follow explorer | a / -* |
+| 10-25 r5 | energy stage --auto-spine-energy 150 (gates 17, 19) | b |
+| 10-26 r6 | energy cut + teach (k02e), full loop spine (gate 20), --demo-match-band | c / a |
+| 10-27 r7 | energy profile per corner; turned-velocity roots at the 74.4% block | c / b |
+| 10-27 r7 | --lr 1e-4, milestones de-clustered; --auto-spine-async | c / a |
+| 10-27 r8 | cuts past the failure, narrow --spawn-states windows, f1e energy cut | c |
+| 10-27 13:33 | FIRST old-core (sim-only) finish, 73.42 s; 9/9 68.66 s by r8's end | - |
+| 10-28 r9 | lr 5e-5 / 3e-5, re-anchoring, --demo-success-strict / -pace | c / b |
+| 10-28/29 | expert loop pbEXIT2 (BC on own planner lines) -> r38 = fx0 | b |
+| 10-29 07:20 | the core fix: every finish above sim-only | - |
+| 10-29 r1' | pbfr1b2: warm resume of fx0 (68B), --lr 3e-5 | c |
+| 10-29 r1' | GE from the true spawn, 12 min: the staircase *249 -> *250, to the pit | b |
+| 10-29 r1' | spine = GE ticks 0..2440, every 2nd tick, views / keys canonical | c / a |
+| 10-29 r1' | --spawn-states = r38's own reservoir past 2% (30%) | c (~a) |
+| 10-29 r1' | October's curriculum flags (front temp / view, bonus 50, spawn duck) | b |
+| 10-29 r1' | rows 491-528 (a mid-air yaw-rate turnaround) cut by hand; tau0s | c |
+| 10-29 12:42 | FIRST FIXED-CORE FINISH (68.837B, 2/9, 69.26 s); 9/9 at 69.290B | - |
+
+\* the view-follow explorer and --cell-heading 1 are OFF in the recipe on purpose: at the pit the
+packaged GE flags crossed 0 of 6 seeds against October's plain command 3-4 of 6 (m2, p 0.042
+pooled).
+
+### Where the pit crossing and the far-wall landing were learned, and by what
+
+* The line: round 1, `explore_phase1 --exact-chains` + `ge_replay` rooted at the policy's own
+  tunnel exit, ~6 min of box CPU (l. 585): run-up, ~770 u/s drop onto the ridge, launch over
+  the pit, a ducked air turn into the far wall, ramp U-turn. The loop's GE stage finds such lines
+  today too (fxpb_t1 k02, abpb_all k01, ab7b_pb5 k02, as_t3_E), on 1-4 of 6 seeds.
+* The learning: round 1's curriculum crossed the line's end (the far side) in ~600M steps and
+  then sat 0.0-0.4% on the band just before the far-wall impact for 1.5B steps (l. 598). Round 2
+  cracked that band in 186M steps with the spine's views along the velocity AND a 3.8 deg yaw noise
+  on band spawns for 0.4 s; temperature alone (dft1) did nothing, the canonical view alone was not
+  run apart (l. 695: "one run, so the two are not separated").
+* The modern recipe's curriculum, handed a crossing line on its own weights (sub-agent P's arms,
+  ab round w3_pbi), stalls on the same kind of band (rows 1,538-1,557, 0.2 s before the far-wall
+  impact) at 7.6% for ~850M steps. With October's flags taken literally it does worse (0.2% /
+  9.5%) and the success bonus pulls the greedy off the start-room exit: --demo-front-view is a
+  FACTOR on the policy's own yaw sigma, and that sigma is 0.48 there (11-27 deg at the 0.2 / 0.5
+  caps) against October's 0.011, so x6 is a near-uniform view instead of 3.8 deg.
+
+### Ranked (b) items: generic, not in v5/v7
+
+1. The yaw-noise regime at the curriculum band (the one condition October had and no run since
+   has): a yaw-precise policy plus a few degrees of ABSOLUTE noise on band spawns. Today
+   `--demo-front-view` multiplies the sigma; build `--demo-front-yaw-abs RAD` (band spawns draw
+   the yaw at that sigma for --demo-front-ticks, 0.066 rad = October's 3.8 deg; one constant), and
+   get the policy precise where it flies a line: `--yaw-entropy 0` once the greedy leaves the start
+   (fx try 2 ran it from scratch, null at the start room, never measured at a band) or a sigma cap
+   that falls with the curriculum's progress. Automatic: both act only on curriculum band spawns.
+2. `--demo-success-bonus 50`: October needed it on line_a (l. 591: "the ratchet + 20 s discount
+   prefer a pit 2 s away to a payoff 10-19 s away, even for a perfect flier"; the pit floor reads
+   ~520 u deeper than the far ledge until 4 s along it). It also pays dead-end lines, so only
+   beside the dead-end ban, and in P's arm (ii) it pulled the greedy off the start-room exit.
+   Automatic as is; re-measure on sidistic and unitfarmer2.
+3. Per-call energy shaping (`--energy-pot 8 --energy-pot-front 0 --energy-pot-front-bonus 0`) for
+   the energy gates after the pit (gate 5's x -1,015 wall, 7.2 -> 12.2%); the recipe prices energy
+   only at the frontier (K 3). One K for every map is untested (October used 8 and 12).
+4. The loop's energy stage (`--auto-spine-energy 150`, which arms `--demo-success-energy`):
+   gates 17 and 19 without an operator, then the time (f1e). Generic, default off.
+5. Milestones (`--auto-spine-milestones`): kept 3B+ steps of route against a spine whose success
+   line jumped; --demo-rehearse 0.25 covers part of it.
+6. The GE boost ladder (`--ge-boost "1.0,1.04;1.08;1.12"`, auto_spine's own default; the recipe
+   passes `1.0;E1.0`): gates 8 and 15 needed x1.04-1.12 roots.
+7. GE spawns from the true spawn (`--ge-minutes M --ge-frac 0.3`): the start on both cores.
+8. Time only: the expert loop (BC on the policy's own planner lines), --demo-success-strict /
+   --demo-success-pace, lr cuts at the end.
+
+### The single most likely missing piece
+
+The yaw precision at the far-wall band (item 1). Every other ingredient of October's pit crossing
+is in the loop now or was tried (the search line, canonical views, held keys, cooldown / grow-max,
+rehearsal, the bonus), and the modern curriculum stalls exactly where October's round 1 stalled
+before the 3.8 deg band noise. October's policy got its sigma of 0.011 from the warm sidistic
+trunk with the yaw-mean head zeroed and --yaw-entropy 0, not from a flag; the recipe from scratch
+keeps the sigma at its cap (0.2 in v5, 0.5 in the pb tries) for the room's sake. Not measured: the
+band with an absolute 3.8 deg noise on a precise policy. Sub-agent P's xLOOP (a fresh network,
+uniform spawns along a crossing line) is a different question and is not duplicated here.
