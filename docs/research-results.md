@@ -44732,3 +44732,15 @@ does it fail spawns that land because it demands riding the line to its end (~10
   --auto-spine-keys; the instruments spawned neutral while the line holds strafe right + duck
   through the impact), 13.5 s; score END, landed (on the line 0.5-1 s past the impact), on the
   line +3 / +5 s, and ends in the pit.
+
+## 2026-11-14 14:26 UTC: ablation wave 8 interim - BLUE200 FINISHES with recipe v5 at 831.0M (9/9 every eval after; fix round 1,435M)
+
+* `ab4u_b5` (blue200, recipe v5; written before its launch in 77b09160): first greedy finish 831.0M
+  (9/9, 13.82 s), 9/9 in all seven evals to 1,284.0M, best 12.09 s (grader). Search 1 (after
+  the 300M delay, 453.0M) handed back a beam+ge line of 6,376 states to the goal (d 68) that the
+  curriculum walked back to state 0 (85%). v3: 906.5M; v1: 302.5M; the fix round: 1,435M.
+  Stopped by pid at about 1.31B (answered), BUNDLE OK; the box runs celestial v5 next
+  (`ab4u_c5`, written now: read the first finish, cut 2.5B; v3 finished it at 755.5M).
+* Scoreboard of recipe v5 so far: petrus 302.5M, blue200 831.0M (celestial with v3 755.5M,
+  v5 rerun now); cannonball and sidistic running; unitfarmer2 in the pit at 3.0B;
+  princessburglar in the start room at 1.4B with a search line that ends past the pit floor.
