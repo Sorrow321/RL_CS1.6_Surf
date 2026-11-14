@@ -4146,7 +4146,32 @@ def banked_min_d(d, vz, g_step: float, tol: float = 1.0, vmax: float = 1e9) -> f
 AUTO_SPINE_OWN_FLAGS = frozenset((
     "--ckpt", "--map", "--field", "--out", "--greedy-d", "--current-d", "--gain", "--beam-ticks",
     "--envs", "--ge-minutes", "--act-every", "--seed", "--branch-tick", "--timeout", "--maxvel",
-    "--energy-gain", "--explorer", "--mcts-minutes", "--mcts-extra"))
+    "--energy-gain", "--explorer", "--mcts-minutes", "--mcts-extra", "--archive-bar"))
+
+
+def is_archive_source(source) -> bool:
+    """--auto-spine-archive-bar: a spine an ARCHIVE stage handed back (auto_spine's source
+    ``beam+ge``, ``beam+ge2``, ``beam+ge_energy``, ...): a chain of the explorer's uniform actions
+    spliced onto the tree's line, not a rollout of the policy (``beam``, ``beam_br*``, ``mc``)."""
+    return bool(source) and any(p.startswith("ge") for p in str(source).split("+")[1:])
+
+
+def mark_failed_archive(failed: list, source, end_d) -> bool:
+    """--auto-spine-archive-bar: a PATIENCE search means the curriculum held its line for the
+    patience without the greedy passing it - the line failed. An archive line's end d joins
+    ``failed`` (updated in place, each end once) -> True when it was added."""
+    if not is_archive_source(source) or end_d is None or not np.isfinite(float(end_d)):
+        return False
+    if any(abs(float(end_d) - v) < 0.05 for v in failed):
+        return False
+    failed.append(float(end_d))
+    return True
+
+
+def archive_bar(failed):
+    """The bar every later archive line is held to (auto_spine.py --archive-bar): the deepest end
+    of a failed archive line; None = none has failed."""
+    return min(float(v) for v in failed) if failed else None
 
 
 def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
@@ -5290,6 +5315,17 @@ def main() -> None:
                          "handing the greedy's own finishing rollout back and restarting the "
                          "curriculum: m4sib_cb, m7sib_cel). Off = byte-identical; config only "
                          "when on; never restored")
+    ap.add_argument("--auto-spine-archive-bar", action="store_true",
+                    help="--auto-spine: a PATIENCE search (the curriculum held its line for "
+                         "--auto-spine-patience without the greedy passing it) marks the held "
+                         "line FAILED; when it came from an archive stage (Go-Explore) its end d "
+                         "becomes a bar - every later search is run with auto_spine.py "
+                         "--archive-bar (the deepest failed archive end), so an archive line must "
+                         "end --auto-spine-gain past it, while the policy's own lines (tree, Monte "
+                         "Carlo) are judged as before. ab/mc, 2026-11-14: abuf2_all's loop handed "
+                         "back three archive lines through unitfarmer2's trough (searches 2, 4, "
+                         "5), each deeper on the field than the pit exit and none learned. Off = "
+                         "byte-identical; config only when on; never restored")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
     ap.add_argument("--auto-spine-async", action="store_true",
@@ -12441,6 +12477,10 @@ def main() -> None:
                          "--auto-spine and --auto-spine-patience")
     if args.auto_spine_finish_stop and not args.auto_spine:
         raise SystemExit("--auto-spine-finish-stop is a rule of --auto-spine's search: give it")
+    if args.auto_spine_archive_bar and not (args.auto_spine
+                                            and float(args.auto_spine_patience) > 0):
+        raise SystemExit("--auto-spine-archive-bar marks a line failed at a PATIENCE search: give "
+                         "--auto-spine and --auto-spine-patience")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15678,6 +15718,8 @@ def main() -> None:
             meta["config"]["auto_spine_patience_tau"] = 1
         if args.auto_spine_finish_stop:
             meta["config"]["auto_spine_finish_stop"] = 1
+        if args.auto_spine_archive_bar:
+            meta["config"]["auto_spine_archive_bar"] = 1
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16968,6 +17010,18 @@ def main() -> None:
             # --auto-spine-current-ref: the end d of the line the curriculum holds now
             _cd = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
             cmd += ["--current-d", f"{_cd:.1f}"]
+        if args.auto_spine_archive_bar:
+            # --auto-spine-archive-bar: a patience search means the held line failed; an archive
+            # line's end joins the failed ends, and the deepest of them bars later archive lines
+            _held = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
+            _fa = AUTO.setdefault("failed_arch", [])
+            if pat and not quorum and mark_failed_archive(_fa, AUTO.get("src"), _held):
+                print(f"[{global_step:>13,d}] auto-spine: the held line ({AUTO.get('src')}, end d "
+                      f"{_held:,.0f}) failed its curriculum; archive lines must now end "
+                      f"{float(args.auto_spine_gain):g} u past {archive_bar(_fa):,.0f}",
+                      flush=True)
+            if archive_bar(_fa) is not None:
+                cmd += ["--archive-bar", f"{archive_bar(_fa):.1f}"]
         if args.auto_spine_args:
             import shlex as _shlex
             cmd += _shlex.split(str(args.auto_spine_args))
@@ -17221,11 +17275,16 @@ def main() -> None:
         if args.auto_spine_patience_tau:
             AUTO["tau_low"] = int(demo.tau)   # the new line's own walk back starts here
         _en = {}
+        if args.auto_spine_archive_bar:
+            # --auto-spine-archive-bar: which stage the held line came from (a patience search
+            # on an archive line bars later archive lines) and the bar so far
+            AUTO["src"] = res.get("source")
+            _en["failed_archive_ends"] = [float(v) for v in AUTO.get("failed_arch", [])]
         if args.auto_spine_energy is not None:
             # an energy spine is taught with the energy success rule, a depth spine without it
             DEMO_H_MIN = spine_energy_rule(res, demo.S[-1], float(args.auto_spine_energy))
             DEMO_OK[0] = DEMO_OK[1] = None
-            _en = {"energy_h_min": DEMO_H_MIN}
+            _en["energy_h_min"] = DEMO_H_MIN
             print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: "
                   + (f"an ENERGY spine (+{float(res.get('energy_gain', 0.0)):,.0f} u over the "
                      f"policy's line): success only with energy height >= {DEMO_H_MIN:,.0f}"

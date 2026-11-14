@@ -22,6 +22,10 @@ can run by itself (train_fast --auto-spine) instead of an agent choosing cut poi
 4. The spine is written only if its end beats --greedy-d (the greedy eval's frontier) by
    --gain; the last stdout line is ``AUTO_SPINE {json}`` either way.
 
+Two later rules (ab/mc, 2026-11-14), both off by default: --mc-envs N runs a no-cull Monte
+Carlo stage (mc()) between the tree and the archives, and --archive-bar D holds every archive
+line to the end of an archive line whose curriculum failed (archive_ref()).
+
 No constant here comes from a map: every threshold is a field distance margin, a time, or a
 search budget, and the same flags run on any map. No demo or record data enters (CLAUDE.md
 sections 0 and 0b): the beam's proposals are the policy's own, the explorer's actions are
@@ -170,6 +174,47 @@ def beam(a, out: Path, branch_tick: int = 0, tag: str = None):
                          f"{tag}_frontier_d": float(z["frontier_d"]),
                          f"{tag}_frontier_tick": int(z["frontier_tick"]),
                          f"{tag}_finished": int(z["finished"]) if "finished" in z.files else 0}
+
+
+def mc(a, out: Path, tag: str = "mc"):
+    """--mc-envs N: the no-cull Monte Carlo stage (ab/mc, 2026-11-14; the search that found
+    unitfarmer2's first pit exit in October, uf2r1b1: beam_tas --elite-frac 1.0 --keys-temp 1.5,
+    4,096 rollouts from the true start). N stochastic copies of the policy, the four key heads
+    drawn at logits / --mc-keys-temp and the view at its own sigma, with NOTHING culled (the
+    elite is the whole population, so every rollout keeps its own lineage); the deepest d any
+    of them reached is the frontier and --save-frontier replays that rollout. The tree and the
+    beam prune by the field every few decisions, so a line that spends tens of seconds against
+    the field before it pays (unitfarmer2: 19-42 s of pit laps, then the climb out) never
+    survives them; here it is ranked once, at the end. The line is the policy's own behaviour
+    with hotter keys, not an archive chain of uniform actions."""
+    bd = out / tag
+    bd.mkdir(parents=True, exist_ok=True)
+    ticks = int(a.mc_ticks) if int(a.mc_ticks) > 0 else int(a.beam_ticks)
+    cmd = [sys.executable, "-u", ROOT / "tools" / "beam_tas.py", a.ckpt, "--map", a.map,
+           "--envs", int(a.mc_envs), "--resample-every", 25, "--score", "d",
+           "--greedy-envs", a.greedy_envs, "--allow-nonfinisher", "--save-frontier",
+           "--skip-gate", "--route-file", "none", "--max-ticks", ticks,
+           "--torch-seed", a.seed, "--log-every", 5, "--out-dir", bd,
+           "--elite-frac", "1.0", "--keys-temp", f"{float(a.mc_keys_temp):g}"]
+    rc = run(cmd, out / f"{tag}.log", a.timeout)
+    f = bd / "beam_frontier.npz"
+    if not f.exists():
+        return None, {f"{tag}_rc": rc}
+    z = np.load(f, allow_pickle=False)
+    if "acts" in z.files and "act_every" in z.files:
+        KEYS[tag] = keys_from_acts(z["acts"], int(z["act_every"]), len(z["states"]))
+    return z["states"], {f"{tag}_rc": rc, f"{tag}_replay_ok": int(z["replay_ok"]),
+                         f"{tag}_frontier_d": float(z["frontier_d"]),
+                         f"{tag}_frontier_tick": int(z["frontier_tick"]),
+                         f"{tag}_finished": int(z["finished"]) if "finished" in z.files else 0}
+
+
+def archive_ref(ref: float, bar=None) -> float:
+    """The d an ARCHIVE (Go-Explore) line is measured against: the search's reference, and under
+    --archive-bar the deeper of it and the bar - the deepest end of an archive line whose
+    curriculum failed. A later archive line must go --gain past where the failed one ended;
+    the policy's own lines (tree, beam, Monte Carlo) are not held to it."""
+    return float(ref) if bar is None else min(float(ref), float(bar))
 
 
 def beats_greedy(de: float, greedy_d: float, gain: float, finished: bool = False) -> bool:
@@ -558,6 +603,22 @@ def main(argv=None) -> int:
                          "below min(--greedy-d, this) - --gain. A beam / tree line that only "
                          "beats --greedy-d is kept as the fallback and the Go-Explore stages get "
                          "their turn first. Absent = --greedy-d alone, as before")
+    ap.add_argument("--mc-envs", type=int, default=0,
+                    help="> 0: when the tree / beam line does not pass the reference, a no-cull "
+                         "Monte Carlo stage (mc(): this many rollouts of the policy from the "
+                         "true start, beam_tas --elite-frac 1.0 --keys-temp --mc-keys-temp) runs "
+                         "BEFORE the Go-Explore stages; its line passes like the tree's, or "
+                         "becomes the fallback when it is the deeper of the two. 0 = no stage, "
+                         "as before")
+    ap.add_argument("--mc-keys-temp", type=float, default=1.5,
+                    help="--mc-envs: the key heads' sampling temperature (logits / T)")
+    ap.add_argument("--mc-ticks", type=int, default=0,
+                    help="--mc-envs: the rollouts' length in ticks (0 = --beam-ticks)")
+    ap.add_argument("--archive-bar", type=float, default=None,
+                    help="the deepest end d of an ARCHIVE line whose curriculum failed (the "
+                         "trainer's --auto-spine-archive-bar): a Go-Explore line must end below "
+                         "min(the reference, this) - --gain; the policy's own lines are not held "
+                         "to it. Absent = as before")
     ap.add_argument("--roots-secs", type=float, default=4.0,
                     help="Go-Explore roots: the line's last seconds before it stalls")
     ap.add_argument("--stall-margin", type=float, default=500.0,
@@ -692,9 +753,40 @@ def main(argv=None) -> int:
             elif bde < de:
                 line, d, e, de = bl, bd_, be, bde     # GE roots on the deepest line
                 line_tag = tag
+        if best_src is None and int(a.mc_envs) > 0:
+            # --mc-envs: the no-cull Monte Carlo stage, after the tree and before the archives.
+            # Its line passes like the tree's; one that only beats the greedy frontier replaces
+            # the fallback when it is the deeper of the two (the archives still go first). The
+            # Go-Explore roots stay on the tree's line
+            ml, mi = mc(a, out)
+            res.update(mi)
+            if ml is not None and len(ml):
+                md_ = field_d(field, ml)
+                mfin = bool(mi.get("mc_finished"))
+                me, mde = ((len(ml) - 1, float(md_[-1])) if mfin
+                           else cut_line(ml, md_, a.contact_tol, a.cut))
+                res.update(mc_len=int(len(ml)), mc_end=me, mc_end_d=mde,
+                           mc_best_d=float(md_.min()))
+                print(f"Monte Carlo line: {len(ml)} states, best d {md_.min():,.0f}, "
+                      + ("FINISHES - kept whole, " if mfin else f"cut at {me} ")
+                      + f"d {mde:,.0f}", flush=True)
+                if beats_greedy(mde, ref, a.gain, mfin):
+                    best_src = ("mc", ml[:me + 1], mde)
+                elif a.current_d is not None and beats_greedy(mde, a.greedy_d, a.gain, mfin):
+                    if fallback is None or mde < fallback[2]:
+                        fallback = ("mc", ml[:me + 1], mde)
+                        print(f"the Monte Carlo line beats the greedy frontier but not the "
+                              f"current line's end ({mde:,.0f} against {ref:,.0f} - {a.gain:g}): "
+                              f"kept as the fallback", flush=True)
+                    else:
+                        print(f"the Monte Carlo line beats the greedy frontier, the fallback "
+                              f"({fallback[0]}) is deeper: kept", flush=True)
+        gref = archive_ref(ref, a.archive_bar)
+        if a.archive_bar is not None:
+            res.update(archive_bar=float(a.archive_bar), archive_ref=gref)
         if best_src is None and a.ge_minutes > 0 and a.current_d is not None \
-                and ref - a.gain <= 0:
-            print(f"no Go-Explore stage: nothing can end below {ref:,.0f} - {a.gain:g}",
+                and gref - a.gain <= 0:
+            print(f"no Go-Explore stage: nothing can end below {gref:,.0f} - {a.gain:g}",
                   flush=True)
         elif best_src is None and a.ge_minutes > 0:
             st = min(e, stall_tick(d, a.stall_margin))
@@ -743,9 +835,16 @@ def main(argv=None) -> int:
                       f"{kind + ' archive, ' if kind else ''}"
                       f"speed x {boosts}): {len(gl)} states, best d "
                       f"{gd_.min():,.0f}, cut at {ge_e} d {ge_de:,.0f}", flush=True)
-                if ge_de < ref - a.gain:
+                if ge_de < gref - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
                     break
+                if ge_de < ref - a.gain:
+                    # --archive-bar: past the reference, not past where a failed archive line
+                    # ended - the curriculum could not learn that region from this policy
+                    res[f"{tag}_barred"] = 1
+                    print(f"GE stage {k + 1}: d {ge_de:,.0f} passes the reference but not the "
+                          f"failed archive line's end ({gref:,.0f} - {a.gain:g}): refused",
+                          flush=True)
         if best_src is None and a.ge_minutes > 0 and float(a.energy_gain) > 0:
             # --energy-gain G: no line is deeper, so the gate may be ENERGY lost upstream (pbr5b2:
             # gate 17's shaft climb, gate 19's corridor): search before the line's largest
@@ -862,7 +961,11 @@ def selftest() -> int:
              beats_greedy(590.0, ref_d(1000.0, 800.0), 200.0)),
             ("a finishing line passes while the reference is not at the goal",
              beats_greedy(0.0, ref_d(1000.0, 150.0), 200.0, True)
-             and not beats_greedy(0.0, ref_d(1000.0, 0.0), 200.0, True))):
+             and not beats_greedy(0.0, ref_d(1000.0, 0.0), 200.0, True)),
+            # --archive-bar: an archive line is held to a failed archive line's end too
+            ("no --archive-bar: an archive line meets the reference", archive_ref(800.0) == 800.0),
+            ("a deeper bar holds the archive lines", archive_ref(800.0, 600.0) == 600.0),
+            ("a shallower bar changes nothing", archive_ref(800.0, 900.0) == 800.0)):
         print(("ok   " if cond else "FAIL ") + name)
         ok &= bool(cond)
     return 0 if ok else 1
