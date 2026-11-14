@@ -44639,3 +44639,21 @@ Every spine swap in the four finishing runs, by the same reading:
   line rc 0 (40,960 steps; "no search before step 300,000,000"). Credit $27.07 at 12:58 UTC.
 * The v5 regression on the other maps (blue200, celestial, petrus, cannonball, sidistic)
   follows on boxes as they free up; v3 already finished celestial (755.5M) and blue200 (906.5M).
+
+## 2026-11-14 13:01 UTC: ablation wave 8 PRE-LAUNCH - regression of recipe v5 on petrus, cannonball and sidistic
+
+Written BEFORE the launch: the regression of recipe v5 (145 tokens, code ab/v4, fe2a45ec) on
+the maps the fix-round recipe finishes, one arm per map as boxes free up.
+
+| owner / run | map | fix round first finish | cut |
+|---|---|---|---|
+| `ab4u_pet5` (box of ab4u) | surf_petrus_lite | 2,642.9M | 5.3B (2x) |
+| `ab8n` (when a box frees) | surf_src_cannonball | 3,095.9M | 6.2B |
+| `ab8s` (when a box frees) | surf_src_sidistic | 8,380.7M | 9.0B |
+
+* Read: the first greedy finish from the grader; a first finish within twice the fix round's is
+  no regression; none by the cut is one. blue200 (906.5M) and celestial (755.5M) were run with
+  v3, which differs from v5 by the rehearse rule (fires only on a line that extends the held
+  one) and the 300M search delay; they are re-run with v5 if the budget allows.
+* `ab4u_v4` (unitfarmer2, v4 without the delay) stopped by pid at 1,696.1M: 0/9 below z 0 to
+  1.66B (its 1.5B no-dive cut), BUNDLE OK; its box (60604616, RTX 5080) runs petrus.
