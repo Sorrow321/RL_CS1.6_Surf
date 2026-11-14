@@ -3140,12 +3140,23 @@ class _TorchPolicyBase:
             if self._keys_tick is not None:
                 fresh = tick < self._keys_tick + self._period
                 self.keys.reset(fresh)
-            elif getattr(self, "spawn_duck", False):
+            elif (getattr(self, "spawn_duck", False)
+                  or getattr(self, "spawn_keys", None) is not None):
                 fresh = np.ones(n, bool)
             if getattr(self, "spawn_duck", False) and fresh is not None and fresh.any():
                 # --keys-hold-spawn-duck (the checkpoint's): a crouched spawn holds duck, as
                 # the trainer does
                 self.keys.state[fresh & (np.asarray(self.core.states_view["ducked"]) > 0), 2] = 1
+            sk = getattr(self, "spawn_keys", None)
+            if sk is not None and fresh is not None and fresh.any():
+                # record_ckpt --spawn-keys (a bench): a fresh episode spawned on a --spawn-states
+                # row holds the keys its line held there, as train_fast --demo-keys does - the
+                # row is the pool state nearest the env's origin (it has moved less than one
+                # decision since the spawn)
+                idx = np.flatnonzero(fresh)
+                o = np.asarray(self.core.states_view["origin"], np.float64)[idx]
+                d2 = ((o[:, None, :] - sk[0][None, :, :]) ** 2).sum(-1)
+                self.keys.state[idx] = sk[1][np.argmin(d2, axis=1)]
             self._keys_tick = tick.copy()
 
     def act(self, obs):
@@ -5325,6 +5336,16 @@ def main() -> None:
                          "Carlo) are judged as before. ab/mc, 2026-11-14: abuf2_all's loop handed "
                          "back three archive lines through unitfarmer2's trough (searches 2, 4, "
                          "5), each deeper on the field than the pit exit and none learned. Off = "
+                         "byte-identical; config only when on; never restored")
+    ap.add_argument("--auto-spine-keys", action="store_true",
+                    help="--auto-spine + --keys-hold: every spine the search hands back spawns "
+                         "HOLDING the keys its line held at that row (auto_spine.py writes "
+                         "spine.keys.npy next to each spine; train_fast --demo-keys' rule), and a "
+                         "run that starts without --demo-keys starts with neutral rows so the "
+                         "swaps load them - without it the loop's spines spawn neutral (DEMO_KEYS "
+                         "stays None under --auto-spine-scratch). ab/sil, 2026-11-14: the "
+                         "unitfarmer2 exit line holds a strafe on 2,583 of 2,600 rows, and a "
+                         "neutral spawn on it is a state the line never visited. Off = "
                          "byte-identical; config only when on; never restored")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
@@ -13363,6 +13384,19 @@ def main() -> None:
         _nn = int((_dk != np.asarray(keyshold.NEUTRAL)).any(axis=1).sum())
         print(f"--demo-keys {args.demo_keys}: a spine spawn starts holding its row's keys "
               f"({_nn} of {_ns} rows hold something other than neutral)")
+    if args.auto_spine_keys:
+        # --auto-spine-keys: the loop's spines carry their held keys. The swap below loads a
+        # new spine's keys only while DEMO_KEYS holds an array, so a run that starts without
+        # --demo-keys (--auto-spine-scratch's spawn spine: neutral by construction) starts
+        # with neutral rows instead of None
+        if not (args.auto_spine and N_KEYS):
+            raise SystemExit("--auto-spine-keys sets the held keys of --auto-spine's spine "
+                             "spawns: give --auto-spine and --keys-hold")
+        if DEMO_KEYS[0] is None and args.demo_file:
+            _ns = len(np.load(args.demo_file, mmap_mode="r"))
+            DEMO_KEYS[0] = np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (_ns, 1))
+            print(f"--auto-spine-keys: the first spine ({_ns} rows) holds neutral keys; every "
+                  f"spine the search hands back spawns holding its own")
     # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
     # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
     N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
@@ -15720,6 +15754,8 @@ def main() -> None:
             meta["config"]["auto_spine_finish_stop"] = 1
         if args.auto_spine_archive_bar:
             meta["config"]["auto_spine_archive_bar"] = 1
+        if args.auto_spine_keys:
+            meta["config"]["auto_spine_keys"] = 1
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -17256,6 +17292,12 @@ def main() -> None:
                 DEMO_KEYS[0] = _nk
                 print(f"[{global_step:>13,d}] --demo-keys: the new spine's held keys from {_kp}",
                       flush=True)
+            elif args.auto_spine_keys:
+                # --auto-spine-keys: a spine without keys spawns neutral, and the next one's
+                # keys still load
+                DEMO_KEYS[0] = np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (len(sp), 1))
+                print(f"[{global_step:>13,d}] --auto-spine-keys: the new spine has no held "
+                      f"keys - its spawns hold neutral", flush=True)
             else:
                 DEMO_KEYS[0] = None
                 print(f"[{global_step:>13,d}] --demo-keys dropped: the new spine has no held "
