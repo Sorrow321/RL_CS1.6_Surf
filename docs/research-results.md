@@ -44137,3 +44137,130 @@ fork, 75M steps apart; within one eval the greedy is one-sided in 25 of 30 / 13 
   evals to 227.0M); found idle at 10:31, files pulled, released, machine blocklisted
   (unreliable). Relaunched as `ab6u_2` on another box with the same config, same read (the
   dive by 0.6B).
+
+## 2026-11-14 10:37 UTC: ablation wave 5 - sub-agent U: the unitfarmer2 climb fails on a CHOICE (a 28-degree turn), held keys are never restored at curriculum spawns (fixed: --auto-spine-keys), self-imitation moves the walk-back past the launch but the greedy stays in the pit; the success line sits at the flight tip
+
+Written BEFORE the launch (sub-agent U). The question: on both hard maps the backward curriculum
+learns everything AFTER the critical manoeuvre fast and stalls AT it (unitfarmer2: rows
+2,404-2,464 of the 2,600-state exit line, 2-46%, ledger 6996f24e; princessburglar: the far-wall
+landing, rows 1,538-1,557, 979db82a / 39710934). Why, and what generic mechanism teaches it?
+
+### A defect found before any box: the loop's spines spawn with NEUTRAL held keys
+
+* Under `--keys-hold` the held keys (fwd, side, duck) are state the policy observes and acts on.
+  `train_fast` puts a spine row's keys on a spawn only through `--demo-keys`, and a swapped spine's
+  keys (auto_spine.py writes `spine.keys.npy` for every tree / Monte Carlo / archive line) load
+  only while that array exists - which `--auto-spine-scratch` never creates. So every curriculum
+  spawn of the recipe, on every map, started neutral; so did every spawn of the warm run abmcw_w1
+  (no `--demo-keys`, no "demo-keys" line in its log).
+* The exit line holds a strafe on 2,583 of its 2,600 rows (side 2 through the pit bottom, side 0
+  from about row 2,420 up the wall). A neutral spawn there is a state the line never visited.
+* Built (branch ab/sil 6de77602, from ab/mc; default off, byte-identical when off):
+  `train_fast --auto-spine-keys` (every spine spawns holding its own line's keys; the first spine
+  starts with neutral rows so the swaps load them; a spine without keys falls back to neutral
+  instead of dropping keys for good; TRAIN_ONLY in record_ckpt), and for measurement
+  `record_ckpt --spawn-keys` + `band_bench` '+k' modes (a bench spawn holds its row's keys).
+  CPU: tests/python/test_spawn_keys.py 5 passed; with the ab/mc suites 22 passed; CPU smokes of
+  the full command line (keys loaded at the first swap) and of band_bench greedy vs greedy+k.
+* Not usable as is: the trainer's existing self-imitation (`--sil-coef`) refuses the recipe's
+  `--front-temp` ("not implemented with --sil-coef", CPU smoke).
+
+### The box (one, owner absil, deadline 2.5 h, watchdog with harvest + pid, tunnel 8631)
+
+* Weights abuf2_all final (md5 60b665bf), the exit line abmc_exit_s2 (md5 dd455946) and its held
+  keys from its own action table (`surfgym.bc.line_held_keys`, md5 ad893973).
+* BENCH (measurement): `band_bench` from bands 2250:2329, 2330:2369, 2370:2403, 2404:2434,
+  2435:2469, modes greedy / stoch, each with neutral and with the line's keys (+k), 64 episodes,
+  1,000 ticks, success = the curriculum's own line (d(end) + 100). Read: does a held-key spawn
+  move the success at and before the stall; greedy vs stochastic (a choice the mode misses, or a
+  skill neither has); the first decisions' keys against the line's.
+* INSTRUMENT (the mechanism the bench points at; fixed now: if +k raises the success before the
+  stall, it is `--auto-spine-keys` with `--demo-keys` = the exit line's keys): resume the same
+  weights with abmcw_w1's 135 tokens + the launch extra + the mechanism, the exit line as the
+  first spine, 1.0e9 steps. Read as in abmcw_w1: the walk-back's lowest row (does it pass 2,404?),
+  greedy episodes out of the pit (above z 500 after the floor, at the exit lip), searches,
+  finishes from the grader. Budget: at most $2 for everything; credit floor $15.
+
+### Bench result (box 60622445, RTX 5080, 08:49-08:58 UTC; bundle ~/ar_m2/runs/absil/bench_final)
+
+The all-in's FINAL weights (never trained on the exit curriculum), 64 episodes per cell, from
+bands of the exit line; "out" = above z 500 (out of the pit), "pass" = the curriculum's own
+success line (d <= 29,962):
+
+| band | greedy out / pass | greedy+k | stoch | stoch+k |
+|---|---|---|---|---|
+| 2250-2329 (laps) | 16 / 3 | 24 / 5 | 8 / 2 | 3 / 1 |
+| 2330-2369 (pit bottom) | 14 / 4 | 7 / 1 | 18 / 4 | 14 / 6 |
+| 2370-2403 (the turn up the wall) | 0 / 1 | 11 / 5 | 11 / 2 | 10 / 1 |
+| 2404-2434 (on the wall) | 61 / 3 | 61 / 9 | 63 / 6 | 61 / 4 |
+| 2435-2469 | 64 / 2 | 64 / 2 | 64 / 5 | 64 / 3 |
+
+* WHY the band fails: a CHOICE, not precision. At rows 2,370-2,403 the line makes a sharp right
+  turn up the wall (yaw 256 -> 192 deg in 40 rows, 0.3 s) holding the right strafe, then switches
+  to the left strafe at about row 2,410. Spawned there the greedy misses the line's yaw by 28 deg
+  over its first 40 ticks and holds the line's side key 70% of the time: 0 of 64 out. With the
+  line's keys at the spawn: yaw error 18 deg (3.7 deg in the 11 that get out), side key 84%: 11 of
+  64 out. From row 2,404 on (after the turn) 61-64 of 64 get out with or without keys.
+* The success line is stricter than the exit: from rows 2,404-2,469 nearly every episode leaves
+  the pit (z max median 514) but only 2-9 of 64 reach d <= 29,962 - the Monte Carlo line's end is
+  the deepest d of 4,096 rollouts, and the policy's own exits reach about 30,030 (median best).
+  The curriculum's walk-back therefore needs the policy to match the LINE's lip, not just leave
+  the pit; part of the 2,404 stall is that criterion.
+* Keys: a held-key spawn helps the greedy at the turn (0 -> 11 of 64) and elsewhere moves the
+  counts both ways within the noise of 64 episodes; it is a defect fix (the line's real state),
+  not the whole cure.
+
+### Instrument launched (09:02 UTC): `absil_w1`
+
+* As abmcw_w1 (the 135 tokens, the exit line as the first spine, the launch extra) plus
+  `--demo-keys runs/abmc_exit_s2.keys.npy` (2,583 of 2,600 rows non-neutral) and
+  `--auto-spine-keys`; 1.0e9 steps after the resume (stop at 4,493,855,232); box 60622445,
+  watchdog until 11:18 UTC with harvest absil_w1 and its pid file; tunnel 8631.
+
+### Self-imitation made usable with the recipe (built after the keys run's first 0.3B)
+
+* The trainer's `--sil-coef` (Oh et al. 2018, docs/sil.md) refused `--front-temp`,
+  `--demo-front-temp` and `--respawn-greedy-temp`; the recipe carries the first and the third. It
+  now rides them UNTEMPERED (the buffer keeps no per-row temperature; `--sil-tempered` with them
+  is still refused); default off (ab/sil b034c6a7; tests 6 passed; CPU smoke of the full command
+  line with `--sil-coef 0.1`: rc 0, the buffer fills). Constants: the shipped defaults
+  (coef 0.1, buffer 50,000, 4 x 512 rows per epoch).
+
+### Instrument results (box 60622445, 08:48-10:36 UTC, about $0.69; credit $29.50)
+
+All warm from the all-in final with the exit line as the first spine; "rows" = the walk-back's
+start row tau (the launch is the line's last contact, row 2,405):
+
+| run | mechanism | exit curriculum | lowest row | where tau sat (most readings) | greedy out |
+|---|---|---|---|---|---|
+| abmcw_w1 | none (reference) | 0.68B, then swapped | 2,399 | 2,414-2,479 | 0/9 x 9 evals |
+| absil_w1 | line keys | 0.53B (stopped) | 2,384 | 2,404-2,444 | 0/9 x 8 |
+| absil_w2 | keys + SIL | 0.70B, then swapped | 2,369 | 2,399-2,409 | 0/9 x 10 |
+| absil_w3 | keys + SIL, patience 3e9 | 1.00B | 2,369 | 2,394-2,414 | 0/9 x 14 |
+
+* Keys and self-imitation move the walk-back's resting row from about 2,440 (in the flight) to
+  about 2,404 (the launch) - the frontier band's success there swings 0.2-68% - but no arm walks
+  through rows 2,370-2,403 (the turn and the launch) and stays; the greedy never leaves the pit
+  (its highest point after the floor z 324). No grader finish. Neither mechanism teaches the band
+  in 1.0B.
+* absil_w1 was stopped at 0.53B and absil_w2 at 0.71B (the box went to the next arm; w2 had just
+  had its exit line swapped for the trough by its first patience search, as abmcw_w1 did - the
+  archive bar is empty after a resume). absil_w3 postponed the patience search past the cut
+  (`--auto-spine-patience 3e9`) so the band got the whole 1.0B; w2 and w3 are identical up to
+  w2's search.
+* princessburglar: not run. Sub-agent P's bench (ledger 979db82a) already found the held keys do
+  not matter at the pb launch, and self-imitation did not pass the uf2 band.
+* Bundles (md5 = box; archives left on the box): ~/ar_m2/runs/absil/{bench_final, absil_w1,
+  absil_w2, absil_w3}, 415 MB.
+
+### What it says
+
+* The stalled band is a CHOICE at a manoeuvre the policy samples rarely (the wall-ride turn and
+  launch), not precision and not the held keys: the line's keys and self-imitation of the
+  policy's own rare launches bring the curriculum to the launch row and no further.
+* A second, generic cause on lines that END IN A FLIGHT: the curriculum's success line is the
+  search's extreme mid-flight tip (the best d of 4,096 rollouts), so the walk-back must also hit
+  that tip from the launch - 95% of exits fail it.
+* For the integration: persist the archive bar across a resume (a resumed run re-adopts a trough
+  line once), and `--auto-spine-keys` is a bookkeeping fix worth merging on its own (every
+  curriculum spawn of the recipe was neutral).
