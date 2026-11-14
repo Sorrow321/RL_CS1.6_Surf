@@ -36,6 +36,11 @@ A fifth (ab/v2, 2026-11-14), off by default: --dead-end-ban POINTS refuses a lin
 (tree, branched beams, Monte Carlo, archives) that ENDS within --archive-ban-r of where a failed
 held line of any source ended (end_near()) - the same dead end again -, as a pass and as a
 fallback; a finishing line never is one.
+A sixth (ab/probe, 2026-11-14), off by default: --end-probe-iters N asks of every candidate line,
+of any stage, whether there is a way on from its END (end_probe()): the archive explorer, rooted
+at the line's last --end-probe-secs, runs a fixed count of chunks, and the line is handed back
+only when the explorer reaches a state the map holds --end-probe-gain deeper than the line's end,
+or the finish. A judgment of the end itself, not of the curriculum that failed on it.
 
 No constant here comes from a map: every threshold is a field distance margin, a time, or a
 search budget, and the same flags run on any map. No demo or record data enters (CLAUDE.md
@@ -278,6 +283,76 @@ def fatal_end_cut(a, line, e: int, tag: str, res: dict):
     print(f"{tag} line: its end is a flight that dies within {float(a.end_survive_secs):g} s "
           f"(row {e}, last contact {c}): cut back to the last contact", flush=True)
     return int(c)
+
+
+def probe_verdict(z, field, end_d: float, gain: float, goal: bool = False) -> dict:
+    """--end-probe-iters: what an archive ``z`` (explore_phase1 --cell-held: 'state', 'held')
+    says about the way on from a line that ends at ``end_d``: its deepest cell, its deepest
+    cell the map holds (probe_held_i: that cell's index), and whether that one, or a finish, is
+    ``gain`` deeper (probe_way_on)."""
+    d = np.asarray(field.sample(np.asarray(z["state"]["origin"], np.float64)), np.float64)
+    d[d >= field.reach_max - 0.5 * field.cell] = np.inf
+    held = np.asarray(z["held"], bool) if "held" in z.files else np.zeros(len(d), bool)
+    dh = np.where(held, d, np.inf)
+    hi = int(np.argmin(dh)) if np.isfinite(dh).any() else -1
+    best = float(d.min()) if len(d) else float("inf")
+    best_h = float(dh[hi]) if hi >= 0 else float("inf")
+    return {"probe_cells": int(len(d)), "probe_held_cells": int(held.sum()),
+            "probe_best_d": round(best, 1), "probe_held_d": round(best_h, 1),
+            "probe_held_i": hi, "probe_end_d": round(float(end_d), 1),
+            "probe_goal": int(bool(goal)),
+            "probe_way_on": int(bool(goal) or best_h <= float(end_d) - float(gain))}
+
+
+def end_probe(a, out: Path, line, e: int, tag: str, field) -> dict:
+    """--end-probe-iters N: is there a way on from the END of a candidate line? The archive
+    explorer of the GE stage (explore_phase1, uniform actions, no policy: the question is the
+    map's, not the current policy's) is rooted at --end-probe-roots of the line's states in its
+    last --end-probe-secs up to ``e`` and runs exactly N chunks of --end-probe-envs envs (a
+    COUNT, so a slow box is not a weaker probe); the line has a way on when the archive holds a
+    state the map holds --end-probe-gain (default --gain) deeper than the line's end, or the
+    explorer reaches the finish. -> the probe_* fields of probe_verdict and the wall seconds; a
+    probe that leaves no archive says so and refuses nothing (probe_way_on 1)."""
+    lo = max(0, int(e) - int(round(float(a.end_probe_secs) * TICKS_PER_S)))
+    idx = np.unique(np.linspace(lo, int(e), max(2, int(a.end_probe_roots))).round().astype(int))
+    gd = out / f"{tag}_probe"
+    gd.mkdir(parents=True, exist_ok=True)
+    np.save(gd / "roots.npy", clean(line[idx]))
+    cmd = [sys.executable, "-u", ROOT / "tools" / "explore_phase1.py", "--map", a.map,
+           "--out", gd, "--envs", int(a.end_probe_envs), "--cell", a.ge_cell,
+           "--cell-energy", a.ge_energy, "--decisions", 100, "--act-every", a.act_every,
+           "--roots-spine", gd / "roots.npy", "--roots-keep-all", "--cell-held",
+           "--exact-chains", "--max-iters", int(a.end_probe_iters), "--snapshot-every", 0,
+           "--goals", 1,
+           "--seed", a.seed]
+    if a.maxvel:
+        cmd += ["--maxvel", a.maxvel]
+    if a.threads:
+        cmd += ["--threads", a.threads]
+    if int(round(a.tick)) != 10:
+        cmd += ["--tick-ms", int(round(a.tick))]          # as the GE stage: whole ms
+    if int(a.ge_cell_heading) > 0:
+        cmd += ["--cell-heading", int(a.ge_cell_heading)]
+    if a.ge_view_follow and str(a.ge_view_follow).lower() != "none":
+        cmd += [f"--view-follow={a.ge_view_follow}"]
+    gain = float(a.gain if a.end_probe_gain is None else a.end_probe_gain)
+    end_d = float(field_d(field, line[int(e):int(e) + 1])[0])
+    t0 = time.time()
+    rc = run(cmd, out / f"{tag}_probe.log", 3600)
+    info = {"probe_rc": rc, "probe_roots": [int(idx.min()), int(idx.max())],
+            "probe_gain": gain, "probe_iters": int(a.end_probe_iters),
+            "probe_envs": int(a.end_probe_envs)}
+    arch = gd / "archive.npz"
+    if not arch.exists():
+        info.update(probe_err="no archive", probe_way_on=1, probe_end_d=round(end_d, 1))
+    else:
+        with np.load(arch, allow_pickle=False) as z:
+            info.update(probe_verdict(z, field, end_d, gain, (gd / "win_1.spine.npy").exists()))
+            if info["probe_held_i"] >= 0:
+                np.save(gd / "deepest_held.npy", z["state"][[info["probe_held_i"]]])
+        arch.unlink()               # millions of cells: the verdict and its deepest state stay
+    info["probe_secs"] = round(time.time() - t0, 1)
+    return info
 
 
 def archive_ref(ref: float, bar=None) -> float:
@@ -737,6 +812,25 @@ def main(argv=None) -> int:
                          "as a fail within this many seconds is cut back to its last map contact "
                          "(fatal_end_cut): the search never hands back the tip of a rollout that "
                          "is about to die. 0 = off, as before")
+    ap.add_argument("--end-probe-iters", type=int, default=0,
+                    help="> 0: before a candidate line of ANY stage is handed back (as a pass, a "
+                         "fallback or a stepping stone), the archive explorer rooted at its last "
+                         "--end-probe-secs runs exactly this many chunks of --end-probe-envs envs "
+                         "(end_probe); the line is refused unless the explorer reaches a state "
+                         "the map holds --end-probe-gain deeper than the line's end, or the "
+                         "finish - a line into a floor with no way on. A finishing line is never "
+                         "probed. 0 = off, as before")
+    ap.add_argument("--end-probe-envs", type=int, default=2048,
+                    help="--end-probe-iters: envs per chunk (its own, so --envs does not change "
+                         "the probe's count)")
+    ap.add_argument("--end-probe-secs", type=float, default=2.0,
+                    help="--end-probe-iters: the probe's roots span the line's last this many "
+                         "seconds up to its end")
+    ap.add_argument("--end-probe-roots", type=int, default=16,
+                    help="--end-probe-iters: that many of the line's states, evenly spaced")
+    ap.add_argument("--end-probe-gain", type=float, default=None,
+                    help="--end-probe-iters: how much deeper than the line's end (field u) the "
+                         "explorer must reach (default --gain)")
     ap.add_argument("--archive-bar", type=float, default=None,
                     help="the deepest end d of an ARCHIVE line whose curriculum failed (the "
                          "trainer's --auto-spine-archive-bar): a Go-Explore line must end below "
@@ -851,6 +945,28 @@ def main(argv=None) -> int:
                   f"{float(a.archive_ban_r):g}): the same dead end - refused", flush=True)
             return True
         return False
+    probed = {}
+
+    def _way_on(tag, ln, e_, fin):
+        """--end-probe-iters: is there a way on from this candidate's end (end_probe)? Always
+        yes with the probe off and for a finishing line; each stage's line is probed once, and
+        only when it would be handed back."""
+        if int(a.end_probe_iters) <= 0 or fin:
+            return True
+        if tag not in probed:
+            pi = end_probe(a, out, ln, e_, tag, field)
+            res.update({f"{tag}_{k}": v for k, v in pi.items()})
+            probed[tag] = bool(pi["probe_way_on"])
+            print(f"{tag} line: the probe from its last {float(a.end_probe_secs):g} s "
+                  f"({pi['probe_iters']} chunks x {pi['probe_envs']} envs, "
+                  f"{pi['probe_secs']:.0f} s) reached " + (
+                      "the FINISH" if pi.get("probe_goal") else
+                      f"a held d {pi.get('probe_held_d', float('inf')):,.0f}") +
+                  f" from its end {pi['probe_end_d']:,.0f}: " + (
+                      "a way on" if probed[tag] else
+                      f"no way on ({pi['probe_gain']:g} u deeper needed) - refused"),
+                  flush=True)
+        return probed[tag]
     if line is not None and len(line):
         d = field_d(field, line)
         fin = bool(info.get("beam_finished"))
@@ -871,13 +987,16 @@ def main(argv=None) -> int:
         if _dead_end("beam", line[e], fin):
             pass
         elif beats_greedy(de, ref, a.gain, fin):
-            best_src = ("beam", line[:e + 1], de)
+            if _way_on("beam", line, e, fin):
+                best_src = ("beam", line[:e + 1], de)
         elif a.current_d is not None and beats_greedy(de, a.greedy_d, a.gain, fin):
             # --current-d: past the greedy frontier but not past the line the trainer holds.
             # The stages below get their turn first; this line is handed back if they find none
-            fallback = ("beam", line[:e + 1], de)
-            print(f"the line beats the greedy frontier but not the current line's end "
-                  f"({de:,.0f} against {ref:,.0f} - {a.gain:g}): kept as the fallback", flush=True)
+            if _way_on("beam", line, e, fin):
+                fallback = ("beam", line[:e + 1], de)
+                print(f"the line beats the greedy frontier but not the current line's end "
+                      f"({de:,.0f} against {ref:,.0f} - {a.gain:g}): kept as the fallback",
+                      flush=True)
         # branched beams: the fork at --branch-tick and --branch-extra-secs earlier (a fork AT
         # the commitment point only perturbs what is already decided; each beam costs ~20 s)
         forks = [] if (a.branch_tick <= 0 or a.explorer == "mcts") else [a.branch_tick] + [
@@ -927,6 +1046,8 @@ def main(argv=None) -> int:
             if _dead_end(pre, bl[be], bfin):
                 continue
             if beats_greedy(bde, ref, a.gain, bfin):
+                if not _way_on(pre, bl, be, bfin):
+                    continue                          # nor the archives' root line, as above
                 best_src = (tag, bl[:be + 1], bde)
             elif bde < de:
                 line, d, e, de = bl, bd_, be, bde     # GE roots on the deepest line
@@ -954,13 +1075,15 @@ def main(argv=None) -> int:
                 if _dead_end("mc", ml[me], mfin):
                     pass
                 elif beats_greedy(mde, ref, a.gain, mfin):
-                    best_src = ("mc", ml[:me + 1], mde)
+                    if _way_on("mc", ml, me, mfin):
+                        best_src = ("mc", ml[:me + 1], mde)
                 elif a.current_d is not None and beats_greedy(mde, a.greedy_d, a.gain, mfin):
                     if fallback is None or mde < fallback[2]:
-                        fallback = ("mc", ml[:me + 1], mde)
-                        print(f"the Monte Carlo line beats the greedy frontier but not the "
-                              f"current line's end ({mde:,.0f} against {ref:,.0f} - {a.gain:g}): "
-                              f"kept as the fallback", flush=True)
+                        if _way_on("mc", ml, me, mfin):
+                            fallback = ("mc", ml[:me + 1], mde)
+                            print(f"the Monte Carlo line beats the greedy frontier but not the "
+                                  f"current line's end ({mde:,.0f} against {ref:,.0f} - "
+                                  f"{a.gain:g}): kept as the fallback", flush=True)
                     else:
                         print(f"the Monte Carlo line beats the greedy frontier, the fallback "
                               f"({fallback[0]}) is deeper: kept", flush=True)
@@ -1033,6 +1156,8 @@ def main(argv=None) -> int:
                 if _dead_end(tag, gl[ge_e], False):
                     continue
                 if ge_de < gref - a.gain:
+                    if not _way_on(tag, gl, ge_e, False):
+                        continue                      # nor a stepping stone
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
                     break
                 if a.failed_fallback is not None:
@@ -1078,7 +1203,9 @@ def main(argv=None) -> int:
                        energy_window=[round(lo_p, 3), round(hi_p, 3)],
                        energy_candidates=got.get("energy_candidates", 0))
             c = got.get("energy_pick")
-            if gl is not None and c is not None and _dead_end("ge_energy", gl[-1], False):
+            if gl is not None and c is not None and (
+                    _dead_end("ge_energy", gl[-1], False)
+                    or not _way_on("ge_energy", gl, len(gl) - 1, False)):
                 c = None
             if gl is not None and c is not None:
                 eh = float(energy_height(gl[-1:])[0])
@@ -1097,6 +1224,11 @@ def main(argv=None) -> int:
         _ends = failed_ends(a.failed_fallback)
         res.update(failed_ends=_ends)
         _ok = [c for c in arch_cands if stepping_stone(c[2], a.greedy_d, a.gain, _ends)]
+        # --end-probe-iters: the deepest stepping stone with a way on from its end (probed in
+        # depth order, up to the first that has one)
+        _first = next((c for c in sorted(_ok, key=lambda c: c[2])
+                       if _way_on(c[0].split("+")[-1], c[1], len(c[1]) - 1, False)), None)
+        _ok = [] if _first is None else [_first]
         if _ok:
             fallback = min(_ok, key=lambda c: c[2])
             res.update(failed_fallback=1)
