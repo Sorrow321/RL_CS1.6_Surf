@@ -45997,3 +45997,49 @@ The first run of the RECIPE v8 CANDIDATE, written before the launch.
   report); otherwise 8B, or the first finish + 5 evals.
 * The uf2 v7 run beside it (`ab7c_v7`) is at 6.5B with five search lines, all in the trough
   or on the platform, and no exit; it stops at its 8B cut.
+
+## 2026-11-14 22:12 UTC: UNITFARMER2 v7 FROM SCRATCH LEAVES THE PIT (grader 48.6% -> 67.8% at 7.10-7.25B); PRINCESSBURGLAR FROM SCRATCH (v7 + band yaw flags) reaches 6.7-6.9% in every eval from 3.32B; cannonball quiet novelty at 99.8%, no finish yet
+
+Interim reads at 22:10 UTC; nothing is final. Finishes and percentages are the grader's
+(`autoresearch/score.py`, run in each run's own worktree).
+
+### unitfarmer2, recipe v7 FROM SCRATCH (`ab7c_v7`): the greedy LEAVES THE PIT and goes on
+
+| step | grader best / median | where the episodes end |
+|---|---|---|
+| 6,493.3M and before | 1.9% / 1.8-1.9% | in or at the pit (above z 500 now and then from 3.85B) |
+| 7,097.3M | 48.6% / 47.2% | out of the pit |
+| 7,172.8M | 54.9% / 51.6% | (3,062, -378, z -548) at 28.8 s |
+| 7,248.3M | 67.8% / 66.9% | (1,216, 1,461, z -990) at 47.6 s |
+
+* The first from-scratch pit exit with the recipe. The loop's lines before it were trough or
+  platform lines (k01-k05; search 6 at 6.98B: no new line); the exit came from the training side
+  while the curriculum held search 5's archive line (walked back to state 0 at 78%).
+* CUT CHANGED, and said so here: the cut fixed at the launch was 8B (398ca1fc). The exit came at
+  7.10B, 0.9B before it; the warm instrument went from its exit to its first finish in about 0.4B
+  steps (ab7c_w6: 6.31B -> 6.69B). The cut is moved to the first finish + 5 evals, or 9.0B; the
+  box (60637836) is extended to 00:41 UTC. Nothing else about the run changes.
+
+### princessburglar FROM SCRATCH, recipe v7 + band yaw flags (`abpbc_1`): 6.7-6.9% from 3.32B
+
+* Every greedy eval from 3,322.4M on (6 evals to 3,624.4M) reaches min d 53,222-53,342 = 6.7-6.9%
+  of the spawn's d (grader best 6.8-6.9%, median 6.7%); before it, 0.0-0.2% (the room or east of
+  it). The episodes follow search 2's tree line (staircase, doorway, east, the turn back, the drop
+  to the west) and end at x -364..719, z 3,000-3,200 after 45-56 s. On the fixed core no
+  from-scratch run had passed 3.2% (m2 arm A); the warm crossing of 9e620cb6 rode to 3.95-4.79%.
+* The walk-back on line 2 went from row 1,315 (1.73B) to row 385 (3.03B); search 3 (3.31B,
+  tree, 1,667 states, d 55,341) and search 4 (3.43B, tree, 1,597 states, end d 53,261; "greedy
+  frontier 53,691") followed. The yaw sigma fell to 0.051 by itself (cap 0.2, entropy default),
+  so the band's 0.066 is now about 1.3x the policy, louder, not quieter.
+* The box (60688276) is extended to 01:43 UTC; cut as fixed (7e032338): on to 10B or the first
+  finish + 5 evals.
+
+### cannonball, v7 + novelty gate LO 0.05 (`ab8n_cq`): close, no finish at 4.70B
+
+* Grader best 96.9-99.8% in every eval from 2.64B; median up to 98.0% (4.45B). Search 6 (4.68B,
+  tree) handed back a 10,156-state line to d 6,239 (the wall's side of the final descent). Cut
+  as fixed: the first finish + 5 evals or 6.0B (about 22:52 UTC).
+
+### Launched: recipe v8 candidate on unitfarmer2 (`abv8u_1`, b828f96a)
+
+* RTX 5080 box 60701154 ($0.337/h), tunnel http://localhost:8643/, watchdog to 01:02 UTC.
