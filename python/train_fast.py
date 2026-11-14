@@ -4147,7 +4147,7 @@ AUTO_SPINE_OWN_FLAGS = frozenset((
     "--ckpt", "--map", "--field", "--out", "--greedy-d", "--current-d", "--gain", "--beam-ticks",
     "--envs", "--ge-minutes", "--act-every", "--seed", "--branch-tick", "--timeout", "--maxvel",
     "--energy-gain", "--explorer", "--mcts-minutes", "--mcts-extra", "--archive-bar",
-    "--failed-fallback", "--archive-ban", "--archive-ban-r"))
+    "--failed-fallback", "--archive-ban", "--archive-ban-r", "--dead-end-ban"))
 
 
 def is_archive_source(source) -> bool:
@@ -4173,6 +4173,56 @@ def archive_bar(failed):
     """The bar every later archive line is held to (auto_spine.py --archive-bar): the deepest end
     of a failed archive line; None = none has failed."""
     return min(float(v) for v in failed) if failed else None
+
+
+def mark_dead_end(ends: list, source, pos, end_d, cell: float) -> bool:
+    """--auto-spine-dead-end-ban: a PATIENCE search failed the held line - its end position and d
+    join ``ends`` (updated in place, [x, y, z, d] each, one per position) WHATEVER stage it came
+    from; a line the loop did not adopt itself (``source`` None: the scratch spawn spine, a launch
+    --demo-file) and a line that ends at the goal (d within one field cell) never are dead ends ->
+    True when added."""
+    if not source or end_d is None or not np.isfinite(float(end_d)) \
+            or float(end_d) <= float(cell):
+        return False
+    p = np.asarray(pos, np.float64).reshape(3)
+    if any(float(np.linalg.norm(p - np.asarray(e[:3], np.float64))) < 1.0 for e in ends):
+        return False
+    ends.append([float(p[0]), float(p[1]), float(p[2]), float(end_d)])
+    return True
+
+
+def live_dead_ends(ends, greedy_d, gain):
+    """--auto-spine-dead-end-ban: (the dead ends the greedy frontier ``greedy_d`` has not reached -
+    each still beats it by ``gain`` -, the ones it has come within ``gain`` of: no longer a dead end
+    for this policy)."""
+    live = [e for e in ends if float(e[3]) < float(greedy_d) - float(gain)]
+    return live, [e for e in ends if not float(e[3]) < float(greedy_d) - float(gain)]
+
+
+def auto_failed_state(auto: dict, held_end) -> dict:
+    """--auto-spine-archive-bar: what the search loop learned from its failed lines (the d-bar, the
+    ban's end positions, the dead ends) and the source of the line it holds, for the checkpoint."""
+    return {"failed_arch": [float(v) for v in auto.get("failed_arch", [])],
+            "failed_arch_pos": [[float(v) for v in p] for p in auto.get("failed_arch_pos", [])],
+            "dead_ends": [[float(v) for v in p] for p in auto.get("dead_ends", [])],
+            "src": auto.get("src"),
+            "held_end": [float(v) for v in np.asarray(held_end, np.float64).reshape(3)]}
+
+
+def restore_auto_failed(auto: dict, st: dict, held_end) -> bool:
+    """A resume keeps refusing what failed: the lists of auto_failed_state() go back into ``auto``;
+    the held line's source only when the resumed spine ends where the saved one did (within 1 u),
+    since a resume may hold another line -> True when the source was restored."""
+    auto["failed_arch"] = [float(v) for v in st.get("failed_arch", [])]
+    auto["failed_arch_pos"] = [[float(v) for v in p] for p in st.get("failed_arch_pos", [])]
+    auto["dead_ends"] = [[float(v) for v in p] for p in st.get("dead_ends", [])]
+    he = st.get("held_end")
+    same = he is not None and float(np.linalg.norm(
+        np.asarray(held_end, np.float64).reshape(3) - np.asarray(he, np.float64))) < 1.0
+    if same and st.get("src") is not None:
+        auto["src"] = st["src"]
+        return True
+    return False
 
 
 def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
@@ -5347,6 +5397,19 @@ def main() -> None:
                          "found room-to-pit archive lines ~1,650 u past the greedy frontier and "
                          "refused them behind the failed crossing line it held for 1.8B steps. Off "
                          "= byte-identical; config only when on; never restored")
+    ap.add_argument("--auto-spine-dead-end-ban", action="store_true",
+                    help="--auto-spine-archive-ban R: a PATIENCE search also records where the held "
+                         "line ended WHATEVER stage it came from (tree, Monte Carlo, archive; not "
+                         "the scratch spawn spine or a launch --demo-file), and every "
+                         "later search refuses a line of ANY stage that ENDS within R of such an "
+                         "end - the same dead end again (auto_spine.py --dead-end-ban), as a pass "
+                         "and as a fallback. An end the greedy frontier has come within "
+                         "--auto-spine-gain of is dropped (the greedy reached it); a line at the "
+                         "goal never is one. ab/v2, 2026-11-14: the frozen recipe on unitfarmer2 "
+                         "(m6sib) adopted seven TREE lines into the same trough in a row "
+                         "(0.60-3.30B; the greedy passed none of their ends) and the archive rules "
+                         "never see a tree line. Off = byte-identical; config only when on; never "
+                         "restored (the ends it recorded are, with the d-bar)")
     ap.add_argument("--auto-spine-mcts-minutes", type=float, default=8.0,
                     help="--auto-spine-explorer mcts: the MCTS wall-clock budget per search")
     ap.add_argument("--auto-spine-async", action="store_true",
@@ -12511,6 +12574,9 @@ def main() -> None:
     if args.auto_spine_failed_fallback and not args.auto_spine_archive_bar:
         raise SystemExit("--auto-spine-failed-fallback reads the failed archive ends of "
                          "--auto-spine-archive-bar: give it")
+    if args.auto_spine_dead_end_ban and args.auto_spine_archive_ban is None:
+        raise SystemExit("--auto-spine-dead-end-ban refuses lines within --auto-spine-archive-ban's "
+                         "radius: give it")
     if args.auto_spine_energy is not None and not args.auto_spine:
         raise SystemExit("--auto-spine-energy is a stage of --auto-spine's search: give it")
     if args.auto_spine_async:
@@ -15754,6 +15820,8 @@ def main() -> None:
             meta["config"]["auto_spine_failed_fallback"] = 1
         if args.auto_spine_archive_ban is not None:
             meta["config"]["auto_spine_archive_ban"] = float(args.auto_spine_archive_ban)
+        if args.auto_spine_dead_end_ban:
+            meta["config"]["auto_spine_dead_end_ban"] = 1
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -16894,6 +16962,18 @@ def main() -> None:
     # the greedy eval below; the hook after the eval block reads it.
     AUTO_SPINE = bool(args.auto_spine) and demo is not None and DEMO_END_D is not None
     AUTO = {"eval": None, "last": None, "retry_at": 0, "k": 0, "field": None}
+    if AUTO_SPINE and args.auto_spine_archive_bar and ck is not None \
+            and ck.get("auto_spine_failed") is not None:
+        # --auto-spine-archive-bar: a resume keeps the failed lines' ends (the d-bar, the ban, the
+        # dead ends) - lost on resume before ab/v2 - and the held line's source if it holds it
+        _srcok = restore_auto_failed(AUTO, ck["auto_spine_failed"], demo.S[-1]["origin"])
+        print("auto-spine: restored from the checkpoint - failed archive ends "
+              + (", ".join(f"{v:,.0f}" for v in AUTO["failed_arch"]) or "none")
+              + f", {len(AUTO['failed_arch_pos'])} banned end position(s), "
+              f"{len(AUTO['dead_ends'])} dead end(s); the held line's source "
+              + (f"{AUTO['src']}" if _srcok else
+                 "not restored (the resumed spine does not end where the saved one did)"),
+              flush=True)
     if AUTO_SPINE and float(args.auto_spine_delay) > 0:
         AUTO["retry_at"] = int(global_step + float(args.auto_spine_delay))
         print(f"--auto-spine-delay: no search before step {AUTO['retry_at']:,}")
@@ -17074,6 +17154,29 @@ def main() -> None:
                 # --auto-spine-failed-fallback: the held line failed, so an archive line short of
                 # every failed end may be handed back when nothing else is (auto_spine.py)
                 cmd += ["--failed-fallback", ",".join(f"{v:.1f}" for v in _fa) or "-"]
+            if args.auto_spine_dead_end_ban:
+                # --auto-spine-dead-end-ban: where the failed held line ended, whatever its source;
+                # a line of any stage that ends there again is refused while the greedy has not
+                # reached it
+                _de_all = AUTO.setdefault("dead_ends", [])
+                _hp = [float(v) for v in np.asarray(demo.S[-1]["origin"], np.float64)]
+                if pat and not quorum and mark_dead_end(_de_all, AUTO.get("src"), _hp, _held,
+                                                        float(_f.cell)):
+                    print(f"[{global_step:>13,d}] auto-spine: the held line ({AUTO.get('src')}) "
+                          f"ended at ({_hp[0]:,.0f}, {_hp[1]:,.0f}, {_hp[2]:,.0f}), d {_held:,.0f} "
+                          f"- a dead end: lines that end within "
+                          f"{float(args.auto_spine_archive_ban):g} u of it are refused", flush=True)
+                _live, _gone = live_dead_ends(_de_all, med, float(args.auto_spine_gain))
+                if _gone:
+                    print(f"[{global_step:>13,d}] auto-spine: the greedy frontier {med:,.0f} has "
+                          f"reached {len(_gone)} dead end(s) (d "
+                          + ", ".join(f"{e[3]:,.0f}" for e in _gone) + "): not refused",
+                          flush=True)
+                if _live:
+                    cmd += ["--dead-end-ban" + "=" + ";".join(
+                        ",".join(f"{v:.1f}" for v in _e[:3]) for _e in _live)]
+                    if "--archive-ban-r" not in cmd:
+                        cmd += ["--archive-ban-r", f"{float(args.auto_spine_archive_ban):g}"]
         if args.auto_spine_args:
             import shlex as _shlex
             cmd += _shlex.split(str(args.auto_spine_args))
@@ -18697,6 +18800,10 @@ def main() -> None:
             state["unstuck"] = unstuck_sched.state_dict()
         if ARCH is not None:
             state["archive"] = ARCH.state_dict()
+        if AUTO_SPINE and args.auto_spine_archive_bar:
+            # --auto-spine-archive-bar (ab/v2): the failed lines' ends and the held line's source,
+            # so a resume keeps refusing what failed
+            state["auto_spine_failed"] = auto_failed_state(AUTO, demo.S[-1]["origin"])
         if FRONTIER and frontier_sched is not None:
             # --respawn-frontier-grow: same reason. A resume that forgot the
             # plateau clock would hand the run a fresh patience window and

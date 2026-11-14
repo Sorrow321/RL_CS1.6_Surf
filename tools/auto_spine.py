@@ -32,6 +32,10 @@ archive end (stepping_stone()).
 A fourth (ab/ban, 2026-11-14), off by default: --archive-ban POINTS refuses an archive line
 whose chain passes within --archive-ban-r of the END POSITION of an archive line whose curriculum
 failed (chain_near()), as a pass AND as a --failed-fallback.
+A fifth (ab/v2, 2026-11-14), off by default: --dead-end-ban POINTS refuses a line of ANY stage
+(tree, branched beams, Monte Carlo, archives) that ENDS within --archive-ban-r of where a failed
+held line of any source ended (end_near()) - the same dead end again -, as a pass and as a
+fallback; a finishing line never is one.
 
 No constant here comes from a map: every threshold is a field distance margin, a time, or a
 search budget, and the same flags run on any map. No demo or record data enters (CLAUDE.md
@@ -262,6 +266,12 @@ def chain_near(origins, pts) -> tuple:
     dd = np.min(np.linalg.norm(o[:, None, :] - p[None, :, :], axis=2), axis=1)
     i = int(np.argmin(dd))
     return float(dd[i]), i
+
+
+def end_near(end, pts) -> float:
+    """--dead-end-ban: the distance from a line's END position ``end`` (3,) to the nearest of
+    ``pts`` (m, 3); inf when there is none."""
+    return chain_near(np.asarray(end, np.float64).reshape(1, 3), pts)[0]
 
 
 def beats_greedy(de: float, greedy_d: float, gain: float, finished: bool = False) -> bool:
@@ -673,8 +683,14 @@ def main(argv=None) -> int:
                          "them is refused, as a pass and as a --failed-fallback; the policy's own "
                          "lines are not. Absent = as before")
     ap.add_argument("--archive-ban-r", type=float, default=128.0,
-                    help="--archive-ban: the radius (u), one constant on every map (2 archive "
-                         "cells of 64 u)")
+                    help="--archive-ban / --dead-end-ban: the radius (u), one constant on every "
+                         "map (2 archive cells of 64 u)")
+    ap.add_argument("--dead-end-ban", default=None, metavar="POINTS",
+                    help="where held lines of ANY source ended whose curriculum failed and the "
+                         "greedy has not reached, 'X,Y,Z;X,Y,Z' (the trainer's "
+                         "--auto-spine-dead-end-ban): a line of any stage whose END lies within "
+                         "--archive-ban-r of one is refused, as a pass and as a fallback (a "
+                         "finishing line never is). Absent = as before")
     ap.add_argument("--failed-fallback", default=None, metavar="ENDS",
                     help="a PATIENCE search after the held line failed (the trainer's "
                          "--auto-spine-failed-fallback): ENDS = the end d of every failed archive "
@@ -751,6 +767,24 @@ def main(argv=None) -> int:
     if len(ban):
         res.update(archive_ban=[[round(float(v), 1) for v in p] for p in ban],
                    archive_ban_r=float(a.archive_ban_r))
+    dead = ban_points(a.dead_end_ban)
+    if len(dead):
+        res.update(dead_end_ban=[[round(float(v), 1) for v in p] for p in dead],
+                   archive_ban_r=float(a.archive_ban_r))
+
+    def _dead_end(tag, end_state, fin):
+        """--dead-end-ban: a line that ENDS within --archive-ban-r of where a failed held line
+        ended is the same dead end again - refused (a finishing line never is)."""
+        if not len(dead) or fin:
+            return False
+        dist = end_near(end_state["origin"], dead)
+        res[f"{tag}_dead_end_dist"] = round(dist, 1)
+        if dist < float(a.archive_ban_r):
+            res[f"{tag}_dead_end"] = 1
+            print(f"{tag} line: it ends {dist:,.0f} u from where a failed line ended (radius "
+                  f"{float(a.archive_ban_r):g}): the same dead end - refused", flush=True)
+            return True
+        return False
     if line is not None and len(line):
         d = field_d(field, line)
         fin = bool(info.get("beam_finished"))
@@ -765,7 +799,9 @@ def main(argv=None) -> int:
               + f"d {de:,.0f}; greedy frontier {a.greedy_d:,.0f}"
               + ("" if a.current_d is None else f"; current line's end {a.current_d:,.0f}"),
               flush=True)
-        if beats_greedy(de, ref, a.gain, fin):
+        if _dead_end("beam", line[e], fin):
+            pass
+        elif beats_greedy(de, ref, a.gain, fin):
             best_src = ("beam", line[:e + 1], de)
         elif a.current_d is not None and beats_greedy(de, a.greedy_d, a.gain, fin):
             # --current-d: past the greedy frontier but not past the line the trainer holds.
@@ -816,6 +852,8 @@ def main(argv=None) -> int:
             print(f"branched beam line (fork at tick {ft}): {len(bl)} states, "
                   f"best d {bd_.min():,.0f}, " + ("FINISHES, " if bfin else f"cut at {be} ")
                   + f"d {bde:,.0f}", flush=True)
+            if _dead_end(pre, bl[be], bfin):
+                continue
             if beats_greedy(bde, ref, a.gain, bfin):
                 best_src = (tag, bl[:be + 1], bde)
             elif bde < de:
@@ -838,7 +876,9 @@ def main(argv=None) -> int:
                 print(f"Monte Carlo line: {len(ml)} states, best d {md_.min():,.0f}, "
                       + ("FINISHES - kept whole, " if mfin else f"cut at {me} ")
                       + f"d {mde:,.0f}", flush=True)
-                if beats_greedy(mde, ref, a.gain, mfin):
+                if _dead_end("mc", ml[me], mfin):
+                    pass
+                elif beats_greedy(mde, ref, a.gain, mfin):
                     best_src = ("mc", ml[:me + 1], mde)
                 elif a.current_d is not None and beats_greedy(mde, a.greedy_d, a.gain, mfin):
                     if fallback is None or mde < fallback[2]:
@@ -915,6 +955,8 @@ def main(argv=None) -> int:
                               f"archive line's end (row {_r0 + _row}; radius "
                               f"{float(a.archive_ban_r):g}): refused", flush=True)
                         continue
+                if _dead_end(tag, gl[ge_e], False):
+                    continue
                 if ge_de < gref - a.gain:
                     best_src = (f"beam+{tag}", gl[:ge_e + 1], ge_de)
                     break
@@ -961,6 +1003,8 @@ def main(argv=None) -> int:
                        energy_window=[round(lo_p, 3), round(hi_p, 3)],
                        energy_candidates=got.get("energy_candidates", 0))
             c = got.get("energy_pick")
+            if gl is not None and c is not None and _dead_end("ge_energy", gl[-1], False):
+                c = None
             if gl is not None and c is not None:
                 eh = float(energy_height(gl[-1:])[0])
                 res.update(energy=True, energy_gain=round(float(c["gain"]), 1),
@@ -1080,7 +1124,11 @@ def selftest() -> int:
             ("ban points parse", ban_points("1,2,3;4,5,6").tolist() == [[1, 2, 3], [4, 5, 6]]),
             ("the nearest pass", chain_near([[0, 0, 0], [10, 0, 0], [20, 0, 0]],
                                             [[12, 3, 4]])[1] == 1),
-            ("no points, no pass", chain_near([[0, 0, 0]], np.zeros((0, 3)))[0] == float("inf"))):
+            ("no points, no pass", chain_near([[0, 0, 0]], np.zeros((0, 3)))[0] == float("inf")),
+            # --dead-end-ban: where a line ends, against where failed lines ended
+            ("an end beside a dead end", abs(end_near([3, 4, 0], [[0, 0, 0], [100, 0, 0]]) - 5.0)
+             < 1e-9),
+            ("no dead ends, no refusal", end_near([0, 0, 0], ban_points("-")) == float("inf"))):
         print(("ok   " if cond else "FAIL ") + name)
         ok &= bool(cond)
     return 0 if ok else 1

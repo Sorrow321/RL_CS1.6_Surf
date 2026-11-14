@@ -158,6 +158,9 @@ TRAIN_ONLY = frozenset({
     "auto_spine_failed_fallback",
     # --auto-spine-archive-ban (ab/ban): the TRAINING search's radius around failed archive ends
     "auto_spine_archive_ban",
+    # --auto-spine-dead-end-ban (ab/v2): the TRAINING search refuses lines that end where a failed
+    # held line ended
+    "auto_spine_dead_end_ban",
     # --respawn-greedy-temp: the TRAINING rollout's sampling temperature for greedy-row spawns
     "respawn_greedy_temp", "respawn_greedy_temp_ticks", "respawn_greedy_temp_view",
     # --ge-minutes: a share of the TRAINING spawn pool drawn from the run's own Go-Explore
