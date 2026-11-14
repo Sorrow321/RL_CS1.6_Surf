@@ -752,6 +752,10 @@ def main(argv=None, build_only: bool = False, device=None):
                          "recording (comma list of target surfaces) - a bench that spawns the "
                          "policy part way along its list (with --spawn-states) and must show it "
                          "the targets from THAT point; never used to make training data")
+    ap.add_argument("--spawn-keys", default=None, metavar="F,S,D",
+                    help="BENCH (--keys-hold checkpoints): every episode starts HOLDING these keys "
+                         "(engine bins fwd 0..2, side 0..2, duck 0..1) instead of neutral - what a "
+                         "training spine spawn holds under train_fast --demo-keys. Off = neutral")
     ap.add_argument("--spawn-states", default=None,
                     help="a STATE_DTYPE .npy (a demo spine, or a window of "
                          "one cut from a --dump-states dump by "
@@ -2775,6 +2779,14 @@ def main(argv=None, build_only: bool = False, device=None):
     if keys_hold and cfg.get("keys_hold_spawn_duck"):
         # --keys-hold-spawn-duck: a crouched spawn (a --spawn-states row) holds duck, as in training
         _pol.spawn_duck = True
+    if args.spawn_keys:
+        if not keys_hold:
+            raise SystemExit("--spawn-keys sets held keys: the checkpoint has no --keys-hold")
+        _sk = [int(x) for x in str(args.spawn_keys).split(",")]
+        if len(_sk) != 3 or not (0 <= _sk[0] <= 2 and 0 <= _sk[1] <= 2 and 0 <= _sk[2] <= 1):
+            raise SystemExit(f"--spawn-keys {args.spawn_keys}: want F,S,D engine bins")
+        _pol.spawn_keys = np.asarray(_sk, np.int64)
+        print(f"--spawn-keys: every episode starts holding fwd {_sk[0]}, side {_sk[1]}, duck {_sk[2]}")
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation
