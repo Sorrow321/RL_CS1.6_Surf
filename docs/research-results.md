@@ -43211,3 +43211,27 @@ episodes below z 0 by 0.6B, NO = none by 0.6B, anything else reported as it is).
 * The candidate training side is now the 135 tokens with `--yaw-sigma-max 0.2` (no
   `--yaw-entropy 0`). `ab3bc_1` (blue200, the same tokens with the 0.2 cap) checks it on a map
   that finishes; princessburglar's stall is the first-line lottery (20a23c95), not the yaw.
+
+## 2026-11-14 05:52 UTC: ablation wave 3 - princessburglar FINAL for the cap-only all-in (ab3py_1): NULL at the 2.0B early cut, the start room again; the loop held a pit line it could not teach
+
+`ab3py_1` (princessburglar, the 135 tokens with the 0.5 cap and the default yaw entropy, from
+scratch, seed 0, RTX 5080 box 60592688) is NULL at its early cut (ef3da016: 2.0B if the greedy
+never left the start room).
+
+* Every greedy episode of all 28 evals to 2,038,956,032 but one (906.5M) ends at the staircase
+  foot (728-730, -2,855, z 3,649-3,674), the all-in's spot (64cc18fb); grader 0.37-0.40%,
+  0 finishes. The yaw sigma sat at the 0.5 cap for most of the run (0.40-0.50), so the
+  all-in's collapse to 0.01 was not what held it (sub-agent P's reading, 20a23c95, confirmed).
+* The searches, the same story P read in the all-in: search 1 (random weights, ended 122.7M)
+  discarded as stale; search 2 (803.2M) adopted a beam+ge2 line of 2,630 states into the pit
+  (end d 55,344); its walk-back stalled at rows 1,899-1,984 (success 3.5-18.9% at the newest
+  starts) and never reached the room; search 3 (1,560.8M) found no line below the held line's
+  end (55,344 - 200), the reference of `--auto-spine-current-ref`.
+* Stopped by pid at 2,062,548,992; BUNDLE OK (ckpts 1.0B, 2.0B, latest; 28 evals; run.json,
+  progress, launch log; search lines k01-k04); box released 05:51 UTC, tunnel :8622 stopped.
+
+The wave's princessburglar reading: the start room is lost to the loop's line choice (a held
+line whose walk-back fails, and the reference it sets), on two runs with different yaw settings.
+The failed-line rule (sub-agent U) and the energy-rooted archive stage (P, 20a23c95) are the
+search-side candidates; whether the curriculum can teach the launch at all is P's instrument,
+running now (`abpbi*`, warm from fix-round try 3's weights with its own crossing line).
