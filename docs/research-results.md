@@ -44980,3 +44980,182 @@ END to the nearest tail on record (u, T = 0 / 1 / 2 / 4):
   6.2B total on a fresh 5090; the first finish counts for the regression.
 * sidistic v5 (`ab8s_1`) at 4.15B: search 7 (3.80B) a 14,880-state line to d 1,146 against a
   greedy frontier of 5,010 (about 94% of the map).
+
+## 2026-11-14 16:50 UTC: ablation wave 8 - sub-agent U: a way-on probe refuses most trough lines but also every princessburglar line (not a recipe gate); a BUG in --end-survive-secs fixed (878336ff); and the UNITFARMER2 warm instrument with the patience cap LEAVES THE PIT 9/9 and reaches 83%
+Sub-agent U, wave 8: the END PROBE - does a line's END tell a trough from an exit? Code ab/probe
+878336ff (from ab/pmax f81cf37b), default off; evidence on one bench box (60667564, RTX 5080,
+Ryzen 9 8945HX 16 cores, 16:11-16:48 UTC, $0.24). Verdict: NOT as a gate into v7.
+
+### The rule (auto_spine.py --end-probe-iters N; 0 = off = the old decisions)
+
+* Before a candidate line of ANY stage is handed back (a pass, a fallback, the failed-fallback
+  stepping stone, the energy line), explore_phase1 - the GE stage's uniform explorer, no policy, so
+  the answer is the map's and not the current weights' - is rooted at --end-probe-roots 16 of the
+  line's states over its last --end-probe-secs 2 and runs exactly N chunks of --end-probe-envs
+  2,048 envs (a COUNT: a slow box is not a weaker probe). The line passes when the archive holds a
+  state the map holds at least --end-probe-gain (default --gain, 200) deeper than the line's end,
+  or a finish. A finishing line is never probed; each stage's line is probed once, and only when
+  it would be handed back. The archive is deleted after the verdict (its deepest held state kept).
+* No trainer flag: it rides in --auto-spine-args like --mc-envs (run.json records it there).
+* Cost per probe on this box: 50 chunks 17-30 s (cannonball 60 s), 200 chunks 70-140 s (uf2,
+  four probes sharing the box; cannonball ~4 min).
+
+### The bench (each line on its own map, tick and maxvel; seed 1 unless "s2"; G = 200)
+
+Cells: the gain past the end (end d minus the deepest HELD d the probe reached); r = refused at
+G 200; GOAL = the probe finished. 43 lines from the order + the 6 lines today's dead-end ban
+(R 128) refuses in m6sib / fxuf2 ("banned"). Columns: 50 chunks, 200 chunks, 200 chunks seed 2,
+200 chunks over the last 1 s; cells = the archive at 200 chunks (50 where missing).
+
+| line | class | end d | 50 ch | 200 ch | 200 ch s2 | 200 ch 1 s | cells |
+|---|---|---|---|---|---|---|---|
+| ab4u_1 k02 | trough | 28,517 | r 0 | r 0 | r 0 | r 0 | 34k |
+| ab4u_1 k03 | trough | 28,255 | r -264 | r -264 | r +131 | r -264 | 51k |
+| abuf2_all k02 | trough | 28,599 | r +82 | +254 | - | r +82 | 46k |
+| abuf2_all k04 | trough | 28,937 | +419 | +556 | +418 | +420 | 389k |
+| abuf2_all k05 | trough | 28,714 | r +197 | r +197 | - | - | 268k |
+| ab5u_1 k02 | trough | 28,314 | +206 | +206 | r -202 | r -202 | 585k |
+| ab5u_1 k03 | trough | 28,010 | r -507 | r -507 | - | - | 36k |
+| ab7c_ud k01 | trough | 28,333 | r -183 | r -60 | - | - | 42k |
+| ab7c_ud k02 | trough | 28,517 | r -2 | r -2 | - | - | 35k |
+| ab7c_w6 k01 | trough | 28,518 | r 0 | r 0 | r +1 | r -1 | 449k |
+| ab4u_u6 k01 | trough | 28,360 | r -157 | r -157 | - | - | 439k |
+| ab4u_u6 k02 | trough | 27,675 | +3,311 | +3,311 | +1,405 | +3,308 | 456k |
+| ab4u_v4 k02 | trough | 28,322 | r -194 | r -194 | - | - | 41k |
+| ab4u_v4 k03 | trough | 27,932 | r -540 | r -540 | - | - | 720k |
+| fxuf2_t1 k02 | trough | 28,317 | r -199 | r -199 | - | - | 41k |
+| fxuf2_t1 k03 | trough | 27,816 | r -712 | r -84 | - | - | 426k |
+| m6sib_uf2 k02 | trough | 28,350 | r -169 | r -169 | - | - | 21k |
+| m6sib_uf2 k07 | trough | 27,793 | r -78 | - | - | - | 40k |
+| ab4u_1 k05 | exit | 29,502 | +984 | - | +1,315 | - | 849k |
+| ab4u_1 k06 | exit | 16,423 | r -274 | - | r -271 | - | 273k |
+| ab4u_1 k01 | lip | 29,580 | +628 | - | - | - | 486k |
+| ab4u_1 k04 | other | 29,980 | +851 | - | - | - | 499k |
+| abuf2_all k01 | other | 29,374 | +857 | - | - | - | 20k |
+| abuf2_all k03 | other | 29,986 | +690 | - | - | - | 596k |
+| ab6u_2 k01 | other | 29,220 | +701 | - | - | - | 29k |
+| fxpb_t1 k01 | pit | 55,353 | r 0 | - | r 0 | - | 1k |
+| fxpb_t2 k01 | pit | 55,349 | r 0 | - | - | - | 1k |
+| ab7b_pb5 k01 | pit | 55,349 | r 0 | - | - | - | 1k |
+| abpb_all k01 | crossing | 55,107 | r 0 | - | r 0 | - | 2k |
+| fxpb_t1 k02 | crossing | 55,098 | r 0 | - | r 0 | - | 2k |
+| ab7b_pb5 k02 | crossing | 55,113 | r +26 | - | - | - | 2k |
+| as_t3_E (P) | crossing | 55,097 | r -16 | - | - | - | 2k |
+| fxpb_t3 k01 | room | 55,897 | +549 | - | - | - | 2k |
+| ab4u_b5 k01 | finish-map | 68 | GOAL | - | - | - | 0k |
+| ab4u_c5 k01 | finish-map | 13,721 | +2,208 | - | - | - | 2.3M |
+| ab4u_pet5 k01 | finish-map | 0 | GOAL | - | - | - | 0k |
+| ab8n_1 k02 | finish-map | 52,873 | +5,488 | - | - | - | 3.4M |
+| ab8n_1 k03 | finish-map | 28,257 | +9,353 | - | - | - | 3.1M |
+| fxb200_t1 k02 | finish-map | 1,661 | r -64 | - | - | - | 36k |
+| fxpet_t1 k02 | finish-map | 28,058 | r -168 | - | - | - | 2k |
+| fxcel_t1 k02 | finish-map | 41,825 | r -6 | - | - | - | 2.4M |
+| fxcan_t1 k02 | finish-map | 74,787 | +1,733 | - | - | - | 225k |
+| ab7c_1 k02 | finish-map | 5,834 | +2,135 | - | - | - | 2.0M |
+| m6sib_uf2 k03 | banned | 28,276 | r -243 | r -243 | - | - | 25k |
+| m6sib_uf2 k04 | banned | 28,248 | r -269 | r -269 | - | - | 448k |
+| m6sib_uf2 k05 | banned | 28,222 | r -296 | r -296 | - | - | 468k |
+| m6sib_uf2 k06 | banned | 28,185 | r -333 | r -333 | - | - | 25k |
+| fxuf2_t1 k04 | banned | 27,917 | r +2 | r +2 | - | - | 501k |
+| fxuf2_t1 k05 | banned | 28,273 | +355 | +355 | - | - | 323k |
+| ab5u_1 k03 cut | trough | 28,558 | +329 | - | - | - | 26k |
+| fxuf2_t1 k03 cut | trough | 28,590 | r +71 | - | - | - | 43k |
+| m6sib_uf2 k07 cut | trough | 27,826 | r -242 | - | - | - | 271k |
+| ab4u_1 k06 cut | exit | 17,214 | +518 | +518 | - | - | 308k |
+| ab4u_1 k04 cut | other | 30,168 | +706 | - | - | - | 593k |
+| abuf2_all k03 cut | other | 30,563 | +1,059 | - | - | - | 600k |
+| ab6u_2 k01 cut | other | 29,463 | +946 | - | - | - | 26k |
+| fxb200_t1 k02 cut | finish-map | 1,982 | +254 | - | - | - | 37k |
+| fxcan_t1 k02 cut | finish-map | 75,051 | +2,332 | - | - | - | 249k |
+| m6sib_uf2 k03 cut | banned | 28,524 | r +6 | - | - | - | 17k |
+| m6sib_uf2 k04 cut | banned | 28,628 | r +111 | - | - | - | 204k |
+| fxuf2_t1 k05 cut | banned | 28,617 | +746 | - | - | - | 254k |
+
+### What the probe sees
+
+1. v6 cuts first. Under --end-survive-secs 1 (on in v4-v6) 12 of the 49 lines end in a flight
+   that dies within 1 s and are cut back to their last contact BEFORE any probe sees them; the
+   fair verdict is the cut line's ("cut" rows). ab4u_1 k06's tip (16,423) is a death: -274 /
+   -271 (seed 2); cut to its last contact (17,214) it passes, +518. blue200's fxb200_t1 k02: -64
+   at its tip, +254 cut.
+2. Closed dead ends are found. With v6's cut first, 14 of the 18 trough ends reach no held
+   state 200 deeper at 50 chunks (10 of 14 at 200); 13 of the uncut probes stop on one floor
+   spot, d 28,517 at (-1,970, -1,085, 297) - the west pocket - wherever the line ended.
+   princessburglar's pit floor is a closed hole: 0.9-1.0k cells, gain 0 (3 of 3). Four of the
+   five re-entries today's dead-end ban refuses (m6sib k03-k06) are closed too (-243..-333 at 50
+   and 200 chunks); the fifth, fxuf2_t1 k05, is not (+355, see 4).
+3. The exit passes - by falling into the pit, not by the route: ab4u_1 k05 +984 / +1,315 (seed 2),
+   its deepest held state on the trough floor. Every line that ends above the pit passes the
+   same way (the failed lip line k01 +628, k04 +851, abuf2_all k01 / k03, ab6u_2 k01 +690..+857):
+   the probe tells a line that has fallen in from one that has not, not an exit from a line about
+   to fall in.
+4. Trough ends on the floor's slope pass, and budget and seed move them: abuf2_all k04
+   +419 / +556 / +418; ab5u_1 k02 +206 / +206 / -202 (seed 2); abuf2_all k02 +82 -> +254 at 200
+   chunks; ab5u_1 k03 cut +329; fxuf2_t1 k05 +355, cut +746 (a re-entry today's ban refuses: the
+   explorer slides 330 u east to the NE corner's 27,919). Roots over the last 1 s change nothing
+   measured (abuf2_all k04 +420, ab5u_1 k02 -202, ab4u_u6 k02 +3,308, the west-pocket ends 0).
+5. Lines the loop needs are refused where a uniform explorer cannot follow: all seven
+   princessburglar lines (the pit, and the four crossings in a closed ~2k-cell region of the two
+   ledges and the pit, -16..+26); celestial fxcel_t1 k02 -6 with 2.4M cells - a line the greedy
+   LEARNED (9/9 past it 0.12B after adoption, frontier 26,323) on the way to the finish line;
+   petrus fxpet_t1 k02 -168 (a closed 1.6k-cell pocket; its successor passed 262 u away and went
+   on). The finishing maps' other lines pass: ab4u_b5 k01 and ab4u_pet5 k01 reach the finish,
+   ab4u_c5 k01 +2,208, ab8n_1 k02 / k03 +5,488 / +9,353, fxcan_t1 k02 +1,733, ab7c_1 k02 +2,135.
+6. A way on where it matters: ab4u_u6 k02 (27,675; the run was stopped 0.1B after adopting it)
+   +3,311 / +3,311 / +1,405: its deepest held state, (-2,104, 1,922, -334) at d 24,364, lies
+   170 u from where ab4u_1's exit line k06 flies at the same d (row 2,327). The other NE-corner
+   ends (ab4u_v4 k03, fxuf2_t1 k03, m6sib k07, ab5u_1 k03) have none. Its end flight lands (the
+   box's own search said so too).
+7. Found on the way and fixed (878336ff): flight_fate (--end-survive-secs, ab/v3, in v4-v6)
+   kept one core per map without a reset, so a flight checked after one that died read "dies"
+   too (u6 k02's end: lands fresh, "dies" right after k06's tip); in a search the Monte Carlo
+   line's end was judged by the tree line's. The regression test fails on the old code. The w6
+   audit (the Monte Carlo 'exits' die) re-run with the fix: unchanged, 7 of 7 die.
+
+### Tests and smoke
+
+* tests/python/test_auto_spine_probe.py, 12 passed: the verdict on stand-in archives (a held state
+  --gain deeper passes; a flight 900 u deeper does not; the finish passes; unreachable cells never
+  count), the explorer's command (count, envs, --cell-held, --exact-chains, the GE stage's tick and
+  view flags) and its roots (16 over the last 2 s, the end included), a probe that leaves no
+  archive refuses nothing, and auto_spine.main() with stand-in stages: off = the old decision
+  (--end-probe-iters 0 gives the same spine.json as no flag); a trough line refused at the tree
+  and Monte Carlo and the archive's line handed back; a finishing line never probed; a line that
+  would not be handed back never probed; a fallback probed; the stepping stone = the deepest with
+  a way on, probed in depth order. With the loop's suites: 127 passed, 14 skipped;
+  auto_spine.py --selftest ok.
+* CPU smoke, ab7c_ud's complete v5 flag list (147 tokens) + the v6 cap + --auto-spine-args
+  "... --end-probe-iters 2 --end-probe-envs 64" (+ --auto-spine-quorum 2 so searches fire),
+  40,960 steps from scratch on unitfarmer2: rc 0; search 1's tree line (d 30,263) was probed
+  ("reached a held d 29,967 ... a way on") and adopted. Again with --end-probe-gain 1e6: rc 0; the
+  tree line and the archive's line were refused ("no way on ... - refused"), the Monte Carlo line
+  was not probed (it did not beat the greedy frontier).
+
+### Recommendation
+
+* Do NOT build the probe into v7 as a gate. With v6's end cut in front of it, 50 chunks (17-60 s
+  on a 16-core box) and G = --gain (200), it refuses 14 of the 18 trough ends - and all seven
+  princessburglar lines, celestial's fxcel_t1 k02 (a stepping stone the greedy learned on the way
+  to the finish line) and petrus's fxpet_t1 k02, while it passes every line that ends above the
+  unitfarmer2 pit, exit or not, and the trough ends on the floor's slope (3-4 of 18, budget- and
+  seed-dependent). To a uniform explorer a surf or a jump it cannot fly looks like a floor; no
+  one G separates them, and 200 chunks or a second seed leave the princessburglar lines at 0
+  (3 of 3 measured).
+* Take 878336ff into v7 regardless: the flight_fate reset is a bug fix in the live recipe's end
+  cut (--end-survive-secs), independent of the probe.
+* The probe's one surprise is worth a box: ab4u_u6's last line k02 ends where the NE corner of
+  the trough has a way on to the exit route (+3,311, to 170 u of ab4u_1 k06), and the run was
+  stopped 0.1B after adopting it. Resuming ab4u_u6 from its own checkpoint
+  (~/ar_m2/runs/ab4u/ckpts_u6/ckpt_latest.pt, 1.36B) is the cheapest test of whether that line
+  leads out.
+* As an exemption from the dead-end ban instead of a gate (lift a ban only when the probe finds a
+  way on) it would reopen ab4u_1's exit (+984) and keep m6sib's four refusals, but also reopen
+  fxuf2_t1 k05 (+355, cut +746), a trough re-entry - not clean either; not built.
+
+* `ab7c_w6` (unitfarmer2: ab7c_ud's own v5 weights from 3.53B + `--auto-spine-patience-max 1e9`,
+  pre-launch f541f5a0): searches at 4.08B (trough), 5.08B and 5.67B (search 3: an 8,640-state tree
+  line to d 27,225); the greedy LEAVES THE PIT 9/9 in three evals in a row and goes on: grader 56.0%
+  at 6.31B, 68.0% at 6.39B, 83.1% (median 82.0%) at 6.46B; the episodes end at 32-35 s, falling at
+  (-98..624, -2,415..1,425, z -170..-1,353), short of the finish box; 0 finishes yet. The furthest any
+  run of this program has reached on unitfarmer2 (v1: 40.4% at 3.70B). An instrument (a warm
+  resume with one flag added), not a from-scratch recipe result. Box extended to 19:20 UTC.
