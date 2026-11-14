@@ -44569,3 +44569,39 @@ Every spine swap in the four finishing runs, by the same reading:
   confirm 9/9 within its 2.5B cut.
 * `ab7b_1` (blue200, v3) at 151.5M: 65.6%, no finish yet. `ab4u_v4` (unitfarmer2, v4) at
   151.5M: no dive yet (the 2.5-weight runs dove 151-227M).
+
+## 2026-11-14 12:23 UTC: ablation wave 7 - celestial v3 finishes in every eval from 755.5M; unitfarmer2 v4 does not dive (the first search line is learned); PRE-LAUNCH v4 + a 300M-step delay before the first search
+
+### Read
+
+* `ab7c_1` (celestial, recipe v3) FINISHES in every eval from 755.5M to its stop at 1,394.6M
+  (4, 6, 5, 6, 8, 5, 5, 1, 8 of 9; best 44.93 s; grader): no regression. BUNDLE OK; its box is
+  kept for the arm below.
+* `ab4u_v4` (unitfarmer2, recipe v4): 0 of 9 below z 0 in every eval to 680.0M. Its novelty
+  coefficient read 1.6-2.2 (the greedy frontier sits 3-4% into the map on the platform lines)
+  and the novelty paid 0.2 per episode (the 2.5-weight runs that dove: 4-12); the curriculum
+  learned search 1's and search 2's lines round the platform (search 2: 4,153 states to d
+  28,322, 80% at rows 3,342-4,152). Its own cut (1.5B with no dive) stands.
+
+### The pattern on unitfarmer2 (eight runs)
+
+* The start dive came when the curriculum did NOT learn its first line (ab3u2 2.1%, ab4u 8.4%,
+  the all-in) and novelty was strong; it did not come, or came late, when the first line was
+  learned (ab3uy, ab3u1 at 95% -> 680M, ab6u_2 at 96%, ab4u_v4). The first search fires at the
+  first eval, on random weights: its line is a lottery (sub-agent P read the same on
+  princessburglar, 20a23c95), and the keys restored at spawns (`--auto-spine-keys`) make such a
+  line easier to learn.
+
+### Written BEFORE the launch
+
+| owner / run | map | recipe | read | cut |
+|---|---|---|---|---|
+| `ab7c_ud` | unitfarmer2 | v4 + `--auto-spine-delay 3e8` (145 tokens) | dive, then exit | 1.0B no dive; 8B |
+
+* `--auto-spine-delay` (an existing flag): no search before 300M steps, so the first search
+  uses a trained policy and the training's own novelty acts first. One value for every map;
+  it costs the finishing maps their first line's first 300M steps (blue200's v1 finish came
+  from search 1 at random weights), which the regression must show.
+* Runs on celestial's kept box (60637836, RTX 5080; run names must start with its owner, hence
+  `ab7c_ud`), watchdog re-registered, tunnel http://localhost:8637/. CPU smoke rc 0, 40,960 steps,
+  'no search before step 300,000,000' printed.
