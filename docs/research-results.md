@@ -43797,3 +43797,98 @@ box, 1.7 GB with the archives; md5 lists in ~/ar_m2/runs/abmcw/).
   97%), which replaced the trough line in the curriculum. Box extended to 11:40 UTC.
 * `ab5c_1` (celestial, v1-lean) at 0.63B: 29-36% (the fork); search 2 (581.4M) handed back a
   Monte Carlo line of 3,500 states past the fork (d 39,325).
+
+## 2026-11-14 08:44 UTC: ablation wave 5 - sub-agent P: a path ban on failed archive ends (ab/ban 4289edf1, R 128 u) refuses the unitfarmer2 trough re-entries and keeps the princessburglar, blue200 and petrus lines
+
+Sub-agent P, wave 5 (code + CPU tests, no box). Recipe v1's unitfarmer2 run `ab4u_1` (code ab/mc)
+adopted an archive TROUGH line at search 2 (774.9M; end (-1,969, -1,083, 295), d 28,517); its
+curriculum failed, and search 3 (1,581.3M) adopted a second trough line (end (-1,706, -1,178,
+197), d 28,255) that cleared ab/mc's d-bar (28,317) by 62 u. The d-bar compares depths only.
+
+### What the real lines say (measured on the bundles, not assumed)
+
+Smallest distance from a candidate archive chain (root on) to a failed archive line's END:
+
+| candidate | failed end(s) | chain-to-end | should be |
+|---|---|---|---|
+| ab4u_1 search 3 (28,255) | ab4u_1 search 2 | 112 u | refused |
+| all-in search 5 (28,714) | all-in searches 2, 4 | 3 u (k04's end) | refused |
+| U's search-5 replays, 4 trough lines (28,430-28,680) | all-in 2, 4 | 21-56 u | refused |
+| U's replays, 2 ledge / lip lines (29,102, 29,451) | all-in 2, 4 | 508-1,158 u | open |
+| all-in search 4 (28,937, another trough branch) | all-in search 2 | 581 u | refused (d-bar) |
+| fxpb_t1 search 2 crossing (55,098) | fxpb_t1 search 1 (pit line) | 210 u | open |
+| a room-to-pit line (fxpb_t1 search 1, 55,353)* | the all-in's crossing (55,107) | 163 u | open |
+| fxb200_t1 search 3 goal line; fxpet_t1 search 3 | none (failed lines were tree lines) | - | open |
+
+\* the all-in's own room-to-pit lines (searches 2-3) were not saved; fxpb_t1's first line is the
+same kind of line on the same map (spawn -> room exit -> pit floor, archive chain).
+
+* The "238-254 u" of the stepping-stone rule (ab/ff) are FIELD distances (d), not space: the
+  all-in's room-to-pit lines end 238-254 u shallower on d than its failed crossing, and the pit
+  spot lies 163 u (in space) below that crossing's end, on a ledge.
+* The premise "the end is where the curriculum could not make the line work" does NOT hold in
+  the launch logs at hand (the all-in's two maps and fxpb_t1; ab4u_1's log is not in the bundle):
+  every failed archive line was walked back 7.6-10.7 s from its end. The all-in's trough lines
+  (k02, k04, k05) were learned to rows 252-254, 84-114 rows after their roots - the curriculum
+  stalled at the chain's ENTRANCE (from the ledge into the trough), not at its end;
+  princessburglar's failed lines stalled mid-chain (the crouch tunnel, the ridge launch, the far
+  ledge). The end radius still separates every real case above, by the geometry: trough lines
+  re-enter the same dead end (3-112 u), the lines that must stay open pass 163-210 u away.
+
+### The rule (`ab/ban`, from ab/ff 2bdf492f; off = byte-identical)
+
+* `train_fast --auto-spine-archive-ban R` (needs `--auto-spine-archive-bar`): when ab/mc marks a
+  held ARCHIVE line failed (patience, no quorum), its END POSITION is recorded too; every later
+  search runs `auto_spine.py --archive-ban=X,Y,Z;... --archive-ban-r R`, which refuses an archive
+  line whose chain (from its root on) passes within R of a recorded end - as a pass AND as a
+  `--failed-fallback`. The policy's own lines (tree, Monte Carlo) are not held to it.
+* R = 128 u (two 64 u archive cells), one constant on every map: 16 u above the worst re-entry
+  (112 u, ab4u_1) and 35 u below the nearest line that must stay open (163 u).
+* U's d-bar is KEPT: the all-in's search-4 trough branch ends 581 u from the failed search-2 end,
+  out of any radius that keeps princessburglar open; only the d-bar refuses it (28,937 against
+  28,399).
+
+### Tests (CPU; tests/python/test_auto_spine_ban.py, 22 passed)
+
+* `tests/python/test_auto_spine_ban.py` (22 passed) runs on the REAL lines
+  (`tests/python/data/archive_ban_cases.npz`, 255 KB: every second row of each line, its end and
+  root kept, and its d on the trainer's real field; every end d matches its spine.json):
+  * geometry at R = 128: six re-entries refused (3-112 u), five open lines kept (163-1,158 u,
+    the all-in's search-4 branch at 581 u included), the margins 112 / 163 u pinned;
+  * auto_spine.py decisions replayed on those lines (stages stubbed, a nearest-neighbour field):
+    ab4u_1 search 3 hands back the tree's line (29,738) instead of the second trough line
+    (banned at 112 u; without the ban: the trough line, as ab/mc did); the all-in's search 5
+    hands back the Monte Carlo exit with both trough lines banned; a trough line past the d-bar
+    with no policy fallback gives no line (the d-bar alone takes it); fxpb_t1 search 2 still
+    takes its crossing (210 u); the all-in's princessburglar search 2 still hands back the
+    room-to-pit stepping stone through ab/ff (163 u); blue200's goal line and petrus's search-3
+    line pass as before (no failed archive end).
+* With ab/ff's and ab/mc's files: test_auto_spine_ff 12, _mc 12, _fx 7 passed (the fx wiring test
+  reads the trainer's flag set: the ban token is written so it sees it); the other loop suites
+  (test_auto_spine, _async, _energy, _recheck) 30 passed, 2 skipped; `auto_spine.py --selftest`
+  ok (22 checks). Code: ab/ban 4289edf1 (from ab/ff 2bdf492f, pushed).
+* CPU smoke of the complete recipe-v1 command line + `--auto-spine-failed-fallback
+  --auto-spine-archive-ban 128` on princessburglar (ab/ban code, 61,440 steps): rc 0, run.json
+  `auto_spine_archive_ban: 128.0`; both patience searches ran with `--failed-fallback -` and no
+  ban (no archive line had failed yet).
+
+### Residual risks (not closed by this rule)
+
+* The margin is thin: 112 u (refused) against 163 u (open). One seed of each geometry.
+* A trough branch that ends far from every failed end and >= 200 u shallower on d (the all-in's
+  search-4 line: 581 u, 337 u) is a ab/ff stepping stone when no tree or Monte Carlo line is a
+  fallback; neither rule refuses it then.
+* Hypothetical: if a room-to-pit line failed at its tunnel, its END (the pit spot, LEARNED) would
+  be banned, and a crossing that slides past that spot (as_t3_E: 118 u) would be refused.
+
+### Is a "learned dead end" rule needed now? No, on these files
+
+* ab3u1 (cap 0.1): its own tree line to the lip (search 1, 4,320 states) was walked back to row 0;
+  its greedy reached the trough by itself (frontier 28,522 from 227M); it still dove at 680M
+  (9/9 at 680M, 755M, 831M; ledger 341ed3d2).
+* ab4u_1 (recipe v1, cap 0.2): the same kind of lip line (search 1, end (-1,774, -2,502, 548),
+  29,580) and the greedy dove at 227M (9/9 in every eval since). Its dead ends since are ARCHIVE
+  lines (searches 2, 3), which the d-bar and this ban cover; its tree and Monte Carlo lines
+  stayed on the platform / lip (searches 2-4: 29,738-30,112).
+* Watch item: a TREE or Monte Carlo line ending at a recorded failed end (ab3u1's searches 2-3
+  were tree lines into the trough); none in ab4u_1 so far.
