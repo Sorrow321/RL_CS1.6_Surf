@@ -43403,3 +43403,130 @@ Written BEFORE the launch. Wave 4 starts with the first run of the merged candid
 * Local check: the complete 136-token command line + launch extra on CPU on the ab/mc code
   (worktree ab/ab4u d144ce9c), 40,960 steps: rc 0, no refusal, the 0.2 cap printed, searches
   ran the tree and then the 4,096-rollout Monte Carlo beam_tas call.
+
+## 2026-11-14 07:07 UTC: ablation wave 3 - princessburglar launch instrument (sub-agent P, warm from try 3 with its own crossing line, search off): the curriculum learns the far side and stalls 0.2 s before the far-wall impact in both arms; the launch is never reached; October band flags hurt
+
+Written BEFORE the launch (sub-agent P). An INSTRUMENT, not a recipe result: does the recipe's
+backward curriculum teach the princessburglar launch when it is handed a crossing line?
+
+### The arms (one seed each, warm resume, princessburglar, RTX 4080/5080 class)
+
+* Weights: fix-round try 3's final checkpoint (`fxpb_t3` ckpt_latest, md5 ac552734, step
+  5,002,756,096; from scratch with the generic 89 tokens + `--yaw-sigma-max 0.5`, 10 ms tick, no
+  demo in its history; its greedy ends on the pit floor). Resumed through `run_arm.sh`
+  ARM_RESUME (`box.py launch --resume`): the checkpoint keeps its tick and every shape flag; no
+  shape flag is passed.
+* Spine: `as_t3_E` (2,664 rows, end d 55,097, md5 e164025a), the crossing line the loop's own
+  search found on THESE weights (ledger 20a23c95: `tools/auto_spine.py` with try 3's search-7
+  arguments, `--ge-boost E1.0`: the policy's tree line to row 378, then a held-archive chain
+  rooted on the policy's own upper-corridor state). Policy- and search-derived, no demo;
+  declared with SELF_STATES=1 (`box.py --self-states`). Launch rows of this line: the drop onto
+  the ridge 1428-1446, the ride and rising end 1446-1470 (vz -111 at 1452 -> +356 at 1470,
+  strafe right held, unducked), far ledge from ~1518; start room rows 0-~180.
+* The search loop is OFF: a resume does not restore `--auto-spine`, and none of its flags is
+  passed, so nothing replaces the spine. Try 3's curriculum flags are passed explicitly (a resume
+  restores window, rate, min-ep, grow, front-frac and success-d but not cooldown, grow-max or
+  match-band): `--demo-success-d 100 --demo-window 5 --demo-grow 5 --demo-grow-max 40
+  --demo-cooldown 5 --demo-rate 0.2 --demo-min-ep 50 --demo-front-frac 0.5 --demo-match-band`.
+  The curriculum starts at the spine's end (row 2663) with fresh tables; success line d 55,197.
+
+| owner / run | arm | flags beyond the above |
+|---|---|---|
+| `abpbi1_1` | (i) the recipe's curriculum as is | none |
+| `abpbi2_1` | (ii) + October's band flags | the four below |
+
+  Arm (ii) adds `--demo-front-temp 0.5 --demo-front-view 6 --demo-front-ticks 40
+  --demo-success-bonus 50`.
+
+* Caveat on arm (ii), stated before the run: `--demo-front-view 6` MULTIPLIES the policy's yaw
+  sigma on band spawns for 40 ticks. October's policy had sigma 0.010 (x6 = a few degrees);
+  these weights have sigma 0.484 (near the 0.5 cap), so x6 = 2.9 in z, close to a uniform view
+  for the first 0.4 s of a band episode. Arm (ii) tests October's flag values literally, not
+  October's effective noise.
+* Both arms keep the restored `--front-temp 1`: spawns deeper than 99% of the reservoir's
+  deepest progress (the pit floor, ~55,300; the line's last ~120 rows) sample every head at 2.
+* Read-outs (fixed now): the walk-back's lowest start row over time (does it pass the launch,
+  rows 1446-1470, i.e. reach tau < 1446?), success at the band there, greedy episodes from the
+  true start that reach the far ledge (x > 850, z > 3,420) or beyond, and finishes from the
+  grader (`autoresearch/score.py`) only.
+* Cuts: each arm stops at 1.0B steps after the resume (`--steps 1e9`, the absolute stop), or
+  earlier when the walk-back reaches the start room (tau <= 180), or when a step count stands
+  still for 10 minutes.
+
+### Local checks (CPU, the fix round's local try-3 smoke checkpoint, same recipe and shrunk shapes)
+
+* Both complete resume lines (run_arm.sh's ARM_RESUME tokens + the arm's flags, shrunk only by
+  overrides at the end) ran to 61,440 steps, rc 0: resumed at the checkpoint's step, tick 10 ms,
+  yaw cap restored, no auto-spine line, "demo curriculum: 2664 states ... starts [2663,2663]",
+  success line 55,197; arm (ii) prints the bonus ("paid 50 once") and the band temperature
+  ("keys at 1.5 and the yaw sigma x 6 for its first 40 ticks").
+
+### Budget and boxes
+
+* At most two boxes, owners `abpbi1` / `abpbi2`, cheapest passing card, deadline 2.5 h,
+  registered with the fleet watchdog (harvest spec + pid file), dashboards tunnelled to
+  localhost:8633 / :8634. Cap $2.5 for both arms; credit floor $15.
+
+### Results (written after the runs)
+
+**Arm (i) `abpbi1_1`** (RTX 5080, $0.43/h; resumed 5,002,756,096, stopped by its budget at
+6,003,097,600, 352k steps/s; box 60601746 05:47-06:40 UTC):
+
+* The walk-back: 2,663 -> 1,558 in 152M steps (the 10 s ledge ride and the wall slide; 51
+  advances at 62% mean band success), 1,548 at +178M, 1,543 at +503M, its lowest 1,538 at
+  +579M, then 1,543 <-> 1,548 to the end. It never reached the launch (rows 1,446-1,470). At the
+  end the curriculum's deciles 60-100% of the spine succeed 93-100% (the line's last 40% is
+  learned), the 50-60% decile 59%.
+* Where it stalls: rows 1,538-1,557 are the last 0.2 s of the flight, descending onto the far
+  side's curved wall (vz -206 -> -278, |vh| 431-435, strafe right + duck held), just before the
+  impact at 1,560 that kills the horizontal speed (437 -> 47 u/s) and leaves the player sliding
+  up the wall. Band [1,543,1,547]: 7.6% mean success over 82 visits; band [1,548,1,552]: 30.0%
+  over 81. The same kind of wall impact held October's curriculum at 0.0-0.4% for 1.5B steps
+  (pbr1b1, band [1230,1239]) until canonical views + band yaw temperature.
+* Greedy from the true start: 0 of 9 on the far ledge in all 14 evals; grader 3.2% (the pit),
+  0 finishes. Yaw sigma 0.475 -> 0.35-0.41.
+
+**Arm (ii) `abpbi2_1`** (RTX 4080S, $0.31/h; resumed 5,002,756,096, stopped by its budget at
+6,003,097,600, 316k steps/s; box 60603755 06:08-07:04 UTC; 361,977 spine-line bonuses paid):
+
+* The walk-back: 2,663 -> 1,753 in 102M steps, held on the ledge at 1,743-1,748 for 160M
+  steps, 1,558 at +275M, 1,548 at +301M, its lowest 1,543 at +548M, then 1,548 <-> 1,553 to the
+  end. It never reached the launch either.
+* The same wall-impact band, and no better there: [1,543,1,547] 0.2% over 13 visits,
+  [1,548,1,552] 9.5% mean over 53 backoffs (21.1% on its 13 advances), against arm (i)'s 7.6% and
+  30.0%. Yaw sigma stayed at 0.46-0.50, so the x6 band factor sampled the view almost uniformly
+  for 0.4 s (the caveat above).
+* The greedy from the true start LOST the start-room exit the weights had: from the eval at
+  5.23B on it stays in the room's east part (x 880-1,110, z 3,652-3,684) or its east half-pipe;
+  grader 3.2% at 5.00B and 5.08B, then 0.0-0.4% in the last 11 evals; 0 finishes. (Two episodes
+  of the 5.76B eval end east of the room below it, z 3,380-3,514, best 0.2%: the half-pipe, not
+  the far ledge.)
+
+### What the instrument says
+
+* Handed a crossing line found on its own weights, the recipe's curriculum learns the line's last
+  41% (the far side) in 152M steps (arm ii: 275M) and then stalls about 0.2 s before the
+  far wall's impact for the rest of 1.0B steps, in both arms. The launch (rows 1,446-1,470) is
+  never reached, so whether the curriculum can teach the launch is still NOT measured: the first
+  wall on this line is the landing, the kind of moment October's curriculum also stalled at for
+  1.5B steps.
+* October's band flags, taken literally, do not crack that band here (worse rates) and the
+  success bonus pulls the greedy from the true start off its route into the room's east part
+  (3.2% -> 0.0-0.4%), a regression on a part of the map the curriculum never touched.
+* The `--demo-front-view` factor multiplies the policy's own yaw sigma: with a capped policy
+  (sigma ~0.48) x6 is a near-uniform view, with October's (0.010) it was a few degrees. A band
+  exploration meant to be one constant on every map needs an absolute yaw noise, not a factor.
+* One seed per arm, warm weights from one run, one line; nothing here is a recipe result.
+
+### Boxes, cost, files
+
+* Arm (i): box 60601746 (RTX 5080, $0.428/h) 05:47:34-06:40:10 UTC, about $0.38 (its first
+  deploy failed on a branch name typo of mine and was redone at once on the same box). Arm (ii):
+  box 60603755 (RTX 4080S, $0.313/h) 06:08:13-07:03:59, about $0.29. Both released and verified
+  gone (`vastai show instances`); watchdog registered with harvest spec and pid file; dashboards
+  were tunnelled to localhost:8633 / :8634 and both tunnels are stopped. About $0.67 in all.
+* Bundles (box.py pull, checkpoint md5 = box): `~/ar_m2/runs/abpbi1/abpbi1_1/` (run.json,
+  progress.csv, launch log, 14 evals, ckpt_latest md5 5290e1a6) and `~/ar_m2/runs/abpbi2/
+  abpbi2_1/` (the same, ckpt_latest md5 fd0fe74c); md5 lists next to them. Config branches
+  ab/pbi1 b5671ead and ab/pbi2 98802e2d (from ab/pbm 058bd279); scripts in scratchpad
+  `abl/pbx/launch/` and `abl/pbx/smoke/`.
