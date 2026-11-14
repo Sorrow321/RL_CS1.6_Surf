@@ -43915,3 +43915,158 @@ shows, the first champion-free, single-recipe, no-hand-edit run to do it.
   (85 s) to d 16,423 (about 46% of the map's start distance) against a greedy frontier of
   22,020; the curriculum is at its end (rows 10,484-11,099, 43.2%).
 * Run continues (box extended to 11:40 UTC; cut 8B, or a finish).
+
+## 2026-11-14 09:38 UTC: ablation wave 5 - sub-agent P: the loop integrated on ab/v2 6d9b48b0 (bar and ban kept across a resume, a dead-end ban on every stage) and celestial read: the fork stall is the training side (the greedy switches sides; novelty is 71-117% of the return), not the line lottery
+Sub-agent P, wave 6 integration (code + CPU tests, no box). Branch `ab/v2` from ab/ban
+4289edf1 (on ab/ff 2bdf492f, on ab/mc 0f73a013): (a) the failed lines survive a resume; (b) a
+dead end of ANY source is refused, default off. Every number below is from the real lines.
+
+### (a) The failed lines survive a resume (on with --auto-spine-archive-bar, no new flag)
+
+* The defect (sub-agent U): ab/mc's d-bar, ab/ban's end positions and the held line's source
+  lived only in the trainer's AUTO dict. A resumed run started with none of them, handed back the
+  lines it had failed, and could not mark its held archive line failed (source unknown).
+* Now every checkpoint of an `--auto-spine-archive-bar` run carries `auto_spine_failed` (the
+  failed archive end d's, their positions, the dead ends of (b), the held line's source and end
+  position); the resume restores the lists and prints them, and the source only when the resumed
+  spine ends within 1 u of the saved held line's end.
+* CPU check (v1-lean, unitfarmer2): the smoke below failed an archive line at 36,864 steps and its
+  ckpt_final carried it; a resume of that ckpt with `--demo-file` = the held line (the run's own
+  search, SELF_STATES=1) printed "restored from the checkpoint - failed archive ends 29,703, 1
+  banned end position(s), 1 dead end(s); the held line's source beam+ge", and its first search
+  carried `--archive-bar 29702.8 --archive-ban=... --failed-fallback 29702.8 --dead-end-ban=...`.
+  (The ckpt a search reads is written just before that search marks the failure; the next one
+  carries it.)
+
+### (b) The decision: yes - every failed held line's END, every stage, while the greedy is short
+
+* ab5u_1's trough line could not have been refused by any failed-end rule: search 2 (453.5M)
+  was a QUORUM search and nothing had failed (search 1's lip line was discarded as stale). A
+  rule can only stop the NEXT line once this one fails: at 1,057M the greedy still dives
+  (0/9 past 28,415; frontier 30,245-30,328), the walk-back sits at rows 263/268 of 2,189.
+* The repeat is real, costs billions of steps, and was TREE lines every time - which the d-bar
+  and ab/ban never see: the frozen recipe (m6sib) adopted 7 trough tree lines in a row (0.60-3.30B,
+  6 failed), the fix round (fxuf2) 4 (0.57-2.87B, all failed); 8 of those 10 failed lines were
+  walked back to row 0 - learned, and never passed by the greedy (the "learned dead end").
+* By the END, not the path - princessburglar decides it: m2ge_pb1's first tree line (failed
+  0.38B, walk-back stalled at 34%) ends ON the room-exit path; 9 of the 14 later lines pass 8-31 u
+  from that end (a path rule refuses them all until the greedy left the room, 6.12B) and END
+  495-606 u from it. blue200's goal line passes 153 u from its failed tree line's end and ends
+  1,652 u away; U's uf2 Monte Carlo exits pass 168-223 u from the all-in's failed lip line.
+* Lifted when the greedy gets there: m2ge_pb1's pit-floor tree line k15 failed at 5.96B and the
+  greedy reached the pit floor at 6.19B; princessburglar's crossings END 97 u (fxpb_t1) and 124 u
+  (the all-in) from m2ge's pit-floor tree-line ends.
+* Not a "learned" test: the walk-back cannot tell the cases apart (m2ge k15, on the route,
+  stalled at 13%; ab5u's trough line at 12%; "walked back to where it leaves the greedy" calls
+  m2ge's room line learned, its branch at 99%). Not the d-bar for policy lines: U's Monte Carlo
+  exits end at 29,907-30,023, 970-2,230 u SHALLOWER than the trough ends (27,793-28,937).
+
+The rule (ab/v2; off = byte-identical):
+* `train_fast --auto-spine-dead-end-ban` (needs `--auto-spine-archive-ban R`, the same R = 128):
+  a patience search records the held line's end position and d whatever stage it came from
+  (never the scratch spawn spine, a launch --demo-file, or a line at the goal); each search gets
+  the ends the greedy frontier has not come within --auto-spine-gain of, as
+  `auto_spine.py --dead-end-ban`.
+* `auto_spine.py --dead-end-ban`: a line of ANY stage (tree, branched beams, Monte Carlo, the
+  archives, the energy stage) whose END lies within --archive-ban-r of one is refused, as a pass,
+  as a fallback and as a stepping stone; a finishing line never is; a refused branched beam is
+  not the archives' root line. ab/ban's chain rule and U's d-bar are unchanged.
+
+### Measured on the real lines at R = 128 (end to end)
+
+* Refused, the immediate re-entries: m6sib searches 3-6 (68, 31, 114, 37 u), fxuf2 search 5 (69).
+* NOT refused: m6sib k07 (355 u, a deeper trough spot) and k08 (150), fxuf2 k03 (465) and k04
+  (135). The trough floor is about 650 x 330 u and R covers one spot per failure: in these two
+  runs the rule removes 5 of the 9 re-entries, it does not close the trough.
+* Kept open: U's four Monte Carlo exits (168-317 u from the nearest of 12 failed uf2 ends),
+  blue200's goal line (1,652), petrus's search-3 line (4,167), cannonball's finishing curriculum
+  line (15,497), princessburglar's room-to-pit tree line beside the failed room line (606).
+* Margins: refused <= 114 u, kept >= 135 u (fxuf2 k04). Thin, like ab/ban's 112 / 163.
+* ab5u: its trough end lies within 128 u of 5 of the 11 trough tree-line ends of m6sib / fxuf2.
+
+### Tests and smoke
+
+* tests/python/test_auto_spine_v2.py 31 passed (fixture dead_end_cases.npz, 254 KB: 26 real
+  lines, every 4th row + root + last row, d on the trainer's real field; positions and d only,
+  all the loop's own searches): marking (once; never the goal, never the spawn spine), the lift,
+  the resume round trip (the d-bar is back), the geometry above, and auto_spine.main replays -
+  ab5u's next search with a real re-entry (43 u) and U's exit: the exit is handed back instead of
+  the trough line; m6sib search 3: no line instead of the same dead end; blue200 / petrus lines
+  pass; the pb room-to-pit line passes; the pb crossing is refused while the pit-floor end is
+  live and passes once the greedy reaches the pit floor; a finishing line is never refused.
+* The older suites unchanged: ban 22, ff 12, mc 12, fx 7 and the loop suites (73 passed, 12
+  skipped: core / map bound); `auto_spine.py --selftest` 24 ok; record_ckpt TRAIN_ONLY gets
+  `auto_spine_dead_end_ban`. Code: ab/v2 6d9b48b0 (from ab/ban 4289edf1, pushed).
+* CPU smoke, the full v1-lean line (ab5u_1's 134 tokens from boxes/ab5u.json behind the
+  launcher's scratch pins; unitfarmer2, --maxvel 3500, 7.63 ms) + `--auto-spine-failed-fallback
+  --auto-spine-archive-ban 128 --auto-spine-dead-end-ban`, 61,440 steps: rc 0, run.json
+  `auto_spine_dead_end_ban: 1`; search 2 adopted an archive line (29,703), the next patience
+  search marked it (bar, ban, dead end) and search 3's argv carried all four; rerun alone,
+  search 3 measured every stage against the dead end (tree 852 u, Monte Carlo 805, archives
+  530-783: none refused) and handed back a stepping stone.
+
+### Residual
+
+* The thin margin (114 / 135 u) and a trough wider than R. A failed line on the route that the
+  greedy reaches later is refused until then (the cost is a delay: the held line stays).
+* ab5u's own next line is unknown: if its tree re-enters another part of the trough (like m6sib
+  k07) the rule passes it.
+
+Sub-agent P, wave 5, celestial (bundles and a read-only pull of ab5c_1, no box). Why did the
+cap-0.2 training side (`ab3cc_1`, old loop, ledger fbd7f1fa) sit at the fork for 2.5B steps when
+the fix round passed it at 680M: the line lottery, or the training side? And `ab5c_1` (v1-lean)
+as it goes.
+
+### The fork
+
+From d ~50k to ~36k celestial splits into two mirrored routes, south (y about -3,500 at d 46k)
+and north (y about +4,500, "the mirrored side"), which rejoin by d ~35k at (4,400, 900, 900).
+Both sides lead to the finish: the fix round finished on the south side, the frozen recipe
+(m7sib) on the north side.
+
+| run (training side) | fork lines: side, end d, walk-back low | greedy side per eval | passed |
+|---|---|---|---|
+| fxcel_t1 (frozen + fix) | k02 S 41,825, row 0 | S in 8 of 8 evals, 0 flips | 0.68B |
+| m7sib_cel (frozen) | k02 3rd path 43,338; k03 N 42,103, row 0 | S x9, then N: 1 flip | 0.83B |
+| ab3cc_1 (cap 0.2) | k03 S 39,940, row 1,345 (60%); k04 S 20,919, 87% | 30 evals, 22 flips | no |
+| ab5c_1 (v1-lean) | k02 mc N 39,325, 95%; k03 mc S 35,062, 47% | 17 evals, 9 flips | no (1.5B) |
+
+(flips: the majority side of the greedy's 9 episodes changes between consecutive evals at the
+fork, 75M steps apart; within one eval the greedy is one-sided in 25 of 30 / 13 of 17 evals.)
+
+### Verdict: the training side, not the line lottery
+
+* The lines were on winning sides. ab3cc's three fork lines were all SOUTH, the side the fix
+  round finished on; ab5c's Monte Carlo found lines past the fork on BOTH sides (north at 581M,
+  south at 1,108M). In the frozen training side either side was taught in 0.11-0.13B: fxcel's
+  south line and m7's north line were both walked back to row 0, and the greedy followed.
+* With the candidate training side the greedy flips sides from eval to eval and the curriculum
+  stalls at the approach or the split for 0.4-1.0B steps: ab3cc's k03 at row 1,345 (10.3 s,
+  before the split), ab5c's k03 at rows 1,894-1,924 (its split is at row ~1,860), success
+  oscillating 2.7-75%; ab5c's k02 never came back more than 191 of its 3,500 rows.
+* The suspect is novelty's share of the return. Intrinsic against total reward per training
+  episode at the fork (0.2-1.5B): fxcel 0.3-3.0 of 13-90 (1-11%), m7sib 0.3-6.0 of 22-85
+  (1-9%); ab3cc 34-128 of 35-120 (85-107%), ab5c 30-150 of 34-178 (71-117%). The candidate side
+  pays `--int-coef 2.5 --int-speed 8 --int-speed-weight 3 --int-speed-weight-up --int-view 0`
+  against the frozen `0.25 / 3 / - / - / 8`: the count bonus is the whole return, and at a
+  two-sided mirrored fork it pays for the side visited less lately - an alternation. The unstuck
+  keys temperature sits at its maximum 0.5 in both failed runs (`0.5 / 2e7 / 2e7 / res` against
+  the frozen `0.2 / 2e8 / 1e8 / eval`, T 0.0-0.2 there).
+* Not proven: one seed per run and five groups differ (novelty, unstuck, the greedy-row and
+  front-perturb respawns with turns of 180 / 90 deg, the 0.2 yaw cap, 7.63 ms; death charge and
+  energy-pot 12 are ab3cc's only, and ab5c, without them, flips too). The discriminating arm, not
+  launched: v1-lean on celestial with the frozen novelty (`--int-coef 0.25`, or the int triple),
+  read the flips per eval at the fork and the step it passes (fxcel 0.68B, m7sib 0.83B).
+
+### ab5c_1 so far (read at 1.86B)
+
+* Greedy at the fork in every eval from 0.15B (median 42.9-48.1k); 0/9 past any adopted line
+  through the 1.81B eval.
+* Search 2 (quorum, 453.5M) -> Monte Carlo line at 581.4M: NORTH side, 3,500 states, ends 39,325
+  at (135, 1,764, 1,171), 75 rows past d 40k; walk-back to row 3,309 at best (95%).
+* Search 3 (patience, 982M) -> Monte Carlo line at 1,107.8M: SOUTH side, 4,000 states, ends
+  35,062 (past d 38k at (1,695, -252, 842)); walk-back at rows 1,894-1,924 (the split) to
+  ~1.6B, then at rows 1,664-1,669 by 1.86B: past the split, on the approach - as far as
+  ab3cc's k03 got (row 1,345, its split at ~1,748), which its greedy never followed for long.
+  Watch whether this greedy does.
+* The run's int/ep is 150-183 against rew 165-180 at 1.58B; unstuck T 0.50.
