@@ -9913,7 +9913,9 @@ def main() -> None:
                                 ("--cc-temp-scale", args.cc_temp_scale),
                                 ("--crl", getattr(args, "crl", None)),
                                 ("--yaw-cond", args.yaw_cond),
-                                ("no --demo-file", not args.demo_file))
+                                # --auto-spine-scratch writes its first spine into demo_file later
+                                ("no --demo-file", not args.demo_file
+                                 and not args.auto_spine_scratch))
                 if on]
         if float(args.demo_front_temp) <= 0.0:
             raise SystemExit("--demo-front-temp T needs T > 0 (absent = off)")
