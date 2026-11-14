@@ -5290,6 +5290,22 @@ def main() -> None:
                          "with the energy (pbr9b1_c2: 1 of 72 bench episodes from the band's "
                          "states crossed with it, the band walked back 14% of the map). Off = "
                          "byte-identical; config only when on, not restored")
+    ap.add_argument("--demo-rehearse", type=float, default=None, metavar="F",   # None = off
+                    help="--auto-spine: when a QUORUM search (the greedy passed the held line's "
+                         "success line: the line is learned) hands back a line that passes within "
+                         "--demo-rehearse-r of the held line's END, the held line's walked rows "
+                         "[lowest tau, end] are REHEARSED: F of the curriculum's frontier-band "
+                         "draws come uniformly from them until the new line's walk-back reaches "
+                         "that junction row. ab/rh, 2026-11-14: ab4u_1 (unitfarmer2, recipe v1) "
+                         "left the pit at 3.47-3.85B on line 5; line 6 (11,100 rows, through the "
+                         "same exit at its row 1,658) restarted the walk-back at its far end and "
+                         "the greedy was back in the pit from 3.93B through 7.07B while the "
+                         "walk-back crawled to row 2,234. Off = byte-identical; config only when "
+                         "on; never restored")
+    ap.add_argument("--demo-rehearse-r", type=float, default=256.0, metavar="U",
+                    help="--demo-rehearse: how close (u) the new line must pass the held line's "
+                         "end for the two to be one route (a new line that leaves the old route - "
+                         "celestial's fork - rehearses nothing)")
     ap.add_argument("--demo-match-band", action="store_true",
                     help="--demo-file: a spawn whose origin the spine repeats (the line stood "
                          "still over several rows) is credited to its copy inside the frontier "
@@ -13569,6 +13585,17 @@ def main() -> None:
             DEMO_KEYS[0] = np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (_ns, 1))
             print(f"--auto-spine-keys: the first spine ({_ns} rows) holds neutral keys; every "
                   f"spine the search hands back spawns holding its own")
+    REHEARSE = args.demo_rehearse is not None
+    if REHEARSE:
+        if not (args.auto_spine and demo is not None):
+            raise SystemExit("--demo-rehearse keeps a learned line in --auto-spine's curriculum "
+                             "when the search replaces it: give --auto-spine")
+        if not 0.0 < float(args.demo_rehearse) < 1.0 or float(args.demo_rehearse_r) <= 0.0:
+            raise SystemExit("--demo-rehearse F needs 0 < F < 1 and --demo-rehearse-r > 0")
+        print(f"--demo-rehearse {float(args.demo_rehearse):g}: a learned line replaced by one "
+              f"that passes within {float(args.demo_rehearse_r):g} u of its end keeps "
+              f"{float(args.demo_rehearse):.0%} of the frontier-band draws until the new walk-back "
+              f"reaches that junction")
     # --ramp-obs-pass: the pass flag, LAST of all - after the ratchet gap - so a checkpoint
     # without it grows onto it by widen_for_obs' trailing zero-pad (its own function at step 0)
     N_PASS = 1 if (RPLAN and int(args.ramp_obs_pass or 0)) else 0
@@ -15934,6 +15961,9 @@ def main() -> None:
             meta["config"]["auto_spine_dead_end_ban"] = 1
         if args.auto_spine_keys:
             meta["config"]["auto_spine_keys"] = 1
+        if args.demo_rehearse is not None:
+            meta["config"]["demo_rehearse"] = float(args.demo_rehearse)
+            meta["config"]["demo_rehearse_r"] = float(args.demo_rehearse_r)
         if float(args.demo_stall_cut or 0.0) > 0.0:
             meta["config"]["demo_stall_cut"] = float(args.demo_stall_cut)
     if args.demo_milestones:
@@ -17184,6 +17214,9 @@ def main() -> None:
         pat = (float(args.auto_spine_patience) > 0
                and global_step - AUTO["last"] >= float(args.auto_spine_patience))
         go = (quorum or pat) and global_step >= AUTO["retry_at"]
+        if go and AUTO.get("proc") is None:
+            # --demo-rehearse: a QUORUM search means the held line is learned
+            AUTO["trig"] = "quorum" if quorum else "patience"
         print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes past the "
               f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
               f"{med:,.0f}" + ("  -> SEARCH" + (" (patience)" if pat and not quorum else "")
@@ -17516,7 +17549,24 @@ def main() -> None:
                       f"(the search started at {med:,.0f}); next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
+        _reh = None
+        if REHEARSE and AUTO.get("trig") == "quorum" and demo.n > 2:
+            # --demo-rehearse: the learned line's walked rows, when the new line passes its end
+            _dj = np.linalg.norm(np.asarray(sp["origin"], np.float64)
+                                 - np.asarray(demo.S[-1]["origin"], np.float64), axis=1)
+            _j = int(np.argmin(_dj))
+            if float(_dj[_j]) <= float(args.demo_rehearse_r):
+                _reh = (np.array(demo.S[demo.tau_min:], copy=True), _j, float(_dj[_j]),
+                        int(demo.tau_min), int(demo.n))
         demo.reset_spine(sp)
+        if REHEARSE:
+            demo.set_rehearsal(None if _reh is None else _reh[0], float(args.demo_rehearse),
+                               -1 if _reh is None else _reh[1])
+            if _reh is not None:
+                print(f"[{global_step:>13,d}] --demo-rehearse: the replaced line's rows "
+                      f"{_reh[3]}-{_reh[4] - 1} keep {float(args.demo_rehearse):.0%} of the "
+                      f"frontier-band draws until the walk-back reaches row {_reh[1]} (the new "
+                      f"line passes the old end {_reh[2]:,.0f} u away)", flush=True)
         if DEMO_KEYS[0] is not None:
             # the new spine's held keys (auto_spine writes them next to it), else none
             _kp = res.get("keys")
