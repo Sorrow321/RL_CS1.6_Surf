@@ -44348,3 +44348,83 @@ new search rule (5d304af7). Pushed.
   is stuck: unitfarmer2 at its start (frontier progress a few % of d0, the pit a dip below the
   spawn), celestial at about 30%. A progress-gated weight (2.5 near the start, 0.25 past 10% of
   d0, one setting for every map) is being built by sub-agent P on ab/v3.
+
+## 2026-11-14 11:17 UTC: ablation wave 7 - sub-agent P: a novelty weight gated by the greedy frontier (--int-coef-progress HI:LO:P, ab/intp ae2ff10b)
+Sub-agent P, wave 7 (code + CPU tests, no box; $0). The novelty weight conflicts between maps
+(f26bef37): celestial passes its fork only with `--int-coef 0.25`, unitfarmer2 dives only with
+2.5. Branch `ab/intp` from ab/v3 5d304af7: `--int-coef-progress HI:LO:P`, the coefficient
+interpolated by the run's own frontier; one setting for every map, 2.5:0.25:0.1.
+
+### The measure: the greedy eval's frontier, not the reservoir's 'mind'
+
+* At every greedy eval the rule reads 1 - (the median over the eval's episodes of the
+  CONTACT-BANKED deepest d) / (the spawn's d): the frontier the search loop already reads under
+  `--auto-spine-banked`, computed by the rule itself (always banked).
+* Not 'mind': the reservoir holds curriculum spawns, greedy-row respawns and death dives, and on
+  every map it reads AHEAD of the greedy. unitfarmer2's all-in (abuf2_all): 'mind' 6.9-7.1% from
+  0.30B to 3.47B (the trough lines' states) -> 0.90-0.94, while the greedy frontier read
+  0.5-1.6% -> 2.15-2.39. Celestial: ab3cc_1's 'mind' read 97.9% from 1.96B with its greedy at
+  the fork (18-34%); ab5c_1's read 97.9% at 1.58B.
+* The pit dip: the pit's d is above the spawn's; a greedy that dives into it keeps the
+  platform's banked d (no progress, never negative credit) - a CPU test pins it.
+
+### What it reads in the bundles (2.5:0.25:0.1 -> the coefficient)
+
+| map / run | greedy frontier progress (its d0) | coefficient |
+|---|---|---|
+| uf2 abuf2_all (all-in, 2.5) | 0.5-1.6% at all 47 evals to 3.47B (d0 30,648) | 2.15-2.39 |
+| uf2 ab4u_1 (v1, 2.5) | 0.6-1.4%; 28-38% out of the pit 3.47-3.70B; 1.2% after | 2.2, 0.25 |
+| uf2 ab3u1_1 (cap 0.1, 2.5) | 1.7-4.4%; 6.9% in the TROUGH 0.23-0.60B; then 1.0% | 2.1, 0.94, 2.3 |
+| uf2 ab6u_1 / ab6u_2 (0.25) | 3.6-3.9% from 76M (search 1's platform line) | 1.61-1.70 |
+| uf2 ab5u_1 (v1-lean, 2.5) | 1.0-1.6% (frontier 30,153-30,328) | ~2.2 |
+| celestial ab6c_1 (0.25, finished) | 0.2%, 6.7% at 76M, 23.5% at 151M, 36-90% on | 2.5, 1.0, 0.25 |
+| celestial ab3cc_1 (2.5, stalled) | 0.2% at 76M, 8.9% at 151M, 18-34% from 227M | 2.5, 0.5, 0.25 |
+| celestial ab5c_1 (2.5, stalled) | 21.8-28.7% from 151M (61,069) | 0.25 |
+| celestial fxcel / m7sib (0.25) | 14.0% / 8.9% at 76M, 20-25% from 151M | 0.25 / 0.5, 0.25 |
+| blue200 ab3b2_1 (2.5) | 14.3% at the FIRST eval (0.5M), 39% from 76M (d0 2,840) | 0.25 |
+
+So celestial runs at 2.5 for its first 76-151M steps and at 0.25 from its fork (reached by
+151-227M) on; blue200 at 0.25 from its first eval; unitfarmer2 at 1.6-2.4 while it sits near the
+start, times (1 + T) under `--unstuck` (T up to 0.5: up to 3.6).
+
+### Risks the numbers show
+
+* The trough fools it: a unitfarmer2 greedy in the trough (ab3u1, 6.9%) gets 0.94, not 2.5 -
+  the trough is deeper in d than the start, and no frontier measure tells a dead end from
+  progress. ab3u1 dove at 0.68B with 2.5; with 0.94 x (1 + T) it is not measured.
+* Before the dive the platform / lip lines put the frontier at 2-4%: 1.6-2.1, not the 2.5 the
+  four diving runs had (151-227M). Not measured either.
+* The rule follows the CURRENT eval, not a best-ever: ab4u_1's exit evals (28-38%) drop it to
+  0.25 and its regression back to 1.2% raises it again (deliberate: a run back at the start
+  explores again).
+* P = 0.10 sits between unitfarmer2's 1-4% (trough 7%) and celestial's 20-30% at the fork.
+
+### The rule (ab/intp ae2ff10b, pushed; off = byte-identical)
+
+* `train_fast --int-coef-progress HI:LO:P`: HI at progress <= 0 and before the first reading,
+  linear to LO at P, LO beyond; re-read at every greedy eval of the map; it REPLACES --int-coef's
+  value (which must be > 0: it turns the novelty on) and is multiplied by (1 + T) under
+  `--unstuck`'s novelty scaling exactly as --int-coef is (the unstuck base moves with it).
+  Refused with `--int-match` (both set the coefficient), `--maps` and `--ddp`. Every reading is
+  logged ("--int-coef-progress: greedy frontier X% of the spawn's d -> novelty coefficient c").
+* The coefficient and its reading are checkpointed (`int_coef_progress`) and restored by a resume
+  that passes the flag; the flag itself is not restored. Config `int_coef_progress: [HI, LO, P]`
+  only when on; record_ckpt TRAIN_ONLY.
+
+### Tests and smoke
+
+* tests/python/test_int_coef_progress.py, 7 passed: the spec; the interpolation (0, below 0,
+  no reading, 1.6%, 5%, 10%, 28%); the frontier (the median, banked: a dive after the last
+  contact and a pit behind the frontier read as no progress); the wiring; and two CPU runs on
+  unitfarmer2 - the flag OFF is bit-identical to the parent commit 5d304af7 (config dump, every
+  eval trajectory byte for byte, every progress.csv row but fps), the flag ON reads every eval
+  with the interpolated coefficient, ckpt_final carries it and a resume restores it. The loop
+  suites (v2, ban, mc, ff, fx): 79 passed, 5 skipped.
+* CPU smoke, unitfarmer2, 61,440 steps: the full v1-lean line (ab5u_1's 134 tokens, from
+  boxes/history.jsonl) + the v3 loop flags (`--auto-spine-failed-fallback --auto-spine-archive-ban
+  128 --auto-spine-dead-end-ban --auto-spine-keys`, `--end-survive-secs 1.0` in --auto-spine-args)
+  + `--int-coef-progress 2.5:0.25:0.1`: rc 0; run.json `int_coef_progress: [2.5, 0.25, 0.1]`;
+  30 readings, one per eval (the tiny CPU policy stays at the spawn: progress 0.00% ->
+  2.499-2.5); search 2 adopted an archive line with its held keys, the next patience search
+  recorded its dead end, every search carried `--end-survive-secs 1.0`; ckpt_final carries
+  `int_coef_progress {progress 3.9e-05, coef 2.4991}` beside `auto_spine_failed`.
