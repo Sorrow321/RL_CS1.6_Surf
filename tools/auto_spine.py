@@ -220,6 +220,66 @@ def mc(a, out: Path, tag: str = "mc"):
                          f"{tag}_finished": int(z["finished"]) if "finished" in z.files else 0}
 
 
+_PROBE = {}
+
+
+def flight_fate(map_path, state, tick_ms, maxvel, secs: float):
+    """--end-survive-secs: fly ``state`` forward with NEUTRAL keys (no strafe, no jump) under
+    the race rule (teleport_fail: any teleport touch fails, as every recipe run trains with)
+    until the map pushes back or ``secs`` pass -> "lands" (a contact), "dies" (the episode ends
+    as a fail first) or "flying" (still airborne). Physics only, no policy: over the fraction
+    of a second a flight lasts, air control moves where it lands, not whether a kill volume
+    is in its way."""
+    from surfgym.core import SurfCore, default_config
+    key = (str(map_path), float(tick_ms), maxvel)
+    core = _PROBE.get(key)
+    if core is None:
+        kw = {} if maxvel is None else {"sv_maxvelocity": float(maxvel)}
+        core = SurfCore(str(map_path), default_config(num_envs=1, **kw), tick_ms=float(tick_ms))
+        core.set_teleport_fail(True)
+        core.reset(0)
+        _PROBE[key] = core
+    st = clean(np.asarray(state).reshape(-1)[:1])[0]
+    core.set_state(0, st)
+    act = np.zeros((1, 6), np.int32)
+    act[0, 2] = act[0, 3] = 1                         # forward / side bins: neutral
+    g = float(core.config.phys.sv_gravity)
+    vz0 = None
+    for _t in range(max(1, int(round(float(secs) * 1000.0 / float(tick_ms))))):
+        s = core.get_states()[0]
+        vz = float(s["velocity"][2])
+        if int(s["onground"]) >= 0:
+            return "lands"
+        if vz0 is not None and abs((vz - vz0) + g * float(tick_ms) / 1000.0) > 1.5:
+            return "lands"                             # the map pushed back (a surf ramp)
+        vz0 = vz
+        out = core.step(act, None)
+        if bool(out[2][0]) or bool(out[3][0]):
+            return "dies"
+    return "flying"
+
+
+def fatal_end_cut(a, line, e: int, tag: str, res: dict):
+    """--end-survive-secs S: a line whose END is in the air (its last map contact more than a
+    decision before it) and whose flight from there ends as a fail within S seconds - the
+    deepest d of a rollout that is about to die, e.g. unitfarmer2's Monte Carlo 'exits', which
+    touch the teleport over the pit 0.1-0.4 s after their tip - is cut back to its LAST CONTACT,
+    the last state the map held. -> the new end index, or None (unchanged)."""
+    if float(getattr(a, "end_survive_secs", 0.0) or 0.0) <= 0.0 or e < 2:
+        return None
+    c = contact_cut_states(line[:e + 1], a.contact_tol)
+    if c >= e - int(a.act_every):
+        return None                                    # the end is (near) a held state
+    fate = flight_fate(a.map, line[e], a.tick, a.maxvel, float(a.end_survive_secs))
+    res[f"{tag}_end_flight"] = fate
+    if fate != "dies":
+        return None
+    res.update({f"{tag}_fatal_end": 1, f"{tag}_fatal_cut": int(c)})
+    print(f"{tag} line: its end is a flight that dies within {float(a.end_survive_secs):g} s "
+          f"(row {e}, last contact {c}): cut back to the last contact", flush=True)
+    return int(c)
+
+
 def archive_ref(ref: float, bar=None) -> float:
     """The d an ARCHIVE (Go-Explore) line is measured against: the search's reference, and under
     --archive-bar the deeper of it and the bar - the deepest end of an archive line whose
@@ -671,6 +731,12 @@ def main(argv=None) -> int:
                     help="--mc-envs: the key heads' sampling temperature (logits / T)")
     ap.add_argument("--mc-ticks", type=int, default=0,
                     help="--mc-envs: the rollouts' length in ticks (0 = --beam-ticks)")
+    ap.add_argument("--end-survive-secs", type=float, default=0.0,
+                    help="> 0: a tree / beam / Monte Carlo line whose END is in the air and whose "
+                         "flight from there (neutral keys, the race rule's teleport fail) ends "
+                         "as a fail within this many seconds is cut back to its last map contact "
+                         "(fatal_end_cut): the search never hands back the tip of a rollout that "
+                         "is about to die. 0 = off, as before")
     ap.add_argument("--archive-bar", type=float, default=None,
                     help="the deepest end d of an ARCHIVE line whose curriculum failed (the "
                          "trainer's --auto-spine-archive-bar): a Go-Explore line must end below "
@@ -791,6 +857,9 @@ def main(argv=None) -> int:
         # a FINISHING line is kept whole, to its pre-finish state: the cut rules are for lines
         # that end in a fall
         e, de = (len(line) - 1, float(d[-1])) if fin else cut_line(line, d, a.contact_tol, a.cut)
+        _fc = None if fin else fatal_end_cut(a, line, e, "beam", res)
+        if _fc is not None:
+            e, de = _fc, float(d[_fc])
         res.update(beam_len=int(len(line)), beam_end=e, beam_end_d=de,
                    beam_best_d=float(d.min()))
         print(f"beam line: {len(line)} states, best d {d.min():,.0f}, "
@@ -846,6 +915,9 @@ def main(argv=None) -> int:
             bfin = bool(bi.get(f"{tag}_finished"))
             be, bde = ((len(bl) - 1, float(bd_[-1])) if bfin
                        else cut_line(bl, bd_, a.contact_tol, a.cut))
+            _fc = None if bfin else fatal_end_cut(a, bl, be, tag, res)
+            if _fc is not None:
+                be, bde = _fc, float(bd_[_fc])
             pre = "br" if k == 0 else f"br{k + 1}"
             res.update({f"{pre}_len": int(len(bl)), f"{pre}_end": be, f"{pre}_end_d": bde,
                         f"{pre}_best_d": float(bd_.min()), f"{pre}_fork": int(ft)})
@@ -871,6 +943,9 @@ def main(argv=None) -> int:
                 mfin = bool(mi.get("mc_finished"))
                 me, mde = ((len(ml) - 1, float(md_[-1])) if mfin
                            else cut_line(ml, md_, a.contact_tol, a.cut))
+                _fc = None if mfin else fatal_end_cut(a, ml, me, "mc", res)
+                if _fc is not None:
+                    me, mde = _fc, float(md_[_fc])
                 res.update(mc_len=int(len(ml)), mc_end=me, mc_end_d=mde,
                            mc_best_d=float(md_.min()))
                 print(f"Monte Carlo line: {len(ml)} states, best d {md_.min():,.0f}, "
