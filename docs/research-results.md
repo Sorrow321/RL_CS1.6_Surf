@@ -47674,3 +47674,39 @@ Interim; nothing here is final. Percentages and finishes are the grader's (score
   the 1.0B flat clock was set to run from the later of the last new best and the last adopted deeper line.
   Stops: flat 1.0B, box $2.5 in total, credit $12, first finish + 2 evals. U's full body follows at its end.
 * Credit $14.29 at 13:54 UTC; reserve $10; no new rentals.
+
+## 2026-11-15 15:19 UTC: princessburglar FROM SCRATCH with v14 CLEARS THE x -1,005 WALL (9/9, grader 21.4% at 9.59B); the warm instrument reaches 94.8% (5/9); the scratch cut is moved
+
+Interim. Grader percentages (score.py in wt/ab14b); the wall read is abl/pbwall/wall_cmp.py.
+
+### `ab7c_b14` (v14 from scratch, RTX 5080 box 60637836)
+
+* Search 8 (8.10B) handed back an ENERGY line (beam + the energy stage, 1,065 states to 6.82%, h 3,601
+  = +233 u; kept by its own rule: 0/9 greedy episodes crossed with h >= 3,526). During its walk-back the
+  greedy fell to 3.1% / median 0.4% (8.46B), then came back to 6.8% (8.91B).
+* Search 9 (8.81B), Monte Carlo, handed back a 7,197-state line to d 50,338 (greedy 53,350): it crosses
+  x -850 at state 1,524 at z about 3,333, drops west to (-1,511, z 2,597) and crawls on to (-3,076,
+  z 2,502). Walked back to state 0 by 9.36B (91% success).
+* Grader: 16.1% (9.36B), 19.6% (9.44B, 9.51B), **21.4% best / 21.3% median (9.59B)**. In the 9.59B eval
+  all nine episodes pass x -850 at t 7.0-8.1 s at z 3,293-3,308, horizontal speed 673-750, vz +403..+440,
+  energy height h 3,688-3,761 (the warm wall-clearing profile of ccc67648: z ~3,315, h 3,715-3,761),
+  reach x -3,285..-3,292 at t 11 s and end back east at x 540-1,104, z about 2,400. At 7.63B they had
+  arrived at z ~3,160, h ~3,350, and turned back. Search 10 (9.41B) was stale by 12 u.
+* So the wall wanted HEIGHT at x -850 (z ~3,300 and rising), which the energy line raised by about 230 u
+  and the Monte Carlo line then carried over; the search loop got there with no operator action.
+* **CUT MOVED, said here, after this read** (the fixed cut was 12B or the first finish + 5 evals): the run
+  continues to the first finish + 5 evals, or no new grader best for 2.0B steps, or the credit reserve
+  (box.py refuses extensions past it). The box is registered to 19:48 UTC (on-box deadline 21:00) and is
+  extended further only within the reserve. Reason: 6.9% -> 21.4% in 0.6B steps after 4.6B steps at the
+  wall, and the warm instrument (next) passes every later gate it has met so far.
+
+### The warm v14 instrument (sub-agent U, `abw16_4`)
+
+* Best 66.3% (11.46B) -> 71.7% -> 78.5% (11.68B; past October's 74.4% block) -> 80.7% (11.76B) ->
+  83.0% (12.59B, 4/9) -> **94.8% (12.81B; 5/9 at 94.79-94.82% at 12.889B, banked median 94.79%)**. All
+  five stop at (x ~650, z ~-710), above the finish box (z ~-3,490). Search 1 of abw16_4 (11.46B -> 12.15B)
+  gave an ENERGY line (59.5%, +227 u), kept by its own rule, learned 5/9 within 63M steps; search 2
+  (12.32B, tree, 73.5%); search 3 running from 12.889B. Mostly training, between the searches.
+* Operator change at 14:57 UTC: the flat stop is dropped (the best was one episode while the banked median
+  was ~66%); stops now credit $12, box $2.5 in total, the first finish + 2 evals.
+* Credit $13.32 at 15:17 UTC; reserve $10.
