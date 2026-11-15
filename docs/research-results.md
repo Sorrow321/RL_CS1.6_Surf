@@ -47444,3 +47444,21 @@ unless marked frozen.
   which the cap should leave unchanged there: celestial's share at 0.25 is 16-23%.
 * Read cannonball's wall pass against the quiet arm (1.66B) and the share-cap note: m should
   settle where the share is ~25%.
+
+## 2026-11-15 05:46 UTC: celestial FINISHES with v13 + novelty LO 0.25 (first finish 755.5M) - the quiet novelty was what stalled it; PRE-LAUNCH the v14 regression on petrus, blue200, celestial
+
+### celestial, v13 with the novelty gate's LO 0.25 (`ab7c_lq`): FINISHES - LO 0.05 was the cause
+
+* Fork crossed early (grader 76.4% at 378.0M; v13 needed 1.28B); first greedy finish 1/9 at
+  755,499,008 steps (53.38 s), then 5, 1, 1, 3, 0, 6 of 9 to 1,208.5M; best 50.92 s. Stopped by pid at
+  1,276.6M (cut: first finish + 2 evals). v3 755.5M, v5 529.0M, v13 none by 2.5B. P's single test
+  (9830bdf5) decides it: the quiet novelty starved celestial's fork. Bundle ~/ar_m2/runs/ab7c (OK).
+* This arm is v14 on celestial wherever the share cap does not engage (P: celestial's novelty share at
+  0.25 is 16-23%, under the 25% cap); a v14 celestial run follows on this box to show it.
+
+### PRE-LAUNCH: the v14 regression on the fast maps, one after the other on the 5080 (60637836)
+
+* The 160 tokens of eba49ed4 (lists checked equal but for --maxvel), code ab/share fea35b06:
+  `ab7c_p14` petrus (wt/ab14p 47ef8bb6), then `ab7c_w14` blue200 (wt/ab14w 552ea70b), then `ab7c_l14`
+  celestial (wt/ab14l 8a3937a2); tunnel :8637. Cuts (fixed now): the first finish + 2 evals, or petrus
+  1.5B, blue200 2.5B, celestial 2.0B. Bars: v5 302.5M / 831.0M / 529.0M.
