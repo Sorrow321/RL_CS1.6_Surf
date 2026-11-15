@@ -47170,3 +47170,144 @@ y 5,007-6,595, z -3,525..-2,209.
   finish. Cut (fixed now): the first finish + 2 evals, or 1.2B. Fork by about 0.3B = LO 0.05 is what
   slowed celestial; then one novelty schedule has to serve celestial's fork and cannonball's wall (P is
   building a piecewise gate).
+
+## 2026-11-15 04:53 UTC: novelty is a SHARE problem, not a coefficient problem (sub-agent P): the same 0.25 is ~20% of the return on celestial and ~85% on cannonball; piecewise gate built (ab/gate d2a38670) but not recommended; proposed: --int-share-max (a one-sided cap on novelty's share past the knee)
+Sub-agent P, wave 15, second task: a PIECEWISE novelty gate, so one schedule serves
+celestial's fork (needs ~0.25) and cannonball's wall zone (passed with 0.05). Built as asked
+(branch ab/gate from ab/bonus-energy 368122ea, default unchanged), with the points proposed
+below. My recommendation is NOT to rely on it: by the data below, a progress-keyed coefficient
+is the wrong axis. No box, $0.
+
+### The build (ab/gate d2a38670, pushed)
+
+* `--int-coef-progress` takes either form:
+  * `HI:LO:P`, parsed and evaluated exactly as before: the same tuple, through the unchanged
+    `int_coef_at`.
+  * A point list such as `0:2.5,0.1:0.25,0.5:0.25,0.9:0.05` (progress:coefficient, progress
+    strictly increasing in [0, 1], coefficients >= 0). It is linear between points and flat
+    before the first and beyond the last. No reading yet counts as progress 0.
+  * `0:HI,P:LO` equals `HI:LO:P` bit for bit (tested on 20,001 progress values).
+* What gets written:
+  * run.json writes a point list as `[[progress, coefficient], ...]`; the old form writes
+    `[HI, LO, P]` as before.
+  * The checkpoint state (coefficient and reading) and the restore are unchanged.
+  * record_ckpt keeps `int_coef_progress` in TRAIN_ONLY, and its `audit_cfg` passes both forms.
+* Tests: `tests/python/test_int_coef_points.py`, 9 tests, all passing.
+  * Unit tests: the parser for both forms and the refusals, the interpolation, the start value,
+    the two-point line equal to HI:LO:P, the record_ckpt audit, the wiring.
+  * CPU: the OLD form ON is bit-identical to the parent commit (traj files, progress.csv,
+    run.json and the gate's log lines). A point list is read at every greedy eval, written to
+    run.json, checkpointed and restored on a resume.
+  * The existing `test_int_coef_progress.py` passes unchanged, 7 of 7, its CPU runs included.
+    `test_yaw_entropy.py`'s unit tests pass; its two CPU tests skip because they need
+    princessburglar's map, which was not pointed at. Overall: 18 passed, 2 skipped.
+* CPU smoke of the complete v13 line with the proposed points:
+  * the launcher's 92 scratch pins, the 158 ab/ab13l tokens, the launch extra, and
+    `--int-coef-progress 0:2.5,0.1:0.25,0.86:0.25,0.9:0.05` overriding the recipe's
+    2.5:0.05:0.1, shrunk only by overrides at the end;
+  * it ran on unitfarmer2's map: celestial's face-id texture (--obs-texture) is not baked on
+    the droplet and the bake needs a GPU, which stopped the first attempt at startup;
+  * result: rc 0 over 61,440 steps. The gate was read at all 15 greedy evals (2.497-2.5, since
+    the CPU frontier stays near 0%). Two searches ran (one line adopted), and run.json carries
+    `[[0.0, 2.5], [0.1, 0.25], [0.86, 0.25], [0.9, 0.05]]` beside the v13 keys.
+
+### The data: the novelty's SHARE of the return, not its coefficient, separates the runs
+
+Measured from the step lines: novelty per episode / (|the rest of the return| + novelty),
+median per band of the gate's own frontier reading. All runs below use the v-recipes' novelty
+key unless marked frozen.
+
+| map | run | coefficient past 10% | share past 10% | outcome |
+|---|---|---|---|---|
+| celestial | ab4u_c5 (v5) | 0.25 | 23% fork band, 16% later | fork 0.15B, finish 0.53B |
+| celestial | ab7c_1 | 0.25 | 23%, 23%, 16% | fork 0.15B, finish 0.76B |
+| celestial | ab6c_1 | 0.25 constant | 15%, 23%, 22% | fork 0.30B, finish 0.91B |
+| celestial | ab7c_l13 (v13) | 0.05 | 2%, 3%, 3% | fork 1.28B, no finish by 2.2B |
+| celestial | ab7c_l12 (v12) | 0.05 | 1%, 2% | fork 1.89B, no finish |
+| celestial | ab5c_1 / ab3cc_1 | 2.5 constant | 92-96% | fork 2.11B / never |
+| cannonball | ab8n_cq (the quiet arm) | 0.05 | 17%, 17%, 20%, 19% | past the wall at 1.66B |
+| cannonball | ab8n_r (v5) | 0.25 | 84%, 84%, 85%, 86% | never past the wall |
+| cannonball | fxcan_t1 / m4sib_cb (frozen key) | 0.25 | 4-23% / 6-19% | finished 3.10B / 2.72B |
+| unitfarmer2 | ab4u_1, abuf2_all, ab7c_v7 (the dive, 0-10%) | 2.5 (HI) | 92%, 99%, 98% | dove; v7 finished at 7.93B |
+| unitfarmer2 | abu2n_1, ab6u_1/2, fxuf2, abv8u_1 (0-10%) | <= 0.25 | 0-17% | no dive |
+| unitfarmer2 | ab7c_v7 after its exit | 0.25 | 15%, 8%, 3% | finished |
+| petrus | ab4u_pet5 (v5) / ab7c_xnd | 0.25 / 0.05 | 2%, 2% / 0%, 0% | finished 0.30B / 0.38B |
+| blue200 | ab4u_b5 / ab7b_1 | 0.25 | 0% / 0% | finished 0.83B / 0.91B |
+| sidistic | ab8s_1 / fxsid_t1 (frozen) | 0.25 | 33-40% / 3-8% | finished 5.06B / 8.38B |
+
+* Past the start, the runs that moved sat at a 15-23% share on BOTH maps where novelty matters.
+  That is celestial's fork and end at 0.25, and cannonball's wall at 0.05. The stuck runs sat
+  at <= 3% (celestial at 0.05) or >= 84% (celestial at 2.5, cannonball at 0.25).
+* The same coefficient gives very different shares on different maps:
+  * 0.25 gives 16-23% on celestial and 84-86% on cannonball;
+  * 0.05 gives 1-3% on celestial and 17-20% on cannonball.
+
+  A cannonball episode is longer and crosses more cells: 37 novelty per episode at 0.25,
+  against celestial's 8.7. Its extrinsic per episode is smaller, 4-8 against 29-43.
+* At the start the dive needs the opposite: unitfarmer2 dove only with the novelty at 92-99% of
+  the return (HI 2.5) and never at 0-17%. Petrus and blue200 finish with 0-2% at either
+  coefficient: novelty does not matter there.
+
+### Why a progress-keyed schedule is the wrong fix (plainly)
+
+1. **The two stuck zones touch in progress.**
+   * Celestial's end zone reads 74-86% on the gate's own banked frontier (v13 1.36-2.11B;
+     ab7c_1 sat at 81% before its finishes).
+   * Cannonball's pocket and wall read 90-94% (ab8n_cq) and about 93% / 96.7% by the operator's
+     count.
+   * The two want coefficients 5x apart. Any knot that serves both sits in a ~4% gap measured
+     on two maps: CLAUDE.md 0b's constant re-tuned per map, in disguise. A new map whose hard
+     part reads 88% lands on whichever side of the knot by accident.
+2. **Cannonball's reading is bimodal.** The median of 9 greedy episodes jumps between gates:
+   ab8n_cq read 9%, 24%, 41%, 58%, 84% and 90-94% in successive evals (ab8n_r 17-91%). A late
+   knot would flip cannonball's novelty between 0.25 and 0.05 from eval to eval. The current
+   single knee at 10% never sees this, because almost every reading is above it.
+3. **The coefficient is not the quantity that transfers; the share is.** The table shows a
+   15-23% share past the start on every map where novelty mattered.
+
+### Proposed points (if the piecewise gate is run anyway)
+
+`0:2.5,0.1:0.25,0.86:0.25,0.9:0.05`
+
+| point | why | maps |
+|---|---|---|
+| 0:2.5 | the dive needs a ~90%+ share at progress 0-2% | unitfarmer2 (3 dives at HI, 0 of 5 below); celestial, cannonball and petrus all start at HI under v5/v7 and pass 10% |
+| 0.1:0.25 | v5's knee; past the start 0.25 is right where novelty is moderate, harmless where it is quiet | celestial's fork (16-23%: 0.15-0.30B against 1.28-1.89B at 0.05); unitfarmer2 after its exit (3-15%, finished); petrus and blue200 (0-2%, finished) |
+| 0.86:0.25 | keeps celestial's end zone (74-86%) at 0.25 | celestial only, so this one point is a single-map fit |
+| 0.9:0.05 | cannonball's wall zone (90-97%) at the quiet arm's coefficient | cannonball only, also a single-map fit |
+
+* Prediction: celestial behaves like v5 (fork by ~0.3B). On cannonball the coefficient flips
+  0.25 <-> 0.05 with the bimodal reading, and its middle (10-86%) runs loud (~85% share, v5's
+  level). Whether the wall is then passed is not predictable from v5's run, which never passed
+  it.
+* The operator's own example (`0:2.5,0.1:0.25,0.5:0.25,0.9:0.05`) gives celestial's end zone
+  0.07-0.12 (at 74-86%): v13's level. I expect it to fix the fork and keep the end stalled.
+
+### The recommendation: cap the novelty's share past the knee (est. 2-4 h with tests)
+
+* `--int-share-max S` (S = 0.25, one value for every map), on top of the gate:
+  * Below the gate's knee (progress < 10%) nothing changes: the dive keeps HI.
+  * Past the knee the coefficient is the gate's (LO 0.25) times a multiplier m in (0, 1].
+  * After every iteration m moves so that the novelty paid stays <= S/(1-S) x |the rest of the
+    return| over the same ticks.
+  * It is ONE-SIDED: m only pulls the coefficient down and relaxes back to 1, so maps where
+    novelty is already quiet (petrus, blue200 at 0-2%) are untouched.
+* Expected by the table:
+  * celestial at 0.25 stays uncapped (16-23%), with v5's fork and finish times;
+  * cannonball goes from ~85% toward 25%, near the quiet arm's 17-20%;
+  * the unitfarmer2 dive is unchanged (below the knee), and so is its post-exit (3-15%);
+  * sidistic at 33-40% is pulled to 25%.
+* `--int-match R` already measures this per iteration and rescales with a rate limit (x0.25-4
+  per iteration, clamped to [1e-4, 1e4]); the cap reuses that measurement.
+* The work:
+  * the flag and its refusals (as --int-match's);
+  * the multiplier folded into the base that --unstuck's (1 + T) multiplies, because --unstuck
+    otherwise overwrites the coefficient every iteration (it does so to --int-match today);
+  * the knee taken from the gate;
+  * the checkpoint key, the config key, record_ckpt TRAIN_ONLY, the step-line note;
+  * unit tests (the update, one-sidedness, the knee) and CPU tests (flag off bit-identical, a run
+    where the novelty dominates is pulled under the cap, the resume restores m).
+  * About 80-100 lines of trainer code and ~150 of tests.
+* The single run that would decide it: v13 with LO back to 0.25 plus `--int-share-max 0.25`,
+  from scratch, on cannonball and celestial. Read celestial's fork step and cannonball's wall
+  pass against ab8n_cq (1.66B).
