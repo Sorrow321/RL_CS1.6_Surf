@@ -48152,3 +48152,15 @@ finish it from scratch with no change but the map?
 * Budget: about $0.35-0.45/h, 20B steps about 14 h, about $6; credit $35.88 at 21:55 UTC, reserve $10.
 * CPU smoke of the complete command line (the launcher pins + 160 tokens + the launch extra, za_loop,
   40,960 steps, wt/abzl): done, no error; "finish: any of 5 trigger models *15-*19" read from the map.
+
+## 2026-11-15 22:38 UTC: abzl_1 grader config fixed (measurement only); za_loop v14 at 10% by 0.6B
+
+* The za_loop config was built from the unitfarmer2 one and kept its `start_d_span` [30,647.5,
+  30,660.0], which only autoresearch/score.py reads: it REJECTED every za_loop eval ("not the map
+  start"). The span is removed (za_loop has one spawn, start_d 6,361.8; the za_loop program's config
+  has none): ab/abzl bf229355, config only. The trainer does not read the key; the run is unchanged.
+* Grader best (median): 0.6% (151M), 3.4% (227M), 6.5% (302M), 9.0% (378M), 9.7% (529M), 10.2%
+  (604M), 10.1% (680M). The greedy climbs about 530 u, then falls into the bottom teleport (z -4,000)
+  at t 11-18 s. Search 1 (302M) was stale by 135 u. Novelty is about 85% of the return below the 10%
+  knee (int 9.7 of rew 11.5 per episode). The za_loop program at the same depth: 10.85% at 302M and
+  24.03% at 529M (the first loop climbed, on a Go-Explore line taught as a spine).
