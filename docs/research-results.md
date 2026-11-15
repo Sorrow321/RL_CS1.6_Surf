@@ -46763,3 +46763,222 @@ launches.
   (60688276), tunnel :8642. Reads: the start room, the pit crossing, the drop's landing (energy), the
   wall, finishes from the grader. Cut (fixed now): 3.0B if the greedy has not left the start room;
   else 12B, or the first finish + 5 evals.
+
+## 2026-11-15 01:46 UTC: princessburglar energy-stage instrument FINAL (sub-agent U): the loop's energy stage finds the drop-surfing landing, the recheck bug is fixed (ab/recheck-energy 25d3e1c2), and the greedy clears the x -1,015 wall 7/9 then 9/9 (12%); gate 6 open; one seed, one fork, with a hand restart
+Sub-agent U, wave 11: the energy stage and the GE ladder at princessburglar's gates 4/5, a WARM
+instrument on abpbc_1's own weights. (The first three sections were written before the
+run; the results were added after it by the same hand.)
+
+### The question
+
+Ledger f13b10e6 (my gate analysis) found abpbc_1 (v7 + the band flags, from scratch) stopping at
+October's gate 4: the greedy lands on the long drop's floor and loses 400-680 u of energy height. It
+then hops at the x -1,015 wall from below its top and falls into the hollow at its foot (raw
+6.6-6.9%, contact-banked 6.05%). That analysis named the energy stage (`--auto-spine-energy 150`,
+which needs `--demo-success-bonus`) and the GE ladder (`1.0,1.04;1.08;1.12`) as the in-code
+mechanisms for this stall. This run puts both on abpbc_1's own weights and asks three things:
+
+1. does the energy stage fire, and where does its line end (past the wall?);
+2. does the walk-back pass the landing on the drop's floor;
+3. the greedy's grader % and where its episodes end (the gate-4 hollow, or past the wall).
+
+### The arm (one box, one seed)
+
+* Weights: abpbc_1's ckpt_latest, copied read-only at 22:45 UTC. md5 a7b6c380 (box before and
+  after the copy = local), step ~4.40B. Its respawn reservoir is in the checkpoint and is
+  restored on resume. At that point it already holds abpbc_1's training frontier past the wall:
+  min d 49,987 (12.5%) from ~4.35B, where it had been 53,034-53,287 (7.2%, the wall face). The
+  greedy had not followed (banked median 53,400-53,558, 0/9 past 53,361). The failed ends, bans
+  and dead ends the checkpoint carries (`auto_spine_failed`) are restored too.
+* Code: ab/abpbc 01293a30 = c8595e54 (the code abpbc_1 runs) + config.
+* The held line: k04 (MCTS tree from the true spawn on abpbc_1's 3.32B weights), auto/k04/
+  spine.npy md5 5c00a971 and spine.keys.npy md5 b442e70d. Uploaded as runs/abegy_spine.npy /
+  .keys.npy with `--demo-file`, `--demo-keys` and `--demo-tau0 0`: the curriculum position is not
+  in a checkpoint, and abpbc_1's was at row 0 from 3.6747B. SELF_STATES=1: abpbc_1's own search
+  line and spawn, no demo or record data.
+* Flags: abpbc_1's own 155 tokens, minus `--envs 1024` (box.py's resume passes `--envs 1024`
+  itself), `--obs-normal 1`, `--simba 1` (restored from the checkpoint) and
+  `--auto-spine-scratch`; plus the treatment and four instrument changes:
+  - treatment: `--auto-spine-energy 150 --demo-success-bonus 50` (October's values), and in
+    `--auto-spine-args` `--ge-boost 1.0,1.04;1.08;1.12` (auto_spine's own default) in place of
+    `1.0;E1.0`. E1.0 is dropped because the energy stage roots before the line's energy losses
+    itself, with its own `--energy-boost 1.0,1.04`;
+  - the search runs SYNCHRONOUSLY (no `--auto-spine-async`). Three ladder stages x two archive
+    kinds x 5 min, plus the tree, MC and the energy stage, is ~45 min of search. Beside the
+    training on this box that is 0.6-1.1B steps, the whole budget, before its line is swapped
+    in. In sync mode the 1.0B steps are all training;
+  - `--auto-spine-delay 0` (the delay counts from the resume step) and
+    `--auto-spine-patience 1.5e8` (was 3e8), so the first search fires at the ~+151M eval
+    (patience-tau starts its clock at the first eval, tau is already 0). Later patience
+    searches also come after 150M steps without a new low, not 300M;
+  - `--auto-spine-timeout 4200` (was 2400), so the energy stage, which runs last and only when no
+    depth stage passed, is not cut off.
+* `box.py launch --resume --steps 1e9`: the trainer stops itself 1.0B steps after the resume.
+  CUT earlier if the greedy is past the wall in two evals in a row (>= 5/9 episodes past 7.5%
+  raw; the wall face tops out at ~7.2%).
+* Control: abpbc_1 itself, on the same weights and the same line with none of the four changes.
+  Its search 5 has run since 4.0019B (patience).
+
+### Reads
+
+* The energy stage: did it run (only when no depth stage passed the bar)? Its archive's
+  candidates, the cell it picked (progress, h, gain over the line) and where the handed-back line
+  ends. Same for the ladder stages (x1.0/1.04, x1.08, x1.12): their deepest d, and whether a
+  boosted root put a line past the wall.
+* The walk-back on the new spine: does tau pass the rows of the drop's landing, and how fast.
+* The greedy per eval on goalc_32: raw deepest %, contact-banked median, past 7.5%, over the wall
+  (x < -1,030 above z 3,300), where the episodes end. Energy height on the drop's floor against
+  abpbc_1's 3,100-3,370.
+
+### Predictions, stated now
+
+* The tree ends in the hollow again (k02 and k04 did, and October's two beams). It passes the
+  greedy but not the bar (k04's end 53,261 - 200), so it is kept as the fallback.
+* x1.0/1.04 GE reaches the wall face (October: 7.07-7.20%). A x1.08 or x1.12 root may clear the
+  wall's top: abpbc_1's own x1.0-1.3 frontier-perturb rows did in training. If so, that line is
+  handed back by DEPTH and the energy stage does not run. The walk-back may then stall at the
+  boosted root (October, gate 19), unless the greedy arrives with the speed.
+* If no ladder stage passes, the energy stage roots before the drop's landing and hands back the
+  slope ride (+250-500 u over the line), taught with the energy rule. That is the case the
+  analysis was about.
+* A risk, seen before the launch in the control's search 5 (4.0019B weights): the tree's own
+  greedy rollout fell into the pit (3.14%, against 6.6-6.9% in the trainer's evals), so the tree
+  stayed there (3.18%). Every GE stage roots on the TREE's line ("the Go-Explore roots stay on
+  the tree's line"), so GE x1.0 held / contact and the E stages explored the pit (55,107-55,344).
+  The Monte Carlo line reached the hollow (53,236) but was refused 97 u from k02's dead end. The
+  energy stage roots on the same line. If this run's tree also falls into the pit, its search
+  does not test the landing, and the run measures only the bonus and the held line.
+
+### Results (written after the runs)
+
+* Box 60705347 (RTX 5070 Ti, Minnesota, $0.296/h), ab/abpbc 01293a30, 22:53-01:42 UTC
+  (169 min), $0.83; released, gone from vastai and from the fleet registry, tunnel stopped.
+  Three runs on it:
+  - abegy_1: the pre-registered arm, 4,447,010,816 -> 5,012,193,280. Stopped by hand (below).
+  - abegy_2: its continuation from abegy_1's ckpt_latest 4,991,221,760 (md5 c866e906), 456M
+    steps, so the total is 1.0B after the 4.447B resume. Stopped itself at 5,447,352,320.
+  - abegy_3: the extension the operator approved (<= 300M, to confirm the wall pass and see
+    gate 6), 5,447,352,320 -> 5,747,769,344.
+  Bundles in ~/ar_m2/runs/abegy/: abegy_1, abegy_2, abegy_3 (launch logs, every greedy eval,
+  run.json, progress, auto/ logs, spines and summaries, abegy_1 search 2's energy archive).
+  Checkpoints: abegy_2 ckpt_final (md5 ab7ab147, the wall-pass weights) and abegy_3
+  ckpt_latest (md5 34feb8f8). The fork's source is ~/ar_m2/runs/abegy/src (md5 a7b6c380).
+
+**abegy_1: the arm as launched (k04 held at tau 0, bonus, energy stage, ladder, sync search).**
+
+* Greedy, 8 evals 4.448-4.976B: raw 6.68-6.85%, 0/9 past 7.5%. With the bonus it stopped
+  wandering east. From 4.599B every episode ends on the hollow floor (x -882..-1,015,
+  z 2,980-3,016), banked median 6.05% -> 6.63%. Its yaw sigma rose 0.027 -> 0.125 by 4.90B; the
+  control's stayed at 0.013-0.016.
+* Search 1 (4.5985B, 2,524 s): tree 53,277 (6.78%, into the hollow, not the pit); MC 53,252;
+  all six ladder runs (x1.0/1.04, x1.08, x1.12; held and contact) end on the hollow floor,
+  53,350-53,368. Energy stage: roots before the line's losses -422 u (row 888, a near-vertical
+  landing on the drop's floor at (188, -2,834, 3,146), h 3,630 -> 3,208), -70 and -50; 3,336
+  candidates; "no cell keeps 150 u more than the line". Its archive, replayed through
+  energy_pick: 681 cells gain >= 150 (up to +616), all of them pre-landing free fall (held 0,
+  vz -445..-953, p 4.42-5.04%) that the `vz > -300` plunge filter rightly drops; after the
+  bottom the best kept energy is +122 u. NO new spine.
+* Search 2 (4.9005B, ~42 min): tree 53,282; MC 53,240; the six ladder runs on the hollow floor
+  again (x1.12 held: best 53,223, cut 53,275). Energy stage: roots before -405 u (row 894),
+  -66, -79; 4,077 candidates. "a line to cell 39059 at 6.76% with h 3,599 (+278 u over the
+  line), 1056 states". The tree line runs to row 790 (the north side, h 3,785), then a GE
+  chain from that state at x1.04 (+21 u). The chain SURFS the drop: 1,097 u/s and h 3,621 at
+  the bottom (-237, -2,737, 2,869), where the greedy has 670-940 u/s and 3,100-3,370. It ends
+  on the climb at (-812, -2,980, 3,196), 803 u/s, rising. That is October's GE_g4 surf
+  (1,086 u/s, h 3,611 at the bottom), found by the loop's own stage.
+* Then the trainer: "STALE spine discarded - its end d 53,284 does not beat the latest greedy
+  frontier 53,362 by 200 u". --auto-spine-recheck applied the depth gain, which an energy spine
+  can never pass. So in v7 + the energy stage, every energy spine is thrown away. Fixed on
+  ab/recheck-energy (below).
+
+**abegy_2: the energy line taught (what the loop's swap would have done).**
+
+* Held line: search 2's energy line (md5 01676876, keys cd90330f), the curriculum from its
+  end. Rule: `--demo-success-energy 75`, i.e. success = crossing d <= 53,384 with h >= 3,524,
+  and the quorum counts only energetic crossings (the loop's own rule for an energy spine).
+  Changes from abegy_1: no --auto-spine-recheck, no --demo-tau0, --auto-spine-patience 1e9.
+  CPU smoke of the line passed.
+* The walk-back passed the landing in ~43M steps. Rows 1,055 -> 980 at 100% (5.005B), 950
+  (47.8%, 5.029B), 910 (95.4%), 870 (34.8%, 5.034B). The band just above the landing (875-895)
+  held for ~37M steps (0-57% per visit). Then 845 (5.074B), 790 (the x1.04 root, 5.129B),
+  600 (5.150B), 415 (5.247B), 165 (5.304B), 0 (5.348B, 78.9%): 357M steps for 1,055 rows.
+* The greedy:
+  - 4.992B: raw 6.78-6.83%, 0/9 energetic crossings (8 cross in the air).
+  - 5.067-5.294B (4 evals) COLLAPSED: 9/9 ran east into the half-pipe (x 1,242-2,380,
+    z 3,287-3,615) and were cut by the eval's 30 s patience, 0.01%. This was while the
+    walk-back worked the drop and the ridge.
+  - 5.369B, once the walk-back reached the start: 8/9 cross d <= 53,384 with h >= 3,524, raw
+    6.95-7.05% in 7 of 9 (the wall face; October's GE line stopped at 7.07%), 0 past 7.5%,
+    banked median 6.53%.
+  - 5.445B, the last eval inside the 1.0B, after search 1's wall-rim line (below) was half
+    walked back: 7 of 9 CLEAR THE WALL. They surf the drop's bottom at 1,167-1,209 u/s with h
+    3,695-3,741 and cross x -1,015 at z 3,338-3,381 (its top ~3,330) at 8.4-9.1 s. Then they
+    fly on to 12.00-12.18% (x -2,725..-2,890, z ~2,470), October's 12% region before its
+    gate-6 U-turn climb, and stop there (best at 13-14 s). The other two: 7.21% (landed slow,
+    bottom h 3,047) and 3.14% (the pit). Banked median 11.87%. One eval: the 1.0B cut came
+    before a second.
+* The 5.369B quorum had fired search 1 of abegy_2 (sync, 372 s). Its TREE, on the energy-trained
+  weights, went past the hollow for the first time: d 53,056 (7.16%) at 8.8 s, ending on the
+  wall's rim at (-1,001, -2,992, 3,290), 40 u under its top, at 67 u/s. A depth spine (the
+  depth rule); adopted with 53,156 as the next success line. This is "energy first, then the
+  search passes", October's c7 sequence, by the loop. The greedy then cleared the wall at the
+  5.445B eval above.
+* The control on the same weights: abpbc_1 at 7.777B, 3.33B steps after the fork. Raw
+  6.66-6.81%, banked median 6.34%, 0/9 past 7.5%. 0/9 cross d <= 53,384 with h >= 3,524 (h at
+  the first crossing 3,327-3,367), yaw sigma 0.013-0.016. Still landing on the floor.
+
+* abegy_2 search 2 (quorum at 5.4447B, sync, 449 s): the tree reached 12.86% raw, and the
+  line handed back was the Monte Carlo line: 2,300 rows to d 50,070 (12.39%), over the wall at
+  row 1,349 (z 3,369), ending at (-3,184, -2,624, 2,724) at 367 u/s. That is the foot of
+  October's gate 6 (the U-turn climb at x ~-3,250..-3,490). A depth spine, success line 50,170.
+
+**abegy_3: the extension (the MC line held, the depth rule, the same flags otherwise).**
+
+* Greedy:
+  - 5.448B (its first eval, at the resume): 9/9 over the wall, raw 11.90-12.46%, drop-bottom
+    h median 3,701 (9/9 >= 3,500). With 5.445B's 7/9, that is two evals past the wall.
+  - 5.523B: 9/9 stop at the tunnel entrance (x ~650, z ~3,670), 0.32-0.37%.
+  - 5.599B: 3.15-6.67%, none over the wall.
+  - 5.674B: 5/9 over the wall again, best 13.43%. Four end on the gate-6 climb at x -2,981..
+    -3,201, z 2,640-2,951.
+* The walk-back on the 2,300-row line was at row 794 by the cut (5.712B; from 2,299 at
+  5.448B). Gate 6 is not decided in 300M steps: the greedy reaches its foot, the line reaches
+  12.39%, and October's next line here needed ~500 u more energy.
+* The start collapses while a walk-back works a line's far end, and recovers as the walk-back
+  nears the start. abegy_2: the east half-pipe for 4 evals. abegy_3: the tunnel entrance for 1
+  eval. The control abpbc_1 (no bonus): 0.04-0.06% for 1.2B steps (2.04-3.25B) while k02 was
+  walked back, then 6.6% once it reached the start. A recipe dynamic, not this arm's. Yaw
+  sigma: abegy_2 0.11-0.15, abegy_3 0.17-0.20 then 0.10.
+
+### What it says
+
+* The energy stage finds this gate's landing at the recipe's search budget (5 min, 2,048 envs,
+  48 roots) in 1 of 2 searches. The miss had the same roots logic, on a line whose roots sat
+  1 s before a near-vertical landing. Its line is October's gate-4 surf, by the loop's own
+  stage. Taught with the loop's own energy rule, the greedy learned the landing (0/9 -> 8/9
+  energetic crossings in 0.38B steps). The loop's next search (a tree, no boost) then reached
+  the wall's rim, and within 0.08B steps of that the greedy cleared the wall: 7/9 to 12.0-12.2%,
+  October's gates 4 and 5. October needed ~830M steps of per-call energy shaping (K 3 -> 8,
+  not in v7) for gate 5 alone; here v7's own frontier-perturb rows had already carried
+  training past the wall at 4.35B, and the energy kept through the landing let the greedy
+  follow. The control, on the same weights with no energy stage, still lands on the floor
+  3.3B steps later (7.777B, 0/9 energetic crossings, raw <= 6.81%).
+* The recipe as it stands cannot use it: --auto-spine-recheck discards every energy spine.
+  Fix: ab/recheck-energy 25d3e1c2 (from c8595e54). An energy spine is judged by its own rule
+  (stale only when a quorum of the latest greedy eval already crosses its success line with
+  its energy); a depth spine is judged as before. Test on search 2's own eval rows; CPU
+  smoke of the recipe line with --auto-spine-energy 150 --demo-success-bonus 50 (rc 0). A
+  second smoke forced energy spines through the recheck; it kept them and the curriculum
+  took them, 11 times.
+* The cost of the pair: --auto-spine-energy needs --demo-success-bonus 50 on every map.
+  Under the bonus abegy_1's yaw sigma rose 0.027 -> 0.125 in 0.45B steps, while the
+  control's stayed at ~0.015. The start collapses seen in abegy_2/3 are not the bonus's: the
+  control had the same without it. The finished maps must be re-run before the pair joins the
+  recipe.
+* The GE ladder (x1.04-1.12) was not needed. All 12 ladder runs of abegy_1's two searches
+  ended on the hollow floor. The lines that mattered came from the energy stage (its root
+  x1.04 through the stage's own --energy-boost default), the tree (the rim line) and Monte
+  Carlo (the gate-6 line). So v7's `1.0;E1.0` can stay.
+* Instrument changes, all mine: sync search, delay 0, patience 1.5e8 then 1e9, timeout 4200,
+  ;E1.0 dropped; the hand restart that did what the recheck prevented; and the 300M-step
+  extension (abegy_3, operator-approved). One seed, one map, one fork.
