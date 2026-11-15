@@ -47552,3 +47552,11 @@ PRE-LAUNCH: `ab8n_u14` = unitfarmer2 from scratch with v14 (wt/ab14u 58da90ed, t
   dive. In v7 (378M) and v13 (529M) the first line's walk-back stalled (rows 250 / 281) and the greedy
   dove. The patience cap releases the held line at about 1.48B. If no dive by 2.0B the run is stopped and
   the dive's dependence on a well-learned first line is the recipe's open item on this map.
+
+## 2026-11-15 08:01 UTC: unitfarmer2 v14 DIVES (1.36B) and LEAVES THE PIT at 1.74B (grader 49.5% -> 53.9%), 5x earlier than v7's exit
+
+* unitfarmer2 v14 (`ab8n_u14`): the dive came at 1,359.5M (4/9 below z 0), 9/9 from 1,661.5M, and the
+  greedy LEFT THE PIT at 1,737.0M (6/9 above z 500, grader 49.5%) and 1,812.5M (9/9, 53.9%) - against
+  v7's exit at 7.10B. The dive came before the moved 2.0B cut (9b391dfd), so the run continues under its
+  launch rule: 9B, or the first finish + 5 evals. Held line at the exit: [0, 4280] of a 4,281-state line
+  at 67.9%. Sidistic v14 (`ab12s_v14`): cover 50.0% at 2.04B (v5 45.9% at 2.04B), search 5 at 1.99B.
