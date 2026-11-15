@@ -47541,3 +47541,14 @@ PRE-LAUNCH: `ab8n_u14` = unitfarmer2 from scratch with v14 (wt/ab14u 58da90ed, t
   (v7 exited at 7.10B). Not a result; v14 on unitfarmer2 (`ab8n_u14`) is the run that counts.
 * Same failure as the cannonball box on 2026-11-14 (907dea66). Rule kept in the operator file: every live
   box's deadline is read at every wakeup and extended before it.
+
+## 2026-11-15 07:34 UTC: unitfarmer2 v14 - no dive by its 1.0B cut; cut moved to 2.0B (the first trough line was learned to 99.6% and steers the greedy)
+
+* unitfarmer2 v14 (`ab8n_u14`): NO greedy episode below z 0 by 981,991,424 (its 1.0B cut, 7fda5e6e).
+  CUT CHANGED, said here, to 2.0B (else as before): the 1.0B cut exists to catch a recipe that breaks the
+  dive (v8, v9, v12); v14 below the 10% knee is v13 (which dove at 529M) to within the gate's LO, and the
+  share cap is inactive there. What differs is this seed's first line: search 1 (482M, tree, 5,209 states
+  to the trough side, d 28,530) was walked back to row 68 at 99.6% - the greedy follows it and does not
+  dive. In v7 (378M) and v13 (529M) the first line's walk-back stalled (rows 250 / 281) and the greedy
+  dove. The patience cap releases the held line at about 1.48B. If no dive by 2.0B the run is stopped and
+  the dive's dependence on a well-learned first line is the recipe's open item on this map.
