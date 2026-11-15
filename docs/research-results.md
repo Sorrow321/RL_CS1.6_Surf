@@ -47603,3 +47603,36 @@ cut (the first finish + 5 evals). Finishes from the grader (score.py in wt/ab14u
 | princessburglar | running from scratch (`ab7c_b14`) | - | never |
 
 * One seed per map; the box (5090) is kept for the next step. Bundle ~/ar_m2/runs/ab8n/ab8n_u14 (OK).
+
+## 2026-11-15 10:33 UTC: SIDISTIC FINISHES with recipe v14 (4.00B) - RECIPE v14 FINISHES SIX OF SEVEN MAPS FROM SCRATCH WITH ONE LIST; princessburglar open (warm v14 instrument at 42.9%)
+
+Run `ab12s_v14`: recipe v14 (160 tokens, code ab/share fea35b06; pre-launch 11968305), surf_src_sidistic
+from scratch, seed 0, one RTX 4080 SUPER (60720975). Stopped by pid at 4,276.6M (its cut: the first finish
++ 2 evals); box RELEASED. Finishes from the grader (score.py in wt/ab14s; the goalc_32 field linked from
+~/RL_Surf_az/maps).
+
+### Result: SIDISTIC FINISHES WITH v14
+
+* **First greedy finish 1/9 at 4,001,890,304 steps** (120.07 s); then 0, 0, 1 of 9 to 4,228.4M (124.08 s).
+  v5 5,058.9M (114.87 s); fix round 8,380.7M. Before it: 97.9-98.0% (CP7) at 3.78-3.85B. The share cap
+  engaged here (m about 0.8 at 1.56B), which P had flagged as the open risk (v5 finished at 33-40%).
+
+### RECIPE v14 FINISHES SIX OF SEVEN MAPS FROM SCRATCH WITH ONE LIST
+
+| map | first greedy finish | best time | v5 / older |
+|---|---|---|---|
+| petrus | 302.5M | 30.10 s | 302.5M |
+| celestial | 680.0M | 42.81 s | 529.0M |
+| blue200 | 982.0M | 12.14 s | 831.0M |
+| cannonball | 2,416.4M | 78.21 s | never (frozen 2.72B, fix 3.10B) |
+| unitfarmer2 | 3,095.9M | 37.41 s | v7 7.93B |
+| sidistic | 4,001.9M | 120.07 s | 5,058.9M |
+| princessburglar | no finish | - | never |
+
+* v14 = v7 (147 tokens, spawn rows kept) + `--int-coef-progress 2.5:0.25:0.1 --int-share-max 0.25` (P) +
+  `--demo-front-temp 0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks 40` (U) + `--auto-spine-energy 150
+  --demo-success-bonus 50 --demo-success-bonus-energy-only` (U) = 160 tokens; only --maxvel follows the
+  map (3500 unitfarmer2 and princessburglar, 4000 the rest). One seed per map; every finish from the grader.
+* Princessburglar: v14 from scratch (`ab7c_b14`) left the start room by about 1.96B (running); the warm v14
+  instrument from the wall-pass weights (`abw16_1`, sub-agent U) reaches 42.9% best (3/9) at 6.57B, mostly
+  by training, past October's round-2 end (20.4%).
