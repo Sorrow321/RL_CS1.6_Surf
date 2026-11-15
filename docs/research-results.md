@@ -47560,3 +47560,18 @@ PRE-LAUNCH: `ab8n_u14` = unitfarmer2 from scratch with v14 (wt/ab14u 58da90ed, t
   v7's exit at 7.10B. The dive came before the moved 2.0B cut (9b391dfd), so the run continues under its
   launch rule: 9B, or the first finish + 5 evals. Held line at the exit: [0, 4280] of a 4,281-state line
   at 67.9%. Sidistic v14 (`ab12s_v14`): cover 50.0% at 2.04B (v5 45.9% at 2.04B), search 5 at 1.99B.
+
+## 2026-11-15 08:24 UTC: CELESTIAL FINISHES with recipe v14 (680.0M; best 42.81 s) - v14 finishes four maps; PRE-LAUNCH princessburglar from scratch with v14
+
+* CELESTIAL v14 (`ab7c_l14`, with the share cap): first greedy finish 4/9 at 680,001,536 steps (45.86 s),
+  then 4, 0, 0, 4, 8, 9, 7 of 9 to 1,208.5M; best 42.81 s. v5 529.0M; v13 + LO 0.25 (cap off) 755.5M; v13
+  (LO 0.05) none by 2.5B. Stopped at 1.27B (past its cut); bundle ~/ar_m2/runs/ab7c (OK).
+* v14 now finishes FOUR maps from scratch with one list: petrus 302.5M, celestial 680.0M, blue200 982.0M,
+  cannonball 2,416.4M. Running: unitfarmer2 (out of the pit from 1.74B, grader 68-73% at 2.4-2.6B),
+  sidistic (cover 50% at 2.04B).
+
+PRE-LAUNCH: `ab7c_b14` = princessburglar FROM SCRATCH with v14 (wt/ab14b d138a732, the 160 tokens with
+--maxvel 3500; list equal to unitfarmer2's) on the 5080 box 60637836, tunnel :8637. Cut (fixed now): 4.0B if
+the greedy has not left the start room (v7 + band left at ~3.3B, v13 not by 4.0B); else 12B or the first
+finish + 5 evals. The credit left (about $19) cannot carry it to a finish on the gates seen so far; it runs
+to read how far v14 gets from scratch.
