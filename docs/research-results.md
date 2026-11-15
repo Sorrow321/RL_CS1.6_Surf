@@ -48088,3 +48088,18 @@ finish trigger's clip hull).
   SIGTERM stop writes no ckpt_final), auto_b14 (all search lines and logs).
 * Box 60637836 destroyed at 21:16:48 UTC (box.py release); vastai lists 0 instances, the fleet
   registry 0 rows; tunnel 8637 stopped. Credit $35.88 at 21:18 UTC.
+
+## 2026-11-15 21:36 UTC: CORRECTION to 45773829 - the warm v14 finish was NOT our first real princessburglar finish
+
+* 45773829 said: "Every earlier princessburglar finish of ours is sim-only (the 128-entity table bug, fixed
+  6bd7f931); this is the first on the fixed core." That is wrong, and I repeated it to the user. The
+  corrected-core fork-and-flush lineage (pbfr, 2026-10-29, warm from the old-core incumbent r38) finished
+  on the fixed core: first real greedy finish 2/9 at 69.26 s at 68,837M lineage steps (12:42 UTC), 9/9 at
+  66.62 s the same day, 9/9 at 64.15 s after expert iteration (pbfr1b2), and the expert loop pbEXIT3 reached
+  a 9/9 policy at 62.108 s (r15); the user reproduced its doorway staircase in CS 1.6 (legal). Sources:
+  ~/meta_analysis/reports/princessburglar.md sections 3-4 and 10, ~/ar_pb/wt/b2/autoresearch/NOTES.md 4548.
+* What stands: the sim-only finishes are the OLD-core ones (before 6bd7f931). The v14 results of today are
+  the first princessburglar finishes on the fixed core by ONE unchanged recipe: from scratch (c1d4d88e,
+  17.29B) and the warm instrument (45773829, 13.04B). They are slower than the pbfr / pbEXIT3 policies
+  (64.79 s and 64.27 s vs 64.15 s and 62.108 s), which had the expert loop's speed training on top.
+* Cause: I read CLAUDE.md's "EVERY princessburglar finish before the fix" as "every earlier finish".
