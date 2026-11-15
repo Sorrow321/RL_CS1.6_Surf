@@ -214,23 +214,33 @@ def test_the_flag_needs_the_gate():
 @needs_run
 def test_the_cap_moves_every_iteration_checkpoints_and_restores():
     from train_fast import share_cap_step
-    # a knee at 0: the cap acts from the first greedy reading on (a smoke run's frontier stays
-    # near 0%), and at 2.5 the novelty dominates a smoke run's return
-    r = _train(ROOT, "share_on", ["--steps", "6144", "--record-every", "2048",
-                                  "--int-coef-progress", "0:2.5", "--int-share-max", "0.25"])
+    # a knee at 0: the cap acts at every reading at or past the spawn's d (a smoke run's frontier
+    # stays near 0% and dips just below it at times); 64-tick episodes end every other iteration,
+    # so the iterations have novelty to measure, and at 2.5 the novelty dominates their return
+    short = ["--ep-ticks", "64", "--stall-secs", "60"]
+    r = _train(ROOT, "share_on", ["--steps", "20480", "--record-every", "2048",
+                                  "--int-coef-progress", "0:2.5", "--int-share-max", "0.25"]
+               + short)
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
     assert "--int-share-max 0.25: past frontier progress 0% (the gate's knee)" in r.stdout
     notes = re.findall(r"share-cap m ([\d.e+-]+) \(novelty ([\d,.-]+) vs rest ([\d,.-]+): "
                        r"(\d+)% this iter\)", r.stdout)
-    assert len(notes) >= 5, r.stdout[-3000:]
+    assert len(notes) >= 3, r.stdout[-3000:]
     ms = [float(n[0]) for n in notes]
-    assert all(0.0 < m <= 1.0 for m in ms)
-    # each step is share_cap_step's on the iteration's own numbers (the note rounds them)
+    assert all(0.0 < m <= 1.0 for m in ms) and min(ms) < 1.0      # the cap did pull it down
+    # each step is share_cap_step's on the iteration's own numbers (the note rounds them; an
+    # iteration below the knee leaves m where it was)
     prev = 1.0
     for (m, ip, ext, _sh) in notes:
-        ip, ext = float(ip.replace(",", "")), float(ext.replace(",", ""))
-        want = share_cap_step(prev, ip, ext, 0.25)
-        assert float(m) == pytest.approx(want, rel=0.05, abs=2e-3), (prev, ip, ext, m)
+        ip, ext = float(ip.replace(",", "")), abs(float(ext.replace(",", "")))
+        # the note prints both sums to the unit: the step is decreasing in the novelty and
+        # increasing in the rest, so the rounding box bounds it
+        lo = share_cap_step(prev, ip + 0.5, max(ext - 0.5, 1e-6), 0.25)
+        hi = share_cap_step(prev, max(ip - 0.5, 1e-6), ext + 0.5, 0.25)
+        within = lo * 0.995 - 1e-3 <= float(m) <= hi * 1.005 + 1e-3
+        # a printed 0 may be no novelty at all (no episode ended): m then stays where it was
+        assert within or (ip == 0.0 and float(m) == pytest.approx(prev, abs=1e-3)), \
+            (prev, ip, ext, m)
         prev = float(m)
     d = ROOT / "runs" / "share_on"
     c = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
@@ -239,9 +249,10 @@ def test_the_cap_moves_every_iteration_checkpoints_and_restores():
     ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
     m_ck = float(ck["int_share_max"]["m"])
     assert m_ck == pytest.approx(ms[-1], rel=1e-2, abs=1e-3)
-    r2 = _train(ROOT, "share_on2", ["--steps", "8192", "--record-every", "1e12",
+    r2 = _train(ROOT, "share_on2", ["--steps", "22528", "--record-every", "1e12",
                                     "--no-eval-at-start", "--ckpt", str(d / "ckpt_final.pt"),
-                                    "--int-coef-progress", "0:2.5", "--int-share-max", "0.25"])
+                                    "--int-coef-progress", "0:2.5", "--int-share-max", "0.25"]
+                + short)
     assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
     assert f"--int-share-max: restored the cap's multiplier {m_ck:.4g}" in r2.stdout, \
         r2.stdout[-3000:]
