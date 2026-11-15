@@ -47151,3 +47151,22 @@ y 5,007-6,595, z -3,525..-2,209.
   rollout however marginal, and the curriculum then sits on it. Nothing here tests a remedy.
 * Scripts: celends.py and the inline measurements, in
   `/tmp/claude-1000/-home-steam-ar-pb-wt-pbx/4506c754-e96e-459e-bf18-9528f3f92771/scratchpad/abl/trough/`.
+
+## 2026-11-15 04:51 UTC: celestial v13 final (no finish by 2.5B) + PRE-LAUNCH celestial v13 with the novelty gate's LO 0.25
+
+### celestial v13 FINAL: no finish by its extended 2.5B cut
+
+* `ab7c_l13` stopped by pid at 2,700.6M: grader 92.5% best in most evals from 1.36B, 77-78% in
+  others, 0 finishes (v5: 529.0M). The finishing line of search 4 (an edge touch of the box, sub-agent
+  P 9830bdf5) was never learned past its last ~220 rows. Bundle ~/ar_m2/runs/ab7c (BUNDLE OK).
+
+### PRE-LAUNCH: celestial, v13 with ONE change: the novelty gate's LO back to 0.25 (`ab7c_lq`)
+
+* P's single test (9830bdf5): `--int-coef-progress 2.5:0.25:0.1` instead of 2.5:0.05:0.1 (lists
+  checked: that token only), code ab/bonus-energy 368122ea, worktree ~/ar_m2/wt/ab13lq (2f6e3f1f), on
+  the 5080 box 60637836, tunnel :8637. The arm also tests the band flags and the scoped energy pair on
+  celestial with the fork's novelty restored.
+* Read: the step at which cover passes 40% (the fork; v5 0.15B, ab6c 0.30B, v13 1.28B) and the first
+  finish. Cut (fixed now): the first finish + 2 evals, or 1.2B. Fork by about 0.3B = LO 0.05 is what
+  slowed celestial; then one novelty schedule has to serve celestial's fork and cannonball's wall (P is
+  building a piecewise gate).
