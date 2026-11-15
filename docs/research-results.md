@@ -48021,3 +48021,60 @@ box was released). abw16_1..3's ckpt_final (62095f1c, d78f9f6c, d8f4cfa9) were n
 * At 13:53:09 UTC a continuation re-registered the watchdog from the rent's created + hours: a
   deadline 63 min in the past, for 3 s until the extend. The box survived. My script now
   re-registers from the registry's current deadline.
+
+## 2026-11-15 21:15 UTC: PRINCESSBURGLAR FINISHES FROM SCRATCH WITH RECIPE v14 (first greedy finish 17.29B, best 64.79 s) - ONE RECIPE FINISHES ALL SEVEN MAPS FROM SCRATCH
+
+Run `ab7c_b14`: recipe v14 (code ab/share fea35b06, which contains the core table fix 6bd7f931 and
+the clip-hull finish rule; pre-launch f811242a) from scratch on surf_princessburglar_b26, seed 0, one
+RTX 5080 (box 60637836), launched 08:25 UTC. No warm start, no demo, no record data; every line the
+curriculum held was the loop's own search from the true spawn. No operator action changed its
+training: the only changes were to its CUT (a283a8da, 16:52 rule note in the status log, below).
+Finishes from the grader (autoresearch/score.py run in wt/ab14b; a finish counts only inside the
+finish trigger's clip hull).
+
+### Result
+
+| eval step | finishes | best time | grader best / median |
+|---|---|---|---|
+| 17,213,947,904 | 0/9 | - | 93.6% / 83.6% |
+| **17,289,445,376** | **3/9** | 65.15 s | 100% / 12.5% |
+| 17,364,942,848 | 2/9 | 65.27 s | 100% / 12.6% |
+| 17,440,440,320 | 5/9 | 64.81 s | 100% / 100% |
+| 17,515,937,792 | 4/9 | 65.05 s | 100% / 66.7% |
+| 17,591,435,264 | 1/9 | 65.15 s | 100% / 28.6% |
+| 17,666,932,736 | 5/9 | **64.79 s** | 100% / 100% |
+
+* First greedy finish at 17,289,445,376 steps; 20 of 54 greedy episodes finish over the six evals
+  from it; best 64.79 s (our clock, 7.667 ms ticks). The warm v14 instrument's best was 64.27 s
+  (45773829). Stopped by its cut (the first finish + 5 evals) at 17,732,468,736 (21:14 UTC).
+* The way there (grader best): room exit ~1.96B; 3.2% to 4.6B; 6.5-6.9% at the x -1,005 wall from
+  4.98B to 9.36B; 21.4% at 9.59B (search 8's energy line + search 9's Monte Carlo line; a283a8da);
+  26.4% (10.72-11.63B); 43.7% (12.38B, after search 14's beam line); 47.4% (13.82B); 56.6% at gate 17
+  from 14.27B (the shaft climb; held 2.1B steps, as in the warm run); 61.6% (16.38B) -> 65.9%
+  (16.61B) after search 18's beam line was walked back to the spawn; 78.1% (16.99B), 83.3%
+  (17.14B), 93.6% (17.21B), finish 17.29B. 22 searches; the lines it held came from the tree/beam,
+  Monte Carlo and energy stages; several energy lines were discarded as stale by their own rule.
+* Cut changes, all said before they applied: 15:18 UTC the fixed 12B cut was moved after the 21.4%
+  read to "first finish + 5 evals, or 2.0B flat, or the credit reserve" (a283a8da); the flat clock
+  used a 0.1-point threshold for a new best and restarted at an adopted deeper line (as for U's
+  instrument, 13:30 UTC); neither fired.
+
+### RECIPE v14 FINISHES ALL SEVEN MAPS FROM SCRATCH WITH ONE LIST
+
+| map | first greedy finish | best time |
+|---|---|---|
+| petrus | 302.5M | 30.10 s |
+| celestial | 680.0M | 42.81 s |
+| blue200 | 982.0M | 12.14 s |
+| cannonball | 2,416.4M | 78.21 s |
+| unitfarmer2 | 3,095.9M | 37.41 s |
+| sidistic | 4,001.9M | 120.07 s |
+| **princessburglar** | **17,289.4M** | **64.79 s** |
+
+* The seven runs' recipe lists are byte-identical (158 tokens, md5 6e2a72ca over the list without
+  --maxvel); only --maxvel follows the map (3500 unitfarmer2 and princessburglar, 4000 the rest).
+  Same code, fea35b06, in all seven (each worktree differs from the others only in
+  autoresearch/config.json: map, field, start, maxvel, offer query). One seed per map, from scratch,
+  champion-free (CLAUDE.md sections 0 and 0b), every finish from the grader.
+* Caveats: one seed per map; princessburglar's finish rate is not yet stable (1-5 of 9 per eval, with
+  start collapses between); times are on our clock from spawn; no human-record comparison is made here.
