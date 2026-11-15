@@ -48164,3 +48164,50 @@ finish it from scratch with no change but the map?
   at t 11-18 s. Search 1 (302M) was stale by 135 u. Novelty is about 85% of the return below the 10%
   knee (int 9.7 of rew 11.5 per episode). The za_loop program at the same depth: 10.85% at 302M and
   24.03% at 529M (the first loop climbed, on a Go-Explore line taught as a spine).
+
+## 2026-11-15 22:49 UTC: PRE-LAUNCH (sub-agent P) - recipe v15 candidate = v14 + --ratchet-contact 1, from scratch on petrus (abk1_1)
+
+P wrote this before the 22:48 UTC launch; committed here after it, unchanged.
+
+Sub-agent P, wave 17: recipe v15 candidate = v14 + `--ratchet-contact 1`, from scratch, one seed,
+one map at a time (the user, via the operator, 2026-11-15: "run the contact rule on other maps.
+Start with simple one."). Petrus first; celestial and blue200 only if petrus finishes.
+
+### Pre-launch (written before the petrus launch)
+
+* Recipe v15 candidate is v14 plus 2 tokens.
+  * v14: 158 tokens + `--maxvel` per map, md5 6e2a72ca without --maxvel (space-joined), as in
+    c1d4d88e.
+  * v15 = v14 + `--ratchet-contact 1`: 160 tokens without --maxvel (md5 1c3427b4), 162 with it.
+  * What the rule does: the race ratchet pays a record only on ticks where the map holds the
+    player up - walkable ground, or a surfable face pushing back (vz gives back more than one
+    gravity step). A flight over open air is paid at the landing that reaches it.
+  * za_loop's October program needed it; it was never run on another map, and v14 lacks it.
+* Builder: abl/launch/mkcfg_v15.py (mkcfg_v14 + the 2 tokens, asserts 162) and mk_wave17.sh
+  (code origin/ab/share fea35b06).
+* Petrus run abk1_1: branch ab/abk1 4768b60c (config only), worktree ~/ar_m2/wt/abk1.
+  * The first 160 tokens are byte-identical to v14's petrus config (ab14p).
+  * --maxvel 4000; launch extra unchanged (`--auto-spine-mcts-args '--mcts-mix-rule sib
+    --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2'`).
+* Grader config checked: map maps/surf_petrus_lite.bsp, field goalc_32, start_d 35,940,
+  start_d_span [35,916, 35,940]. These equal ab14p's and the fix round's fxpet_cfg.json; every
+  other config key equals ab14p's.
+* CPU smoke of the complete line (92 launcher pins + 162 tokens + the launch extra,
+  abl/smoke/full_smoke_v1.py):
+  * rc 0 over 40,960 steps;
+  * the trainer prints the contact rule, and the step line carries its read-out (`rc` / `all`
+    / `paid`);
+  * it ran on unitfarmer2's map, because --obs-normal needs a face-id map that petrus,
+    celestial and blue200 do not have baked on the droplet, and that bake needs a GPU.
+* Box: one RTX 5080/4080-class at <= $0.45/h through ab_w2_retry.sh. The watchdog is registered
+  with the harvest spec and pid file, the dashboard runs on the box, tunnel :8646.
+* Cut: the first greedy finish (autoresearch/score.py in wt/abk1) + 2 evals, or 1.0B steps
+  (3x v14's petrus first finish, 302.5M).
+* Reference v14 petrus (ab14p): first greedy finish 302.5M, best 30.10 s.
+* Budget: <= $4 for the whole wave, at most 2 of my boxes at once (fleet cap 5; 1 live at
+  launch). Credit $35.61 at 22:45 UTC, reserve $10.
+* Read-outs:
+  * the first finish step and the best time against v14;
+  * the training return and the novelty share;
+  * the contact read-out: a surf map whose paid record stalls far behind the all-state record
+    would say the contact test misses surf faces.
