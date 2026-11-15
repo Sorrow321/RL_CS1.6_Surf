@@ -47528,3 +47528,16 @@ PRE-LAUNCH: `ab8n_u14` = unitfarmer2 from scratch with v14 (wt/ab14u 58da90ed, t
 * BLUE200 v14 (`ab7c_w14`): first greedy finish 9/9 at 981,991,424 steps (13.13 s), then 9, 8, 9, 9, 9, 9, 9
   of 9 to 1,661.5M; best 12.14 s. v5 831.0M, fix round 1,435.0M. Stopped at 1.72B (past its cut, first
   finish + 2 evals); bundle ~/ar_m2/runs/ab7c (OK). Next on this box: `ab7c_l14` = celestial v14 (wt/ab14l).
+
+## 2026-11-15 07:33 UTC: unitfarmer2 v13 run lost at its box deadline (missed extension; harvest saved its 4.0B checkpoint)
+
+### unitfarmer2 v13 (`abv8u_v13`) LOST at its box deadline - my missed extension
+
+* The 5080 box 60701154 was registered to 07:26:40 when v13 was launched on it (02:56); I did not extend it
+  after that, and the fleet watchdog destroyed it on time (07:26:54, confirmed gone). Its harvest at 07:07
+  saved ckpt_4001366016.pt (md5 df4d676a), run.json, progress.csv and the last two evals (4,605.9M and
+  4,681.4M: 9/9 in the pit, none out) to ~/RL_Surf/runs/research/abv8u_v13. The run reached about 4.75B:
+  dove at 529.0M (7/9) / 604.5M (9/9), in the pit after it, search lines on the trough side, no exit yet
+  (v7 exited at 7.10B). Not a result; v14 on unitfarmer2 (`ab8n_u14`) is the run that counts.
+* Same failure as the cannonball box on 2026-11-14 (907dea66). Rule kept in the operator file: every live
+  box's deadline is read at every wakeup and extended before it.
