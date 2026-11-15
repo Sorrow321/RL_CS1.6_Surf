@@ -47515,3 +47515,10 @@ wt/ab14c).
 | sidistic | running (`ab12s_v14`) | 5,058.9M |
 | unitfarmer2 | v13 running (below the knee v13 = v14) | v7 7.93B |
 | princessburglar | not run with v14 from scratch (budget) | never |
+
+## 2026-11-15 07:02 UTC: PRE-LAUNCH unitfarmer2 from scratch with v14 on the 5090
+
+PRE-LAUNCH: `ab8n_u14` = unitfarmer2 from scratch with v14 (wt/ab14u 58da90ed, the 160 tokens with
+--maxvel 3500; CPU smoke rc 0 in eba49ed4) on the 5090 box 60678705, tunnel :8640. The v13 unitfarmer2 run
+(`abv8u_v13`, 4.4B, in the pit) continues beside it as a second read (v13 = v14 below the 10% knee). Cut
+(fixed now): 1.0B if no greedy below z 0; else 9B, or the first finish + 5 evals. Bar: v7 7.93B.
