@@ -47710,3 +47710,24 @@ Interim. Grader percentages (score.py in wt/ab14b); the wall read is abl/pbwall/
 * Operator change at 14:57 UTC: the flat stop is dropped (the best was one episode while the banked median
   was ~66%); stops now credit $12, box $2.5 in total, the first finish + 2 evals.
 * Credit $13.32 at 15:17 UTC; reserve $10.
+
+## 2026-11-15 15:27 UTC: PRINCESSBURGLAR FINISHED from the true start by a greedy policy (warm v14 instrument, 6/9 at 13.04B, best 64.27 s; grader-verified, clip-hull finish, fixed core) - NOT a from-scratch v14 result
+
+* Run `abw16_4` (sub-agent U), RTX 5080 box 60770105, code ab/share fea35b06 (contains the core table fix
+  6bd7f931 and the clip-hull finish rule). Eval at 13,040,091,136 steps: **6 of 9 greedy episodes finish**,
+  64.27, 64.37, 64.58, 64.86, 65.04, 65.46 s on our clock (7.667 ms ticks); the other three stop at 61.2%
+  (x2) and 6.6%. Verified by the operator with the grader (autoresearch/score.py run in wt/ab14b, which
+  counts a finish only inside the trigger's clip hull): "finishes 6/9 best 64.27 s", score 114.524.
+* The lineage, all champion-free (no demo, no record-derived line; every spawn line is the loop's own):
+  `abpbc_1` (recipe v7 + band yaw flags, FROM SCRATCH, ab/yawabs c8595e54) -> `abegy_1..3` (+ the
+  energy stage and success bonus, ab/recheck-energy 25d3e1c2; cleared the x -1,015 wall, 2cd67be3) ->
+  `abw16_1..4` (the full v14 list, from abegy_3's ckpt md5 34feb8f8). One weight lineage, about 13.0B steps
+  in all, but the recipe changed along it: this is a WARM result for the v14 machinery, not "v14 from
+  scratch finishes princessburglar". The from-scratch v14 run (`ab7c_b14`) is at 21.4% (a283a8da).
+* From the 12.5% plateau to the finish: training plus the loop's lines - three tree lines, one Monte Carlo
+  line and one adopted energy line (59.5%, +227 u, the first energy line in this lineage kept by its own
+  recheck; the scoped bonus paid for the first time), then the tree's 73.5% line. Best greedy: 56.98% (8.60B),
+  61.4% (9.80B), 64.8% (10.93B), 78.5% (11.68B), 83.0% (12.59B), 94.8% (12.81B), finish 13.04B.
+* Every earlier princessburglar finish of ours is sim-only (the 128-entity table bug, fixed 6bd7f931); this is
+  the first on the fixed core. The run stops after 2 more evals (its rule), U bundles and releases; U's full
+  body follows.
