@@ -47311,3 +47311,136 @@ key unless marked frozen.
 * The single run that would decide it: v13 with LO back to 0.25 plus `--int-share-max 0.25`,
   from scratch, on cannonball and celestial. Read celestial's fork step and cannonball's wall
   pass against ab8n_cq (1.66B).
+
+## 2026-11-15 05:19 UTC: cannonball v13 stopped (wall passed from 3.02B, no finish at 4.11B); the novelty share cap (P, ab/share fea35b06); PRE-LAUNCH recipe v14 (v13 with LO 0.25 + --int-share-max 0.25) on cannonball
+
+### cannonball v13 (`ab8n_v13`) stopped as superseded at 4.11B
+
+* First greedy episodes past the 205,440 u wall at 3,020.4M (2/9, route max 212,608), then 0-5/9 per
+  eval (5/9 at 3,699.9M); 0 finishes. The energy stage fired on cannonball: at 2.94-3.02B an energy
+  spine was held ("8/9 greedy episodes cross d <= 63,395 with energy height >= 6,417"), then search 4
+  (3.05B, Monte Carlo) handed back a line to d 6,509. Bundle ~/ar_m2/runs/ab8n (BUNDLE OK).
+
+### The novelty share cap (sub-agent P, ab/share fea35b06, from ab/gate d2a38670)
+
+* `--int-share-max S`: past the novelty gate's knee, a multiplier on the gate's coefficient (only
+  ever pulled down, relaxing back) keeps the novelty paid at most S of the return; below the knee the
+  gate is untouched (unitfarmer2's dive needs 92-99%); the capped value is the base --unstuck
+  multiplies. Off = byte-identical; 27 tests pass. P's case (46ed5238 + its body, next entry): the
+  SHARE carries across maps, the coefficient does not - 0.25 is ~20% of the return on celestial,
+  ~85% on cannonball; every run that moved past 10% progress sat under 25%, every loud stuck run above.
+  Open risk: sidistic v5 sat at 33-40% and finished.
+
+### PRE-LAUNCH: recipe v14 candidate
+
+* v14 = v13 with `--int-coef-progress 2.5:0.25:0.1` (LO back to 0.25) + `--int-share-max 0.25` =
+  160 tokens, code ab/share fea35b06, builder abl/launch/mkcfg_v14.py + mk_wave16.sh. ONE list for
+  every map; only --maxvel follows the map.
+* CPU smoke of the complete v14 line (unitfarmer2, 40,960 steps, wt/ab14u): rc 0 ("--int-share-max
+  0.25: past frontier progress 10% (the gate's knee) the gate's novelty coefficient is multiplied by
+  m in [1e-4, 1] ...").
+* First run: `ab8n_v14` = cannonball from scratch on the 5090 (60678705), wt/ab14c 69d6d404, :8640.
+  Read: the wall pass on the route (quiet arm 1.66B, v13 3.02B, v5 never), the `share-cap m` note
+  (should settle where novelty is ~25% of the return), the final descent, finishes. Cut (fixed now):
+  3.5B if no greedy past 205,440 u; else the first finish + 5 evals, or 6.0B.
+* Celestial: the LO 0.25 arm already running (`ab7c_lq`, 15df06a7) is v14 on celestial wherever the
+  cap does not engage (P: 16-23% share there); unitfarmer2 and princessburglar v13 runs stay below the
+  knee (10% progress) for most of their course, where v13 = v14.
+
+### Sub-agent P's share-cap entry
+Sub-agent P, wave 15, third task: `--int-share-max S`, a one-sided cap on the count novelty's
+share of the return past the novelty gate's knee. Branch ab/share from ab/gate d2a38670 (so the
+cap works with both gate forms), commits 522de909 + fea35b06, pushed. No box, $0.
+
+### What it does
+
+* `--int-share-max S` (0 < S < 1) needs `--int-coef-progress`.
+* Past the gate's knee (P of HI:LO:P; a point list's second point), a multiplier m in [1e-4, 1]
+  on the gate's coefficient moves after every iteration. The novelty paid over the iteration's
+  ticks must stay <= S/(1-S) x |everything else paid over them|.
+* The step is --int-match's: the square root of the needed factor, x0.25 to x4 per iteration.
+  It measures with the same quantities: the reward function's novelty paid that iteration
+  (int_per_ep x episodes) and the summed reward over the rollout's ticks.
+* ONE-SIDED: m only pulls the coefficient down, and relaxes back to the gate's value (1),
+  never above it. An iteration with nothing paid on one side (no episode ended) leaves m.
+* Below the knee, and before the first greedy reading, the gate's coefficient stands
+  untouched: unitfarmer2's dive needs the novelty at 92-99% of the return. m is kept for when
+  the reading is past the knee again.
+* Folded into the base --unstuck multiplies:
+  * the capped value is written into the unstuck base before --unstuck's per-iteration block
+    and at every gate reading, so the (1 + T) schedule multiplies it instead of overwriting it;
+  * --unstuck overwrites --int-match's rescaling every iteration today: that flag is
+    effectively off under the recipe's --unstuck.
+* Refusals: without --int-coef-progress; with --int-split (the novelty in its own stream);
+  with --reward-per-decision. --int-match is refused through the gate.
+* Off = byte-identical. config `int_share_max` only when on. m is checkpointed (state
+  `int_share_max`) and restored when the flag is passed again; the flag itself is not restored.
+* record_ckpt: `int_share_max` is TRAIN_ONLY, and `audit_cfg` passes it.
+* The step line carries `share-cap m X (novelty N vs rest R: S% this iter)`. The gate's eval
+  line shows `(the gate's c x m under --int-share-max)`.
+
+### Tests
+
+`tests/python/test_int_share_max.py`, 11 tests:
+
+* Unit tests:
+  * the step: one-sided, rate-limited, clamped, a negative rest counted by its size, and no
+    change when one side paid nothing;
+  * its fixed point on the measured map numbers: cannonball at 0.25 (37 vs 6) and the dive
+    (33.6 vs 3.1) are capped to exactly 25%; celestial at 0.25 (8.7 vs 29) and petrus (0.4 vs
+    22) stay at m = 1;
+  * the knee of both gate forms, the record_ckpt audit, and the wiring (the update before
+    --unstuck's block, the base, the checkpoint).
+* CPU:
+  * flag OFF with the gate ON is bit-identical to the parent commit (traj files,
+    progress.csv, run.json);
+  * the flag without the gate is refused;
+  * ON with a knee at 0, on 64-tick episodes, m is moved every active iteration exactly by
+    the rule on the iteration's own numbers: 1 -> 0.473 (60% share) -> 0.307 (44%) -> 0.345
+    (21%) -> 0.39 (21%). It is written to the checkpoint and restored on a resume.
+* Results: 27 passed in one run, CPU runs included: these 11, ab/gate's
+  `test_int_coef_points.py` (9) and `test_int_coef_progress.py` (7).
+* CPU smoke of the complete v13 line (the launcher's 92 scratch pins, the 158 v13 tokens, the
+  launch extra), with LO 0.25 (`--int-coef-progress 2.5:0.25:0.1`) and `--int-share-max 0.25`,
+  on unitfarmer2's map:
+  * rc 0 over 61,440 steps; the gate and the cap print their settings;
+  * all 30 iterations read `share-cap off (below the knee)`. A CPU run's frontier stays near 0%,
+    under the 10% knee; the active path is the CPU test above, with the knee at 0;
+  * two searches ran (one line adopted);
+  * run.json carries `int_share_max 0.25` and `int_coef_progress [2.5, 0.25, 0.1]` beside the
+    v13 keys.
+
+### The S I recommend: 0.25, and the shares behind it
+
+The novelty per training episode / (|the rest of the return| + novelty), median per band of
+the gate's frontier reading, from the step lines. All runs use the v-recipes' novelty key
+unless marked frozen.
+
+| map | runs that MOVED (share past 10% progress) | runs that STUCK |
+|---|---|---|
+| celestial | v5 23% / 16%; ab7c_1 23% / 23% / 16%; ab6c_1 15% / 23% / 22% (fork 0.15-0.30B, finished) | 0.05: v13 2-3%, v12 1-2% (fork 1.28-1.89B, no finish); 2.5: ab5c 92-93%, ab3cc 96% (fork 2.11B / never) |
+| cannonball | the quiet arm ab8n_cq (0.05) 17-20% (past the wall at 1.66B); frozen-key finishers fxcan 4-23%, m4sib 6-19% | v5 ab8n_r (0.25) 84-86% (never past the wall) |
+| unitfarmer2, after its exit | v7 ab7c_v7 15% / 8% / 3% (finished at 7.93B) | - |
+| petrus, blue200 | 0-2% at 0.25 and at 0.05 (finished either way) | - |
+| sidistic | v5 ab8s_1 33-40% (finished at 5.06B); fxsid (frozen) 3-8% (finished at 8.38B) | - |
+| unitfarmer2's dive (below the knee, NOT capped) | 92-99% (four dives) | 0-17% (five runs, no dive) |
+
+* With S = 0.25, every run that moved on celestial or cannonball stays under the cap, and so
+  do unitfarmer2 after its exit, petrus and blue200: the cap changes nothing for them.
+* Every loud stuck run is above it: cannonball at 0.25 (84-86%), celestial at 2.5 (92-96%).
+  The cap brings cannonball under LO 0.25 toward the quiet arm's ~20%.
+* Celestial's quiet stuck runs (0.05, 1-3%) are a coefficient problem the cap cannot touch: it
+  only lowers. They need LO back at 0.25, which the cap makes safe for cannonball.
+* The one moving run the cap WOULD change: sidistic's v5, pulled from 33-40% to 25%. Nothing
+  measured says whether that costs or helps; it is the open risk of this setting.
+* S = 0.2 would also cap cannonball at the quiet arm's level, but it would trim celestial's
+  fastest runs (23%); S = 0.4 would leave cannonball at twice the share that passed its wall.
+
+### The recipe to run
+
+* v13 with `--int-coef-progress 2.5:0.25:0.1 --int-share-max 0.25`, code ab/share fea35b06,
+  from scratch on cannonball and celestial.
+* Read celestial's fork step (v5 0.15B, v13 1.28B) and the operator's LO 0.25 arm ab7c_lq,
+  which the cap should leave unchanged there: celestial's share at 0.25 is 16-23%.
+* Read cannonball's wall pass against the quiet arm (1.66B) and the share-cap note: m should
+  settle where the share is ~25%.
