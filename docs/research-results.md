@@ -47483,3 +47483,35 @@ eba49ed4) on the 4080S box 60720975, tunnel :8644. Cut (fixed now): first finish
 * PETRUS v14 (`ab7c_p14`, 2114a492): first greedy finish 7/9 at 302,514,176 steps (31.03 s), then 8, 5,
   2, 8, 6, 5 of 9 to 755.5M; best 30.10 s. v5: 302.5M. Stopped at its cut (first finish + 2 evals);
   bundle ~/ar_m2/runs/ab7c (BUNDLE OK). Next on this box: `ab7c_w14` = blue200 v14 (wt/ab14w).
+
+## 2026-11-15 07:01 UTC: CANNONBALL FINISHES with recipe v14 (first greedy finish 3/9 at 2,416,443,392 steps; best 78.21 s) - the first finish of the v-recipe line, earlier than the frozen and fix-round recipes
+
+Run `ab8n_v14`: recipe v14 (160 tokens = v7 + band yaw flags + energy stage with the bonus scoped to
+energy lines + novelty gate 2.5:0.25:0.1 + `--int-share-max 0.25`; code ab/share fea35b06;
+pre-launch eba49ed4) from scratch on surf_src_cannonball, seed 0, one RTX 5090 (60678705). Stopped
+by pid at 2,846.4M at its cut (the first finish + 5 evals). Finishes from the grader (score.py in
+wt/ab14c).
+
+### Result: CANNONBALL FINISHES WITH THE v-RECIPE LINE FOR THE FIRST TIME
+
+* **First greedy finish: 3 of 9 at 2,416,443,392 steps** (78.78 s). Then 0, 3, 3, 7, 5 of 9 to
+  2,793.9M: 21 of 54 after the first finish; the last two evals 7/9 and 5/9 (median 100%); best
+  **78.21 s**. Bars: frozen recipe 2,718.4M (76.52 s), fix round 3,095.9M (77.40 s); v5 and v7 never
+  passed the wall; v7 + novelty LO 0.05 (the quiet arm) passed it at 1.66B and stalled at 98.7%.
+* The share cap engaged as designed: `share-cap m` 0.43 at 1.79B and 0.22 at 2.72B (the gate's 0.25
+  multiplied down to about 0.05-0.11), novelty 5.7-6.5 per episode against a return of 19-24 (about
+  25%). On the route the greedy passed the wall 3/9 in each eval from about 2.4B, route max 231,357-
+  231,475 u of 231,680.
+* One seed. Box KEPT for the next v14 run. Bundle ~/ar_m2/runs/ab8n/ab8n_v14 (+ ckpts, auto; OK).
+
+### v14 so far
+
+| map | v14 first finish | bar (v5 unless said) |
+|---|---|---|
+| petrus | 302.5M (7/9) | 302.5M |
+| cannonball | 2,416.4M (3/9) | never (frozen 2.72B, fix 3.10B) |
+| celestial | 755.5M (1/9) with v13 + LO 0.25 = v14 where the cap is idle; a v14 run follows | 529.0M |
+| blue200 | running (`ab7c_w14`, 65-67% at 0.74B) | 831.0M |
+| sidistic | running (`ab12s_v14`) | 5,058.9M |
+| unitfarmer2 | v13 running (below the knee v13 = v14) | v7 7.93B |
+| princessburglar | not run with v14 from scratch (budget) | never |
