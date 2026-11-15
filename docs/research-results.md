@@ -48078,3 +48078,13 @@ finish trigger's clip hull).
   champion-free (CLAUDE.md sections 0 and 0b), every finish from the grader.
 * Caveats: one seed per map; princessburglar's finish rate is not yet stable (1-5 of 9 per eval, with
   start collapses between); times are on our clock from spawn; no human-record comparison is made here.
+
+## 2026-11-15 21:18 UTC: ab7c_b14 bundled and released; no box is up
+
+* BUNDLE OK (md5 = box for every checkpoint, run.json, progress.csv, the launch log, the 235 evals and
+  the search spines): ~/ar_m2/runs/ab7c/ab7c_b14 (evals gzipped after the check; their pre-gzip md5s in
+  traj_md5_before_gzip.txt), ckpts_b14 (19 checkpoints: the 1B milestones to 17.0B, ckpt_latest and
+  ckpt_keep_finish.pt, both md5 91461827 = the weights after the 17.667B eval, 5/9 finishing; the
+  SIGTERM stop writes no ckpt_final), auto_b14 (all search lines and logs).
+* Box 60637836 destroyed at 21:16:48 UTC (box.py release); vastai lists 0 instances, the fleet
+  registry 0 rows; tunnel 8637 stopped. Credit $35.88 at 21:18 UTC.
