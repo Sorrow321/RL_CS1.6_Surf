@@ -46746,3 +46746,20 @@ launches.
   the rim line from the tree); an async search with the energy stage runs about 35 min against the
   2,400 s timeout (the energy stage runs last and is what a timeout would cut); under the bonus
   abegy's yaw sigma rose 0.027 -> 0.125 and its greedy wandered east for 4 evals - watch for it.
+
+## 2026-11-15 01:27 UTC: princessburglar v7+band control stopped early (flat at 6.8% for 4.7B steps); U's wall pass confirmed 9/9; PRE-LAUNCH princessburglar from scratch with v12
+
+* `abpbc_1` (princessburglar, v7 + band yaw flags, from scratch; 7e032338) STOPPED EARLY by pid at
+  8,067,743,744 (cut fixed at the launch: 10B or the first finish + 5 evals). Reason, said here: it
+  sat at 6.7-6.9% (October's gate 4, the hollow at the foot of the x -1,015 wall) in every eval from
+  3.32B to 7.78B (4.7B steps), and its box is needed for the v12 test on this map. 0 finishes.
+  Bundle ~/ar_m2/runs/abpbc (BUNDLE OK). It served as the control of U's energy instrument (the same
+  weights at 4.447B: the control never made an energetic crossing in 3.3B more steps; the
+  instrument cleared the wall in 1.0B).
+* U's continuation confirms the wall pass: all 9 greedy episodes over the wall at 5.448B
+  (11.90-12.46%), after 7/9 at 5.445B.
+* PRE-LAUNCH (decided with 1a0ff7b3): `abpbc_v12` = princessburglar FROM SCRATCH with v12 (157
+  tokens, maxvel 3500, code ab/recheck-energy 25d3e1c2, wt/ab12b 58879436) on the same 5080 box
+  (60688276), tunnel :8642. Reads: the start room, the pit crossing, the drop's landing (energy), the
+  wall, finishes from the grader. Cut (fixed now): 3.0B if the greedy has not left the start room;
+  else 12B, or the first finish + 5 evals.
