@@ -47522,3 +47522,9 @@ PRE-LAUNCH: `ab8n_u14` = unitfarmer2 from scratch with v14 (wt/ab14u 58da90ed, t
 --maxvel 3500; CPU smoke rc 0 in eba49ed4) on the 5090 box 60678705, tunnel :8640. The v13 unitfarmer2 run
 (`abv8u_v13`, 4.4B, in the pit) continues beside it as a second read (v13 = v14 below the 10% knee). Cut
 (fixed now): 1.0B if no greedy below z 0; else 9B, or the first finish + 5 evals. Bar: v7 7.93B.
+
+## 2026-11-15 07:30 UTC: BLUE200 FINISHES with recipe v14 (982.0M, 9/9; best 12.14 s)
+
+* BLUE200 v14 (`ab7c_w14`): first greedy finish 9/9 at 981,991,424 steps (13.13 s), then 9, 8, 9, 9, 9, 9, 9
+  of 9 to 1,661.5M; best 12.14 s. v5 831.0M, fix round 1,435.0M. Stopped at 1.72B (past its cut, first
+  finish + 2 evals); bundle ~/ar_m2/runs/ab7c (OK). Next on this box: `ab7c_l14` = celestial v14 (wt/ab14l).
