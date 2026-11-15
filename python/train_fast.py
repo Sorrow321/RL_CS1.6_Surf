@@ -4318,6 +4318,25 @@ def spine_is_fresh(end_d: float, greedy_med, gain: float) -> bool:
     return float(end_d) <= float(greedy_med) - float(gain)
 
 
+def recheck_spine(end_d: float, greedy_med, gain: float, energy_rule=None, eval_dh=None,
+                  quorum: int = 5) -> tuple:
+    """--auto-spine-recheck's verdict on a returned spine -> (fresh, n). A depth spine
+    (``energy_rule`` None) is spine_is_fresh's call, n None. An ENERGY spine (--auto-spine-energy;
+    ``energy_rule`` = (its success line d, its energy floor h_min)) is no deeper than the greedy by
+    construction - the stage runs only when no deeper line exists - so the depth gain would discard
+    every one (abegy_1 search 2, 2026-11-15: +278 u at 6.76%, end d 53,284 against the greedy's
+    53,362). It is judged by its own rule instead: stale only when ``quorum`` episodes of the latest
+    greedy eval (``eval_dh``: one (d, h) pair of row arrays per episode; None = no eval read yet)
+    already cross its success line with its energy (crossed_with_energy); n = how many do."""
+    if energy_rule is None:
+        return spine_is_fresh(end_d, greedy_med, gain), None
+    if eval_dh is None:
+        return True, 0
+    line_d, h_min = energy_rule
+    n = int(sum(crossed_with_energy(d, h, line_d, h_min) for d, h in eval_dh))
+    return n < int(quorum), n
+
+
 def _eval_energy_h(core, sl):
     """--energy-stall: energy height h = z + |v|^2 / (2 g) of the eval core's envs ``sl``."""
     st = core.states_view
@@ -17234,6 +17253,7 @@ def main() -> None:
         from surfgym.greedy_spawn import last_contact_vz
         tps = 1000.0 / float(args.tick_ms or 10.0)
         bests, lens, launches, stalls = [], [], [], []
+        eval_dh = []                      # --auto-spine-energy: each episode's (d, h) rows
         n_en = 0                          # --auto-spine-energy: crossings with the energy
         n_alive = 0                       # --demo-success-alive: crossings their episodes survived
         if ALIVE_T:
@@ -17252,11 +17272,13 @@ def main() -> None:
                                           float(slots[0].core.config.phys.sv_maxvelocity)))
             else:
                 bests.append(float(d.min()))
-            if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
+            if args.auto_spine_energy is not None:
+                # the recheck of a returned ENERGY spine reads this eval (recheck_spine)
                 _v = np.asarray(e[:, 4:7], np.float64)
-                n_en += crossed_with_energy(d, np.asarray(e[:, 3], np.float64)
-                                            + (_v * _v).sum(axis=1) / 1600.0, DEMO_END_D,
-                                            DEMO_H_MIN)
+                eval_dh.append((d, np.asarray(e[:, 3], np.float64)
+                                + (_v * _v).sum(axis=1) / 1600.0))
+            if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
+                n_en += crossed_with_energy(d, eval_dh[-1][1], DEMO_END_D, DEMO_H_MIN)
             if ALIVE_T:
                 _v = np.asarray(e[:, 4:7], np.float64)
                 n_alive += crossed_and_alive(d, np.asarray(e[:, 3], np.float64)
@@ -17276,6 +17298,8 @@ def main() -> None:
                 if len(e) - 1 - _c > int(0.25 * tps):
                     launches.append(_c)
         bests = np.asarray(bests)
+        if args.auto_spine_energy is not None:
+            AUTO["eval_dh"] = eval_dh             # the latest eval, for recheck_spine
         m = int((bests <= DEMO_END_D).sum())
         if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
             # an energy spine: its success line is no deeper than the greedy, so the quorum
@@ -17647,15 +17671,34 @@ def main() -> None:
         if args.auto_spine_recheck:
             # --auto-spine-recheck: the policy may have moved on while the search ran
             _de_new = float(_f.sample(np.asarray(sp[-1]["origin"], np.float64)[None])[0])
-            if not spine_is_fresh(_de_new, AUTO.get("med"), float(args.auto_spine_gain)):
+            _er = None
+            if args.auto_spine_energy is not None and res.get("energy"):
+                # an ENERGY spine is judged by its own rule, not by the depth gain it can never
+                # pass: stale only if the latest greedy eval already flies it with its energy
+                _er = (_de_new + float(args.demo_success_d),
+                       spine_energy_rule(res, sp[-1], float(args.auto_spine_energy)))
+            _fresh, _n_en = recheck_spine(_de_new, AUTO.get("med"), float(args.auto_spine_gain),
+                                          _er, AUTO.get("eval_dh"), int(args.auto_spine_quorum))
+            if not _fresh:
                 AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
                 AUTO["last"] = int(global_step)
+                if _er is not None:
+                    print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: STALE energy "
+                          f"spine discarded - {_n_en}/{len(AUTO['eval_dh'])} greedy episodes of "
+                          f"the latest eval already cross d <= {_er[0]:,.0f} with energy height "
+                          f">= {_er[1]:,.0f}; next try at step {AUTO['retry_at']:,}", flush=True)
+                    return
                 print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: STALE spine "
                       f"discarded - its end d {_de_new:,.0f} does not beat the latest greedy "
                       f"frontier {float(AUTO['med']):,.0f} by {float(args.auto_spine_gain):g} u "
                       f"(the search started at {med:,.0f}); next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
+            if _er is not None:
+                print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: the energy spine is "
+                      f"fresh - {_n_en}/{len(AUTO.get('eval_dh') or [])} greedy episodes of the "
+                      f"latest eval cross d <= {_er[0]:,.0f} with energy height >= "
+                      f"{_er[1]:,.0f} (the depth gain does not apply to it)", flush=True)
         _reh = None
         if REHEARSE and AUTO.get("trig") == "quorum" and demo.n > 2:
             # --demo-rehearse: the learned line's walked rows, when the new line passes its end

@@ -37,7 +37,8 @@ def test_the_trainer_wires_it():
     assert 'meta["config"]["auto_spine_recheck"] = 1' in src
     # the check sits between loading the spine and resetting the curriculum on it
     i_load = src.index('sp = np.load(res["spine"])')
-    i_chk = src.index("spine_is_fresh(_de_new", i_load)
+    # recheck_spine: spine_is_fresh's call for a depth spine, the energy rule for an energy one
+    i_chk = src.index("recheck_spine(_de_new", i_load)
     i_reset = src.index("demo.reset_spine(sp)", i_load)
     assert i_load < i_chk < i_reset
 
