@@ -47636,3 +47636,41 @@ from scratch, seed 0, one RTX 4080 SUPER (60720975). Stopped by pid at 4,276.6M 
 * Princessburglar: v14 from scratch (`ab7c_b14`) left the start room by about 1.96B (running); the warm v14
   instrument from the wall-pass weights (`abw16_1`, sub-agent U) reaches 42.9% best (3/9) at 6.57B, mostly
   by training, past October's round-2 end (20.4%).
+
+## 2026-11-15 13:55 UTC: princessburglar interim - v14 from scratch stuck at the x -1,005 wall about 390 u of energy short; the warm v14 instrument passes October's gates 17, 18 and 19 (64.9%)
+
+Interim; nothing here is final. Percentages and finishes are the grader's (score.py in wt/ab14b).
+
+### v14 from scratch (`ab7c_b14`, RTX 5080 box 60637836, pre-launch f811242a)
+
+| step | grader best / median | where the greedy ends |
+|---|---|---|
+| to 4,605.9M | 3.2% / 3.1-3.2% | east of the start room |
+| 4,681.4M-4,907.9M | 4.6-4.7% / 4.0-4.6% | |
+| 4,983.4M-7,625.8M | 6.5-6.9% / 6.4-6.9% | reaches the x -1,005 wall at t about 9-11 s, turns back east |
+
+* Searches: 4 (4.21B, Monte Carlo, 882 states) walked back to state 0 by about 5.1B; 5 (4.98B) stale by
+  89 u; 6 (5.41B): beam, Monte Carlo and GE stages 1-4 found nothing 200 u deeper, the ENERGY stage found a
+  line to 6.67% with +189 u over the held line (h 3,241), discarded as stale (8/9 greedy episodes already
+  cross d <= 53,440 with h >= 3,166); 7 (6.62B, Monte Carlo, 1,200 states, +204 u) ends at (-950, -2,989,
+  z 3,181), the wall approached higher; 8 running from 7.40B.
+* The wall, measured where each greedy episode first passes x -850 (energy height h = z + |v|^2/1,600):
+  this run at 7.63B arrives at z 3,150-3,171, horizontal speed 546-565, vz -38..+14, h 3,337-3,379 (8/9;
+  at 5.13B it reached the wall at z about 3,005 and low speed). The warm energy instrument's last eval
+  (abegy_3, 5.67B; 2cd67be3), where 5/9 clear the wall, arrived at z 3,312-3,319, speed 737-762, vz
+  +318..+365, h 3,715-3,761; its two failures arrived at h 3,037-3,065. So the from-scratch greedy is about
+  390 u of energy height short of the line that clears the wall; search 7 raised it by about 300 u.
+* The box is extended to 16:10 UTC; the cut stays as fixed (12B, or the first finish + 5 evals).
+
+### The warm v14 instrument (sub-agent U; `abw16_*`, RTX 5080 box 60770105)
+
+* Same 160 tokens from the abegy_3 wall-pass weights (md5 34feb8f8). October's gate 17 (the 56.6% shaft
+  climb) from 7.694B, flat about 1.0B; search 1 of abw16_3 (9.12B, Monte Carlo, 5,289 states to 57.0%);
+  then training took 8/9 to 61.2-61.4% at 9.798B (gate 17 passed). Search 2 (9.92B, tree, 10,620 states to
+  63.4%); 2/9 at 64.7-64.8% at 10.931B (gates 18 and 19 passed); best 64.91% at 11.002B (abw16_4).
+* Between, repeated collapses: up to 8/9 greedy episodes back at the 12.5% catch while the walk-back works
+  far rows of a long line, recovered each time within 1-3 evals.
+* Operator changes, said here: the 11.0B step cap was lifted at 13:10 UTC while bests grow; at 13:30 UTC
+  the 1.0B flat clock was set to run from the later of the last new best and the last adopted deeper line.
+  Stops: flat 1.0B, box $2.5 in total, credit $12, first finish + 2 evals. U's full body follows at its end.
+* Credit $14.29 at 13:54 UTC; reserve $10; no new rentals.
