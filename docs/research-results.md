@@ -47575,3 +47575,31 @@ PRE-LAUNCH: `ab7c_b14` = princessburglar FROM SCRATCH with v14 (wt/ab14b d138a73
 the greedy has not left the start room (v7 + band left at ~3.3B, v13 not by 4.0B); else 12B or the first
 finish + 5 evals. The credit left (about $19) cannot carry it to a finish on the gates seen so far; it runs
 to read how far v14 gets from scratch.
+
+## 2026-11-15 08:59 UTC: UNITFARMER2 FINISHES FROM SCRATCH with recipe v14 (first greedy finish 3.10B, best 37.41 s) - v14 finishes FIVE of seven maps with one list
+
+Run `ab8n_u14`: recipe v14 (160 tokens, code ab/share fea35b06; pre-launch 7fda5e6e), surf_unitfarmer2
+from scratch, seed 0, one RTX 5090 (60678705), --maxvel 3500. Stopped by pid at about 3.60B, past its
+cut (the first finish + 5 evals). Finishes from the grader (score.py in wt/ab14u).
+
+### Result: UNITFARMER2 FINISHES FROM SCRATCH WITH v14
+
+* **First greedy finish 1/9 at 3,095,920,640 steps** (37.55 s); then 4, 1, 9, 8, 9, 8 of 9 to
+  3,548.9M = 39 of 54 after the first finish; best **37.41 s** (the record, Fizz: 35.17 s).
+* The path: no dive by 1.0B (the first, trough-side line learned to 99.6%; cut moved, 9b391dfd); dive
+  at 1,359.5M (4/9) / 1,661.5M (9/9); out of the pit at 1,737.0M (grader 49.5%); 99.7% at 2,869.4M;
+  the finish at 3.10B. v7 (7.93B, best 46.05 s) for comparison.
+
+### v14: FIVE of seven maps finished from scratch with one list (only --maxvel follows the map)
+
+| map | first greedy finish | best time | earlier bar |
+|---|---|---|---|
+| petrus | 302.5M (7/9) | 30.10 s | v5 302.5M |
+| celestial | 680.0M (4/9) | 42.81 s | v5 529.0M |
+| blue200 | 982.0M (9/9) | 12.14 s | v5 831.0M |
+| cannonball | 2,416.4M (3/9) | 78.21 s | never with v5/v7; frozen 2.72B |
+| unitfarmer2 | 3,095.9M (1/9) | 37.41 s | v7 7.93B |
+| sidistic | running (cover 50% at 2.04B) | - | v5 5.06B |
+| princessburglar | running from scratch (`ab7c_b14`) | - | never |
+
+* One seed per map; the box (5090) is kept for the next step. Bundle ~/ar_m2/runs/ab8n/ab8n_u14 (OK).
