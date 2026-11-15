@@ -46700,3 +46700,49 @@ launches.
 * Cut (fixed now): the first finish + 2 evals, or 1.5B. If it finishes, the death charge is what
   stops petrus and cannot stay in the recipe as it is; if not, the suspect moves to the LO or the
   band flags.
+
+## 2026-11-15 01:22 UTC: the DEATH CHARGE stalls petrus (without it petrus v10 finishes at 378M) - v10 withdrawn; pb's energy stage takes the greedy over the x -1,015 wall (warm, U); PRE-LAUNCH recipe v12 (v7 + novelty LO 0.05 + band yaw flags + energy stage 150 / success bonus 50, on the recheck fix)
+
+### The death charge stalls petrus; v10 is withdrawn
+
+* Petrus v10 MINUS the death charge (`ab7c_xnd`, 153 tokens, d2f0c4a5): first greedy finish 3/9 at
+  378,011,648 steps (best 31.79 s), then 5, 7, 7, 6 of 9 (best 31.45 s); stopped at 803.7M (cut:
+  first finish + 2 evals). Petrus v10 WITH it: 48% to 1.5B. One change, so the charge is what
+  stopped petrus (the agent stood still in front of the next stretch; a failed attempt is charged,
+  standing still until the stall-kill is not).
+* Cannonball v10 (with it) to 2.85B: 0/9 past the wall in every eval read (route max ~167k; the
+  quiet arm without it passed at 1.66B). Unitfarmer2 v10 dove (755.5M) and sat in the pit to
+  1.81B. Both stopped as superseded; bundles ~/ar_m2/runs/ab8n/ab8n_x10, ~/ar_m2/runs/abv8u/
+  abv8u_x10, ~/ar_m2/runs/ab7c/ab7c_xnd (BUNDLE OK).
+* The death charge leaves the recipe. Cannonball's final descent (63c63d4e) is open again.
+
+### princessburglar: the loop's own energy stage takes the greedy over the x -1,015 wall (warm)
+
+* Sub-agent U's instrument (`abegy`, abpbc_1's own weights at 4.447B + `--auto-spine-energy 150
+  --demo-success-bonus 50`): search 2's energy stage found the energy-keeping landing (a line that
+  surfs the drop at ~1,100 u/s, +278 u of energy height over the policy's own); the recipe's
+  --auto-spine-recheck threw it away as "stale" (an energy spine is never deeper - a generic bug,
+  fixed in ab/recheck-energy 25d3e1c2); taught by hand-holding the line (abegy_2), the greedy
+  learned the landing (8/9 at 5.369B), the next search's tree found a line on the wall's rim, and at
+  5.445B 7 of 9 greedy episodes from the true start clear the wall to 12.0-12.2% of the spawn's d.
+  October's gates 4 and 5. U's full entry follows.
+
+### PRE-LAUNCH: recipe v12 candidate
+
+* v12 = v7 (147 tokens, spawn rows kept) + `--int-coef-progress 2.5:0.05:0.1` + `--demo-front-temp
+  0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks 40` + `--auto-spine-energy 150
+  --demo-success-bonus 50` = 157 tokens, code ab/recheck-energy 25d3e1c2 (= ab/yawabs + the
+  recheck fix), builder abl/launch/mkcfg_v12.py + mk_wave14.sh. No death charge. The GE boost stays
+  v7's `1.0;E1.0`. ONE list for every map; only --maxvel follows the map.
+* Runs from scratch, seed 0, on the three kept boxes: `abv8u_v12` unitfarmer2 (5080 60701154,
+  wt/ab12u fc49e20b, :8643; cut 1.0B no dive, else 9B or first finish + 5 evals); `ab8n_v12`
+  cannonball (5090 60678705, wt/ab12c f686eeec, :8640; cut 3.5B no wall pass, else first finish +
+  5 or 6B); `ab7c_l12` celestial (5080 60637836, wt/ab12l 565ddd0e, :8637; cut first finish + 2
+  evals or 2.0B; v5 529.0M, fix round 1,284.0M). Princessburglar (wt/ab12b 58879436) when a box
+  frees; then petrus, blue200, sidistic.
+* CPU smoke of the complete v12 command line (unitfarmer2, 40,960 steps, wt/ab12u): rc 0 ("--auto-spine-
+  energy 150: when no line is deeper, the search looks for one keeping >= 150 u more energy height").
+  U's notes, kept as reads: the GE ladder was not needed (the energy line came from the energy stage,
+  the rim line from the tree); an async search with the energy stage runs about 35 min against the
+  2,400 s timeout (the energy stage runs last and is what a timeout would cut); under the bonus
+  abegy's yaw sigma rose 0.027 -> 0.125 and its greedy wandered east for 4 evals - watch for it.
