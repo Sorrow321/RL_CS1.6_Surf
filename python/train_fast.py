@@ -4237,6 +4237,27 @@ def int_coef_progress_start(intp) -> float:
     return float(intp[0])
 
 
+def int_coef_progress_knee(intp) -> float:
+    """--int-share-max: the progress past which the cap acts - P in the HI:LO:P form, the second
+    point's progress in a point list (the end of its first segment; a single point's own)."""
+    if isinstance(intp, ProgressPoints):
+        return float(intp[1][0] if len(intp) > 1 else intp[0][0])
+    return float(intp[2])
+
+
+def share_cap_step(m: float, ip: float, ext: float, s: float) -> float:
+    """--int-share-max S: the cap's multiplier after one iteration in which the novelty paid
+    ``ip`` and everything else ``ext`` over the same ticks. The novelty may be at most S of the
+    return, i.e. ip <= S / (1 - S) x |ext|; the multiplier moves by the square root of the factor
+    that would make it so (x0.25 to x4 per iteration, --int-match's step), stays in [1e-4, 1]:
+    ONE-SIDED - it pulls the coefficient down and relaxes back to the gate's, never above it. An
+    iteration with no novelty paid or nothing else paid leaves it."""
+    if not (ip > 1e-9 and abs(ext) > 1e-9):
+        return float(m)
+    f = min(4.0, max(0.25, (float(s) / (1.0 - float(s)) * abs(float(ext)) / float(ip)) ** 0.5))
+    return float(min(1.0, max(1e-4, float(m) * f)))
+
+
 def parse_yaw_entropy_progress(spec) -> tuple:
     """--yaw-entropy-progress 'HI:LO:P' -> (HI, LO, P): HI, LO >= 0, 0 < P <= 1 (the
     --int-coef-progress form; the coefficient at a progress is int_coef_at's)."""
@@ -7944,6 +7965,20 @@ def main() -> None:
                          "and HI:LO:P itself is read as before. Off = byte-identical; config "
                          "only when on (a point list as [[progress, coefficient], ...]); the "
                          "coefficient and the reading are checkpointed, the flag is not restored")
+    ap.add_argument("--int-share-max", type=float, default=None, metavar="S",
+                    help="--int-coef-progress: a ONE-SIDED cap on the count novelty's share of "
+                         "the return past the gate's knee (P of HI:LO:P, a point list's second "
+                         "point). After every iteration a multiplier m in [1e-4, 1] on the gate's "
+                         "coefficient moves (--int-match's step: the square root of the needed "
+                         "factor, x0.25 to x4) so that the novelty paid over the iteration's ticks "
+                         "stays <= S / (1 - S) x |everything else paid over them|; it only pulls "
+                         "the coefficient down and relaxes back to the gate's. Below the knee (and "
+                         "before the first reading) the gate's coefficient stands. --unstuck's "
+                         "(1 + T) multiplies the capped value. ab/share, 2026-11-15: the share, "
+                         "not the coefficient, is what separates runs across maps - 0.25 is "
+                         "16-23%% of celestial's return and 84-86%% of cannonball's; the runs "
+                         "that moved sat at 15-23%% on both. Off = byte-identical; config only "
+                         "when on; m is checkpointed, the flag is not restored")
     ap.add_argument("--int-split", action="store_true",
                     help="two-head critic with a NON-EPISODIC intrinsic return "
                          "(Burda et al., RND, ICLR 2019 sec. 2.3; docs/int_split.md): "
@@ -11474,6 +11509,27 @@ def main() -> None:
                   f"coefficient (not --int-coef {float(args.int_coef):g}) is {INTP[0]:g} at "
                   f"frontier progress 0, falling linearly to {INTP[1]:g} at {INTP[2]:.0%} of the "
                   f"spawn's d, read at every greedy eval (the median contact-banked deepest d)")
+    # --int-share-max: a one-sided cap on the novelty's share of the return past the gate's knee
+    ISM = float(args.int_share_max) if args.int_share_max is not None else 0.0
+    ISM_KNEE = None
+    if args.int_share_max is not None:
+        if not 0.0 < ISM < 1.0:
+            raise SystemExit(f"--int-share-max S is a share of the return: 0 < S < 1, got "
+                             f"{args.int_share_max!r}")
+        if INTP is None:
+            raise SystemExit("--int-share-max caps the novelty past --int-coef-progress's knee: it "
+                             "needs --int-coef-progress")
+        if INT_SPLIT:
+            raise SystemExit("--int-share-max measures the novelty IN the reward; --int-split "
+                             "moves it to its own stream - pick one")
+        if args.reward_per_decision:
+            raise SystemExit("--int-share-max sums the reward per physics tick; "
+                             "--reward-per-decision is not implemented with it")
+        ISM_KNEE = int_coef_progress_knee(INTP)
+        print(f"--int-share-max {ISM:g}: past frontier progress {ISM_KNEE:.0%} (the gate's knee) "
+              f"the gate's novelty coefficient is multiplied by m in [1e-4, 1], moved after every "
+              f"iteration so the novelty paid stays <= {ISM / (1.0 - ISM):.3g} x |the rest of the "
+              f"reward| over the same ticks (at most {ISM:.0%} of the return); one-sided")
     if args.int_gamma is None:
         args.int_gamma = 0.99
     if args.int_vf is None:
@@ -16230,6 +16286,8 @@ def main() -> None:
         meta["config"]["int_coef_progress"] = INTP.config()
     elif INTP is not None:
         meta["config"]["int_coef_progress"] = [float(v) for v in INTP]
+    if ISM:
+        meta["config"]["int_share_max"] = ISM
     if YEP is not None:
         meta["config"]["yaw_entropy_progress"] = [float(v) for v in YEP]
     if CRL:
@@ -19025,6 +19083,22 @@ def main() -> None:
         for _s in slots:
             _s.reward_fn.int_coef = float(INTP_ST["coef"])
 
+    # --int-share-max: the cap's multiplier (checkpointed) on the gate's coefficient, acting only
+    # while the gate's frontier reading is at or past its knee
+    ISM_ST = {"m": 1.0, "rsum": 0.0}
+
+    def _ism_active():
+        p = INTP_ST["progress"]
+        return bool(ISM) and p == p and p >= ISM_KNEE
+
+    if ISM:
+        if ck is not None and ck.get("int_share_max") is not None:
+            ISM_ST["m"] = float(ck["int_share_max"]["m"])
+            print(f"--int-share-max: restored the cap's multiplier {ISM_ST['m']:.4g}", flush=True)
+        if _ism_active():
+            for _s in slots:
+                _s.reward_fn.int_coef = float(INTP_ST["coef"]) * ISM_ST["m"]
+
     # --yaw-entropy-progress: the share and the frontier reading it came from (checkpointed);
     # a fresh run starts at HI. The loss reads the 0-d tensor, rewritten in place
     YEP_ST = {"progress": float("nan"), "coef": None if YEP is None else float(YEP[0]),
@@ -19069,13 +19143,18 @@ def main() -> None:
             return
         c = int_coef_progress_at(prog, INTP)
         INTP_ST.update(progress=float(prog), coef=float(c))
+        cap = ""
+        if _ism_active():
+            # --int-share-max: past the knee the cap's multiplier rides on the gate's value
+            cap = f" (the gate's {c:.4g} x {ISM_ST['m']:.4g} under --int-share-max)"
+            c = c * ISM_ST["m"]
         if INT_BASE is not None:
             INT_BASE[:] = [c] * len(INT_BASE)
         mult = (1.0 + float(unstuck_T)) if UNSTUCK_INT else 1.0
         for _s in slots:
             _s.reward_fn.int_coef = c * mult
         print(f"[{global_step:>13,d}] --int-coef-progress: greedy frontier {prog:.2%} of the "
-              f"spawn's d -> novelty coefficient {c:.4g}"
+              f"spawn's d -> novelty coefficient {c:.4g}" + cap
               + (f" (x {mult:.2f} under --unstuck)" if mult != 1.0 else ""), flush=True)
 
     unstuck_sched, unstuck_T, INT_BASE, UR = None, 0.0, None, None
@@ -19191,6 +19270,9 @@ def main() -> None:
     # --int-match: the reward the fleet was paid this iteration (novelty included), and the note
     imatch_rsum = 0.0
     imatch_note = ""
+    # --int-share-max: the same sum for the cap, and its note
+    ism_rsum = 0.0
+    ism_note = ""
     ARCH = None
     if ARCHIVE:
         from surfgym.archive import PredecessorArchive
@@ -19319,6 +19401,9 @@ def main() -> None:
             # the novelty the run had reached until its next greedy eval
             state["int_coef_progress"] = {"progress": float(INTP_ST["progress"]),
                                           "coef": float(INTP_ST["coef"])}
+        if ISM:
+            # --int-share-max: the cap's multiplier, so a resume keeps the share it had reached
+            state["int_share_max"] = {"m": float(ISM_ST["m"])}
         if YEP is not None:
             # --yaw-entropy-progress: likewise, the yaw entropy share a resume keeps
             state["yaw_entropy_progress"] = {"progress": float(YEP_ST["progress"]),
@@ -21490,6 +21575,8 @@ def main() -> None:
                         r_acc += r
                         if IMATCH:
                             imatch_rsum += float(r.sum())
+                        if ISM:
+                            ism_rsum += float(r.sum())
                         if INT_SPLIT:
                             rint_acc += _int_r()
                     ended_acc |= ended
@@ -22505,6 +22592,27 @@ def main() -> None:
                 imatch_note = (f"  int-match c {slots[0].reward_fn.int_coef:.4g} (novelty "
                                f"{_ip:,.0f} vs rest {_ext:,.0f} this iter)")
                 imatch_rsum = 0.0
+            if ISM:
+                # --int-share-max: this iteration's novelty paid vs the rest, over the same ticks;
+                # past the gate's knee the multiplier moves, and the base --unstuck multiplies
+                # (below) is the gate's coefficient x the multiplier
+                _ip = (float(rs["int_per_ep"]) * float(rs["episodes"])
+                       if rs["episodes"] and rs["int_per_ep"] == rs["int_per_ep"] else 0.0)
+                _ext = ism_rsum - _ip
+                ism_rsum = 0.0
+                if _ism_active():
+                    ISM_ST["m"] = share_cap_step(ISM_ST["m"], _ip, _ext, ISM)
+                    _cb = float(INTP_ST["coef"]) * ISM_ST["m"]
+                    if INT_BASE is not None:
+                        INT_BASE[:] = [_cb] * len(INT_BASE)
+                    _mu = (1.0 + float(unstuck_T)) if UNSTUCK_INT else 1.0
+                    for _s in slots:
+                        _s.reward_fn.int_coef = _cb * _mu
+                    _sh = _ip / (abs(_ext) + _ip) if (abs(_ext) + _ip) > 0 else float("nan")
+                    ism_note = (f"  share-cap m {ISM_ST['m']:.3g} (novelty {_ip:,.0f} vs rest "
+                                f"{_ext:,.0f}: {_sh:.0%} this iter)")
+                else:
+                    ism_note = "  share-cap off (below the knee)"
         # dip/*: the setback diagnostic (surfgym/dipmeter.py). Drained
         # EVERY iteration whether or not the reward is a RaceReward, so the
         # accumulator can never run away on a non-race arm; a fleet with no
@@ -23599,7 +23707,7 @@ def main() -> None:
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
-              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{novel_note}{fpert_note}"
+              f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{ism_note}{novel_note}{fpert_note}"
               + (f"  greedy {GREEDY.size:,}x{GREEDY.mixed}" if GREEDY is not None else ""))
         tm.flush(it_no)
         if D.enabled:

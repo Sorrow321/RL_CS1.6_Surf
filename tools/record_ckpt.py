@@ -215,6 +215,8 @@ TRAIN_ONLY = frozenset({
     "int_match",
     # --int-coef-progress: the novelty coefficient set from the greedy frontier - TRAINING only
     "int_coef_progress",
+    # --int-share-max: a cap on that coefficient's share of the return - TRAINING only
+    "int_share_max",
     # --yaw-entropy-progress: the yaw head's TRAINING entropy share set from the greedy frontier
     "yaw_entropy_progress",
     # --ramp-offtarget-pen: a TRAINING charge for surfing a ramp the planner did not ask for
