@@ -47055,3 +47055,99 @@ of finished arms were removed (branches kept on origin), 14 GB free.
   the greedy at grader 92.5% (median 92.5% at 2,039.0M) and 0 finishes. The run goes on to 2.5B, or the
   first finish + 2 evals. Nothing else changes. Before it: the fork passed at 1.28-1.36B (31% -> 92.3%),
   as v12's did late (v5: first finish 529.0M).
+
+## 2026-11-15 04:36 UTC: why celestial is slow under v12/v13 (sub-agent P): the novelty in force at the fork predicts the crossing (0.25: 0.15-0.68B; 0.05: 1.28-1.89B; 2.5: 2.11B / never); 92.5% is a paid fall into a pit beside an unpaid loop; search 4's finishing line ends in an edge touch the policy cannot repeat
+Sub-agent P, wave 15: why celestial is slow under the new recipes (v12 ab7c_l12, v13 ab7c_l13)
+against v5 (ab4u_c5, first finish 529M). Analysis only: no rental, budget $0. The live v13 run
+(162.213.119.141:42070) was only read: its launch log, run.json, searches k01-k04 without
+checkpoints, and the 1.81B, 1.96B, 2.04B, 2.11B and 2.19B evals, pulled to
+`~/ar_m2/runs/trough/ab7c_l13/`. Field: goalc_32. Finish: the manual box x 6,960.9-6,968,
+y 5,007-6,595, z -3,525..-2,209.
+
+### 1. What is at 92.5%: a pit the greedy flies into off the end of the upper ramp
+
+* The 92.5% misses all end the same way: min d 4,581-4,602 at (5,339, 1,861, z -5,380), then
+  they die at z -5,6xx (vz -1,9xx). That was 8 of 9 episodes at 2.04B, 6 of 9 at 2.11B and
+  4 of 9 at 1.96B.
+* Their last contact is at 39.7-40.3 s on an UPPER ramp: x 3,8xx-4,2xx, y -1,8xx..-6xx,
+  z -3,3xx..-3,4xx, 2,0xx-2,2xx u/s. They stay within ~300 u of the finishing line's path
+  (search 4) to 39.9-40.7 s, then fly on north-east off the ramp's end and fall into the pit.
+* The finishing route DROPS from that ramp to a lower one (z -5,44x along x ~3,900, y -30 to
+  +2,400). Search 4's line does it at rows 5,260-5,440 (40.3-41.7 s) with a loop south, west,
+  then north. Along that loop the field RISES 774 u (7,107 -> 7,881), unpaid by the ratchet.
+  The fall into the pit is paid from 7,1xx down to 4,58x.
+* v5's finishers take the lower ramp too: 36 u from search 4's line at 44.9 s. They launch from
+  it at 46.3-48.1 s, from (4,2xx-4,3xx, 4,2xx-4,6xx, z -4,5xx..-4,7xx) at 2,340-2,407 u/s
+  climbing, and enter the finish box's middle at z -2,636..-2,862.
+* The other v13 misses: 1-8 of 9 per eval die earlier at ~77% (x 7,0xx-7,4xx, y -5,2xx..-6,6xx),
+  and 1-3 at the fork.
+
+### 2. Why the curriculum cannot learn the last ~220 rows: the line's finish is an edge touch
+
+* Search 4 (1.75B, tree, 5,985 states, end d 0) finishes by a marginal air maneuver, not a fall
+  and not a timing trick.
+  * It rides the lower ramp to its far end, past the box's north edge: (5,820, 6,613, -4,557)
+    at row 5,830.
+  * Its last contact is at row 5,844. It then flies east and up and passes 300 u UNDER the box's
+    bottom edge (row 5,920: x 6,999, z -3,824).
+  * It strafes back west in the air (vx -1,172 at row 5,950) and touches the box at its lowest
+    17 u (row 5,984: z -3,508, the bottom is -3,525).
+  * v5's finishes cross the box 600-900 u above that edge, after a launch ~1.3 s earlier on the
+    same ramp (about the line's row 5,680).
+* The walk-back on it:
+  * 1.76B: row 5,949 at 100%.
+  * 1.78B: row 5,804 at 4%.
+  * 1.78B-2.20B: rows 5,749-5,824 at 4-37%, mostly 12-30%. It never moved past row 5,749.
+* From 1.7 s before the end (row ~5,760, on the lower ramp past the robust launch point), the
+  only finish left is the edge touch, and the policy repeats it 12-30% of the time.
+* So the walk-back never reaches the drop to the lower ramp (rows ~5,260-5,500), which is where
+  the greedy actually fails.
+
+### 3. The likeliest v13 piece: novelty LO 0.05 at the fork and at the drop
+
+| run | novelty in force when the greedy reached the fork (~30%) | cover >= 40% (past the fork) | first finish |
+|---|---|---|---|
+| ab4u_c5 (v5) | 0.25 (gate LO; 0.60 at 76M) | 0.15B | 0.53B |
+| ab7c_1 (v5 settings, newer code) | 0.25 (gate LO) | 0.15B | 0.76B |
+| ab6c_1 | 0.25 (constant) | 0.30B | 0.91B |
+| fxcel_t1 (frozen + Go-Explore, 10 ms) | 0.25 (constant) | 0.68B | 1.28B |
+| ab7c_l13 (v13) | 0.05 (gate LO, x1.2 under unstuck) | 1.28B | none by 2.19B |
+| ab7c_l12 (v12) | 0.05 (gate LO; it sat at 0-1% to 0.38B on 2.5) | 1.89B | none by 2.04B |
+| ab5c_1 | 2.5 (constant) | 2.11B | none by 2.49B |
+| ab3cc_1 (2.5 + the all-in groups) | 2.5 (constant) | never in 2.87B | none |
+
+* The table is U-shaped. With 0.25 at the fork, 4 of 4 runs cross it in 0.15-0.68B. With 0.05,
+  it takes 1.28B and 1.89B; with 2.5, 2.11B or never. The w5 entry found 2.5 too high (an
+  alternation between the mirrored sides); 0.05 is too low.
+* v13 reached the fork at 0.15B, when v5 and ab7c_1 were already past it, and sat there to
+  1.28B. Until search 1's line was adopted at 0.41B there was no held line, so the energy stage,
+  the success bonus (scoped to energy lines in v13) and the patience cap could not act.
+* The band flags (`--demo-front-temp 0.5 --demo-front-ticks 40 --demo-front-yaw-abs 0.066`) act
+  only for 40 ticks (0.3 s) after a band spawn. Before 0.41B that band is spine0, the map start,
+  10+ s before the fork.
+* So from 0.15B to 0.41B, v13's fork differs from v5/ab7c_1's only in LO (plus seed and code).
+* The end fits the same reading:
+  * The drop to the lower ramp is a loop the field charges 774 u for and the ratchet does not
+    pay; the novelty is what pays such a detour, and v13 pays 5x less than v5.
+  * v5, ab7c_1 and ab6c finished 0.38-0.61B after their fork crossings. v13 is at 0.91B after
+    it and counting.
+* v12's own extra loss (0.4B stuck at the start) does not bear on this.
+* Petrus finishing on LO 0.05 in 378M says petrus does not need novelty past 10% progress.
+  Celestial does.
+* One seed per run throughout.
+
+### 4. The single test
+
+* v13 with ONE change, `--int-coef-progress 2.5:0.25:0.1` (LO 0.25, as v5), from scratch on
+  celestial, one seed.
+* Read the step at which the greedy passes the fork (cover >= 40%): v5/ab7c_1 0.15B, ab6c 0.30B,
+  v13 1.28B. Then the drop and the finish: v5-like runs finished 0.4-0.6B after the fork.
+* Cut at the first finish + 2 evals, or at 1.2B.
+* Fork by ~0.3B: LO is the cause. A finish by ~1B as well: LO explains the end too. Fork after
+  ~1B: look at the band/energy pieces or the seed.
+* If LO is the cause, it conflicts with whatever chose 0.05 (the cannonball LO test, 14ab25d3),
+  and the same-value rule then needs one gate setting that serves both maps.
+* Search 4's edge-touch line is a separate weakness: a tree search keeps its first finishing
+  rollout however marginal, and the curriculum then sits on it. Nothing here tests a remedy.
+* Scripts: celends.py and the inline measurements, in
+  `/tmp/claude-1000/-home-steam-ar-pb-wt-pbx/4506c754-e96e-459e-bf18-9528f3f92771/scratchpad/abl/trough/`.
