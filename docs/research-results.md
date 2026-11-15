@@ -47047,3 +47047,11 @@ of finished arms were removed (branches kept on origin), 14 GB free.
   :8637; first finish + 2 evals or 2.0B); `abpbc_v13` princessburglar (wt/ab13b 5ba8b26e, :8642;
   3.0B if not out of the room, else 12B / first finish + 5); `ab12s_v13` sidistic (wt/ab13s 70a8bf59,
   :8644; first finish + 2 evals or 9B). Petrus and blue200 follow on the first free box.
+
+## 2026-11-15 04:26 UTC: celestial v13 - no finish by its 2.0B cut but a finishing line is held; cut moved to 2.5B
+
+* CUT CHANGED, said here (celestial v13, `ab7c_l13`; cut fixed in 93f8fb48: the first finish + 2 evals, or
+  2.0B): at 2.0B the loop held a FINISHING line - search 4 (1,754.8M, tree, 5,985 states, end d 0) - with
+  the greedy at grader 92.5% (median 92.5% at 2,039.0M) and 0 finishes. The run goes on to 2.5B, or the
+  first finish + 2 evals. Nothing else changes. Before it: the fork passed at 1.28-1.36B (31% -> 92.3%),
+  as v12's did late (v5: first finish 529.0M).
