@@ -47462,3 +47462,18 @@ unless marked frozen.
   `ab7c_p14` petrus (wt/ab14p 47ef8bb6), then `ab7c_w14` blue200 (wt/ab14w 552ea70b), then `ab7c_l14`
   celestial (wt/ab14l 8a3937a2); tunnel :8637. Cuts (fixed now): the first finish + 2 evals, or petrus
   1.5B, blue200 2.5B, celestial 2.0B. Bars: v5 302.5M / 831.0M / 529.0M.
+
+## 2026-11-15 05:50 UTC: pb v13 stopped at its cut (still in the start room at 3.99B; box released); sidistic v13 stopped (behind v5, the quiet novelty); PRE-LAUNCH sidistic v14
+
+### princessburglar v13 and sidistic v13 stopped
+
+* `abpbc_v13` (pb, v13): still in the start room at 3,992.5M (grader 0.4% in every eval), past its
+  3.0B cut (93f8fb48); its search 1 line (0.54B) left the room but the walk-back never brought the
+  greedy out (v7 + band, `abpbc_1`, left at ~3.3B; one seed each). Box 60688276 RELEASED (budget:
+  the long pb runs cannot finish within the credit left). Bundle ~/ar_m2/runs/abpbc (OK).
+* `ab12s_v13` (sidistic, v13 = LO 0.05): cover 27.4% at 2.79B against v5's 45.9-65.6% at 2.0-2.9B -
+  the quiet novelty again (sidistic's novelty share at 0.25 was 33-40%). Stopped at 2,800.2M.
+
+### PRE-LAUNCH: `ab12s_v14` = sidistic from scratch with v14 (wt/ab14s 13dc74e1, the 160 tokens of
+eba49ed4) on the 4080S box 60720975, tunnel :8644. Cut (fixed now): first finish + 2 evals, or 9B
+(v5 first finish 5,058.9M). Note: the share cap pulls sidistic from 33-40% to 25% - P's open risk.
