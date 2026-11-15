@@ -46990,3 +46990,26 @@ PRE-LAUNCH: `ab12s_1` = sidistic FROM SCRATCH with recipe v12 (the 157 tokens of
 new box (5080 class), tunnel :8644. Bars: v5 first finish 5,058.9M, fix round 8,380.7M. Cut (fixed now):
 the first finish + 2 evals, or 9.0B. Also: the disk of the droplet reached 99% (2.6 GB free); 70 worktrees
 of finished arms were removed (branches kept on origin), 14 GB free.
+
+## 2026-11-15 02:25 UTC: v12 breaks the unitfarmer2 dive (none by 1.0B) and stalls celestial at the fork - suspect the unscoped success bonus; PRE-LAUNCH unitfarmer2 with v11 (v12 without the energy pair)
+
+### v12 on unitfarmer2 (`abv8u_v12`): NO DIVE by its 1.0B cut; celestial v12 stuck at the fork
+
+* Unitfarmer2: 0 of 9 greedy episodes below z 0 in every eval to 1,057.5M; stopped by pid at
+  1,130.4M. Its search 1 (402M, tree) handed back a 760-state line to d 27,739 that the curriculum
+  learned (98.7% from state 0); the greedy frontier sat at 28,568 (the trough side), not in the pit.
+* Celestial (`ab7c_l12`, still running, cut 2.0B): grader 29.3-31.6% from 1.13B to 1.36B - the
+  fork (v5 finished at 529M, v3 at 755.5M).
+* Reading (not proven): `--demo-success-bonus 50` pays reaching the end of WHATEVER line the loop
+  holds, so on unitfarmer2 the held trough-side line outbids the novelty-driven dive and on
+  celestial it pins one fork side; sub-agent U saw the same bonus raise abegy's yaw sigma 0.027 ->
+  0.125. The energy stage needs a bonus because its lines are not deeper on the field; depth lines
+  are paid by the field. Asked of U: the bonus SCOPED to energy-stage lines (v13).
+
+### PRE-LAUNCH: `abv8u_v11` = unitfarmer2 from scratch with v11 (v12 without the energy pair)
+
+* The 153 tokens of v7 + novelty LO 0.05 + band yaw flags (= petrus's finishing arm ab7c_xnd,
+  d2f0c4a5, maxvel 3500), code ab/yawabs c8595e54, worktree ~/ar_m2/wt/ab11u (ab/ab11u 715cebde),
+  the 5080 box 60701154, tunnel :8643. What it answers: does the dive come back without the bonus
+  (v7: 378M), and does the rest of v13 (v11 + a scoped energy pair) carry unitfarmer2.
+* Cut (fixed now): 1.0B if no greedy below z 0; else 9B, or the first finish + 5 evals.
