@@ -47731,3 +47731,293 @@ Interim. Grader percentages (score.py in wt/ab14b); the wall read is abl/pbwall/
 * Every earlier princessburglar finish of ours is sim-only (the 128-entity table bug, fixed 6bd7f931); this is
   the first on the fixed core. The run stops after 2 more evals (its rule), U bundles and releases; U's full
   body follows.
+
+## 2026-11-15 15:56 UTC: FINAL - the warm v14 princessburglar instrument (sub-agent U, abw16_1..4): first greedy finish 6/9 at 13.04B (64.27 s), WARM, not from scratch; full lineage, gates, searches, stops
+
+Sub-agent U, wave 16: princessburglar past gate 6? A WARM instrument from the wall-pass lineage on
+recipe v14's tokens. PRE-LAUNCH (written before the run; results appended below by the same
+hand).
+
+### The question
+
+v14 (v7 + the band flags + the energy stage with the scoped bonus + --int-share-max 0.25) finishes
+five of seven maps from scratch (ledger a9536fde). A pb v14 run from scratch is under way
+(ab7c_b14), but the credit cannot carry it to a finish. This run asks the cheaper question from
+the furthest pb policy we have: do v14's mechanisms carry the greedy past gate 6 (October's
+12.5% U-turn climb) and further? Read how far it gets, which gates stop it, and which search
+stage found each line.
+
+### The arm (one box <= $0.35/h, budget $1, one seed)
+
+* Weights: abegy_3's last checkpoint (md5 34feb8f8, ~5.747B). The lineage:
+  - abpbc_1, v7 + the band flags from scratch, to the gate-4 hollow;
+  - abegy_1 / abegy_2, the energy stage's surf line taught: the greedy cleared the x -1,015
+    wall at 5.445B, 7/9, and 9/9 at 5.448B;
+  - abegy_3, search 2's Monte Carlo line held: 5/9 over the wall at 5.674B, best 13.43% at the
+    foot of the gate-6 climb, after a start collapse.
+  It is preferred to abegy_2's ckpt_final (md5 ab7ab147) because it is further along on the
+  gate-6 line: abegy_3's walk-back was at row 234 of 2,300 at its end.
+* Every line in the lineage is the loop's own search on the lineage's own weights (the k04
+  tree, the energy stage's surf, the rim tree line, the MC line); no demo or record data.
+* Held line: abegy_2 search 2's MC line (2,300 rows to d 50,070 = 12.39%; md5 80405d3a, keys
+  228c3fa3) with --demo-tau0 234, where abegy_3 left it (a checkpoint does not carry the
+  curriculum position). SELF_STATES=1 with that provenance.
+* Code: ab/share fea35b06 (v14; my recheck fix 25d3e1c2 and scoped bonus 368122ea inside).
+* Flags: ab7c_b14's own 162 tokens (wt/ab14b), minus --envs 1024 (box.py's resume passes it
+  itself), --obs-normal 1, --simba 1 (the checkpoint restores them) and --auto-spine-scratch,
+  plus the held line's three flags: 161 tokens. Everything else is v14 as it runs from scratch.
+  That includes async search, --auto-spine-delay 3e8 (counted from the resume, so no search
+  before +300M), patience 3e8 with patience-tau, the banked frontier, the recheck, and the
+  scoped bonus (the MC line is a depth line, so no bonus until an energy spine is held).
+* The weights were trained under v7 and then the abegy settings (unscoped bonus, ladder, sync
+  search). v14 differs in the novelty share cap, the scoped bonus and `1.0;E1.0`. The first
+  evals show how the policy takes the change.
+* box.py launch --resume --steps 1.5e9: the trainer stops itself 1.5B steps after the resume.
+  Watchdog with the harvest spec and pid file, tunnel 8631, the box released when the run
+  ends.
+
+### Reads
+
+* Per greedy eval on goalc_32 (d0 57,149): raw deepest %, the contact-banked median, and how
+  many of 9 are past 7.5% (over the x -1,015 wall), 12.5% (gate 6), 13.6% and 16%. Where the
+  episodes end.
+* The walk-back on the held line, and every later line.
+* Each search: trigger (quorum or patience), which stage handed the line back (tree, MC, GE
+  held / contact / E, energy stage, fallback), its end (d, position), and refusals.
+* October's gates past 12% on the old core (its own lines; for reading positions only):
+  - 12.5%: the U-turn climb at x ~-3,250..-3,490 up to z ~3,000-3,080, "energy again
+    (~500 u)";
+  - 13%: a fall catch under that climb, z ~2,933;
+  - 15.36%: an impact at (-1,965, -2,516, 2,991);
+  - 16%: a fall catch at x -2,050..-2,250;
+  - an impact before 18.57%;
+  - round 2 ended at 20.414%.
+
+### Predictions, stated now
+
+* The greedy re-crosses the wall within the first evals (9/9 at abegy_3's first eval). It may
+  dip once while the walk-back moves (the start collapses seen in abegy_2, abegy_3 and the
+  control).
+* The first search comes at >= +300M (the delay). Its tree or MC from the true start reaches
+  the climb's foot (12.4-13.4%). Whether a line goes up the climb depends on energy: if it is
+  energy-limited (October: ~500 u short), the energy stage is the stage that can hand back a
+  line there.
+* Likely stop: the 13% fall catch, or the climb itself within 1.5B.
+
+### Results (written after the runs)
+
+**Plainly: a WARM result on the fixed core. It is NOT a from-scratch v14 result.** The greedy's
+first finish came 7.30B steps after a resume from a 5.74B-step pb lineage. That lineage ran v7 +
+the band flags, then the abegy energy instrument, before v14's tokens were put on it. Every
+segment ran on code that contains the core table fix 6bd7f931 (checked: an ancestor of 01293a30
+and of fea35b06). Every line any segment held was the loop's own search on the lineage's own
+weights from the true spawn: no demo, record or human data at any point (SELF_STATES=1 with the
+provenance below). What v14 does on pb from scratch is ab7c_b14's question, not this run's.
+
+**The finish.** Verified by the operator at 15:28 UTC with the grader (score.py in wt/ab14b,
+clip-hull finish): traj_13040091136 = 6/9 finishes, best 64.27 s, score 114.524. My count from
+the recorder footers: 64.27, 64.37, 64.58, 64.86, 65.04, 65.46 s. The other three stopped at the
+61% stop (2) and at 6.6% (1, by the x -1,015 wall). The next two evals finished 1/9 each (64.26 s
+at 13.116B, 64.58 s at 13.191B; my count, not graded), with 5/9 back at gate 6 (a collapse,
+below). A first finish, not a consolidated one.
+
+**The lineage: steps, code, what ran, the line held (all the loop's own), the weights out.**
+
+* abpbc_1: 0 -> 4,447,010,816, FROM SCRATCH. Code ab/abpbc 01293a30 (= ab/yawabs c8595e54 +
+  the wave-10 config). v7 + the three band flags (--demo-front-temp 0.5 --demo-front-yaw-abs
+  0.066 --demo-front-ticks 40). Lines: its own searches (--auto-spine-scratch; run.json
+  demo_file null). Out: ckpt_latest at 4.447B, md5 a7b6c380, copied read-only (abpbc_1 itself
+  ran on as the w11 control).
+* abegy_1: 4,447,010,816 -> 5,012,193,280. Code 01293a30. The w11 energy instrument: abpbc_1's
+  tokens + --auto-spine-energy 150 + --demo-success-bonus 50 (unscoped) + the GE ladder
+  1.0,1.04;1.08;1.12 + sync search (delay 0, patience 1.5e8, timeout 4200). Held: abpbc_1's
+  k04 tree line at tau 0. Out: ckpt_latest at 4,991,221,760, md5 c866e906.
+* abegy_2: 4,991,221,760 -> 5,447,352,320. Code 01293a30, the same arm, holding abegy_1 search
+  2's energy-stage line (taught by hand; the old recheck had discarded it). The greedy cleared
+  the x -1,015 wall at 5.445B. Out: ckpt_final, md5 ab7ab147.
+* abegy_3: 5,447,352,320 -> 5,747,769,344. Code 01293a30, the same arm, holding abegy_2
+  search 2's MC line (2,300 rows to 12.39%, md5 80405d3a). Out: ckpt_latest at 5,739,905,024,
+  md5 34feb8f8.
+* abw16_1..4 (this wave): 5,739,905,024 -> 13,222,019,072 (the last save; last logged step
+  13,223,067,648). Code ab/share fea35b06 (v14, with 25d3e1c2 and 368122ea), v14's 161 tokens
+  as in the pre-launch section. Each continuation resumed the previous segment's ckpt_final
+  with the same tokens. The held line was swapped for the one the loop held at the end
+  (auto/current.json), starting at the walk-back's last row:
+  - abw16_1: 5.740 -> 7.240B, held abegy_2 k02's MC line at tau 234. Out: 62095f1c.
+  - abw16_2: 7.240 -> 8.741B, held abw16_1 search 1's tree line (2,177 rows, 21.0%, md5
+    68a39191) at tau 0. Out: d78f9f6c.
+  - abw16_3: 8.741 -> 11.001B, held abw16_2 search 1's tree line (5,340 rows, 56.3%, md5
+    789de43f) at tau 934. Out: d8f4cfa9.
+  - abw16_4: 11.001 -> 13.223B, held abw16_3 search 2's tree line (10,620 rows, 63.4%, md5
+    e8431e2f) at tau 9,879. Out: ckpt_latest 2a9e08f7 (13,222,019,072).
+  Each held line's md5 matches the bundled auto/k*/spine.npy it was copied from.
+
+**Boxes and money.**
+
+* RTX 5090 60765514 (Anhui, CN, $0.571/h, operator-approved): ready in 45 s, but `git clone`
+  from github.com timed out on port 443 on every try, and deploy_box.sh gave up after 42 min.
+  Released, $0.41; machine 140700 blocklisted (reason no_github). The worktree's offer_query
+  now excludes CN (`geolocation notin [CN]`).
+* RTX 5080 60770105 (Minnesota, $0.309/h): 09:49 to 15:39 UTC (349 min), $1.80, 369-389k
+  steps/s. Bundled first, released at 15:39:02 UTC, gone from vastai and from the fleet
+  registry, tunnel 8631 stopped.
+* Wave total $2.21, under the $2.5 box-cost stop. Account credit $13.01 at 15:46 UTC.
+
+**Stops: the pre-registered ones, then the operator's changes in order.**
+
+* Pre-registered: 1.5B steps (box.py --steps 1.5e9), budget $1, one box <= $0.35/h.
+* Before 09:49 UTC: a 5090 at $0.571/h approved (inside the 5090 cap). After it failed: "keep
+  w16 with your $0.55 stop" (the $1 less the 5090's $0.41 and a margin), plus the CN exclusion.
+* During abw16_1 (time not logged): run on past the 1.5B end, to ~8.74B in all. Stop earlier if
+  the greedy's best is flat for 1.0B steps or the credit falls under $12. Box stop $1.75.
+* After the 56.59% eval (11:23 UTC): continue as abw16_3 to 11.0B or to the first finish + 2
+  evals. The flat and credit stops kept; the box stop raised to $2.5 in total.
+* 13:10 UTC: the 11.0B cap lifted while the run keeps making new bests (abw16_4). Stops: flat
+  1.0B, box $2.5, credit $12.00, first finish + 2 evals. Extend the box before every deadline.
+* 13:30 UTC: the 1.0B flat clock runs from the LATER of the last new greedy best and the last
+  ADOPTED search line deeper than that best.
+* 14:57 UTC: the flat stop DROPPED. The 80.67% best was one episode, the banked median was
+  about 66%, and search 2's adopted 73.5% line lay between them. It would not have fired
+  anyway: the next best (82.99% at 12.587B) came 0.83B steps after the 80.67% one (11.757B).
+* The run ended on "first finish + 2 evals": the finish at 13.040B, evals at 13.116B and
+  13.191B, SIGTERM at 15:32:21 UTC.
+
+**The greedy from the true start.** Grader field goalc_32 (d0 57,149). Each row: the best raw %
+of 9, how many reach it, where they stop as (x, z) or (x, y, z), and what moved it.
+
+* 5.740B (the resume): 15.10%, 8/9 past 12.5%; stop: the 13% fall catch, z ~2,932.
+* 5.891B: 18.79%, 7/9 at 18.7%, stop (-78, 2,515). Training (no search before 6.04B).
+* 5.967-6.042B: 20.54%, 9/9 at 20.4%: October's round-2 catch, z ~2,380-2,405. Training.
+* 6.269B: 26.71%, 9/9 at 26.1-26.7%, far east (x ~3,480, z ~3,190). abw16_1 search 1's TREE
+  line (21.0%, adopted 6.151B), then training.
+* 6.420-6.495B: 29.21%, 8/9, (x ~2,770, z ~2,600). Training.
+* 6.571-6.873B: 44.40%, 9/9 at 44.0-44.2%, (x ~-1,055, z ~2,598). Training.
+* 6.948-7.175B: 47.20%: the ~47% catch (x ~-1,600..-2,600, z ~2,600). Training.
+* 7.618B: 53.61%, 9/9 at 50-53.6%. Training (abw16_2's search 1 still running).
+* 7.694B: 56.59%, 9/9 at 56.5%: October's gate 17 (the 56.6% shaft climb), z ~1,185-1,205.
+  abw16_2 search 1's TREE line (56.3%, adopted 7.657B).
+* 7.69-9.72B: a 2.0B-step plateau at 56.6-57.0% (single 61.3% episodes at 8.892B and 9.572B):
+  gate 17.
+* 9.798B: 61.41%, 8/9 at 61.2-61.4%: the 61% stop (x ~-1,810..-2,050, y ~2,420-2,640,
+  z ~2,363), before October's gate 18 (61.5% gap hop). abw16_3 search 1's MONTE CARLO line
+  (57.0%, adopted 9.243B), then training.
+* 10.931B: 64.77%, 2/9 at 64.7-64.8% (a fall from (-3,320..-3,420, 2,540-2,640, ~2,300) to
+  z ~2,065), 6/9 at the 61% stop. abw16_3 search 2's TREE line (63.4%, adopted 9.924B).
+* 11.153-11.455B: 66.34%, 6/9 at 66.0-66.3% at 11.455B (banked median 64.37%); a ledge at
+  (-3,320..-3,390, 3,050-3,470, z ~2,369): the 66% stop. Training.
+* 11.530-11.757B: single deeper episodes: 71.68% (-1,245, 2,910, 1,722), 78.46% (1,177, 1,319,
+  1,243), 80.67% (2,247, 1,643, 1,478); 5/9 at 71.7-78.5% at 11.681B (banked median 69.71%).
+  Training.
+* 11.832-12.512B: best 61.5-76.0%, banked median 12.4-64.4% (two collapses). abw16_4 search 1's
+  ENERGY line (59.5%, +227 u) adopted 12.146B; search 2's TREE line (73.5%) adopted 12.324B.
+* 12.587B: 82.99%, 4/9 at 82.9-83.0% at (2,130-2,150, 2,695-2,730, ~1,460), 56.4-56.5 s;
+  83.27% at 12.738B. Training on the 73.5% tree line.
+* 12.814B: 94.79% (1/9, at (678, 2,706, -709)); 3/9 at 92.6-92.9% (641-756, 2,686-2,899,
+  ~270). Training, now past the held line's end.
+* 12.889B: 94.82%, 5/9 at 94.79-94.82% (641-663, 2,707-2,744, -700..-713), banked median
+  94.79%: 2,800 u above the finish. Training; search 3 fires.
+* 13.040B: FINISH 6/9 (64.27-65.46 s), the episodes ending in the finish box (767-778,
+  2,688-2,695; last row z ~-3,430); 2/9 at the 61% stop, 1/9 at 6.6%; banked median 98.43%.
+  Training (search 3 still running, no line).
+* 13.116B, 13.191B: 1/9 finish each; 5/9 back at gate 6 (12.3-12.7%).
+
+**Searches (all async beside the training, v14's stages).**
+
+* abw16_1 search 1 (6.042B): tree, 2,177 states to 21.0%, adopted.
+* abw16_1 search 2 (6.269B): tree 26.13%, MC 26.1% after its cut, GE held / contact / E all
+  26.1%. The ENERGY STAGE fired: 23.89%, +186 u over the line. The fixed recheck discarded it as
+  stale (7/9 already cross d <= 43,596 with h >= 3,707).
+* abw16_2 search 1 (7.543B): tree, 5,340 states to 56.3%, adopted.
+* abw16_2 search 2 (7.694B): the tree ended in a fatal flight and was cut back to 49.3%; MC
+  missed the bar by 25 u (24,757 against 24,732); GE, rooted on the weaker tree line, reached
+  ~49.6%. The ENERGY STAGE fired again: 45.1%, discarded as stale (9/9 already cross it with
+  h >= 3,579).
+* abw16_3 search 1 (9.119B): Monte Carlo, 5,289 states to 57.0%, adopted.
+* abw16_3 search 2 (9.798B): tree, 10,620 states to d 20,922 (63.4%: past October's gates 18
+  and 19), adopted.
+* abw16_3 search 3 (10.931B, patience: 1.01B steps on the held line, whose end was then banned
+  as a dead end): cut by abw16_3's planned end at 11.001B. Its tree stage outlived the trainer
+  and finished at 13:51 UTC with a 71.26% line (d 16,424, 6,375 states). Nothing adopted it;
+  abw16_4 held search 2's 63.4% line.
+* abw16_4 search 1 (11.455B, 6/9 past the line; 1,949 s): tree cut back to its last contact
+  at 61.86%; MC cut at 64.38%, 8 u past the greedy frontier (the bar is 200 u); GE held 62.04%,
+  contact 62.21%, E roots held 61.21%, E roots contact no line. The ENERGY STAGE (roots before
+  the line's losses of -220, -59 and -53 u; a cell >= 150 u above the line's energy over
+  56.90-61.91%) found a line to 59.54% with h 2,732, +227 u over the policy's line, 5,258
+  states. ADOPTED at 12.146B as an energy spine (success only with h >= 2,657). The scoped
+  bonus paid for the first time at 12,146,201,600, 6.4B steps into the wave.
+* abw16_4 search 2 (12.210B, the ENERGY quorum: 5/9 cross d <= 23,224 with h >= 2,657): tree,
+  cut back to its last contact at d 15,126 (73.53%, 7,314 states). Adopted at 12.324B as a
+  depth spine (the bonus unpaid again).
+* abw16_4 search 3 (12.889B, 5/9 past the line, the greedy's median at 94.79%): tree 62.59%;
+  MC 9,700 states to 94.87% (45 u past the greedy, under the 200 u bar); GE held 63.08%,
+  contact 63.19%; GE stage 3 (energy roots) still running at the stop. No line. It outlived
+  the SIGTERM; I stopped it by PID at 15:38 UTC (ops, below).
+* In all: six lines adopted: TREE four (21.0%, 56.3%, 63.4%, 73.5%), MONTE CARLO one (57.0%),
+  ENERGY STAGE one (59.5%). Two energy lines were discarded as stale, correctly: the greedy
+  already crossed them with the energy. GE (held, contact, E roots) handed back nothing in the
+  four searches it ran in.
+
+### What it says
+
+* **The answer: yes, and to the finish.** v14's tokens carried this lineage's greedy from the
+  foot of gate 6 (13%) to the first greedy finish at 13.040B: +7.30B steps, ~5.5 h on one RTX
+  5080, 6/9. Gate 6 itself fell to training alone within 151M steps of the resume (18.8% at
+  5.891B, 20.5% at 5.967B), before the first search. The last 26.5% of the route (73.5% ->
+  100%) had no line: 0.72B steps of training after the 73.5% tree line took the greedy past
+  the line's end to the finish. Search 3's MC line (94.87%) came when the greedy was already at
+  94.8%.
+* **The gates that held it longest.** Gate 17 (56.6-57.0%) held for 2.0B steps (7.69-9.72B)
+  and broke after the MC line. The 61% stop (x ~-1,900, y ~2,500, z ~2,363) is the most
+  persistent gate of the run: from 9.798B on, 42 of 46 evals had episodes ending there, 150 of
+  414 episodes (36%), and 2 of the 9 in the finishing eval. A 66% ledge held from 11.15B to
+  12.5B. Past 73.5%, the stops (83%, 92.7%, 94.8%) each held for one to three evals.
+* **The energy stage and the scoped bonus.** The stage fired in three searches. Twice its line
+  was discarded as stale (correctly, by the 25d3e1c2 recheck); once it was adopted (59.5%), the
+  only line search 1 had: tree, MC and GE were all under the bar. The scoped bonus was unpaid
+  for 6.4B steps (depth lines), paid for 178M steps on the energy line, and unpaid again from
+  12.324B. Whether the energy line mattered for the finish cannot be separated in one run: its
+  quorum fired the search whose tree line (73.5%) the greedy then walked to the finish.
+* **Collapses.** In 9 of the 89 evals from 6.571B on, the banked median was back at ~12.1-12.4%
+  (most episodes stopping at gate 6 again): 7.92, 9.572, 9.647, 10.025, 10.855, 11.908, 12.134,
+  13.116 and 13.191B. Each came while a walk-back was on a long line's far rows, and the greedy
+  came back within one or two evals each time (the start collapse of abegy_2, abegy_3 and the
+  control). Both evals after the first finish are collapses (5/9 at gate 6, still 1/9
+  finishing), so the finish rate is not yet stable.
+* **The predictions.** Right: the greedy re-crossed the wall at once (8/9 past 12.5% at the
+  resume eval); it dipped while the walk-back moved (nine times, not once); the first search
+  came at +302M. Wrong: the first search's tree went to 21.0%, not to the climb's foot, because
+  training had already passed it; the energy stage was not the stage at the climb (training
+  climbed it; the stage's one adopted line came at 59.5%); and the "likely stop" (13% catch or
+  the climb within 1.5B) was 47.2% within 1.5B.
+* **Caveats.** Warm, one seed, one box. This shows that v14's mechanisms can carry this
+  lineage's weights to the finish. It does not show that v14 from scratch reaches gate 6
+  (ab7c_b14's question), nor which of v14's changes were needed: these weights also learned
+  under v7 and the abegy settings. The finishing eval's own weights are not on disk (below).
+
+**Bundle.** ~/ar_m2/runs/abw16/ (316 MB). For abw16_1..4: the launch logs, run.json,
+progress.csv, every greedy eval (100 files, traj_*.jsonl.gz), auto/current.json, and every
+search's logs, spines + keys and summaries. 218 files, md5 = box for each, against a manifest
+made on the box (bundle_md5.txt; BUNDLE OK at 15:38 UTC). The trajectories were gzipped after
+the check, and each decompresses to its manifest md5 (100/100). Checkpoints (steps read from
+each file's pickle opcodes; nothing unpickled on the droplet):
+* ckpt_13001818112.pt, md5 71833210: the 13.0B milestone, 38M steps BEFORE the finishing eval;
+* ckpt_keep_13110870016.pt, md5 03aa7a21: a copy of ckpt_latest made at 15:27 UTC, 71M steps
+  after it;
+* ckpt_latest.pt, md5 2a9e08f7, step 13,222,019,072: the last save. The SIGTERM stop writes no
+  ckpt_final.
+The 13.040B weights themselves are gone: the trainer keeps only ckpt_latest between milestones,
+and it was overwritten before the stop. Whether the 13.0B milestone finishes is unchecked (the
+box was released). abw16_1..3's ckpt_final (62095f1c, d78f9f6c, d8f4cfa9) were not kept.
+
+**Ops (generic, none built).**
+
+* The trainer's exit does not stop its async search. atexit kills auto_spine.py only on a
+  normal exit, and not its beam / GE child: abw16_3's tree stage ran ~2.5 min past that
+  segment's end. A SIGTERM stop runs no atexit at all: abw16_4's search 3 and its GE child
+  ran on until I killed them by PID 6 min later, and the first bundle pass caught ge3.log
+  changing under the md5 check (1 mismatch; it passed after the kill). A fix candidate: start
+  the search in its own session and kill its process group on exit and on SIGTERM.
+* At 13:53:09 UTC a continuation re-registered the watchdog from the rent's created + hours: a
+  deadline 63 min in the past, for 3 s until the extend. The box survived. My script now
+  re-registers from the registry's current deadline.
