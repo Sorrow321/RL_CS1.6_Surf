@@ -46982,3 +46982,11 @@ mechanisms for this stall. This run puts both on abpbc_1's own weights and asks 
 * Instrument changes, all mine: sync search, delay 0, patience 1.5e8 then 1e9, timeout 4200,
   ;E1.0 dropped; the hand restart that did what the recheck prevented; and the 300M-step
   extension (abegy_3, operator-approved). One seed, one map, one fork.
+
+## 2026-11-15 01:46 UTC: PRE-LAUNCH sidistic from scratch with recipe v12
+
+PRE-LAUNCH: `ab12s_1` = sidistic FROM SCRATCH with recipe v12 (the 157 tokens of 1a0ff7b3, maxvel
+4000; the list equals cannonball's v12 list), code ab/recheck-energy 25d3e1c2, worktree ~/ar_m2/wt/ab12s, one
+new box (5080 class), tunnel :8644. Bars: v5 first finish 5,058.9M, fix round 8,380.7M. Cut (fixed now):
+the first finish + 2 evals, or 9.0B. Also: the disk of the droplet reached 99% (2.6 GB free); 70 worktrees
+of finished arms were removed (branches kept on origin), 14 GB free.
