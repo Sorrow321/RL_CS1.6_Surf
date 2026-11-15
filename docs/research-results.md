@@ -48103,3 +48103,52 @@ finish trigger's clip hull).
   17.29B) and the warm instrument (45773829, 13.04B). They are slower than the pbfr / pbEXIT3 policies
   (64.79 s and 64.27 s vs 64.15 s and 62.108 s), which had the expert loop's speed training on top.
 * Cause: I read CLAUDE.md's "EVERY princessburglar finish before the fix" as "every earlier finish".
+
+## 2026-11-15 22:02 UTC: PRE-LAUNCH - recipe v14 unchanged on surf_za_loop from scratch (abzl_1), the first map v14 was not developed on
+
+The first test of recipe v14 on a map it was not developed on. Written before the launch.
+
+### The question
+
+Recipe v14 finishes all seven development maps from scratch with one list (c1d4d88e). Those maps were
+also the testbed v1-v14 were chosen on. surf_za_loop was never run by any v-recipe: does the same list
+finish it from scratch with no change but the map?
+
+### The run: `abzl_1`
+
+* Recipe v14 unchanged: the 158 tokens of every v14 run (md5 6e2a72ca over the list without --maxvel)
+  + `--maxvel 3500`, the value the za_loop program ran this map with (its server physics; uf2 and pb
+  use the same). Code ab/share fea35b06; worktree ~/ar_m2/wt/abzl, branch ab/abzl 0e79ef6e (config
+  only: map, field, start_d 6,361.8, time cap 900 s, maps tarball zl_maps.tar.gz md5 9c633af8). Launch
+  extra unchanged (`--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'`). From scratch, seed 0, no warm start, no demo; every
+  curriculum line is the loop's own search.
+* Kept as v14 has them, said here because the za_loop program changed them for this map: v14's tick
+  (`--tick-ms 7.63`, realised 7.667 ms; the program ran 7 ms, the record's frame time) and v14's
+  episode cap (`--ep-ticks 30000` = 230 s at 7.667 ms; the program ran 130,000 ticks = 910 s). The
+  record (krs) is 450.46 s on our clock (491.65 s listed); the program's policies finished in
+  130-170 s, under the cap; an early policy that needs longer than 230 s to pump its way up cannot
+  finish inside it.
+* Box: one RTX 5080 / 4080S / 4080 (<= $0.45/h), watchdog with the harvest spec and pid file,
+  dashboard tunnel :8645.
+
+### The reference: the za_loop fork-and-flush program (2026-10-31 to 11-02)
+
+* One lineage (zlr1b4 -> zlr2b1 -> zlr3b2), from scratch, with the recipe changed every round by four
+  agents and by hand: energy-stall timers, per-call energy shaping, a GE line as the first spine,
+  --auto-spine, a death charge, --ratchet-contact, --front-contact, then energy-ranked policy beams
+  and a second backward curriculum on a finishing line (--finish-line). First greedy finish at
+  12,431M lineage steps (1/9, 168.25 s), 9/9 at 13,564M (143.76 s). The expert loop after it: search
+  line 125.405 s, policy r14 93% at a 135.46 s finishers' mean. Source:
+  ~/meta_analysis/reports/za_loop.md sections 3-4 and 9.
+
+### Reads, cut and budget (fixed now)
+
+* Reads: the greedy grader % (score.py run in wt/abzl), which loop the greedy climbs, the searches
+  (stage, where each line ends), the energy height reached; finishes only from the grader.
+* Cut: the first greedy finish + 5 evals; or no new grader best (>= 0.1 point) for 2.0B steps,
+  counted from the later of the last new best and the last adopted deeper line, and not before
+  4.0B; or 20B steps (1.6x the program's 12.43B lineage).
+* Budget: about $0.35-0.45/h, 20B steps about 14 h, about $6; credit $35.88 at 21:55 UTC, reserve $10.
+* CPU smoke of the complete command line (the launcher pins + 160 tokens + the launch extra, za_loop,
+  40,960 steps, wt/abzl): done, no error; "finish: any of 5 trigger models *15-*19" read from the map.
