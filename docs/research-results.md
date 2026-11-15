@@ -47013,3 +47013,37 @@ of finished arms were removed (branches kept on origin), 14 GB free.
   the 5080 box 60701154, tunnel :8643. What it answers: does the dive come back without the bonus
   (v7: 378M), and does the rest of v13 (v11 + a scoped energy pair) carry unitfarmer2.
 * Cut (fixed now): 1.0B if no greedy below z 0; else 9B, or the first finish + 5 evals.
+
+## 2026-11-15 02:55 UTC: the unscoped bonus was what stopped the unitfarmer2 dive (v11 dives at 302.5M); the bonus is scoped to energy lines (U, 368122ea); PRE-LAUNCH recipe v13 from scratch on five maps
+
+### What v11 and v12 showed in the last hour
+
+* Unitfarmer2 v11 (`abv8u_v11`, v12 WITHOUT the energy pair): 9 of 9 greedy episodes in the pit from
+  302.5M (v7: 378M; v12, with the unscoped bonus: none by 1.06B). The bonus was what stopped the dive.
+* Celestial v12 (`ab7c_l12`): stuck at the fork (29-31%) to 1.36B, then past it - grader 92.4-92.7%
+  at 1.89-2.04B, median 92.5% at 2.04B - but no finish by its 2.0B cut (v5: 529M). Stopped.
+* Stopped as superseded (bundled, BUNDLE OK, not results): cannonball v12 at 2.62B, princessburglar
+  v12 at 2.01B, sidistic v12 at 1.17B, unitfarmer2 v11 at 0.48B.
+
+### The bonus, scoped (sub-agent U, ab/bonus-energy 368122ea, from the recheck fix 25d3e1c2)
+
+* `--demo-success-bonus-energy-only`: the bonus pays only while the held line is an ENERGY line
+  (from the energy stage, taught with --demo-success-energy, or an energy-rule stall cut); a depth
+  line is paid by the field alone, as in v7. Off: the old payment, byte-identical. Tests: 20 passed
+  (the gate's truth table and wiring; byte-identical decisions when the energy stage hands back
+  nothing; the scope on a crossed success line; refusals; the recheck and energy suites).
+
+### PRE-LAUNCH: recipe v13 candidate, from scratch on five maps at once
+
+* v13 = v7 (147 tokens, spawn rows kept) + `--int-coef-progress 2.5:0.05:0.1` + `--demo-front-temp
+  0.5 --demo-front-yaw-abs 0.066 --demo-front-ticks 40` + `--auto-spine-energy 150
+  --demo-success-bonus 50 --demo-success-bonus-energy-only` = 158 tokens, code ab/bonus-energy
+  368122ea, builder abl/launch/mkcfg_v13.py + mk_wave15.sh. No death charge. ONE list for every
+  map; only --maxvel follows the map (3500 unitfarmer2 / princessburglar, 4000 the rest).
+* CPU smoke of the complete v13 command line (unitfarmer2, 40,960 steps, wt/ab13u): rc 0.
+* Runs (seed 0, the five kept boxes): `abv8u_v13` unitfarmer2 (wt/ab13u 259ee440, :8643; cut 1.0B
+  no dive, else 9B / first finish + 5 evals); `ab8n_v13` cannonball (5090, wt/ab13c 0df9d79c, :8640;
+  cut 3.5B no wall pass, else 6B / first finish + 5); `ab7c_l13` celestial (wt/ab13l 22498f0d,
+  :8637; first finish + 2 evals or 2.0B); `abpbc_v13` princessburglar (wt/ab13b 5ba8b26e, :8642;
+  3.0B if not out of the room, else 12B / first finish + 5); `ab12s_v13` sidistic (wt/ab13s 70a8bf59,
+  :8644; first finish + 2 evals or 9B). Petrus and blue200 follow on the first free box.
