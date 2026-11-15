@@ -46668,3 +46668,35 @@ launches.
   and princessburglar with the same list (their worktrees are made from mkcfg_v10.py).
 * CPU smoke of the complete v10 command line (unitfarmer2, 40,960 steps, wt/abx10u): rc 0. The
   cannonball and petrus lists differ from it only in --maxvel.
+
+## 2026-11-15 00:45 UTC: unitfarmer2 v10 DIVES (755.5M, rows back); petrus v10 NO FINISH by 1.5B (48%, a regression; suspect: the death charge) + PRE-LAUNCH petrus v10 minus the death charge
+
+### unitfarmer2 v10 (`abv8u_x10`): the dive is back
+
+* 9 of 9 greedy episodes below z 0 from 755.5M on (v7 with the same rows: 378M; v8/v9 without them:
+  none by 680M / 982M). The 1.0B check of 0bbb90e9 is passed; the run goes on to 9B or the first
+  finish + 5 evals.
+
+### petrus v10 (`ab7c_x10`): NO FINISH by its 1.5B cut - a regression
+
+* Grader 46.0-48.2% from 378M to the cut, the median 48.0-48.2% from 529M; 0 finishes (v5: first
+  finish 302.5M; fix round 2,642.9M). v9 stopped at the same 48% (ab7c_p9, 0.79B), so it is not the
+  spawn rows (v10 has them, v9 did not): it is one of the changes v9 and v10 share against v5 -
+  the novelty gate's LO 0.05, the band yaw flags, the death charge.
+* The misses all stop at one spot: (-3,203, -2,284, z -614) +-4 u, horizontal speed 64 u/s, at
+  about 22.8 s. The step line's setback read ("dip", the deepest loss a training episode came back
+  from, 100 = the map) is 48.4 against v5's 0.2-1.2, and novelty is 0.04 per episode (v5 0.3-1.5).
+* The suspect is the death charge: it takes back what the last 2 s before ANY non-goal end paid
+  (rewards.py: done & ~goal), so a stall-kill after standing still costs nothing while a failed
+  attempt at the next stretch is charged - a reason to stand still in front of a risky section.
+  Unproven.
+
+### PRE-LAUNCH: petrus, v10 MINUS the death charge (`ab7c_xnd`), one change
+
+* The 153 tokens of v10 without `--death-charge 1 --death-charge-window 2` (checked: the lists
+  differ in those 4 tokens only), code ab/yawabs c8595e54, worktree ~/ar_m2/wt/abx10pd (ab/abx10pd
+  e6f4a2a7), from scratch, seed 0, on the same RTX 5080 (60637836), tunnel :8637.
+* Read: the first greedy finish from the grader (petrus v5 302.5M; v10 none by 1.5B).
+* Cut (fixed now): the first finish + 2 evals, or 1.5B. If it finishes, the death charge is what
+  stops petrus and cannot stay in the recipe as it is; if not, the suspect moves to the LO or the
+  band flags.
