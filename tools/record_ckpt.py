@@ -115,6 +115,8 @@ TRAIN_ONLY = frozenset({
     # --demo-success-d: the TRAINING backward curriculum's success rule; a recording spawns at the start
     "demo_success_d",
     "demo_success_bonus",
+    # --demo-success-bonus-energy-only: which TRAINING lines that bonus pays; a recording pays none
+    "demo_success_bonus_energy_only",
     # --demo-front-temp: the TRAINING rollout's sampling temperature for curriculum-band spawns;
     # a recording spawns at the map start and samples at its own --temp
     "demo_front_temp", "demo_front_ticks", "demo_front_view",

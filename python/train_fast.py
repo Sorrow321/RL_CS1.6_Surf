@@ -4337,6 +4337,14 @@ def recheck_spine(end_d: float, greedy_med, gain: float, energy_rule=None, eval_
     return n < int(quorum), n
 
 
+def bonus_live(bonus: float, energy_only: bool, h_min) -> bool:
+    """Is --demo-success-bonus paid on this reward call? Always when it is set, as before; under
+    --demo-success-bonus-energy-only only while the held line is an ENERGY spine (``h_min``, its
+    energy floor, is set: the --auto-spine-energy stage's spine or --demo-success-energy's), so a
+    depth line is paid by the field alone and the bonus pass never runs for it."""
+    return bool(bonus) and (not energy_only or h_min is not None)
+
+
 def _eval_energy_h(core, sl):
     """--energy-stall: energy height h = z + |v|^2 / (2 g) of the eval core's envs ``sl``."""
     st = core.states_view
@@ -5306,6 +5314,15 @@ def main() -> None:
                          "curriculum's success becomes the objective's too, so a line whose "
                          "payoff lies seconds past a nearer field optimum is worth flying. "
                          "Config only when set; ckpt restores")
+    ap.add_argument("--demo-success-bonus-energy-only", action="store_true",
+                    help="--demo-success-bonus is paid only while the held line is an ENERGY "
+                         "spine (the --auto-spine-energy stage's, or one taught with "
+                         "--demo-success-energy); a depth line is paid by the field alone, as "
+                         "without the bonus, so a run whose energy stage hands back nothing "
+                         "decides exactly as one without it. ab/bonus-energy, 2026-11-15: v12 "
+                         "(the energy pair on every line) paid unitfarmer2's trough line over the "
+                         "novelty-driven dive and nailed celestial to one side of its fork. "
+                         "Config only when on; ckpt restores")
     ap.add_argument("--demo-success-d", type=float, default=None,   # None = off
                     help="--demo-file: an episode started from the spine counts as a SUCCESS "
                          "for the backward curriculum when its ratchet RECORD (the deepest "
@@ -8933,6 +8950,10 @@ def main() -> None:
                 and ck_cfg.get("demo_success_bonus") is not None):
             args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
             restored.append(f"demo_success_bonus={args.demo_success_bonus:g}")
+        if (not args.demo_success_bonus_energy_only
+                and ck_cfg.get("demo_success_bonus_energy_only")):
+            args.demo_success_bonus_energy_only = True
+            restored.append("demo_success_bonus_energy_only")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -12665,6 +12686,13 @@ def main() -> None:
               f"(demo replaces the reservoir share of the pool)")
         if args.demo_success_bonus is not None and args.demo_success_d is None:
             raise SystemExit("--demo-success-bonus pays the --demo-success-d line: give both")
+        if args.demo_success_bonus_energy_only:
+            if not float(args.demo_success_bonus or 0.0) > 0.0:
+                raise SystemExit("--demo-success-bonus-energy-only scopes the "
+                                 "--demo-success-bonus: give it")
+            if args.auto_spine_energy is None and args.demo_success_energy is None:
+                raise SystemExit("--demo-success-bonus-energy-only pays only an ENERGY line: give "
+                                 "--auto-spine-energy or --demo-success-energy (else it never pays)")
         if args.demo_success_energy is not None:
             if args.demo_success_d is None or not float(args.demo_success_bonus or 0.0) > 0.0:
                 raise SystemExit("--demo-success-energy gates the --demo-success-d line and its "
@@ -16009,6 +16037,9 @@ def main() -> None:
     if args.demo_file and args.demo_success_bonus is not None:
         # --demo-success-bonus: dumped only when set; a resume restores it
         meta["config"]["demo_success_bonus"] = float(args.demo_success_bonus)
+    if args.demo_success_bonus_energy_only:
+        # dumped only when on; a resume restores it
+        meta["config"]["demo_success_bonus_energy_only"] = 1
     if args.demo_file and args.demo_success_energy is not None:
         # --demo-success-energy: dumped only when set (not restored: it belongs to its spine)
         meta["config"]["demo_success_energy"] = float(args.demo_success_energy)
@@ -17138,6 +17169,14 @@ def main() -> None:
         DEMO_BONUS = float(args.demo_success_bonus)
         print(f"--demo-success-bonus {DEMO_BONUS:g}: an episode whose record crosses d <= "
               f"{DEMO_END_D:,.0f} is paid {DEMO_BONUS:g} once (one that starts past it never is)")
+    # --demo-success-bonus-energy-only: the bonus pass runs only while an ENERGY spine is held
+    # (bonus_live); a depth line keeps the field as its only pay
+    BONUS_E_ONLY = bool(args.demo_success_bonus_energy_only)
+    if DEMO_BONUS and BONUS_E_ONLY:
+        print(f"--demo-success-bonus-energy-only: the {DEMO_BONUS:g} bonus is paid only while the "
+              f"held line is an ENERGY spine; a depth line is paid by the field alone (the "
+              f"starting spine: "
+              + ("an energy spine, paid)" if DEMO_H_MIN is not None else "a depth line, unpaid)"))
     # --demo-success-alive SECS: a crossing pays and succeeds only once its episode has stayed
     # alive SECS past it, or as long as the spine itself did (ALV = [ticks since the crossing,
     # survived, flown, survived boot copy, the spine's own crossing row])
@@ -20936,7 +20975,7 @@ def main() -> None:
                         goalsys.on_reward(r)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
-                    if DEMO_BONUS and r is not None:
+                    if bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN) and r is not None:
                         # --demo-success-bonus on the per-tick reward path
                         r = _demo_bonus_pay(r, ended)
                     if FINL_PACE is not None and FINL is not None and r is not None \
@@ -21393,7 +21432,7 @@ def main() -> None:
                     r_dec = reward_fn(prev_obs, o2, term_obs, base_r,
                                       done_acc, ended_acc & ~done_acc, core,
                                       goal=goal_acc)
-                    if DEMO_BONUS:
+                    if bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN):
                         r_dec = _demo_bonus_pay(r_dec, ended_acc)
                     r_acc += r_dec
                     if INT_SPLIT:
