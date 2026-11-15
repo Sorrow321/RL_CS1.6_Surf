@@ -47477,3 +47477,9 @@ unless marked frozen.
 ### PRE-LAUNCH: `ab12s_v14` = sidistic from scratch with v14 (wt/ab14s 13dc74e1, the 160 tokens of
 eba49ed4) on the 4080S box 60720975, tunnel :8644. Cut (fixed now): first finish + 2 evals, or 9B
 (v5 first finish 5,058.9M). Note: the share cap pulls sidistic from 33-40% to 25% - P's open risk.
+
+## 2026-11-15 06:19 UTC: PETRUS FINISHES with recipe v14 (302.5M, 7/9; best 30.10 s)
+
+* PETRUS v14 (`ab7c_p14`, 2114a492): first greedy finish 7/9 at 302,514,176 steps (31.03 s), then 8, 5,
+  2, 8, 6, 5 of 9 to 755.5M; best 30.10 s. v5: 302.5M. Stopped at its cut (first finish + 2 evals);
+  bundle ~/ar_m2/runs/ab7c (BUNDLE OK). Next on this box: `ab7c_w14` = blue200 v14 (wt/ab14w).
