@@ -4165,16 +4165,76 @@ AUTO_SPINE_OWN_FLAGS = frozenset((
 
 
 
-def parse_int_coef_progress(spec) -> tuple:
-    """--int-coef-progress 'HI:LO:P' -> (HI, LO, P): HI, LO >= 0, 0 < P <= 1."""
-    try:
-        hi, lo, p = (float(x) for x in str(spec).split(":"))
-    except ValueError:
-        raise SystemExit(f"--int-coef-progress HI:LO:P (three numbers), got {spec!r}")
-    if not (hi >= 0.0 and lo >= 0.0 and 0.0 < p <= 1.0):
-        raise SystemExit(f"--int-coef-progress HI:LO:P needs HI, LO >= 0 and 0 < P <= 1, "
-                         f"got {spec!r}")
-    return hi, lo, p
+class ProgressPoints(tuple):
+    """--int-coef-progress 'P0:C0,P1:C1,...' (ab/gate, 2026-11-15): the novelty coefficient as a
+    piecewise-linear function of the frontier progress - ((P0, C0), (P1, C1), ...), the P
+    strictly increasing in [0, 1], every C >= 0. C0 at and before P0 (and with no reading yet,
+    which reads as progress 0), linear between two points, the last C at and beyond the last P.
+    '0:HI,P:LO' is the HI:LO:P form's line."""
+
+    def at(self, progress) -> float:
+        x = float(progress)
+        x = 0.0 if x != x else x
+        if x <= self[0][0]:
+            return float(self[0][1])
+        if x >= self[-1][0]:
+            return float(self[-1][1])
+        i = max(k for k in range(len(self)) if self[k][0] <= x)
+        (p0, c0), (p1, c1) = self[i], self[i + 1]
+        t = (x - float(p0)) / (float(p1) - float(p0))
+        return float(c0) + (float(c1) - float(c0)) * t
+
+    def config(self) -> list:
+        return [[float(p), float(c)] for p, c in self]
+
+    def text(self) -> str:
+        return ",".join(f"{p:g}:{c:g}" for p, c in self)
+
+
+def parse_int_coef_progress(spec):
+    """--int-coef-progress 'HI:LO:P' -> (HI, LO, P): HI, LO >= 0, 0 < P <= 1; or a point list
+    'P0:C0,P1:C1,...' (any comma, or a single 'P:C') -> ProgressPoints."""
+    s = str(spec).strip()
+    if "," not in s and s.count(":") == 2:
+        try:
+            hi, lo, p = (float(x) for x in str(spec).split(":"))
+        except ValueError:
+            raise SystemExit(f"--int-coef-progress HI:LO:P (three numbers), got {spec!r}")
+        if not (hi >= 0.0 and lo >= 0.0 and 0.0 < p <= 1.0):
+            raise SystemExit(f"--int-coef-progress HI:LO:P needs HI, LO >= 0 and 0 < P <= 1, "
+                             f"got {spec!r}")
+        return hi, lo, p
+    pts = []
+    for item in s.split(","):
+        try:
+            p, c = (float(x) for x in item.split(":"))
+        except ValueError:
+            raise SystemExit(f"--int-coef-progress P0:C0,P1:C1,... (each point PROGRESS:COEF), "
+                             f"got {spec!r}")
+        if not (0.0 <= p <= 1.0 and 0.0 <= c < float("inf")):
+            raise SystemExit(f"--int-coef-progress points need 0 <= PROGRESS <= 1 and COEF >= 0, "
+                             f"got {spec!r}")
+        if pts and not p > pts[-1][0]:
+            raise SystemExit(f"--int-coef-progress points need strictly increasing progress, "
+                             f"got {spec!r}")
+        pts.append((p, c))
+    return ProgressPoints(pts)
+
+
+def int_coef_progress_at(progress, intp) -> float:
+    """--int-coef-progress: the novelty coefficient at frontier ``progress`` for either form (the
+    HI:LO:P form goes through int_coef_at, as before)."""
+    if isinstance(intp, ProgressPoints):
+        return intp.at(progress)
+    return int_coef_at(progress, *intp)
+
+
+def int_coef_progress_start(intp) -> float:
+    """--int-coef-progress: the coefficient before the first greedy eval has been read (HI in the
+    HI:LO:P form, the first point's in a point list)."""
+    if isinstance(intp, ProgressPoints):
+        return intp.at(float("nan"))
+    return float(intp[0])
 
 
 def parse_yaw_entropy_progress(spec) -> tuple:
@@ -7868,7 +7928,7 @@ def main() -> None:
                          "factor, at most 4x per iteration, clamped to [1e-4, 1e4]). Saturated "
                          "counts no longer silence it: the coefficient grows as they do "
                          "(the user, 2026-09-28). 0 (default) = off. ckpt restores")
-    ap.add_argument("--int-coef-progress", default=None, metavar="HI:LO:P",
+    ap.add_argument("--int-coef-progress", default=None, metavar="HI:LO:P|P0:C0,P1:C1,...",
                     help="the count novelty's coefficient follows the run's own frontier: HI "
                          "while the greedy eval's frontier progress (1 - the median contact-banked "
                          "deepest d of its episodes / the spawn's d) is 0, falling linearly to LO "
@@ -7877,8 +7937,13 @@ def main() -> None:
                          "> 0: it turns the novelty on). ab/intp, 2026-11-14: unitfarmer2 dives "
                          "only with 2.5 (its frontier sits at 1-4%% of d0 for billions of steps), "
                          "celestial passes its fork only with 0.25 (25-30%%): 2.5:0.25:0.1 for "
-                         "every map. Off = byte-identical; config only when on; the coefficient "
-                         "and the reading are checkpointed, the flag is not restored")
+                         "every map. A POINT LIST (ab/gate, 2026-11-15) such as "
+                         "0:2.5,0.1:0.25,0.5:0.25,0.9:0.05 (progress:coefficient, the progress "
+                         "strictly increasing in [0, 1]) is linear between its points and flat "
+                         "before the first and beyond the last; '0:HI,P:LO' is HI:LO:P's line, "
+                         "and HI:LO:P itself is read as before. Off = byte-identical; config "
+                         "only when on (a point list as [[progress, coefficient], ...]); the "
+                         "coefficient and the reading are checkpointed, the flag is not restored")
     ap.add_argument("--int-split", action="store_true",
                     help="two-head critic with a NON-EPISODIC intrinsic return "
                          "(Burda et al., RND, ICLR 2019 sec. 2.3; docs/int_split.md): "
@@ -11399,10 +11464,16 @@ def main() -> None:
         if args.maps or D.enabled:
             raise SystemExit("--int-coef-progress reads ONE map's greedy frontier on the main "
                              "rank: not implemented with --maps or --ddp")
-        print(f"--int-coef-progress {INTP[0]:g}:{INTP[1]:g}:{INTP[2]:g}: the novelty coefficient "
-              f"(not --int-coef {float(args.int_coef):g}) is {INTP[0]:g} at frontier progress 0, "
-              f"falling linearly to {INTP[1]:g} at {INTP[2]:.0%} of the spawn's d, read at every "
-              f"greedy eval (the median contact-banked deepest d)")
+        if isinstance(INTP, ProgressPoints):
+            print(f"--int-coef-progress {INTP.text()}: the novelty coefficient (not --int-coef "
+                  f"{float(args.int_coef):g}) is piecewise linear in the frontier progress through "
+                  f"these progress:coefficient points, flat before the first and beyond the last, "
+                  f"read at every greedy eval (the median contact-banked deepest d)")
+        else:
+            print(f"--int-coef-progress {INTP[0]:g}:{INTP[1]:g}:{INTP[2]:g}: the novelty "
+                  f"coefficient (not --int-coef {float(args.int_coef):g}) is {INTP[0]:g} at "
+                  f"frontier progress 0, falling linearly to {INTP[1]:g} at {INTP[2]:.0%} of the "
+                  f"spawn's d, read at every greedy eval (the median contact-banked deepest d)")
     if args.int_gamma is None:
         args.int_gamma = 0.99
     if args.int_vf is None:
@@ -16155,7 +16226,9 @@ def main() -> None:
                                "int_adv_coef": float(args.int_adv_coef)})
     if IMATCH:
         meta["config"]["int_match"] = IMATCH
-    if INTP is not None:
+    if INTP is not None and isinstance(INTP, ProgressPoints):
+        meta["config"]["int_coef_progress"] = INTP.config()
+    elif INTP is not None:
         meta["config"]["int_coef_progress"] = [float(v) for v in INTP]
     if YEP is not None:
         meta["config"]["yaw_entropy_progress"] = [float(v) for v in YEP]
@@ -18940,8 +19013,8 @@ def main() -> None:
     # each iteration sets the next one.
     # --int-coef-progress: the coefficient and the frontier reading it came from (checkpointed).
     # Every slot's novelty starts at it - HI on a fresh run - and --unstuck's base reads it below
-    INTP_ST = {"progress": float("nan"), "coef": None if INTP is None else float(INTP[0]),
-               "eval": None}
+    INTP_ST = {"progress": float("nan"),
+               "coef": None if INTP is None else int_coef_progress_start(INTP), "eval": None}
     if INTP is not None:
         if ck is not None and ck.get("int_coef_progress") is not None:
             _icp = ck["int_coef_progress"]
@@ -18994,7 +19067,7 @@ def main() -> None:
         prog = _greedy_eval_progress(ev_path)
         if prog != prog:
             return
-        c = int_coef_at(prog, *INTP)
+        c = int_coef_progress_at(prog, INTP)
         INTP_ST.update(progress=float(prog), coef=float(c))
         if INT_BASE is not None:
             INT_BASE[:] = [c] * len(INT_BASE)
