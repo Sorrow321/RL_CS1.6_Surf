@@ -49483,3 +49483,26 @@ unchanged from P's body.
   noise (+0.30 s, +0.20 s).
 * **So the energy ratchet is not a drop-in for v14.** It is the za_loop ingredient (w19: zlA
   63.1% against v14's 25-28%), but it fails unitfarmer2 and costs time where both finish.
+
+## 2026-11-16 17:01 UTC: FINDING - princessburglar's cached grids predate the entity fix
+
+Sub-agent M (multi-map audit, CPU only, nothing baked or written to a real cache; scripts in the
+session scratchpad pbcache/pbcheck.py, notes abl/multimap/s0_notes.md).
+* Every pb grid comes from the C core's occupancy sampler, which had the 128-entry solid table:
+  occ_32, slabocc_32, sdf_32 (from slabocc), goal_32 / goalc_32 (from slabocc) and faceid_32.
+* pb has 135 solid brush entities; the old table dropped 7: *247 (button), *249 and *250 (the
+  3 u slabs) and four func_walls *261-*264 (26 u thick, 107-172 u wide, 527 u tall;
+  x -1138..343, y -3850..-3403, z 2372..3249).
+* A core built from fea35b06 with the old tables and the old silent drop reproduces the cached
+  occ, slabocc and sdf EXACTLY (0 voxels differ): that is how they were made (2026-10-23).
+* The fixed core differs from the caches in 168 occupancy, 301 slab (all inside the four walls)
+  and 607 SDF voxels (max 64 u). Both goal fields treat the 301 voxels as free space. The three
+  thin solids (*250 included) were already in the slab grid (the Python pane fill skips the cap).
+* 6bd7f931 bumped no cache version and the signature is size + mtime, so every pb run on the
+  fixed core, v14's ab7c_b14 and the warm instrument included, saw a depth image, normal and
+  potential channel and shaping field WITHOUT the four walls, while the physics collided with
+  them. The finishes stand (physics and grader were right); what the agent saw was wrong.
+* Of the seven maps only pb (solids) and sidistic (triggers 138 > 128, not solid; being checked)
+  overflowed the old tables. Rebake cost on pb: occ 1.3 s, slab 12.4 s, SDF 6.7 s (droplet CPU);
+  goal_32 / goalc_32 and faceid_32 need small GPU bakes. A fix must also make the old caches MISS.
+* Open: whether the walls lie on v14's pb route or at the place it stalled (being checked).
