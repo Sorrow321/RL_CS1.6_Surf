@@ -49214,3 +49214,272 @@ The pre-launch text of this entry is at ca5f0883; what follows is the run record
   * zlA $4.20 (RTX 5080, 05:12-16:03 UTC).
   * zlB $1.28 (RTX 5080, 05:12-08:31 UTC).
   * zlAB $1.05 (RTX 4070S Ti, 05:13-10:56 UTC).
+
+## 2026-11-16 16:25 UTC: FINAL (sub-agent P) - wave 21: energy-record pay on five maps
+
+The pre-launch text is at 3163e507; what follows is the run record from the launches on,
+unchanged from P's body.
+
+### Launches and changes (2026-11-16)
+
+* **Bus post:** 20261116T100028Z_claude_02514d.
+* **celestial abrl_1:** box 60909963 (RTX 5080, $0.301/h). Record gate passed 10:08 UTC; tunnel
+  :8651.
+* **unitfarmer2 abru_1:** box 60910348 (RTX 5080, $0.337/h). Record gate passed 10:09 UTC;
+  tunnel :8652.
+* **cannonball abrc_1:** no box. From 10:05 UTC no RTX 5090 offer passed (5090 only, no CN,
+  >= 32 threads, <= $0.60/h); the retries go on.
+* **sidistic abrs_1:** box 60913086 (RTX 4080, $0.363/h, Taiwan). Record gate passed 10:41 UTC;
+  tunnel :8654. It took the fifth slot while cannonball could not rent.
+* **princessburglar abrb_1:**
+  * **Why it launched now.** The operator (10:53 UTC) stopped zlAB to give pb its slot and set
+    pb's cut to the first finish + 2 evals, or 1.2x v14 = 20.7B.
+  * **First box: an RTX 3090.** Box 60915304, $0.356/h, record gate passed 11:02 UTC. It ran
+    255k steps/s, against ~390k on a 5080-class card.
+  * **Restarted at the operator's call (11:05 UTC).** At ~20B steps the 3090 costs ~1.8x more
+    per step, about +$2 and +6 h.
+    * Stopped at 80.2M and bundled to ~/ar_m2/runs/abrb/attempt1_3090. The md5s match except
+      the empty search glob (no search had run yet). Box released 11:07 UTC.
+    * Re-rented as abrb_1 on 5080 / 4080S / 4080 only (ab/abrb 071fea32, config only, recipe
+      unchanged).
+    * Fallback: after 10 tries (~30 min) without such an offer, the full tiers come back and a
+      3090 is taken ("time matters more than the ~$2").
+
+### Celestial (abrl_1): FINISHES at 0.78x v14's step, +3.05 s
+
+* **Greedy evals** (score.py in wt/abrl):
+  * 6.5% (0.5M), 25.6% (76M), 41.9%, 65.1%, 75.0% (302.5M), 91.6% (378M), 63.7% (453.5M);
+  * FINISH 2/9 at 529,006,592 (53.30 s), 1/9 at 604.5M (47.67 s), 3/9 at 680.0M (54.36 s).
+* **Against v14** (ab7c_l14):
+  * v14 first finished 4/9 at 680.0M (45.86 s), then 4/9 (44.62 s) and 0/9. Its best by the first
+    finish + 2 evals was 44.62 s.
+  * The ratchet's first finish came at 0.78x v14's step, and its best is +3.05 s.
+  * At matched steps: at 680.0M the ratchet read 54.36 s, v14 45.86 s.
+  * One seed. It is the ratchet's first time-cost signal (petrus +0.30 s, blue200 +0.20 s).
+* **Run.** Stopped by pid at 715.1M. Bundle ~/ar_m2/runs/abrl (BUNDLE OK). Box released
+  10:50 UTC, gone in vastai; tunnel stopped.
+
+### Cannonball (abrc_1): no box (10:05 UTC onward)
+
+* **Rent tries.** 30+ by 12:30 UTC, every one ending "no offer passes".
+* **Why: fxcan's own filters.**
+  * The filters are RTX 5090 only, <= $0.60/h, cpu_cores_effective >= 24, cpu_ghz >= 2.5, no CN.
+  * At 12:30 UTC 34 verified 5090 offers existed. The one under $0.60 with enough threads was in
+    China ($0.433, excluded); the rest failed on threads or price. US offers with enough threads
+    sat just over the cap ($0.663-0.735).
+* **48 GB cards, checked only, at the operator's request.** None passed at <= $0.50/h with the
+  same CPU filter: RTX A6000 $0.482 has 6 threads, A40 $0.602 runs 2.2 GHz, RTX 6000 Ada is
+  $0.668 or more, L40S $0.873.
+* **Measured steps/s today:** 5090 ~500k (v14 cannonball), 5080 ~390k, 4080S ~259k, 4070S Ti
+  ~276k, 3090 ~205-255k.
+* **The operator's ruling.** The $0.60 cap is the user's standing rule (never rent above the
+  market cap), and only the user can lift it; the operator asked the user. Retries continue at the
+  cap with the same filters, chained in rounds of 40 tries (abl/w21/abrc_retry_chain.sh).
+
+### Unitfarmer2's verdict rule, fixed by the operator before the 3.5B read (~12:40 UTC)
+
+* **The 3.5B no-exit read is an early warning only.** It is reported, but pb is not stopped on
+  it. Across recipes unitfarmer2's pit exit has ranged from 1.74B (v14) to 7.10B (v7).
+* **The verdict is the launch cut.** A finish by 6.19B (2x v14's 3.10B) means no clear cost; no
+  finish by 6.19B is a clear cost, and pb is then stopped early.
+* **Box.** abru's box was extended at 12:43 UTC to 15:55 UTC (watchdog re-registered); 6.19B
+  falls at ~15:05 UTC.
+* **Reading unitfarmer2 physically, not by the grader %.**
+  * The ratchet run dove into the start pit 9/9 from the 302.5M eval (8/9 at 227M), where v14
+    first dove 9/9 at 1.66B. The grader read 5.9% throughout, because the pit sits deeper in d
+    than the start.
+  * Episodes that climb a pit wall above z 500 without reaching the route are not exits. A real
+    exit reaches the route: v14's exit eval read 49.5%.
+
+### Cannonball (abrc_1): FINISHES at 0.59x v14's step, +2.32 s
+
+* **Run.** Box 60931662 (RTX 5090, $0.497/h, Michigan, healthy), rented in retry round 3 at
+  13:53 UTC. Record gate passed 13:56 UTC.
+  * It ran ~476k steps/s and was stopped by pid at 1,662.5M, its cut: the first finish +
+    2 evals.
+  * Bundle ~/ar_m2/runs/abrc (BUNDLE OK). Box released 14:58 UTC, gone in vastai; tunnel
+    stopped. Cost about $0.54 (box time 13:53-14:58 UTC at $0.497/h; an earlier draft said
+    $0.83).
+* **Greedy evals** (score.py in wt/abrc):
+  * 28.6% (302.5M), 48.6% (378M), 77.7% (529M), 93.2% (604.5M), then 67.0-96.8% from 0.98B to
+    1.36B;
+  * FINISH 2/9 at 1,434,976,256 (80.82 s), 5/9 at 1,510.5M (80.76 s), 6/9 at 1,586.0M
+    (80.53 s); the stop also caught 4/9 at 1,661.5M (79.72 s).
+* **Against v14** (ab8n_v14, graded the same way):
+  * v14: 3/9 at 2,416.4M (78.78 s), 0/9 at 2,491.9M, 3/9 at 2,567.4M (78.21 s); best by the
+    first finish + 2 evals 78.21 s.
+  * The ratchet's first finish came at 0.59x v14's step, with more finishes per eval (2/5/6
+    against 3/0/3), but its best is +2.32 s.
+  * The second time-cost signal after celestial (+3.05 s). One seed each.
+
+### Unitfarmer2 (abru_1): NO finish by the 6.19B cut - a clear cost
+
+* **Run.** Box 60910348 (RTX 5080, $0.337/h), ~290-315k steps/s.
+  * Stopped by pid at 6,195.0M (15:36:20 UTC), its cut (2x v14's 3.10B).
+  * Bundle ~/ar_m2/runs/abru (abru_1, ckpts_1, auto_1; 83 evals; BUNDLE OK). Box released
+    15:42 UTC, gone in vastai; tunnel stopped. Cost about $1.89.
+* **Greedy evals** (score.py in wt/abru): 83 to 6,191.3M (the stop caught the last), 0 finishes.
+  Best 5.9% at 151.5M, before the dive; 1.8-3.0% at every eval after it.
+* **Physically** (abl/w21/uf2pit.py on every eval):
+  * Into the start pit 3/9 at 151.5M, 8/9 at 227M, then 9/9 at every eval from 302.5M.
+  * In 12 evals, 1-9 episodes climbed a pit wall back above z 500. None reached the route: those
+    evals read 1.8-3.0%, where v14's exit eval read 49.5%.
+  * v14 dove 9/9 at 1.66B, left the pit at 1.74B and first finished at 3.10B. The ratchet dove
+    5.5x sooner and never got out in 6.19B steps.
+* **Searches** (start d 30,647.5):
+  * 1 (404M, beam) and 2 (1.06B, beam + Go-Explore) handed back lines ending at d 28,845 and
+    28,426.
+  * 3 (2.71B) handed back a fallback ending at d 29,378, 952 u behind line 2, and the trainer
+    adopted it (see the line-adoption paragraph below).
+  * 4-6 found no line; 7 was running at the cut.
+* **Where the return goes** (read-only diagnostic at ~5B, at the operator's request):
+  * The ratchet pays about nothing inside the pit: ~207 u of energy-height records per episode,
+    all on the descent.
+  * Novelty is 82-92% of the return (the gate sits below its knee) and the stall share is 61-66%.
+    v14 in the pit: novelty 59%, stall 23%.
+* **Verdict.** Under the operator's rule, no finish by 6.19B is a clear cost. pb was then stopped
+  early.
+
+### Princessburglar (abrb_1): stopped early at 6.08B by the operator's rule; never left the room
+
+* **Why it stopped.** The operator's standing w21 rule: a clear cost on unitfarmer2 stops pb
+  early. The operator agreed at ~15:39 UTC.
+  * Killed by pid at 6,079.1M (15:40 UTC).
+  * Bundle ~/ar_m2/runs/abrb (abrb_1, ckpts_1, auto_1; 81 evals; BUNDLE OK). Box 60916939
+    released 15:41 UTC, gone in vastai; tunnel stopped.
+  * Cost about $1.37, plus $0.05 for the first box (the 3090).
+* **Greedy evals** (score.py in wt/abrb): 81 to 6,040.3M, 0 finishes, 0.1-0.4% throughout. The
+  0.4% came first at the 0.5M eval.
+* **Physically** (abl/room/route.py):
+  * The read is the furthest row of the room-exit reference line that an episode passes within
+    96 u of. Rows 0 to ~1,650 are the room, ~1,650-1,800 the crouch tunnel, ~2,800 the drop and
+    2,996 the pit.
+  * In 81 evals no episode passed row 1,606; the crouch tunnel starts at ~1,650.
+  * Single episodes reached the tunnel's mouth (rows 1,600-1,606) from the first eval to 2.64B.
+  * The median sat mid-room (rows ~1,050-1,130) from 76M to 0.76B, then fell back. From 2.87B to
+    the stop it sat at the spawn (rows 215-235): the greedy lost its own room route before
+    search 4.
+  * v14 first left the room at ~1.96B and finished at 17.29B. The frozen recipe left it at 2.94B,
+    fix-round try 3 at 1.36B.
+* **Searches** (start d 57,149):
+  * 1 (545M) and 2 (1.30B), beam + Go-Explore, handed back lines ending at d 55,363 and 55,113.
+    Both pass the whole reference line to the pit (row 2,996).
+  * 3 (3.04B) found no line.
+  * 4 (4.10B) handed back a Monte Carlo fallback ending at d 56,913 (0.4%), at row 1,606, before
+    the crouch tunnel: the tunnel's mouth, which the greedy's own episodes had reached. The trainer
+    adopted it in place of line 2.
+  * 5 (5.83B) found no line.
+* **Read.** This is a stop by rule, not a verdict on princessburglar. By 6.08B (0.35x v14's
+  17.29B) the ratchet run had not left the start room.
+
+### Cross-run: the line-adoption defect (generic; the strongest lead for a next step)
+
+* **It is the designed patience fallback, not a comparison bug.** Every instance below has the
+  same mechanism:
+  * The greedy never passed the held line's success line, so the trainer ran a PATIENCE search.
+  * No stage beat the held line's end by the gain (200 u of d) (`--auto-spine-current-ref`).
+  * auto_spine.py then handed back its fallback, the deepest line that beats only the greedy
+    frontier. Each search's log ends "no stage found a line past the current line's end: the
+    fallback is handed back".
+  * The trainer adopts a fallback exactly like a pass: it never reads the result's `fallback`
+    flag. The held line is replaced and "the curriculum restarts at its end".
+* **The bar can sit far behind the greedy.** "The greedy frontier" is the MEDIAN over the 9
+  episodes of each one's deepest contact-banked d, not the best episode.
+  * zlA: it sat at d ~3,900 (39%). At the same evals the grader read 57-60% for the median
+    episode and 61.5-63.1% for the best.
+  * pb at search 4 it was accurate: the greedy had fallen back to the spawn (the median at the
+    start d 57,149, the best episode 0.1%).
+* **The instances:**
+  * unitfarmer2 search 3 (2.71B), after line 2 "failed its curriculum" (2.11B): the failed-line
+    fallback (ab/ff), an archive line at d 29,378, 952 u behind line 2 (28,426).
+  * princessburglar search 4 (4.10B), after line 2 failed (2.34B): a Monte Carlo line at
+    d 56,913, 1,800 u behind line 2 (55,113).
+    * Line 2 reached the pit. Line 4 ends in the room at the crouch tunnel's mouth (0.4%):
+      ahead of the greedy then (0.1%), at the place its episodes had reached before 2.64B.
+  * za_loop zlA searches 8-11 (8.16B-13.14B): Monte Carlo lines at d 2,784, 2,852, 2,666 and
+    2,708.
+    * Each is within the gain of the line it replaced: 92 u past, 68 u behind, 186 u past and
+      42 u behind.
+    * All four are behind the best greedy episode.
+    * Each adoption restarted the curriculum, and the za_loop flat clock, at the same place.
+  * zlA search 5 (4.92B) was a fallback too: 81 u past line 4 and ~160 u behind the best greedy
+    episode (34.5% against 37.0%).
+    * The next eval jumped from 35.4% to 52.9% (median 34.5% -> 51.0%), zlA's largest step.
+* **Why it is generic.** No map enters it, and the same rule runs in v14: it is not the
+  ratchet's.
+* **Candidates (none built or tested):**
+  * a fallback that ends within the gain of the held line is not a new line: keep the held one
+    (zlA);
+  * a fallback must also beat the greedy's BEST episode by the gain, not only the median. That
+    would refuse zlA's 8-11 (55-58% against a best episode of 61.5-63.1%). For pb's search 4 and
+    uf2's search 3 it is not measured here.
+  * **Both would also have refused zlA's search 5**, the fallback that came right before zlA's
+    largest step. The d of a line's end does not say whether its path is new. A fix needs a test
+    arm, not only a rule.
+* **What it did not decide.** On unitfarmer2 and princessburglar the policy had not learned the
+  deeper held line either: it was marked failed before the swap, and there was no exit from the
+  pit or the room before or after. The fallbacks cost curriculum time; whether they cost a finish
+  is not shown.
+
+### Sidistic (abrs_1): FINISHES at 1.53x v14's step, +3.34 s
+
+* **Run.** Box 60913086 (RTX 4080, $0.363/h, Taiwan), ~317k steps/s. The box was extended at
+  15:29 UTC to 18:28 UTC (watchdog re-registered).
+  * Stopped by pid at 6,312.4M (16:17 UTC), its cut: the first finish + 2 evals.
+  * Bundle ~/ar_m2/runs/abrs (abrs_1, ckpts_1, auto_1; 84 evals; BUNDLE OK). Box released
+    16:21 UTC, gone in vastai; tunnel stopped. Cost about $2.08.
+* **Greedy evals** (score.py in wt/abrs):
+  * 72.2% (2.04B), 91.4% (2.42B), 95.8% (2.64B), 97.8% (3.47B, CP7), 98.0% (4.23B);
+  * then 24 evals at 31.4-98.0% with no finish;
+  * FINISH 1/9 at 6,115,819,520 (124.64 s), 2/9 at 6,191.3M (124.31 s), 2/9 at 6,266.8M
+    (123.41 s).
+* **Against v14** (ab12s_v14, its gzipped evals unpacked and graded with wt/abrs's score.py):
+  * v14: 68.7% at 3.93B, FINISH 1/9 at 4,001.9M (120.07 s), then 0/9 and 0/9. Its best by the
+    first finish + 2 evals is 120.07 s.
+  * The ratchet's first finish came at 1.53x v14's step, with more finishes per eval (1/2/2
+    against 1/0/0), and its best is +3.34 s.
+* **Where the steps went: leaving the 98% plateau.** Both greedies reached it.
+  * v14 read 98.0% (CP7) at 2.94B, 97.9-98.0% again at 3.10B, 3.78B and 3.85B, and finished at
+    4.00B. Its search 6 (3.51B) adopted an energy line, and its search 7 (3.69B) a line to
+    d 15,101, 310M steps before the finish.
+  * The ratchet read 97.8% (CP7) at 3.47B and 98.0% at 4.23B, and finished at 6.12B, 2.6B steps
+    after reaching the plateau.
+  * Its search 6 (3.55B) found an energy line but discarded it as STALE: 8/9 greedy episodes
+    already crossed that section with the energy it needed.
+  * Lines at 4.12B (d 26,937) and 5.26B (d 1,681) did not get it off the plateau. The first
+    greedy finish came 170M steps after search 9's finishing line (5.94B, d 0).
+  * None of searches 7-9 was a fallback.
+
+### Comparison (one seed per map; best = the best greedy time by the first finish + 2 evals)
+
+| map | v14 first finish | v14 best | ratchet first finish | ratchet best | ratio | delta |
+|---|---|---|---|---|---|---|
+| petrus (w20) | 302.5M | 30.34 s | 227.0M | 30.64 s | 0.75x | +0.30 s |
+| blue200 (w20) | 982.0M | 12.21 s | 1,661.5M | 12.41 s | 1.69x | +0.20 s |
+| celestial | 680.0M | 44.62 s | 529.0M | 47.67 s | 0.78x | +3.05 s |
+| cannonball | 2,416.4M | 78.21 s | 1,435.0M | 80.53 s | 0.59x | +2.32 s |
+| unitfarmer2 | 3,095.9M | - | none by 6.19B | - | > 2.0x | - |
+| sidistic | 4,001.9M | 120.07 s | 6,115.8M | 123.41 s | 1.53x | +3.34 s |
+| pb_b26 | 17,289.4M | 64.79 s | stopped at 6.08B | - | - | - |
+
+* **Box time** (w21): about $6.16 of <= $12.
+  * celestial $0.23, unitfarmer2 $1.89, cannonball $0.54, sidistic $2.08;
+  * princessburglar $1.42 (the 3090 $0.05 and the 5080 $1.37).
+  * Credit $18.43 at 16:05 UTC. No box is up since 16:21 UTC.
+
+### Verdict of wave 21 (one seed per map; with w20, all seven maps v14 finishes)
+
+* **Steps to the first finish.** The ratchet came earlier on three maps (cannonball 0.59x,
+  petrus 0.75x, celestial 0.78x) and later on two (sidistic 1.53x, blue200 1.69x).
+  * On blue200 the delay follows the search loop's timing (w20).
+  * On sidistic both greedies reached the 98% plateau (v14 2.94B, the ratchet 3.47B). v14 left
+    it 310M steps after a deep search line; the ratchet left it only after a finishing line,
+    two lines later.
+* **Unitfarmer2: a clear cost.** No finish by 2.0x v14's step. The greedy dove into the pit 5.5x
+  sooner than v14 and never left it; the ratchet pays about nothing inside the pit.
+* **Princessburglar: no verdict.** Stopped by rule at 6.08B, never out of the start room.
+* **Time.** On the three long maps the best time by the first finish + 2 evals is 2.3-3.3 s
+  slower: celestial +3.05, cannonball +2.32, sidistic +3.34. On petrus and blue200 it is within
+  noise (+0.30 s, +0.20 s).
+* **So the energy ratchet is not a drop-in for v14.** It is the za_loop ingredient (w19: zlA
+  63.1% against v14's 25-28%), but it fails unitfarmer2 and costs time where both finish.
