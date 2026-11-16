@@ -41,9 +41,25 @@ MARKET = {
 }
 
 
+# the card table these tests were written against (the general tiers of 2026-11-11..15): a
+# program's config.json may narrow it (the multi-map pilot P1 rents the 5080 tier only), and
+# these tests are about box.py's ordering, capping and filtering, not about one program's list
+GENERAL_TIERS = [["RTX_5080", "RTX_4080S", "RTX_4080"], ["RTX_3090", "RTX_3090_Ti"],
+                 ["RTX_5070_Ti", "RTX_4070S_Ti"], ["RTX_4090"], ["RTX_5090"]]
+GENERAL_DPH = {"RTX_5080": 0.45, "RTX_4080S": 0.45, "RTX_4080": 0.45, "RTX_3090": 0.4,
+               "RTX_3090_Ti": 0.4, "RTX_5070_Ti": 0.3, "RTX_4070S_Ti": 0.3, "RTX_4090": 0.45,
+               "RTX_5090": 0.6}
+
+
+def _general_cards(monkeypatch):
+    monkeypatch.setitem(box.CFG, "gpu_tiers", [list(t) for t in GENERAL_TIERS])
+    monkeypatch.setitem(box.CFG, "max_dph", dict(GENERAL_DPH))
+
+
 @pytest.fixture
 def market(monkeypatch, tmp_path):
     state = {"live": [], "credit": 100.0, "created": [], "searches": []}
+    _general_cards(monkeypatch)
 
     def fake_vast(*args, raw=True, timeout=120, check=True):
         if args[:2] == ("search", "offers"):
@@ -199,6 +215,7 @@ def test_the_reserve(market):
 
 def test_offers_drop_the_excluded_cpus(monkeypatch):
     # vast lists a Haswell E5-2696 v3 at its 3.8 GHz turbo, so cpu_ghz cannot catch it
+    _general_cards(monkeypatch)
     xeon = dict(_offer(1, "RTX_3090", 0.18), cpu_name="Xeon® E5-2699 v3 ")
     ryzen = dict(_offer(2, "RTX_3090", 0.25), cpu_name="AMD Ryzen 9 5950X 16-Core Processor")
     monkeypatch.setattr(box, "vast", lambda *a, **k: [xeon, ryzen]
