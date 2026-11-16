@@ -48971,3 +48971,57 @@ P's w20 body from its results on (the pre-launch part is 0919fae9).
 * **Contrast with the contact rule.** Its cost showed at once on petrus (2.75x, +1.9 s). The
   ratchet's did not.
 * **Cost.** w20 total about $0.76 of <= $2: petrus $0.15, blue200 $0.61.
+
+## 2026-11-16 10:11 UTC: PRE-LAUNCH (sub-agent P) - wave 21: energy-record pay from scratch on celestial, unitfarmer2, cannonball, sidistic, princessburglar
+
+P wrote this before the first launch (10:08 UTC); committed here after it, unchanged.
+
+## PRE-LAUNCH wave 21: the energy-record pay (za_loop arm A) on the five remaining maps
+
+Sub-agent P, 2026-11-16 ~10:00 UTC. Written BEFORE the launches (the operator's GO, ~09:55 UTC).
+
+### The question
+
+w20 (6d357cb0) found no cost on petrus or blue200, one seed each. Does the same hold on the other
+five maps v14 finishes from scratch? Cannonball (the long one) and princessburglar (the slowest,
+17.3B) are the strongest tests.
+
+### The runs (from scratch, seed 0, no checkpoint, no demo, every line the loop's own)
+
+* **Code:** ab/eratchet 97dffa6f.
+* **Recipe:** 162 tokens, the same list as zlA and w20 (md5 f9dbcf95 without --maxvel).
+  * abl/launch/mkcfg_w21.py asserts it equals the map's own v14 list (ab14*, md5 6e2a72ca)
+    outside the in-place change.
+  * It also asserts that the map config's map, field, start_d, span and maps tarball equal the
+    v14 run's.
+  * The launch extra is unchanged.
+
+| run | map | branch (commit) | maxvel | start_d, span | v14 first finish |
+|---|---|---|---|---|---|
+| abrl_1 | celestial | ab/abrl 8a8e0bdd | 4000 | 61,052 [61,052, 61,220] | 680.0M, 42.81 s |
+| abru_1 | unitfarmer2 | ab/abru 2ab9fe46 | 3500 | 30,647.5 [30,647.5, 30,660] | 3,095.9M, 37.41 s |
+| abrc_1 | cannonball | ab/abrc 732c7e5a | 4000 | 199,004 [198,980, 199,028] | 2,416.4M, 78.21 s |
+| abrs_1 | sidistic | ab/abrs 301248f1 | 4000 | 99,675 (no span) | 4,001.9M, 120.07 s |
+| abrb_1 | pb_b26 | ab/abrb 9c055461 | 3500 | 57,149 (no span) | 17,289.4M, 64.79 s |
+
+* **Boxes.** Cannonball runs on an RTX 5090 only, no CN host (fxcan's gpu_tiers and
+  offer_query, as before). The others take the usual tiers.
+* **CPU smokes of all five complete lines:** 92 pins + 162 + 2 extra, 40,960 steps, rc 0 x5. Each
+  prints the ratchet line and reads en +1..30/-8..11u/ep.
+  * celestial and cannonball ran on unitfarmer2's map (no face-id bake for them on the droplet);
+  * unitfarmer2, sidistic and princessburglar ran on their own maps.
+
+### Order, cut, budget
+
+* **Now:** celestial, unitfarmer2, cannonball (tunnels :8651-8653).
+* **Next, as boxes free:** sidistic, then princessburglar. zlAB's flat stop has moved to ~6.68B
+  (search 5 adopted a line at 4.68B), so it frees a box at ~11:55 UTC, not ~10:50. zlA keeps
+  running.
+* **Cut:** the first greedy finish + 2 evals, or 2x v14's first-finish step: celestial 1.36B,
+  unitfarmer2 6.19B, cannonball 4.83B, sidistic 8.0B; princessburglar 1.5x = 26B.
+* **Budget:**
+  * <= $12 for w21. Credit $27.22 at ~09:55 UTC, reserve $10.
+  * Launching stops (and the operator is told) if the credit would cross $13.
+  * Fleet <= 5 boxes.
+* **Reads:** the first greedy finish step and the best time by the first finish + 2 evals
+  (score.py in each run's worktree), against v14 and the contact rule's numbers where they exist.
