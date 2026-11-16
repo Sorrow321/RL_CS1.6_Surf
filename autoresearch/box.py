@@ -546,7 +546,17 @@ def cmd_launch(a):
     if extra and extra[0] == "--":
         extra = extra[1:]
     recipe = [] if a.no_recipe else list(CFG["incumbent_recipe"])
-    env = (f"MAP={shlex.quote(CFG['map'])} BUDGET={shlex.quote(str(int(float(a.steps))))} "
+    maps = None
+    if getattr(a, "multimap", False):
+        # --multimap (mm/s0): ONE policy over config "multimap" maps, from scratch, with the
+        # recipe's own tokens except its --envs (a multiple of the map count) and its --maxvel
+        # (one value per map, each map server's physics) - see multimap_recipe()
+        if a.resume:
+            die("--multimap launches from scratch (a resume restores its maps from the ckpt)")
+        maps, recipe = multimap_recipe(CFG.get("multimap"), recipe)
+    env = ((f"MAPS={shlex.quote(','.join(maps))} " if maps else
+            f"MAP={shlex.quote(CFG['map'])} ")
+           + f"BUDGET={shlex.quote(str(int(float(a.steps))))} "
            f"RECORD_EVERY={shlex.quote(a.record_every)} ")
     if a.self_states is not None:
         # run_arm.sh refuses --spawn-states / --demo-file / --bc-file without SELF_STATES=1,
@@ -575,8 +585,47 @@ def cmd_launch(a):
            "resume": bool(a.resume)}
     if a.self_states is not None:
         run["self_states"] = a.self_states
+    if maps:
+        run["maps"] = maps
     rec.setdefault("runs", []).append(run)
     save_rec(a.agent, rec)
+
+
+def _with_value(tokens: list, flag: str, value: str) -> list:
+    """``tokens`` with the one value after ``flag`` replaced (appended when the flag is absent);
+    a flag that occurs twice is refused rather than half-edited."""
+    out = list(tokens)
+    hits = [i for i, t in enumerate(out) if t == flag]
+    if len(hits) > 1:
+        die(f"{flag} occurs {len(hits)} times in the recipe")
+    if not hits:
+        return out + [flag, value]
+    if hits[0] + 1 >= len(out):
+        die(f"{flag} has no value in the recipe")
+    out[hits[0] + 1] = value
+    return out
+
+
+def multimap_recipe(mm, recipe: list):
+    """config "multimap" = {"maps": [bsp, ...], "maxvel": [one per map], "envs": N} -> (maps, the
+    recipe with --envs N and --maxvel V1,V2,...). N must divide over the maps (the trainer
+    refuses otherwise); every other token is the recipe's own."""
+    mm = mm or {}
+    maps = [str(m) for m in (mm.get("maps") or [])]
+    mv = [float(v) for v in (mm.get("maxvel") or [])]
+    envs = int(mm.get("envs") or 0)
+    if len(maps) < 2:
+        die('--multimap needs config "multimap": {"maps": [at least two], "maxvel": [one per '
+            'map], "envs": N}')
+    if len(set(maps)) != len(maps):
+        die(f"config multimap lists a map twice: {maps}")
+    if len(mv) != len(maps) or any(not v > 0 for v in mv):
+        die(f"config multimap maxvel: one value > 0 per map ({len(maps)} maps, got {mv})")
+    if envs <= 0 or envs % len(maps):
+        die(f"config multimap envs {envs} is not a positive multiple of {len(maps)} maps")
+    out = _with_value(recipe, "--envs", str(envs))
+    out = _with_value(out, "--maxvel", ",".join(f"{v:g}" for v in mv))
+    return maps, out
 
 
 def cmd_pull(a):
@@ -727,6 +776,10 @@ def main(argv=None):
     p.add_argument("--self-states", default=None, metavar="PROVENANCE",
                    help="SELF_STATES=1 for run_arm.sh: the --spawn-states (or similar) file "
                         "was built from the policy's OWN states; say how (it is recorded)")
+    p.add_argument("--multimap", action="store_true",
+                   help="ONE policy over config multimap's maps (run_arm.sh SCRATCH + MAPS): "
+                        "the recipe's tokens with its --envs and per-map --maxvel from that "
+                        "config section; deploy the maps' combined tarball (tools/mm_assets.py)")
     p.add_argument("extra", nargs=argparse.REMAINDER)
     p.set_defaults(fn=cmd_launch)
     p = sub.add_parser("pull")

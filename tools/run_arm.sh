@@ -363,15 +363,33 @@ fi
 # ablations and the only thing that matters is that it is IDENTICAL across
 # arms - changing it here would confound every comparison with a second
 # treatment.
+#
+# SCRATCH=1 MAPS=maps/a.bsp,maps/b.bsp,... (mm/s0, 2026-11-16): the SAME scratch
+# base with --maps in place of --map - ONE shared policy over several maps, the
+# recipe's tokens trailing as always (box.py launch --multimap writes the
+# recipe's --envs and per-map --maxvel from config "multimap"). This is not
+# the MULTIMAP branch above, whose base is an older pool recipe (--n-steps 32,
+# --ep-ticks 6000, no keys-hold / potential channel). Without MAPS this branch
+# passes exactly the tokens it always did. The liveness window is the MULTIMAP
+# branch's 300 s: every map's iteration-1 eval runs before the first step line.
+# DRY_RUN=1 prints the trainer's command line and exits (the launcher's test).
 if [ "${SCRATCH:-0}" = "1" ]; then
   echo "== SCRATCH: training from nothing (no checkpoint, no md5 gate)"
   echo "   view: $VIEW - $VIEW_DESC"
   echo "   keys: $KEYS - $KEYS_DESC"
   echo "   pot:  $POT - $POT_DESC"
-  MAP="${MAP:-maps/surf_src_cannonball.bsp}"
+  if [ -n "${MAPS:-}" ]; then
+    MAP_ARGS=(--maps "$MAPS")
+    LIVE_N=60
+    echo "   maps: $MAPS (one shared policy; MAP is ignored)"
+  else
+    MAP="${MAP:-maps/surf_src_cannonball.bsp}"
+    MAP_ARGS=(--map "$MAP")
+    LIVE_N=18
+  fi
   mkdir -p runs
   LOG="runs/${RUN}_launch.txt"
-  ARGS=(--map "$MAP" --run "$RUN" --reward race --envs 2048 --spawn platform
+  ARGS=("${MAP_ARGS[@]}" --run "$RUN" --reward race --envs 2048 --spawn platform
         --lidar-w 64 --lidar-h 32 --lidar-cell 32
         --lidar-range 11500 --lidar-near 2000
         --emb 512 --hidden 448
@@ -390,13 +408,17 @@ if [ "${SCRATCH:-0}" = "1" ]; then
   echo "== launch"
   echo "   $PY -u python/train_fast.py ${ARGS[*]}"
   echo "   budget $BUDGET steps from zero   log $LOG"
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    printf 'DRY_RUN_ARG %s\n' "${ARGS[@]}"
+    exit 0
+  fi
   nohup $PY -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
   PID=$!
   disown "$PID" 2>/dev/null || true
   echo "$PID" > "runs/${RUN}.pid"
   echo "   pid $PID"
-  echo "== liveness (90s)"
-  for _ in $(seq 18); do
+  echo "== liveness ($((LIVE_N * 5))s)"
+  for _ in $(seq "$LIVE_N"); do
     sleep 5
     if ! kill -0 "$PID" 2>/dev/null; then
       echo "!! trainer exited during startup. Log tail:"; tail -25 "$LOG"; exit 1
