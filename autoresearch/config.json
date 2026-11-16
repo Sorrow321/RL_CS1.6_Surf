@@ -24,20 +24,6 @@
       "RTX_5080",
       "RTX_4080S",
       "RTX_4080"
-    ],
-    [
-      "RTX_3090",
-      "RTX_3090_Ti"
-    ],
-    [
-      "RTX_5070_Ti",
-      "RTX_4070S_Ti"
-    ],
-    [
-      "RTX_4090"
-    ],
-    [
-      "RTX_5090"
     ]
   ],
   "max_dph": {
@@ -271,5 +257,6 @@
   "maps_tarball": "pb_maps.tar.gz",
   "_budget_doc": "No budget_rate_usd_h: box.py's pacer. The reserve is held by extend's burn x hours check and by the box deadlines.",
   "time_cap_s": 300.0,
-  "_time_cap_s_doc": "score.py's time term is 10 * (1 - best_finish_s / time_cap_s): 300 s, the episode cap."
+  "_time_cap_s_doc": "score.py's time term is 10 * (1 - best_finish_s / time_cap_s): 300 s, the episode cap.",
+  "_gpu_tiers_w21_doc": "w21 restart (operator, 2026-11-16 11:05 UTC): pb runs ~20B steps, so 5080-class only (a 3090 ran 255k steps/s against ~390k, ~1.8x the cost per step); the fallback to a 3090 after ~30 min of retries restores the full tiers. BEFORE: [[\"RTX_5080\", \"RTX_4080S\", \"RTX_4080\"], [\"RTX_3090\", \"RTX_3090_Ti\"], [\"RTX_5070_Ti\", \"RTX_4070S_Ti\"], [\"RTX_4090\"], [\"RTX_5090\"]]"
 }
