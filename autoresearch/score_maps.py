@@ -78,6 +78,10 @@ def grade(run_dir, configs, root=None) -> list:
             first = next((sc for sc in good if sc["finishes"]), None)          # files in step order
             rows.append({"map": Path(cfg["map"]).stem, "tag": tag, "n_evals": len(scored),
                          "n_valid": len(good), "best": best,
+                         # every valid eval in step order: (fleet step, finishes, episodes,
+                         # best progress %, best finish s or None)
+                         "evals": [(_step(sc), sc["finishes"], sc["episodes"],
+                                    sc["best_progress_pct"], sc["best_finish_s"]) for sc in good],
                          "best_step": _step(best) if best else None,
                          "first_finish_step": _step(first) if first else None,
                          "first_finish_own_step": own(_step(first)) if first else None,
