@@ -17381,6 +17381,7 @@ def main() -> None:
     # --maps (mm/s1): the map whose curriculum state the names below hold right now (0 on a
     # single-map run, always; _use_dslot swaps a map's state in and out)
     DSI = [0]
+    OWN_W = "its own step" if MULTI else "step"   # how the loop's step clocks are printed
 
     def _own_step(si=0):
         """slot ``si``'s OWN env steps: the fleet's global_step on a single-map run; under
@@ -17853,7 +17854,7 @@ def main() -> None:
             except OSError as ex:
                 AUTO["retry_at"] = int(_ost + float(args.auto_spine_retry))
                 AUTO["last"] = int(_ost)
-                print(f"!! auto-spine{_tg} search {AUTO['k']} did not start: {ex}; next try at step "
+                print(f"!! auto-spine{_tg} search {AUTO['k']} did not start: {ex}; next try at {OWN_W} "
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
             AUTO["proc"] = (proc, fh, t0, kdir, med)
@@ -18068,12 +18069,12 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: STALE energy "
                           f"spine discarded - {_n_en}/{len(AUTO['eval_dh'])} greedy episodes of "
                           f"the latest eval already cross d <= {_er[0]:,.0f} with energy height "
-                          f">= {_er[1]:,.0f}; next try at step {AUTO['retry_at']:,}", flush=True)
+                          f">= {_er[1]:,.0f}; next try at {OWN_W} {AUTO['retry_at']:,}", flush=True)
                     return
                 print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: STALE spine "
                       f"discarded - its end d {_de_new:,.0f} does not beat the latest greedy "
                       f"frontier {float(AUTO['med']):,.0f} by {float(args.auto_spine_gain):g} u "
-                      f"(the search started at {med:,.0f}); next try at step "
+                      f"(the search started at {med:,.0f}); next try at {OWN_W} "
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
             if _er is not None:
