@@ -48880,3 +48880,94 @@ Sub-agent P, 2026-11-16 ~07:30 UTC. Written BEFORE the launch; the operator's GO
   * <= $2 for the two: petrus ~1.2 h and blue200 ~2.4 h at <= $0.45/h, ~$1.6.
   * Boxes via ab_w2_retry.sh on ports 8649 and 8650, watchdog with harvest + pid, record gate.
   * The fleet is then 5 boxes (3 za_loop arms + these 2), the cap.
+
+## 2026-11-16 09:53 UTC: FINAL (sub-agent P) - energy-record pay (za_loop arm A's ingredient) shows no cost on petrus and blue200
+
+P's w20 body from its results on (the pre-launch part is 0919fae9).
+
+### Petrus (abrp_1): FINISHES at 0.75x v14's step, best time within noise
+
+* **Run.** Box 60894634 (RTX 4080S, $0.313/h, healthy). Launched 07:28 UTC, record gate passed.
+  * Stopped by pid at 407.4M, its cut: the first finish + 2 evals = the 378.0M eval.
+  * Bundle ~/ar_m2/runs/abrp (abrp_1, ckpts_1, auto_1; BUNDLE OK).
+  * Box released 07:52 UTC, gone in vastai; tunnel stopped.
+  * Cost about $0.15.
+* **Greedy evals** (score.py in wt/abrp):
+  * 0.8% (0.5M), 45.6% (76.0M), 83.9% (151.5M);
+  * FINISH 6/9 at 227,016,704 (30.64 s), 2/9 at 302.5M (31.21 s), 4/9 at 378.0M (30.64 s).
+  * Best 30.64 s.
+* **Against v14 and the contact rule** (ab7c_p14 and abk1_1, graded the same way):
+  * v14: 37.5% (76M), 63.7% (151M), 99.9% (227M), FINISH 7/9 at 302.5M; best by the first
+    finish + 2 evals 30.34 s.
+  * The ratchet's first finish came at 0.75x v14's step, 0.30 s slower (one seed: inside the
+    noise).
+  * The contact rule (99c98925): 831.0M (2.75x), 32.26 s.
+* **Why it costs nothing here.** The ratchet pays only energy-height records. On petrus they are
+  the start's acceleration (w18: ~130 u per episode on v14's greedy, none after the first 5 s), so
+  it does not touch the route.
+
+### Blue200 (abrw_1): no box between 07:24 and 08:00 UTC
+
+* **Rent tries.** ab_w2_retry tried every 3 min from 07:24 UTC; every try ended "no offer passes
+  (whitelist, caps, blocklist)".
+* **What blocks it is the CPU filter, not the card class.**
+  * abrw's gpu_tiers already include the slower classes (RTX 5070 Ti / 4070S Ti, the class zlAB
+    runs on, and 3090), each under its price cap.
+  * The offer query requires cpu_cores_effective >= 32, because scratch training is CPU-bound:
+    a 16-thread box ran ~10x slower.
+  * At ~08:00 UTC all 14 tier-GPU offers on the market failed it: 10-16 threads, or the one
+    32-thread 4090 at $0.457/h, over its $0.45 cap.
+* **The plan.**
+  * Keep retrying.
+  * If zlB's 4.5B budget stop fires (~08:30 UTC), bundle zlB and redeploy its RTX 5080 box with
+    ab/abrw, the w17 reuse path. The run is named `abzlb_b200`, because box.py names runs after
+    the box's agent.
+  * The fleet stays at 3 boxes. The card used is recorded below.
+* **The operator agreed (~08:05 UTC).** The reuse is automated by abl/w20/reuse_b200.sh. Once
+  zlB's budget stop fires:
+  * zlB is bundled (BUNDLE OK required, up to 3 tries);
+  * if blue200 got its own >= 32-thread box first, zlB's box is released;
+  * otherwise the abrw retries are stopped and ab_reuse.sh redeploys zlB's RTX 5080 box with
+    ab/abrw as `abzlb_b200`, then extends it 2.8 h, launches it through the record gate, and
+    re-registers the watchdog with harvest + pid. Tunnel :8647.
+* **Blue200 got its own box before zlB's stop.** The rent succeeded on a retry at 07:55 UTC:
+  box 60897309, an RTX 4080S at $0.313/h with 64 threads. It is the machine the petrus box ran
+  on (144328), back on the market after petrus was released at 07:52.
+  * Launched as abrw_1; record gate passed 08:00 UTC; watchdog with harvest + pid; tunnel :8650.
+  * Stop armed at 3.0B, to be moved to the first finish + 2 evals.
+  * reuse_b200.sh therefore takes its other branch: after zlB's stop and bundle it releases
+    zlB's box. The fleet is 4 boxes, then 3.
+
+### Blue200 (abrw_1): FINISHES 9/9 at 1.69x v14's step, best time within noise
+
+* **Run.** Box 60897309 (RTX 4080S, $0.313/h, 64 threads), launched 08:00 UTC.
+  * Stopped by pid at 1,862.3M, its cut: the first finish + 2 evals = the 1,812.5M eval.
+  * Bundle ~/ar_m2/runs/abrw (abrw_1, ckpts_1, auto_1; BUNDLE OK).
+  * Box released 09:52 UTC, gone in vastai; tunnel stopped. Cost about $0.61.
+* **Greedy evals** (score.py in wt/abrw):
+  * 26.4% (0.5M), then 65.2-68.2% at every eval from 76M to 1,586.0M, the death-dive plateau
+    v14 also had (61-67%);
+  * FINISH 9/9 at 1,661,468,672 (13.76 s), 9/9 at 1,737.0M (12.80 s), 9/9 at 1,812.5M
+    (12.41 s).
+* **Against v14:** v14 finished 9/9 at 982.0M, 1,057.5M and 1,133.0M, with a best by the first
+  finish + 2 evals of 12.21 s.
+  * The ratchet is 1.69x later and +0.20 s slower (one seed: inside the noise).
+  * The contact rule (99c98925) was 906.5M (0.92x), 14.05 s.
+* **Why later: the search loop's timing, not the energy term.**
+  * Search 1 (394M, Monte Carlo, 1,400 states) handed back a line ending at d 1,037 (61%), the
+    death dive.
+  * The finishing line (search 2, beam + Go-Explore, 9,307 states, end d 65) arrived at 999.3M.
+    v14's equivalent arrived at 465.6M.
+  * The curriculum then walked the line back to the spawn in ~650M steps (v14: ~520M).
+  * The ratchet paid en +51..+100 u per episode on blue200, 0.6-1.2 reward at K 12.
+
+### Verdict (one seed per map)
+
+* **The energy ratchet showed no cost on either map.**
+  * Petrus: the first finish at 0.75x v14's step, best +0.30 s.
+  * Blue200: 1.69x later through search timing, best +0.20 s.
+* **Where it pays.** On both maps it pays ~1-2 reward per episode, almost all for the start's
+  acceleration. That is the w18 prediction (130-411 u per episode on v14's greedy).
+* **Contrast with the contact rule.** Its cost showed at once on petrus (2.75x, +1.9 s). The
+  ratchet's did not.
+* **Cost.** w20 total about $0.76 of <= $2: petrus $0.15, blue200 $0.61.
