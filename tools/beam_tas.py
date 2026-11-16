@@ -125,6 +125,7 @@ from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
 from surfgym.bc import make_eval_feeds, rank_lineages
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
+from surfgym.mapfleet import cfg_maxvel
 from surfgym.keyshold import HELD_HEADS
 from surfgym.rewards import cc_draw, map_spawn_pool
 from surfgym.route import ArcProgress
@@ -421,7 +422,8 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
     return SurfCore(map_path, default_config(
         num_envs=num_envs, spawn_mode=2, max_episode_ticks=ep_cap,
         water_fail=1,
-        sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),
+        # --maxvel: the map's own value on a per-map run ("maxvel_maps"), else the run's one
+        sv_maxvelocity=cfg_maxvel(cfg, map_path, 2000.0),
         # --sv-gravity / --sv-friction / --bhop-cap / --stamina: MIRRORED (stock when absent)
         sv_gravity=float(cfg.get("sv_gravity") if cfg.get("sv_gravity") is not None else 800.0),
         sv_friction=float(cfg.get("sv_friction") if cfg.get("sv_friction") is not None else 4.0),

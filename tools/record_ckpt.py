@@ -1118,6 +1118,10 @@ def main(argv=None, build_only: bool = False, device=None):
     # above: "args.X or cfg.get(X)" short-circuits when the CLI overrides it,
     # and then the config audit never sees the key as read.
     cfg_maxvel = float(cfg.get("maxvel", 2000.0))
+    if cfg.get("maxvel_maps"):
+        # a run with one --maxvel per map: the recorded map's own (MIRRORED like "maxvel")
+        from surfgym.mapfleet import cfg_maxvel as _map_maxvel
+        cfg_maxvel = _map_maxvel(cfg, map_path)
     maxvel = cfg_maxvel if args.maxvel is None else float(args.maxvel)
     if args.maxvel is not None:
         print(f"!! --maxvel OVERRIDE: recording at sv_maxvelocity {maxvel:g} "

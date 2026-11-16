@@ -54,7 +54,7 @@ import numpy as np
 
 from .dipmeter import dip_summary, merge_dip_raw
 
-__all__ = ["MapSlot", "HeldoutSlot", "MapFleet", "map_tag", "map_tags"]
+__all__ = ["MapSlot", "HeldoutSlot", "MapFleet", "map_tag", "map_tags", "cfg_maxvel"]
 
 
 def map_tag(stem: str) -> str:
@@ -77,6 +77,23 @@ def map_tags(stems) -> list:
     stems = [str(s) for s in stems]
     tags = [map_tag(s) for s in stems]
     return tags if len(set(tags)) == len(tags) else stems
+
+
+def cfg_maxvel(cfg, map_path, default: float = 2000.0) -> float:
+    """The sv_maxvelocity a run's config trained ``map_path`` at.
+
+    A run given one ``--maxvel`` per map writes ``maxvel_maps`` ({tag: value}, the tags of
+    :func:`map_tags`, i.e. full stems if the short tags collided); the map's own entry wins.
+    Otherwise exactly the old read, ``float(cfg.get("maxvel", default))``."""
+    mm = cfg.get("maxvel_maps")
+    if mm:
+        from pathlib import Path
+        stem = Path(str(map_path)).stem
+        for key in (map_tag(stem), stem):
+            if key in mm:
+                return float(mm[key])
+        raise KeyError(f"maxvel_maps has no entry for {stem} (it names {sorted(mm)})")
+    return float(cfg.get("maxvel", default))
 
 
 class MapSlot:

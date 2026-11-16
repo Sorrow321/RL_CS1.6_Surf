@@ -56,8 +56,10 @@ class SurfFlag:
         ``g_step_of(sv_gravity, tick_ms, K)``.
     ticks : int
         K, physics ticks per decision (the eval path's episode-start rule).
-    vmax : float
-        The core's sv_maxvelocity; 0 = no clamp exclusion.
+    vmax : float or (n_envs,) array
+        The core's sv_maxvelocity; 0 = no clamp exclusion. An array gives each env its own
+        (a --maps fleet whose maps run different --maxvel values); a scalar takes the scalar
+        path exactly as before.
     dvz : float
         Give-back threshold, u/s.
     """
@@ -67,7 +69,12 @@ class SurfFlag:
         self.n = int(n_envs)
         self.g_step = float(g_step)
         self.ticks = max(1, int(ticks))
-        self.vmax = float(vmax)
+        if np.ndim(vmax) == 0:
+            self.vmax = float(vmax)
+        else:
+            self.vmax = np.asarray(vmax, np.float64).reshape(-1).copy()
+            if self.vmax.shape != (self.n,):
+                raise ValueError(f"SurfFlag: vmax has {self.vmax.size} values for {self.n} envs")
         self.dvz = float(dvz)
         self._vz = np.full(self.n, np.nan, np.float64)   # vz at the previous decision
         self._air = np.zeros(self.n, bool)                # airborne then
@@ -94,7 +101,10 @@ class SurfFlag:
         with np.errstate(invalid="ignore"):
             dev = (vz - self._vz) + self.g_step          # NaN after a reset
             sup = air & self._air & (dev > self.dvz)     # NaN compares False
-        if self.vmax > 0.0:
+        if isinstance(self.vmax, np.ndarray):
+            # per env: an env with vmax 0 has no clamp exclusion, like the scalar 0
+            sup &= (self.vmax <= 0.0) | (vz > -(self.vmax - 0.5))
+        elif self.vmax > 0.0:
             sup &= vz > -(self.vmax - 0.5)
         self.flag[:] = sup
         self._vz[:] = vz

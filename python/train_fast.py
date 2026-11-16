@@ -109,7 +109,7 @@ from surfgym.core import STATE_DTYPE
 from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
 from surfgym.greedy_spawn import GreedyLinePool, as_truncated
-from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
+from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot, map_tags
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
@@ -4921,6 +4921,24 @@ def _ge_phase1(args) -> str:
     return str(path)
 
 
+def _maxvel_arg(text):
+    """--maxvel: ONE value -> a float (exactly what type=float gave), a comma-separated list -> a
+    tuple of floats, one per map (the --maps order, then the --heldout-maps order)."""
+    parts = [p.strip() for p in str(text).split(",") if p.strip()]
+    try:
+        vals = [float(p) for p in parts]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"--maxvel {text!r}: a number or a comma-separated list "
+                                         "of numbers, one per map")
+    if not vals:
+        raise argparse.ArgumentTypeError(f"--maxvel {text!r}: no value")
+    if len(vals) == 1:
+        return vals[0]
+    if any(not v > 0.0 for v in vals):
+        raise argparse.ArgumentTypeError(f"--maxvel {text!r}: every value must be > 0")
+    return tuple(vals)
+
+
 def main() -> None:
     # allow_abbrev=False: the launcher's demo guard matches exact spellings,
     # and argparse would otherwise accept --demo-f for --demo-file (GPT
@@ -5840,13 +5858,15 @@ def main() -> None:
                          "speed is multiplied by up to 0.88 per tick and a second jump is lower. "
                          "0 = a no-slowdown server. Physics: restored from a checkpoint, mirrored "
                          "by record_ckpt")
-    ap.add_argument("--maxvel", type=float, default=None,
+    ap.add_argument("--maxvel", type=_maxvel_arg, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
                          "value all pre-race runs trained on; real surf "
                          "servers run 3500 — the per-axis clamp at 2000 "
                          "bleeds speed on fast lines and makes momentum maps "
                          "like cannonball physically uncompletable; ckpt "
-                         "restores)")
+                         "restores). ONE value for every map, or one per map "
+                         "like --goal-cell: the --maps order, then one per "
+                         "--heldout-maps map (it is each map server's physics)")
     # 128 rays cost ~17ns each and dominate env time (13M steps/s eyeless ->
     # 0.44M at 16x8); drop to 12x6 for ~1.7x env throughput at coarser vision
     ap.add_argument("--lidar-w", type=int, default=None)   # 128; ckpt overrides
@@ -8472,6 +8492,13 @@ def main() -> None:
                          "differences goes through these two Linears). The "
                          "trunk and towers stay bf16. 0 = today")
     args = ap.parse_args()
+    # --maxvel V1,V2,...: one sv_maxvelocity per map (_maxvel_arg returns a tuple only for a list).
+    # args.maxvel becomes the FIRST map's value, so every single-value reader is unchanged, and
+    # MAXVEL_MAPS keeps the list (resolved against the slots once they exist); None = one value
+    MAXVEL_MAPS = None
+    if isinstance(args.maxvel, tuple):
+        MAXVEL_MAPS = [float(v) for v in args.maxvel]
+        args.maxvel = MAXVEL_MAPS[0]
     # --plan-vocab proposals: the base vocabulary of the uninformed proposals
     # is the EXECUTOR's own (walk or surf), read off the resumed checkpoint -
     # a derived setting, never a CLI flag; None everywhere else
@@ -8730,6 +8757,11 @@ def main() -> None:
         if args.maxvel is None and ck_cfg.get("maxvel") is not None:
             args.maxvel = float(ck_cfg["maxvel"])
             restored.append(f"maxvel={args.maxvel:g}")
+            if ck_cfg.get("maxvel_maps"):
+                # a per-map --maxvel: {tag: value}, resolved against the slots' tags below
+                MAXVEL_MAPS = dict(ck_cfg["maxvel_maps"])
+                restored.append("maxvel_maps=" + ",".join(
+                    f"{k}:{float(v):g}" for k, v in MAXVEL_MAPS.items()))
         if args.respawn_frac is None and ck_cfg.get("respawn_frac") is not None:
             args.respawn_frac = float(ck_cfg["respawn_frac"])
             restored.append(f"respawn_frac={args.respawn_frac:g}")
@@ -12298,6 +12330,33 @@ def main() -> None:
                 f"--goal-cell lists {len(_gc)} cells for {NMAPS} maps; pass "
                 "one value for the whole fleet or exactly one per map, in "
                 "--maps order")
+    # --maxvel per map (each map server's sv_maxvelocity): SLOT_MAXVEL[i] is training slot i's,
+    # HELD_MAXVEL[j] held-out map j's. One value (the default) fills both with args.maxvel, so a
+    # run without a list builds every core exactly as before; MAXVEL_MAPS becomes {tag: value}
+    # for the config dump (None without a list)
+    SLOT_MAXVEL = [float(args.maxvel)] * NMAPS
+    HELD_MAXVEL = [float(args.maxvel)] * len(HBSPS)
+    if MAXVEL_MAPS is not None:
+        _mv_tags = map_tags(STEMS + HSTEMS)
+        if isinstance(MAXVEL_MAPS, dict):
+            # a resumed per-map checkpoint: its {tag: value}
+            _miss = [t for t in _mv_tags if t not in MAXVEL_MAPS]
+            if _miss:
+                raise SystemExit(f"the checkpoint's per-map maxvel names no value for "
+                                 f"{', '.join(_miss)}: pass --maxvel with one value per map")
+            _mv = [float(MAXVEL_MAPS[t]) for t in _mv_tags]
+        else:
+            _mv = list(MAXVEL_MAPS)
+            if len(_mv) != len(_mv_tags):
+                raise SystemExit(
+                    f"--maxvel lists {len(_mv)} values for {NMAPS} training map(s)"
+                    + (f" and {len(HBSPS)} held-out map(s)" if HBSPS else "")
+                    + "; pass one value for every map or exactly one per map, in --maps "
+                    "order" + (" then --heldout-maps order" if HBSPS else ""))
+        SLOT_MAXVEL, HELD_MAXVEL = _mv[:NMAPS], _mv[NMAPS:]
+        args.maxvel = SLOT_MAXVEL[0]
+        MAXVEL_MAPS = dict(zip(_mv_tags, _mv))
+        print("--maxvel per map: " + ", ".join(f"{t} {v:g}" for t, v in MAXVEL_MAPS.items()))
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
     if args.ckpt is None:
@@ -12376,7 +12435,7 @@ def main() -> None:
                              max_episode_ticks=args.ep_ticks,
                              water_fail=1, yaw_jitter_deg=args.yaw_jitter,
                              yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
-                             sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
+                             sv_maxvelocity=SLOT_MAXVEL[_i], sv_friction=float(args.sv_friction),
                              enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
                              sv_gravity=float(args.sv_gravity),
                              lidar_w=0, lidar_h=0,
@@ -13149,7 +13208,7 @@ def main() -> None:
                 shell_frac=args.respawn_frontier_shell,
                 shell_width=args.respawn_frontier_shell_width,
                 floor=args.respawn_frontier_floor,
-                maxvel=float(args.maxvel),
+                maxvel=float(SLOT_MAXVEL[_i]),
                 seed=71 + 101 * _i,
                 uniform=bool(args.respawn_frontier_uniform))
         # the plateau half reuses --unstuck's schedule verbatim: T rises by
@@ -13279,7 +13338,7 @@ def main() -> None:
                 shell_frac=args.respawn_backward_shell,
                 shell_width=args.respawn_backward_shell_width,
                 elev_range=BACK_ELEV,
-                maxvel=float(args.maxvel), seed=83 + 101 * _i)
+                maxvel=float(SLOT_MAXVEL[_i]), seed=83 + 101 * _i)
         _bm_over = (float(args.respawn_novel_frac) + BMIX
                     + max(0.0, float(args.respawn_greedy or 0.0)))
         print(f"respawn BACKWARD-MIX: {BMIX:.0%} of the non-start pool = goal-anchored rows "
@@ -13400,7 +13459,7 @@ def main() -> None:
                 shell_frac=args.respawn_backward_shell,
                 shell_width=args.respawn_backward_shell_width,
                 elev_range=BACK_ELEV,
-                maxvel=float(args.maxvel), seed=79 + 101 * _i)
+                maxvel=float(SLOT_MAXVEL[_i]), seed=79 + 101 * _i)
         print(f"respawn BACKWARD: the map run backward - band = distance to "
               f"the goal in [{args.respawn_backward_floor:g}u, W], W from "
               f"{args.respawn_backward_start:.0%} of d0 (d0 = "
@@ -13452,7 +13511,7 @@ def main() -> None:
             num_envs=(N_EVAL_PAR or 1), spawn_mode=2, max_episode_ticks=args.ep_ticks,
             water_fail=1,
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
-            sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
+            sv_maxvelocity=SLOT_MAXVEL[_i], sv_friction=float(args.sv_friction),
             enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
             sv_gravity=float(args.sv_gravity),
             lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core,
@@ -13613,7 +13672,7 @@ def main() -> None:
             ec = SurfCore(str(_bsp), default_config(
                 num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                 water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
-                sv_maxvelocity=args.maxvel, sv_friction=float(args.sv_friction),
+                sv_maxvelocity=HELD_MAXVEL[_j], sv_friction=float(args.sv_friction),
                 enable_bhop_cap=int(args.bhop_cap), enable_stamina=int(args.stamina),
                 sv_gravity=float(args.sv_gravity),
                 lidar_w=0, lidar_h=0,
@@ -15629,6 +15688,9 @@ def main() -> None:
                        "int_speed": (args.int_speed
                                      if args.reward == "race" else None),
                        "maxvel": args.maxvel,
+                       # --maxvel per map: {tag: value} (beam_tas / record_ckpt read the
+                       # recorded map's own); absent with one value, so that dump is unchanged
+                       **({"maxvel_maps": dict(MAXVEL_MAPS)} if MAXVEL_MAPS else {}),
                        **({"race_ground": 1} if args.race_ground else {}),
                        **({"sv_friction": float(args.sv_friction)}
                           if float(args.sv_friction) != 4.0 else {}),
@@ -18330,8 +18392,13 @@ def main() -> None:
     surf_flag = surf_pin = surf_np = surf_og = surf_vz = None
     if N_SURF:
         _ph0 = slots[0].core.config.phys
+        # the clamp per env when the maps run different --maxvel values (a scalar otherwise,
+        # i.e. always on a single-map run)
+        _svm = [float(_s.core.config.phys.sv_maxvelocity) for _s in slots]
         surf_flag = SurfFlag(N, g_step_of(_ph0.sv_gravity, TICK.ms, K), K,
-                             vmax=float(_ph0.sv_maxvelocity))
+                             vmax=(float(_ph0.sv_maxvelocity) if len(set(_svm)) == 1 else
+                                   np.concatenate([np.full(_s.n, _v, np.float64)
+                                                   for _s, _v in zip(slots, _svm)])))
         surf_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
         surf_np = surf_pin.numpy()[:, 0]
         surf_og = np.zeros(N, np.int32)
