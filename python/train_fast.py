@@ -10128,8 +10128,8 @@ def main() -> None:
         if (args.respawn_greedy_temp_view is not None
                 and float(args.respawn_greedy_temp_view) <= 0.0):
             raise SystemExit("--respawn-greedy-temp-view is a sigma multiplier: > 0")
-        _bad = [f for f, on in (("--maps", args.maps),
-                                ("--rnn", args.rnn not in (None, "none")),
+        # (--maps: per map since mm/s1 - the per-env slots, each map's own greedy pool)
+        _bad = [f for f, on in (("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
                                 ("--sil-coef with --sil-tempered",
                                  float(args.sil_coef or 0.0) > 0.0
@@ -13367,7 +13367,8 @@ def main() -> None:
             raise SystemExit("--respawn-front-perturb needs the reservoir (--respawn-frac > 0)")
         # --demo-file is wired (pbr2b3, 2026-10-24): the rows replace demo rows of the pool's
         # uniform part, never the frontier band's or the map-start share
-        for _bad, _why in ((MULTI, "--maps"), (D.enabled, "DDP"),
+        # (--maps: FPERT_S holds one sampler per map tag since mm/s1)
+        for _bad, _why in ((D.enabled, "DDP"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_frontier, "--respawn-frontier"),
                            (args.respawn_backward, "--respawn-backward"),
@@ -13396,29 +13397,36 @@ def main() -> None:
     # --respawn-greedy: the policy's own greedy-eval states before each death
     # (surfgym/greedy_spawn.py), rebuilt at every eval
     GREEDY = None
+    GREEDY_S = {}                        # one pool per map tag (slot 0's IS GREEDY)
     if float(args.respawn_greedy) != 0.0:
         if respawn is None or args.respawn_frac <= 0.0:
             raise SystemExit("--respawn-greedy needs the reservoir (--respawn-frac > 0): its "
                              "rows replace the reservoir share of the pool")
         # --demo-file is wired (pbr2b3, 2026-10-24): the tail of the demo rows, as of the
         # reservoir rows without it
-        for _bad, _why in ((MULTI, "--maps"),
-                           (D.enabled, "DDP (rank 0 alone runs the eval)"),
+        # (--maps: one pool per map since mm/s1, each built from its own map's greedy eval)
+        for _bad, _why in ((D.enabled, "DDP (rank 0 alone runs the eval)"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_backward, "--respawn-backward"),
                            (bool(args.goals), "--goals")):
             if _bad:
                 raise SystemExit(f"--respawn-greedy is not wired with {_why}")
+
+        def _greedy_pool(seed):
+            return GreedyLinePool(float(args.respawn_greedy),
+                                  window=tuple(args.respawn_greedy_window), seed=seed,
+                                  stuck=int(args.respawn_greedy_stuck or 0),
+                                  turn=float(args.respawn_greedy_turn or 0.0),
+                                  speed=args.respawn_greedy_speed,
+                                  contact=bool(args.respawn_greedy_contact),
+                                  energy=int(args.respawn_greedy_energy or 0),
+                                  energy_secs=float(args.respawn_greedy_energy_secs or 12.0))
         try:
-            GREEDY = GreedyLinePool(float(args.respawn_greedy),
-                                    window=tuple(args.respawn_greedy_window),
-                                    seed=int(args.seed) + 9191,
-                                    stuck=int(args.respawn_greedy_stuck or 0),
-                                    turn=float(args.respawn_greedy_turn or 0.0),
-                                    speed=args.respawn_greedy_speed,
-                                    contact=bool(args.respawn_greedy_contact),
-                                    energy=int(args.respawn_greedy_energy or 0),
-                                    energy_secs=float(args.respawn_greedy_energy_secs or 12.0))
+            GREEDY = _greedy_pool(int(args.seed) + 9191)
+            # slot 0's pool IS GREEDY; slot i's is seeded + 101 * i (the reservoir's pattern)
+            GREEDY_S = {slots[0].tag: GREEDY}
+            for _gi, _gs in enumerate(slots[1:], start=1):
+                GREEDY_S[_gs.tag] = _greedy_pool(int(args.seed) + 9191 + 101 * _gi)
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
@@ -19431,8 +19439,13 @@ def main() -> None:
                          f"{_s.novel.d_best:,.0f}u" if _ok
                          else ": grid mismatch, starting a fresh visit grid"))
     if GREEDY is not None and args.ckpt and ck.get("respawn_greedy") is not None:
-        if GREEDY.load_state_dict(ck["respawn_greedy"]):
-            print(f"restored --respawn-greedy state: {GREEDY.line()}")
+        _rgs = ck["respawn_greedy"]
+        for _gs in slots:
+            # a multi-map checkpoint keys the pools by map tag
+            _gsd = (_rgs.get(_gs.tag) if MULTI else _rgs)
+            if _gsd is not None and GREEDY_S[_gs.tag].load_state_dict(_gsd):
+                print(f"restored --respawn-greedy state{f'[{_gs.tag}]' if MULTI else ''}: "
+                      f"{GREEDY_S[_gs.tag].line()}")
     if BACKWARD and args.ckpt and ck.get("respawn_backward") is not None:
         _rb = ck["respawn_backward"]
         for _s in slots:
@@ -19532,7 +19545,8 @@ def main() -> None:
             state["respawn_novel"] = {_s.tag: _s.novel.state_dict() for _s in slots}
         if GREEDY is not None:
             # --respawn-greedy: the last eval's greedy-line states (rebuilt at the next eval)
-            state["respawn_greedy"] = GREEDY.state_dict()
+            state["respawn_greedy"] = ({_gs.tag: GREEDY_S[_gs.tag].state_dict()
+                                        for _gs in slots} if MULTI else GREEDY.state_dict())
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -20698,8 +20712,9 @@ def main() -> None:
                     # demo rows' uniform part, which comes after the frontier band's draws
                     _nf = max(1, int(round(len(_dpool) * (1.0 - args.respawn_frac))))
                     _nns = len(_dpool) - _nf
-                    _ngr = (int(round(_nns * GREEDY.frac))
-                            if (GREEDY is not None and GREEDY.size) else 0)
+                    _gp = GREEDY_S.get(_s.tag)
+                    _ngr = (int(round(_nns * _gp.frac))
+                            if (_gp is not None and _gp.size) else 0)
                     if FPERT > 0.0:
                         _npf = max(0, min(int(round(_nns * FPERT)), _nns - _ngr))
                         _prows = FPERT_S[_s.tag].rows(_s.respawn, _npf)
@@ -20708,8 +20723,8 @@ def main() -> None:
                             _pe = len(_dpool) - _ngr
                             _dpool[_pe - len(_prows):_pe] = _prows
                         FPERT_S[_s.tag].remember(_prows)
-                    if GREEDY is not None:
-                        _dpool = GREEDY.mix(_dpool, _nf)
+                    if _gp is not None:
+                        _dpool = _gp.mix(_dpool, _nf)
                 _set_pool(_s, _dpool)
                 if goalsys is not None:
                     # demo rows carry no harvested goal (NaN -> the
@@ -20825,7 +20840,7 @@ def main() -> None:
                     if GREEDY is not None:
                         # --respawn-greedy: the TAIL of the non-start rows, so the
                         # map-start rows and the novel rows after them are kept
-                        _rp = GREEDY.mix(_rp, max(1, int(round(
+                        _rp = GREEDY_S[_s.tag].mix(_rp, max(1, int(round(
                             len(_rp) * (1.0 - args.respawn_frac)))))
                     _set_pool(_s, _rp)
             elif SPAWN_STATES is not None:
@@ -21662,8 +21677,15 @@ def main() -> None:
                             demo_idx[ei] = demo.match(sv_view[ei]["origin"])
                         if GTEMP and ended.any():
                             # --respawn-greedy-temp: which fresh spawns are greedy-line rows
-                            _gei = np.flatnonzero(ended)
-                            greedy_sp[_gei] = GREEDY.is_row(sv_view[_gei]["origin"])
+                            if MULTI:
+                                for _gs in slots:
+                                    _gl = np.flatnonzero(ended[_gs.sl])
+                                    if len(_gl):
+                                        greedy_sp[_gl + _gs.lo] = GREEDY_S[_gs.tag].is_row(
+                                            _gs.core.states_view[_gl]["origin"])
+                            else:
+                                _gei = np.flatnonzero(ended)
+                                greedy_sp[_gei] = GREEDY.is_row(sv_view[_gei]["origin"])
                     if FINL is not None and ended.any():
                         # --finish-line: the ended episodes that started on the finishing line
                         # and whether they FINISHED, then the fresh spawns' line index
@@ -23218,8 +23240,8 @@ def main() -> None:
                 _rg_cap = GREEDY is not None and not _s.heldout
                 if _rg_cap:
                     # --respawn-greedy: keep this recording's states (env 0, pre-step; every
-                    # env's first episode under --eval-parallel)
-                    _ev_tick = chain_ticks(_ev_tick, GREEDY.hook(N_EVAL_PAR))
+                    # env's first episode under --eval-parallel); each map its own pool
+                    _ev_tick = chain_ticks(_ev_tick, GREEDY_S[_s.tag].hook(N_EVAL_PAR))
 
                 def _rec_par(core_, pol_, path_, episodes, max_ticks, seed, on_tick,
                              episode_meta, header_extra):
@@ -23280,11 +23302,12 @@ def main() -> None:
                         # the field distance, off-field (the unreachable sentinel) -> inf
                         _d = np.asarray(_f.sample(o), np.float64)
                         return np.where(_d < _f.reach_max - 0.5 * _f.cell, _d, np.inf)
-                    GREEDY.build(_ev_sum if _ev_pat is None
-                                 else as_truncated(_ev_sum, _ev_pat.state["killed"]),
-                                 float(sum(_tpat)) / len(_tpat),
-                                 d_fn=None if _gfld is None else _rg_d)
-                    print(f"[{global_step:>13,d}] " + GREEDY.line())
+                    GREEDY_S[_s.tag].build(_ev_sum if _ev_pat is None
+                                           else as_truncated(_ev_sum, _ev_pat.state["killed"]),
+                                           float(sum(_tpat)) / len(_tpat),
+                                           d_fn=None if _gfld is None else _rg_d)
+                    print(f"[{global_step:>13,d}] " + (f"[{_s.tag}] " if MULTI else "")
+                          + GREEDY_S[_s.tag].line())
                 if AUTO_SPINE and _i == 0 and not _s.heldout:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
                 if INTP is not None and not _s.heldout:
@@ -23859,7 +23882,10 @@ def main() -> None:
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
               f"{unstuck_note}{cc_note}{crl_note}{imatch_note}{ism_note}{novel_note}{fpert_note}"
-              + (f"  greedy {GREEDY.size:,}x{GREEDY.mixed}" if GREEDY is not None else ""))
+              + ((f"  greedy {GREEDY.size:,}x{GREEDY.mixed}" if not MULTI else
+                  "  greedy " + ",".join(f"{GREEDY_S[_gs.tag].size:,}x{GREEDY_S[_gs.tag].mixed}"
+                                         for _gs in slots))
+                 if GREEDY is not None else ""))
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

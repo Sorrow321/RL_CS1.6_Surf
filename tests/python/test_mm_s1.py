@@ -128,3 +128,32 @@ def test_e_the_front_temperature_band_per_map():
                      extra=["--front-contact", "1", "--ratchet-contact", "1"])[0]
     assert bad.returncode != 0 and "--maps with --front-contact" in (bad.stdout + bad.stderr)
     shutil.rmtree(V.ROOT / "runs" / "mms1_e2", ignore_errors=True)
+
+
+@needs_mm
+def test_f_g_greedy_and_front_perturb_rows_per_map():
+    import torch
+    tags = map_tags([m.stem for m in V.MM_MAPS])
+    drop = [f for f in NOT_YET if f not in ("int_gate", "energy_front", "front_temp",
+                                            "greedy", "greedy_temp", "front_perturb")]
+    r, d = V.run_line(V.ROOT, "mms1_fg", MAPS_ARG, drop=drop, steps=6144)
+    try:
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        for tag in tags:
+            assert f"[{tag}] greedy-line pool: " in out, tag      # each map's pool, its own eval
+        head = (d / "progress.csv").read_text().splitlines()[0].split(",")
+        assert all(f"fpert/ended.{t}" in head for t in tags)
+        assert any(ln.startswith("step ") and " greedy " in ln and "," in ln.split(" greedy ")[1]
+                   for ln in out.splitlines())
+        ck = torch.load(d / "ckpt_latest.pt", map_location="cpu", weights_only=False)
+        assert sorted(ck["respawn_greedy"]) == sorted(tags)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_f_one_greedy_pool_per_map_seeded_like_the_reservoir():
+    src = (V.ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert "GREEDY = _greedy_pool(int(args.seed) + 9191)" in src
+    assert "_greedy_pool(int(args.seed) + 9191 + 101 * _gi)" in src
+    assert "GREEDY_S[_s.tag].build(" in src and "GREEDY_S[_s.tag].hook(N_EVAL_PAR)" in src
