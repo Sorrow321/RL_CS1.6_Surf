@@ -48676,3 +48676,130 @@ Shared for all three:
     depth wave (meta-analysis Stage C).
 * **The eval patience is not what ends v14's greedy now.** 9/9 fall at 7.32B. At 4.30B it cut
   4/9 that had already left the pipe and stopped gaining energy.
+
+## 2026-11-16 03:58 UTC: PRE-LAUNCH (sub-agent P) - three za_loop arms, v14 + ONE ingredient each (zlA energy-record pay, zlB --energy-stall 32, zlAB both), launch only if abzl_1 has not improved by 10B
+
+## PRE-LAUNCH wave 19: three za_loop arms, v14 + the za_loop program's energy ingredients
+
+Sub-agent P, 2026-11-16. Written BEFORE any launch. Nothing is rented; the operator decides at the
+10B read of abzl_1 (~05:20 UTC). Arm 3 of w18 (`--fail-pen 2`) is deferred.
+
+### The question
+
+w18 (ledger 33ea6c5d) found where v14 stops on surf_za_loop.
+* v14 plateaus at 25-28% in the second trough, a half-pipe it has to pump. It arrives at ~30 s,
+  pumps briefly at +28..40 u/s, sets its record at a swing top, and leaves the pipe: from 3.47B on,
+  0/9 episodes stay in it for 20 s.
+* The program's lineage climbed the same pipe by RL alone: 24% at 529M to 57% at 1.09B, with no new
+  search line, pumping at +53..58 u/s.
+* That lineage was paid per call for energy-height gains (K 12) and had `--energy-stall 32`.
+  v14 pays ~0 for energy (its band bonus) and has no energy clock.
+* The program never ran one without the other.
+
+Each arm adds one of the two ingredients, and one arm adds both, so a single round separates them.
+
+### The code: ab/eratchet 97dffa6f (= ab/share fea35b06 + one commit)
+
+* **The new flag.** `--energy-ratchet 1` is a form of `--energy-pot K`. It pays only NEW records of
+  the episode's energy height h = z + |v|^2 / 2g, K x (h - best so far) / 1000, and charges nothing
+  for a loss.
+  * It is a port of the za_loop program's 4439aab8 (ar/zlr1b2), which was never on ab/share.
+  * An ended row re-anchors on the next spawn. The total per episode is bounded by
+    K x (h max - h at spawn).
+  * The en read-out still counts the losses (not charged).
+  * It is refused without `--energy-pot K > 0` and with `--energy-pot-front B > 0`.
+  * A checkpoint restores it, and record_ckpt declares it TRAIN_ONLY.
+* **Off (the default) is byte-identical.** There is no config key, no state, and no branch taken.
+* **tests/python/test_energy_ratchet.py: 11 passed.**
+  * 5 rule tests: records pay; losses are free; a regain pays once; the loss is in the read-out;
+    an ended row re-anchors; the sum is bounded by the record; off is the per-call form.
+  * 2 wiring and record_ckpt tests.
+  * 4 CPU runs on unitfarmer2's map:
+    * the flag off is byte-identical to fea35b06 with v14's band form AND with the per-call form:
+      the config dump, every eval trajectory, every progress.csv row;
+    * the refusals;
+    * on: the config key, the announce line, the en read-out, and a bare resume restores it.
+* **`--energy-stall`** is already on ab/share (zlr1b4's 5d07d0df lineage): energy records re-arm
+  the training stall kill and the eval patience. v14 runs it off.
+
+### The three arms (from scratch, seed 0, no checkpoint, no demo, every line the loop's own)
+
+Each config is abl/launch/fxzl_cfg.json:
+* map maps/surf_za_loop.bsp, field goalc_32, start_d 6,361.8 (no span), time cap 900 s;
+* maps tarball zl_maps.tar.gz.
+
+Built by abl/launch/mkcfg_w19.py via mk_wave19.sh. The builder ASSERTS that each list equals
+abzl_1's own 160 v14 tokens outside the arm's change (md5 6e2a72ca over v14 without --maxvel).
+`--maxvel 3500`, and the launch extra is unchanged:
+`--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256
+--mcts-mix-warm 2'`.
+
+| arm | owner, branch (commit) | tokens | md5 w/o --maxvel | the change against v14 |
+|---|---|---|---|---|
+| zlA | abzla, ab/abzla 85e7faba | 162 | f9dbcf95 | band tokens -> the energy ratchet, K 12 |
+| zlB | abzlb, ab/abzlb df4bd052 | 162 | f0a7318b | + `--energy-stall 32` |
+| zlAB | abzlab, ab/abzlab 9c871783 | 164 | 2c73c5b3 | both |
+
+* **zlA** replaces, IN PLACE, `--energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1`
+  with `--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --energy-ratchet 1`.
+* **zlB** appends `--energy-stall 32`.
+* **zlAB** does both.
+* **Constants, each set once, none read off za_loop:**
+  * K 12 is the program's value, carried from the pb and uf2 best policies.
+  * 32 is the eval patience's own field threshold.
+* **Measured on v14's recorded greedy (w18), the ratchet at K 12 would pay:**
+  * 1.6-4.9 per episode on the seven maps, almost all for accelerating at the start;
+  * about 21 per episode on za_loop.
+  * `--energy-stall` would change no greedy flight on the seven maps.
+
+### CPU smokes of the complete lines (40,960 steps, wt/<owner>, the za_loop map)
+
+abl/smoke/full_smoke_v1.py runs the launcher's 92 pins + the arm's tokens + the launch extra (2),
+on each arm's own worktree and core build.
+* **All three: rc 0** (tokens 92 + 162 / 162 / 164 + 2). Each worktree's git status stayed clean
+  (no zones.json rewrite), and the map files are symlinks to ~/RL_Surf_loop/maps (no bake).
+* **zlA:**
+  * prints "--energy-ratchet: the energy term pays only NEW records ...";
+  * run.json has energy_pot 12, energy_ratchet 1, and no energy_pot_front or _bonus keys;
+  * the step line reads en +1/-13u/ep: records paid, losses counted but not charged.
+* **zlB:**
+  * prints "--energy-stall 32: an energy-height record (...) re-arms the training stall kill and
+    the eval patience clock", and v14's band lines unchanged;
+  * run.json has energy_pot 3, energy_pot_front 0.01, energy_pot_front_bonus 1, energy_stall 32;
+  * en +0/-0u/ep: no band yet in a smoke.
+* **zlAB:** both announce lines; run.json has energy_pot 12, energy_ratchet 1, energy_stall 32;
+  en +1/-13u/ep.
+* **Shared:** maxvel 3500, tick 7.63, stall 15 s and eval patience 30 s, as in v14.
+
+### Reads, cut, budget
+
+* **Reads:**
+  * the grader % (score.py in each wt/<owner>);
+  * the pipe's best-E gain rate (abl/w18/tools/hpipe.py: v14 +16..32 u/s over 20 s, the program's
+    E3 +48..52) and how many episodes are still in the pipe 20 s on (v14 0/9, E3 at 786M 9/9);
+  * the training stall share (v14 ~50%, the program 4-19%);
+  * the en read-out and the novelty share;
+  * where the greedy ends.
+* **Cut:**
+  * null if no grader best is above 28.0% (v14's best) by 4.5B;
+  * otherwise the za_loop rule: the first finish + 5 evals; or 2.0B steps with no new grader best
+    (>= 0.1 point), counted from the later of the last best and the last adopted search line;
+    or 20B.
+* **What the round can say:**
+  * only zlA moves: the pay is the missing ingredient;
+  * only zlB moves: the clock;
+  * only zlAB moves: the pair is needed;
+  * none moves: the energy ingredients are not enough at v14's other settings (next suspects in
+    w18: the search's depth-only rank and its contact-banked frontier).
+  * One seed each, so a pass is a pass and a null is a null at this seed.
+* **Budget.**
+  * 3 boxes (RTX 5080 class, <= $0.45/h) x ~3.2 h to 4.5B at abzl_1's ~1.4B steps/h is ~$1.3
+    each, ~$3.9 in all.
+  * Past 4.5B only an arm that beat 28% continues.
+  * 3 boxes + the operator's 1 = 4 of the fleet's 5.
+  * Watchdog with harvest spec and pid file; dashboard tunnels on :8646-8648.
+* **Other maps, if an arm is adopted later (w18):**
+  * zlA would show any harm first on blue200 (the most energy after the start); princessburglar's
+    start room is the slow-map risk.
+  * zlB would show it first on princessburglar (54-98% of its training episodes are stall-killed
+    in the start room).
