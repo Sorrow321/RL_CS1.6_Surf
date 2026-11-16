@@ -49506,3 +49506,22 @@ session scratchpad pbcache/pbcheck.py, notes abl/multimap/s0_notes.md).
   overflowed the old tables. Rebake cost on pb: occ 1.3 s, slab 12.4 s, SDF 6.7 s (droplet CPU);
   goal_32 / goalc_32 and faceid_32 need small GPU bakes. A fix must also make the old caches MISS.
 * Open: whether the walls lie on v14's pb route or at the place it stalled (being checked).
+
+## 2026-11-16 17:06 UTC: FOLLOW-UP - where pb's four missing walls sit on v14's route
+
+Sub-agent M, CPU only (scratchpad pbcache/route_walls.py, descent_walls.py).
+* No greedy episode of ab7c_b14 (235 evals, 2,115 episodes, 0.52M-17.67B) entered a wall box.
+  Closest approach 35 u (to *263 in 4 episodes, *264 in 12), in the 9.44B-9.74B evals, when the
+  policy first crossed that stretch; never within 64 u of *261 or *262. The 20 finishing
+  episodes (17.29B on) stayed >= 85.5 u from every wall box.
+* The "x -1,005 wall" stall (6.5-6.9%, 4.98B-9.5B) is NOT one of them: its 540 episode ends have
+  median (101, -3003, 3001), a median 561 u from the nearest wall box, at d 53.2k-53.4k; the
+  wall voxels carry cached goalc d 45,800-47,520 (16.8-19.9% of the course).
+* The cached shaping DOES descend through them: all 301 wall voxels are reachable free space in
+  goalc; 13% of reachable voxels (66,979 / 507,546) descend through one, and 69% of on-field
+  route samples (233,206 / 336,586; x -3236..1081, d 45.8k-57.3k) lie upstream of one.
+* The walls stand at x -1125, -464, -30 and +330 on alternating sides of y -3850..-3403, from
+  z 3249 down to 2372: by M's reading (not checked against the map) a slalom the cached field,
+  depth image and normal channel do not show. The field pays a straight line through it; the
+  physics forces weaving. v14 learned to weave anyway; how much the wrong field cost it is not
+  measured. Rebake pb's grids (and make the old caches miss) before any new pb run.
