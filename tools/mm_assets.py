@@ -23,6 +23,31 @@ restamp is what turns those MISSes back into OKs.
 
 `pack` tars STAGE/<stem>.* for the maps under maps/ (the layout box.py deploys), sorted, and
 prints the md5. It refuses unless `check` passes (--force packs anyway, for a staging run).
+
+--startup-bake faceid (check and pack): a missing or stale faceid_32 is accepted - the trainer
+bakes it on the box's GPU at its first start (texmap.TextureMap.for_lidar: CUDA + triton, the
+"face-id grid BAKED" line) - and is left out of the pack. Every other file must be OK.
+
+THE PACKS (mm/s1, 2026-11-16; sources under ~/ar_m2/maps, S = a fresh staging directory):
+
+    for t in sidistic_maps.tar.gz blue200cf_maps.tar.gz cannonballc_maps.tar.gz \
+             petrus_litec_maps.tar.gz celestialc_maps.tar.gz uf2_maps.tar.gz \
+             pb_maps.tar.gz pb_e1_grids.tar.gz; do          # (P1: blue200cf, petrus_litec,
+        tar xzf ~/ar_m2/maps/$t -C $S --strip-components=1 --wildcards 'maps/*'   # celestialc)
+    done
+    cp -p ~/ar_m2/maps/celestial_faceid/surf_src_celestial.faceid_32.npz $S/
+    rm -f $S/surf_princessburglar_b26.faceid_32.npz      # the old core's: stale since the tag
+    python3 tools/restamp_maps.py --maps $S
+    python3 tools/mm_assets.py check --dir $S --startup-bake faceid
+    python3 tools/mm_assets.py pack --dir $S --startup-bake faceid --out ~/ar_m2/maps/<name>
+
+* pb_e1_grids.tar.gz: princessburglar's occ / slabocc / sdf / goal / goalc rebuilt on the
+  droplet's CPU by the fixed core with the entity tag "_e1" (ed329d70); it is unpacked AFTER
+  pb_maps.tar.gz, whose grids it replaces.
+* faceid: celestial's comes from celestial_faceid/ (not in its tarball); petrus never had one
+  and pb's is stale, so both are baked on the box's GPU at the trainer's first start
+  (--startup-bake faceid), or once ahead with the trainer's --warm-caches and pulled back
+  into the sources.
 """
 from __future__ import annotations
 
@@ -76,10 +101,13 @@ def stored_sig(path):
         return None
 
 
-def check_map(d: Path, stem: str) -> dict:
+def check_map(d: Path, stem: str, startup_bake=()) -> dict:
+    """OK / MISS / MISSING per file; ``startup_bake`` names the kinds (only "faceid") that may
+    be missing or stale because the trainer bakes them on the box's GPU at its first start
+    (their stale files are listed in rep["skip"]: pack leaves them out)."""
     from surfgym.core import SurfCore, default_config
     bsp = d / f"{stem}.bsp"
-    rep = {"map": stem, "files": {}, "ok": True, "notes": []}
+    rep = {"map": stem, "files": {}, "ok": True, "notes": [], "skip": []}
     for need in (bsp, d / f"{stem}.zones.json"):
         if not need.exists():
             rep["files"][need.name] = "MISSING"
@@ -90,9 +118,11 @@ def check_map(d: Path, stem: str) -> dict:
     want = expected_sigs(core, bsp)
     for k in KINDS:
         p = d / f"{stem}.{k}_{CELL:g}.npz"
+        late = k in startup_bake          # declared: baked on the box's GPU at the first start
         if not p.exists():
-            rep["files"][p.name] = "MISSING (re-baked at startup)"
-            rep["ok"] = False
+            rep["files"][p.name] = ("MISSING - baked on the GPU at the first start (declared)"
+                                    if late else "MISSING (re-baked at startup)")
+            rep["ok"] = rep["ok"] and late
             continue
         got = stored_sig(p)
         if got == want[k]:
@@ -101,8 +131,11 @@ def check_map(d: Path, stem: str) -> dict:
             same_but_mtime = (got is not None and got.split("_")[0:2] == want[k].split("_")[0:2])
             rep["files"][p.name] = ("MISS (signature differs" + (": run restamp_maps.py first"
                                     if same_but_mtime else "") + f"; stored {got!r}, now "
-                                    f"{want[k]!r}) - re-baked at startup")
-            rep["ok"] = False
+                                    f"{want[k]!r}) - re-baked at startup"
+                                    + (" on the GPU (declared; not packed)" if late else ""))
+            rep["ok"] = rep["ok"] and late
+            if late:
+                rep["skip"].append(p.name)
     n_sol = solid_entity_count(bsp)
     rep["solids"] = n_sol
     occ_p = d / f"{stem}.occ_{CELL:g}.npz"
@@ -129,15 +162,18 @@ def cmd_check(a) -> int:
     stems = ([s.strip() for s in a.maps.split(",") if s.strip()] if a.maps
              else sorted(p.stem for p in d.glob("*.bsp")))
     ok = True
+    skip = []
     for s in stems:
-        r = check_map(d, s)
+        r = check_map(d, s, tuple(getattr(a, "startup_bake", None) or ()))
         ok &= r["ok"]
+        skip += r["skip"]
         print(f"{'OK  ' if r['ok'] else 'FAIL'} {s}  (solid brush entities {r.get('solids', '?')})")
         for f, v in r["files"].items():
             print(f"      {f:44s} {v}")
         for n in r["notes"]:
             print(f"      !! {n}")
     print("== all maps ready" if ok else "== NOT ready: see above")
+    a._skip = skip          # (pack: the declared-stale files it leaves out)
     return 0 if ok else 1
 
 
@@ -148,9 +184,10 @@ def cmd_pack(a) -> int:
     if not a.force and cmd_check(a) != 0:
         print("!! pack refused: check failed (--force packs anyway)")
         return 1
+    skip = set(getattr(a, "_skip", None) or ())
     files = []
     for s in stems:
-        files += sorted(p for p in d.glob(f"{s}.*") if p.is_file())
+        files += sorted(p for p in d.glob(f"{s}.*") if p.is_file() and p.name not in skip)
     out = Path(a.out)
     with tarfile.open(out, "w:gz") as tf:
         for p in files:
@@ -168,6 +205,9 @@ def main(argv=None) -> int:
         p = sub.add_parser(name)
         p.add_argument("--dir", required=True, help="the staging directory (maps' files flat)")
         p.add_argument("--maps", default=None, help="stems, comma-separated (default: every bsp)")
+        p.add_argument("--startup-bake", action="append", choices=("faceid",), default=None,
+                       help="this kind may be missing or stale: the trainer bakes it on the "
+                            "box's GPU at its first start (a stale file is not packed)")
         if name == "pack":
             p.add_argument("--out", required=True)
             p.add_argument("--force", action="store_true")

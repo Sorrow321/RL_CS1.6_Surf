@@ -87,3 +87,34 @@ def test_princessburglars_grids_are_flagged_stale(tmp_path):
     if r.get("occ_vs_core", 0) == 0:
         pytest.skip("this princessburglar occ_32 was rebuilt with the fixed core")
     assert not r["ok"] and any(n.startswith("STALE") for n in r["notes"])
+
+
+@needs_small
+def test_a_declared_startup_bake_lets_a_missing_or_stale_faceid_through(tmp_path):
+    """--startup-bake faceid: the trainer bakes the face-id grid on the box's GPU at its first
+    start, so a missing one passes and a stale one passes but is not packed; nothing else
+    does"""
+    import numpy as np
+    import mm_assets
+    d = tmp_path / "stage"
+    _copy(SMALL, d)
+    fid = d / f"{SMALL}.faceid_32.npz"
+    z = dict(np.load(fid, allow_pickle=False))
+    z["sig"] = np.str_("v2_0_0_s4_stale")
+    np.savez_compressed(fid, **z)                       # a stale face-id grid
+    assert not mm_assets.check_map(d, SMALL)["ok"]
+    r = mm_assets.check_map(d, SMALL, ("faceid",))
+    assert r["ok"] and r["skip"] == [fid.name], r
+    assert "declared; not packed" in r["files"][fid.name]
+    out = tmp_path / "p.tar.gz"
+    assert mm_assets.main(["pack", "--dir", str(d), "--out", str(out)]) == 1
+    assert mm_assets.main(["pack", "--dir", str(d), "--startup-bake", "faceid",
+                           "--out", str(out)]) == 0
+    with tarfile.open(out) as tf:
+        names = sorted(tf.getnames())
+    assert f"maps/{fid.name}" not in names and f"maps/{SMALL}.goalc_32.npz" in names
+    fid.unlink()                                        # a missing one
+    r = mm_assets.check_map(d, SMALL, ("faceid",))
+    assert r["ok"] and r["files"][fid.name].startswith("MISSING - baked on the GPU")
+    (d / f"{SMALL}.goal_32.npz").unlink()               # anything else still fails
+    assert not mm_assets.check_map(d, SMALL, ("faceid",))["ok"]
