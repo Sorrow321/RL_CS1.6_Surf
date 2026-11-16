@@ -229,6 +229,23 @@ def test_two_maps_run_their_own_value():
                                 cwd=str(ROOT), timeout=900)
             assert rr.returncode == 0 and rec.exists(), (rr.stdout + rr.stderr)[-3000:]
             assert _phys_maxvel(rec) == want, (m.stem, _phys_maxvel(rec))
+        # a bare resume restores the per-map values (no --maxvel on its command line)
+        before = {tag: set(p.name for p in d.glob(f"traj_*_{tag}.jsonl")) for tag in tags}
+        # (--maps names the same maps by path: the checkpoint stores stems, which resolve under
+        # the repo's maps/ and these test maps may live elsewhere)
+        cmd = [sys.executable, "-u", str(ROOT / "python" / "train_fast.py"), "--run", run,
+               "--ckpt", str(d / "ckpt_latest.pt"), "--maps", ",".join(str(m) for m in MAPS),
+               "--steps", "4096", "--record-every", "2048",
+               "--eval-eps", "3", "--eval-greedy-only", "--no-compile", "--fp32"]
+        r2 = subprocess.run(cmd, capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                            timeout=1800)
+        out2 = r2.stdout + r2.stderr
+        assert r2.returncode == 0, out2[-4000:]
+        assert f"maxvel_maps={tags[0]}:3500,{tags[1]}:4000" in out2
+        for tag, want in zip(tags, (3500.0, 4000.0)):
+            new = [p for p in d.glob(f"traj_*_{tag}.jsonl") if p.name not in before[tag]]
+            assert new, f"no eval after the resume for {tag}"
+            assert all(_phys_maxvel(p) == want for p in new)
     finally:
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     bad = _train(ROOT, "maxvel_bad", ["--maps", ",".join(str(m) for m in MAPS), "--envs", "64",
