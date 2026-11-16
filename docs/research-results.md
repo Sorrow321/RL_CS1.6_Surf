@@ -48211,3 +48211,203 @@ Start with simple one."). Petrus first; celestial and blue200 only if petrus fin
   * the training return and the novelty share;
   * the contact read-out: a surf map whose paid record stalls far behind the all-state record
     would say the contact test misses surf faces.
+
+## 2026-11-16 01:14 UTC: FINAL (sub-agent P) - v15 candidate = v14 + --ratchet-contact 1 is NOT better than v14 on petrus, celestial, blue200; v14 kept
+
+P's body from its petrus result on (its first pre-launch section is 27333233). The "Pre-launch 2"
+section was written before the celestial and blue200 launches and is folded only now.
+
+### Petrus v15 (abk1_1): FINISHES, at 2.75x v14's step
+
+* Box 60847417 (RTX 5080, $0.387/h, South Carolina), launched 22:48 UTC; stopped by pid at
+  1,010.3M (23:33 UTC) at its cut (first finish + 2 evals = the 982.0M eval). Bundle
+  ~/ar_m2/runs/abk1 (abk1_1, ckpts_1, auto_1; BUNDLE OK). Box kept for celestial.
+* Greedy evals (score.py in wt/abk1): 20.3% (76M), 23.2%, 22.8%, 22.4%, 22.4% (378M),
+  45.4% (453.5M), 45.6%, 45.6%, 49.0% (680M), 81.9% (755.5M), FINISH 3/9 at 830,996,480
+  (33.63 s), 5/9 (32.78 s), 7/9 at 982.0M (32.26 s). Best 32.26 s.
+* v14 on the same map, code, seed and card class (ab7c_p14, graded the same way): 37.5% (76M),
+  63.7% (151M), 99.9% (227M), FINISH 7/9 at 302.5M (31.03 s), then 8, 5, 2, 8, 6, 5 of 9; best
+  30.10 s. v15 first finish 2.75x later, best 2.16 s slower.
+* Where v15 lost the time:
+  * 151-378M: 9 of 9 greedy episodes die at 22% at about (1,000, 2,000, z -470), around 10 s
+    in. That is a jump onto a ledge ~150 u higher at (850, 2,850): v14's episodes take off
+    there (vz +385) and land at z -208. v14's 227M eval has 1 of 9 at that spot and 8 of 9
+    past it, with no search line held.
+  * v15 left it only through the loop: search 1 (424.7M, tree, 2,426 states, end d 22,265 =
+    38%) gave eval 45% at 453.5M.
+  * 453.5-604.5M: 8 of 9 end at a fail spot at 45.6% (-3,100, -1,830, z -770) until search 2
+    (570.4M, tree, 2,992 states, end 48%). Then 49.0%, 81.9% and the finish.
+* The contact rule does count surf faces on petrus.
+  * Per ended training episode, the paid (contact) record trailed the all-state record by
+    0.3-1.4 points on average per 250M bin (e.g. 22.3/29.3% vs 22.5/29.3% at 279M,
+    87.3/97.2% vs 88.3/99.9% at 803M); the largest gap in any iteration was 1.8 points.
+  * 64-87% of ended training episodes per 250M bin were paid some contact progress (as low as
+    22% in single iterations).
+* Novelty per training episode 0.19-0.27 against a return of 10-11 (about 2%, as v14's petrus);
+  the share cap never engaged (m 1). Training win rate 35-39% at 0.89-0.99B.
+* One seed. The slowdown is consistent with paying a flight only at its landing: the 22% gate
+  is a jump whose airborne approach the all-state ratchet pays tick by tick and the contact
+  ratchet pays at once on landing, or not at all when the jump falls short.
+
+### Pre-launch 2 (written before the celestial and blue200 launches)
+
+* Petrus finished, so the two planned air-heavy maps follow, recipe unchanged (v15 candidate,
+  code fea35b06, launch extra unchanged, seed 0, from scratch); bus post 20261115T233410Z.
+* celestial, run `abk1_cel`: box.py names a run after the box's agent, so not abk2_1 as the bus
+  post said; worktree and branch ab/abk2 029d596d (first 160 tokens = v14's ab14l).
+  * --maxvel 4000; grader start_d 61,052, span [61,052, 61,220] (= ab14l).
+  * On the petrus box 60847417, redeployed and extended 2.3 h; the watchdog was re-registered
+    with harvest + pid until 01:54 UTC. Tunnel :8646. Launched 23:35 UTC, record gate passed.
+  * Cut: first greedy finish + 2 evals, or 2.0B (3x v14's 680.0M). v14: 680.0M, best 42.81 s.
+* blue200, run `abk3_1`: worktree and branch ab/abk3 d6e22099 (first 160 tokens = v14's ab14w).
+  * --maxvel 4000; grader start_d 2,672, span [2,506, 2,840] (= ab14w).
+  * Planned: a second RTX 5080/4080-class box at <= $0.45/h for 3.2 h, watchdog + harvest + pid,
+    tunnel :8647.
+  * Cut: first greedy finish + 2 evals, or 3.0B (3x v14's 982.0M). v14: 982.0M, best 12.14 s.
+* CPU smokes of both complete lines (92 pins + 162 + extra): rc 0 over 40,960 steps each (on
+  unitfarmer2's map; the face-id bake for these maps needs a GPU).
+* Budget so far: petrus about $0.30; with these two about $2.5 of <= $4.
+
+### Celestial v15 (abk1_cel): FINISHES, at 2.44x v14's step
+
+* Run: on box 60847417 (the petrus box), launched 23:35 UTC.
+  * Stopped by pid at 1,854.4M (00:55 UTC), its cut: first finish + 2 evals = the 1,812.5M
+    eval.
+  * Bundle ~/ar_m2/runs/abk1 (abk1_cel, ckpts_cel, auto_cel; BUNDLE OK).
+  * Box released 00:58 UTC and gone in vastai; tunnel stopped.
+* Greedy evals (score.py in wt/abk2):
+  * 1.6% (0.5M), 7.1%, 28.8%, 42.9%, 56.1% (302.5M), 75.5% (378.0M);
+  * then 75.0% at every eval to 1,133.0M, except 78.4% (680.0M) and 83.5% (1,057.5M);
+  * 98.8% (1,208.5M), then 99.0-99.5% to 1,586.0M;
+  * FINISH 1/9 at 1,661,468,672 (49.83 s), 0/9 at 1,737.0M, 2/9 at 1,812.5M (48.48 s).
+  * Best 48.48 s.
+* v14 on the same map, code, seed and card class (ab7c_l14, graded the same way):
+  * 75.0% from 302.5M, 82.9% at 453.5M;
+  * FINISH 4/9 at 680.0M (45.86 s); 4/9, 0/9, 0/9, then 4/9 at 982.0M (43.37 s);
+  * the ledger's v14 best is 42.81 s.
+  * v15's first finish came 2.44x later, and its best time is 5.67 s slower.
+* Where v15 lost the time. Both runs stall at the same two places, and the way past each one is
+  a flight.
+  * The 75% gate: the surfed route ends on a dead-end platform at about (6,700, -6,415, z
+    -2,400), d ~15,300, reached at ~33.7 s. Both runs' 75.0% plateaus are episodes stuck there.
+    * The way on: turn back until d rises to ~18,000, then take a 2.7-3.9 s flight at
+      2,150-2,450 u/s. Every episode past the gate in either run did this 6-19 s after its
+      record of ~15,290 on the platform.
+    * A good flight lands at d 12,300-12,700, z ~-4,200; a bad one ends in the air at z ~-3,160,
+      after 415-540 u of d below the platform's record.
+    * v14: 7 of 9 on the platform at 378.0M; at 453.5M, 2 of 9 past (the other 7 died earlier).
+    * v15: 7 of 9 on the platform at 1,133.0M; at 1,208.5M, 3 of 9 landed past it and 4 ended
+      in the air.
+    * Only new records pay. The all-state rule pays a failed flight its 415-540 u below the
+      record; the contact rule pays nothing until a flight lands.
+  * The finish is a rising flight into the trigger.
+    * v15: from the takeoff at about (5,970, 6,580, z -4,480), d 1,350-1,520, at
+      2,460-2,530 u/s; it reaches the trigger at z ~-3,430 while still climbing (vz +720).
+    * v14: from an earlier takeoff, d 2,920-3,020, at ~2,390 u/s; it reaches the trigger at z
+      -2,860 to -3,110, vz +340 to +360.
+    * Search line 1 ends at the takeoff in both runs: v15 at 417.9M (beam, 7,316 states, end
+      d 1,304); v14 at 421.0M (beam, 6,287 states, end d 1,297).
+    * v15's misses fall short of the trigger in the air. In the 1,510.5M eval they take off
+      from the same spot at 280-1,250 u/s and peak 600-1,260 u short of it. In the 1,812.5M
+      eval they peak 420-540 u short.
+    * In the code (rewards.py, sup = contact & ~ended), an ended row never moves the paid
+      record. So a flight that ends in the trigger is paid by the success bonus alone, where
+      the all-state ratchet pays its approach tick by tick.
+* The contact rule counts celestial's surf faces.
+  * Per ended training episode, the paid record trails the all-state record by 0.5-0.9 points
+    on average in every 250M bin; the largest gap in any iteration is 2.4 points.
+  * 45-73% of ended training episodes are paid some contact progress.
+* The novelty share sat at the `--int-share-max 0.25` ceiling from 500M to the cut.
+  * It was capped in 289 of 477 iterations at 250-500M, then in every iteration from 500M to the
+    cut, with m 0.26-0.44 (share mean 25.0-25.1%).
+  * v14 on celestial (ab7c_l14) was capped in 204 and 114 of 477 iterations at 250-750M, 4 at
+    750-1000M, and none after its finishes (share 12-13%).
+  * Under the contact rule the paid extrinsic return is smaller, so uncapped novelty would have
+    taken a much larger share. On petrus and blue200 the share was 2-3% and 0% in both recipes.
+* The training win rate was 0% until 1.25B, then 0.9-3.1%.
+* Search 2 (1,057.5M) ran for 2,002 s beside the training. Its energy spine was discarded as
+  stale at 1,815.6M.
+
+### Blue200 v15 (abk3_1): FINISHES, one eval before v14
+
+* Run: box 60856189 (RTX 5080, $0.309/h, Minnesota), launched 00:19 UTC.
+  * Two earlier rents failed and were destroyed: machine 57939 stayed `loading` past 330 s, and
+    machine 150794 (RTX 4090) failed deploy_box.sh's GPU health check. Both are blocklisted on
+    ab/abk3 675d62bf.
+  * Stopped by pid at 1,105.7M (01:05 UTC), its cut: first finish + 2 evals = the 1,057.5M
+    eval.
+  * Bundle ~/ar_m2/runs/abk3 (abk3_1, ckpts_1, auto_1; BUNDLE OK).
+  * Box released 01:06 UTC and gone in vastai; tunnel stopped.
+* Greedy evals (score.py in wt/abk3):
+  * 17.2% (0.5M), then 38.6-42.9% at every eval from 76.0M to 831.0M;
+  * FINISH 9/9 at 906,493,952 (15.06 s), 9/9 at 982.0M (14.80 s), 9/9 at 1,057.5M (14.05 s).
+  * Best 14.05 s.
+* v14 (ab7c_w14, graded the same way):
+  * 61.2-66.8% at every eval from 76.0M to 906.5M;
+  * FINISH 9/9 at 982.0M (13.13 s), 9/9 at 1,057.5M (12.86 s), 8/9 at 1,133.0M (12.21 s);
+  * the ledger's v14 best is 12.14 s.
+  * v15 finished one eval earlier (0.92x v14's step), and its best time by first finish + 2
+    evals is 1.84 s slower.
+* The plateaus differ, and the difference is a death dive.
+  * Both runs' greedy dies at the same takeoff, about (1,450, -530, z 420-470), d ~1,750-1,800.
+  * v14 at 906.5M: 9 of 9 leave it at 645-720 u/s and fly 1.13-1.27 s toward the goal, d
+    ~1,780 -> 975-1,085, then end in the air at z ~275. The all-state ratchet pays those
+    ~750 u of d.
+  * v15 at 831.0M: 9 of 9 leave it (one from 370 u further along) at 501-634 u/s and are down
+    at z ~293 within 0.4-1.1 s, min d 1,667-1,766. The contact rule pays nothing for a flight
+    that never lands.
+* Search 1 found the same line in both runs, a line to d ~108: v15 at 450.4M (beam+ge, 7,054
+  states) and v14 at 465.6M (beam+ge, 8,632 states). The finishing route takes 12-17 s.
+* The two recipes enter the finish differently.
+  * v15: all 27 finishing episodes enter on contact (the last contact is within 0.1 s of the
+    end, at d 0), at 354-729 u/s.
+  * v14 (982.0-1,133.0M): its finishers take a last flight of 0.1-0.7 s from d 44-436, at
+    784-945 u/s.
+  * This is consistent with the contact rule paying no shaping for a final flight into the
+    trigger. One seed.
+* The contact rule counts blue200's surf faces.
+  * The paid record trails the all-state record by 0.1-1.8 points on average per 250M bin; the
+    largest gap in any iteration is 4.9 points, at 500-750M.
+  * 92-99% of ended training episodes are paid some contact progress.
+* Novelty is 0.0-0.4 per episode against a return of 23-119 (a 0% share; v14 also 0%). The cap
+  never engaged. The training win rate was 0% at 0-250M, then 9%, 56%, 71% and 95% by 250M bin.
+
+### Verdict: v15 (v14 + `--ratchet-contact 1`) is not better than v14 on these three maps
+
+All runs are one seed, from scratch. "+2" is the best time by the first finish + 2 evals.
+
+| map | v14 first finish | v15 first finish | v15/v14 | best by +2: v14 / v15 |
+|---|---|---|---|---|
+| petrus | 302.5M (7/9) | 831.0M (3/9) | 2.75x | 30.34 / 32.26 s |
+| celestial | 680.0M (4/9) | 1,661.5M (1/9) | 2.44x | 44.62 / 48.48 s |
+| blue200 | 982.0M (9/9) | 906.5M (9/9) | 0.92x | 12.21 / 14.05 s |
+
+* **First finish.** v15 is 2.4-2.75x later on two maps. On the third it is one eval earlier,
+  which is inside the gate noise this file documents.
+* **Time.** At first finish + 2 evals, v15 is 1.8-3.9 s slower on all three maps.
+* **Contact is counted on surf faces on all three maps.** Per 250M bin, the paid record trails
+  the all-state record by at most 1.8 points on average. The largest single-iteration gap is
+  4.9 points (blue200).
+* **Where it costs.** Every slowdown sits at a flight. The all-state ratchet pays a flight as it
+  goes; the contact rule pays only at a landing.
+  * The flights: petrus's jump onto a ledge at 22%, celestial's turn-back flight at 75%, and
+    celestial's rising flight into the trigger.
+  * Under the contact rule, a flight that ends in the air pays no shaping. That covers both a
+    fall and an entry into the finish trigger, because an ended row never moves the paid
+    record.
+* **Where it helps.** It stops paying death dives. Blue200's v14 plateau (61-67%) was a 1.2 s
+  dive to the death floor; v15's plateau sits at the takeoff (39-43%). This did not change when
+  the map was first finished.
+* **Side effect.** On celestial the novelty share stayed at the 25% cap from 500M to the cut
+  (m 0.26-0.44). The cap held it there, so `--int-share-max 0.25` did its job.
+* **Recommendation.** Keep v14 as the recipe; do not adopt v15. The contact rule remains a fix
+  for maps like za_loop, where October needed it.
+  * If it is kept for such maps, one generic change would remove the finish-trigger part of its
+    cost: pay the pending flight when an episode ends in the trigger. Not built, not tested.
+* **Cost.** About $1.17 of <= $4.
+  * Petrus + celestial box: 2.20 h at $0.387/h = $0.85.
+  * Blue200 box: 0.82 h at $0.309/h = $0.25.
+  * Two failed rents: $0.06.
+  * Credit was $33.53 at 01:08 UTC (fleet-wide).
+  * No box of mine is up. Tunnels 8646 and 8647 are stopped. The operator's 60843051 is the only
+    live instance.
