@@ -65,7 +65,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .vision import _map_sig, pane_tag, slab_occupancy
+from .vision import _map_sig, entity_tag, pane_tag, slab_occupancy
 
 
 def _build_fast_sample():
@@ -515,7 +515,8 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     sig = (f"g{_GOAL_BUILDER_VERSION}_{'k2_' if mask_kill else ''}"
            f"{f'd{_GRAVITY_RULE_VERSION}_' if gravity_dir else ''}"
            f"{'c1_' if no_corner_cut else ''}"
-           f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box) + pane_tag(core))
+           f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box) + pane_tag(core)
+           + entity_tag(core))
     # a zone of SEVERAL trigger boxes (zones.detect_zones: surf_za_loop's five finish slabs)
     # seeds each box, not their union's open corners; its signature names them (a single-box
     # zone's signature is unchanged)
@@ -700,7 +701,7 @@ def build_ground_field(core, zone, cell: float = GROUND_CELL, cache_dir=None,
     bsp = Path(core.bsp_path)
     box = np.round(np.asarray(zone["mins"] + zone["maxs"], np.float64), 1)
     sig = (f"w{_GROUND_BUILDER_VERSION}_{step:g}_{_map_sig(bsp)}_"
-           + "_".join(f"{v:g}" for v in box))
+           + "_".join(f"{v:g}" for v in box) + entity_tag(core))
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.goalw_{cell:g}.npz"
     if cache_file.exists():

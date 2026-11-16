@@ -1404,6 +1404,11 @@ _OCC_SEMANTICS = "o2"      # base occupancy content (o2: conveyor fix); the
                            # alone cannot see a solid-set change in the C code
 _PLAYER_SEMANTICS = "p1"   # vision_clip: the PLAYER-hull grid (CLIP brushes,
                            # core.occupancy_grid(player=True)); own cache files
+_ENTITY_SEMANTICS = "e1"   # e1: every solid brush entity in the C solid set (6bd7f931,
+                           # 2026-10-29: the table was 128 and dropped the rest silently).
+                           # Only a map with more than 128 carries the tag (entity_tag)
+OLD_MAX_SOLIDS = 128       # the pre-6bd7f931 table: grids of a bigger map built before it
+                           # lack the excess (princessburglar_b26: four func_walls)
 _PANE_SEMANTICS = "tp1"    # thin panes: the origin key is applied, and a pane the
                            # PLAYER can cross keeps its sampled solid, not its AABB.
                            # Only a map that has such a pane carries the tag
@@ -1547,6 +1552,49 @@ def pane_tag(core) -> str:
             if any(p["moved"] or p["crossable"] for p in thin_panes(core)) else "")
 
 
+_ENT_MEMO: dict = {}
+
+
+def solid_entity_count(bsp_path) -> int:
+    """The map's solid brush entities by src/bsp.c's parse_entities rule (its branch order:
+    spawns, teleport / hurt / push triggers, contents volumes first; SOLID_ENT_CLASSES plus
+    func_door; a NOTSOLID func_conveyor is not solid). Memoised per map signature."""
+    from .zones import parse_bsp
+    bsp = Path(bsp_path)
+    key = (str(bsp.resolve()), _map_sig(bsp))
+    if key in _ENT_MEMO:
+        return _ENT_MEMO[key]
+    ents, bboxes = parse_bsp(bsp)
+    n = 0
+    for e in ents:
+        cls, m = e.get("classname"), e.get("model", "")
+        if not cls or not m.startswith("*") or not m[1:].isdigit() or int(m[1:]) >= len(bboxes):
+            continue
+        if cls in ("trigger_teleport", "trigger_hurt", "trigger_push") or \
+                cls.startswith(("info_player_start", "info_player_deathmatch")):
+            continue
+        skin = float(e.get("skin", -1.0 if cls == "func_illusionary" else 0.0))
+        if (cls in ("func_water", "func_ladder") or (cls == "func_illusionary" and skin < -1.0)
+                or (cls == "func_door" and skin < -1.0)):
+            continue
+        solid = cls in SOLID_ENT_CLASSES or cls == "func_door"
+        if solid and cls == "func_conveyor" and int(float(e.get("spawnflags", 0))) & 2:
+            solid = False
+        n += int(solid)
+    _ENT_MEMO[key] = n
+    return n
+
+
+def entity_tag(core) -> str:
+    """``"_e1"`` when the map holds more solid brush entities than the pre-6bd7f931 core's
+    128-entry table, else ``""``. Every cache sampled from the core's solid set (occupancy, slab
+    occupancy, SDF, goal fields, face-id grid) appends it, so exactly the maps whose grids that
+    core built without the excess (princessburglar_b26) miss their caches and rebuild with every
+    entity, and every other map's caches stay valid bit for bit."""
+    return (f"_{_ENTITY_SEMANTICS}"
+            if solid_entity_count(core.bsp_path) > OLD_MAX_SOLIDS else "")
+
+
 def _rasterize_crossable_pane(core, occ, mins, cell, bmn, bmx, player):
     """A crossable pane's own solid: every voxel holding ANY solid sample of
     the pane's box (a _PANE_FINE in-plane grid, <= 1 u apart through its
@@ -1607,7 +1655,7 @@ def map_occupancy(core, cell: float = 16.0, cache_dir=None):
     the vision SDF and the race goal-distance field, so it caches separately
     (``maps/<map>.occ_<cell>.npz`` — mostly zeros, compresses tiny)."""
     bsp = Path(core.bsp_path)
-    sig = f"{_map_sig(bsp)}_{_OCC_SEMANTICS}"
+    sig = f"{_map_sig(bsp)}_{_OCC_SEMANTICS}{entity_tag(core)}"
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.occ_{cell:g}.npz"
     if cache_file.exists():
@@ -1648,7 +1696,7 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None, player: bool = Fals
     of a few pool maps. On a map with no player-only solid the grid is
     identical. Cached apart, ``slaboccp_<cell>.npz``."""
     bsp = Path(core.bsp_path)
-    sig = (f"{_map_sig(bsp)}_{_SDF_SEMANTICS}{pane_tag(core)}"
+    sig = (f"{_map_sig(bsp)}_{_SDF_SEMANTICS}{pane_tag(core)}{entity_tag(core)}"
            + (f"_{_PLAYER_SEMANTICS}" if player else ""))
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.{'slaboccp' if player else 'slabocc'}_{cell:g}.npz"
@@ -1705,7 +1753,7 @@ def build_sdf(core, cell: float = 16.0, cache_dir=None, player: bool = False):
     from scipy.ndimage import distance_transform_edt
 
     bsp = Path(core.bsp_path)
-    sig = (f"{_map_sig(bsp)}_{_SDF_SEMANTICS}{pane_tag(core)}"
+    sig = (f"{_map_sig(bsp)}_{_SDF_SEMANTICS}{pane_tag(core)}{entity_tag(core)}"
            + (f"_{_PLAYER_SEMANTICS}" if player else ""))
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.{'sdfp' if player else 'sdf'}_{cell:g}.npz"
@@ -2358,7 +2406,8 @@ class GpuLidar:
                 self.texmap = TextureMap.for_lidar(
                     core.bsp_path, self.sdf_flat, (self.nz, self.ny, self.nx), self.mins_f,
                     self.cell,
-                    f"{_map_sig(Path(core.bsp_path))}_{_SDF_SEMANTICS}{pane_tag(core)}",
+                    f"{_map_sig(Path(core.bsp_path))}_{_SDF_SEMANTICS}{pane_tag(core)}"
+                    f"{entity_tag(core)}",
                     self.device)
             # --obs-slope: ONE channel (the facing normal's angle with +Z); the others three;
             # the internal edge source four (the normal and the exact plane depth)

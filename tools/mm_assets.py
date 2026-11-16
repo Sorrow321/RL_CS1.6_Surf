@@ -14,10 +14,11 @@ box (goal fields and the face-id grid on its GPU; cannonball's field bake holds 
 `check` computes every signature exactly as the builders do (vision.map_occupancy /
 slab_occupancy / build_sdf, goalfield.build_goal_field, texmap.TextureMap.for_lidar) with the
 built core, and reports OK / MISS / MISSING per file. A map with more solid brush entities than
-the pre-6bd7f931 core held (128) is also re-sampled (base occupancy only, seconds): if its
-occ_32 differs from the fixed core's, the map's grids were built by the old core and are STALE
-even though their signatures match (surf_princessburglar_b26: four func_walls missing, see the
-mm/s0 notes). Run tools/restamp_maps.py --maps STAGE first: tar drops sub-second mtimes, and a
+the pre-6bd7f931 core held (128) carries the entity tag "_e1" in every grid signature since mm/s1
+(vision.entity_tag), so its grids built by the old core MISS and are re-baked at startup
+(surf_princessburglar_b26: four func_walls missing, see the mm/s0 notes); such a map is also
+re-sampled (base occupancy only, seconds) and flagged STALE when its occ_32 differs from the
+fixed core's. Run tools/restamp_maps.py --maps STAGE first: tar drops sub-second mtimes, and a
 restamp is what turns those MISSes back into OKs.
 
 `pack` tars STAGE/<stem>.* for the maps under maps/ (the layout box.py deploys), sorted, and
@@ -38,36 +39,9 @@ sys.path.insert(0, str(ROOT / "python"))
 
 CELL = 32.0
 KINDS = ("goal", "goalc", "sdf", "occ", "slabocc", "faceid")
-SOLID_CLASSES = ("func_wall", "func_breakable", "func_pushable", "func_button", "func_train",
-                 "func_conveyor", "func_wall_toggle", "func_rotating", "func_door_rotating")
-OLD_MAX_SOLIDS = 128             # src/sim.h before 6bd7f931 (2026-10-29)
-
-
-def solid_entity_count(bsp) -> int:
-    """src/bsp.c parse_entities' solid brush entities (its branch order and conveyor rule)."""
-    from surfgym.zones import parse_bsp
-    ents, bboxes = parse_bsp(bsp)
-    n = 0
-    for e in ents:
-        cls = e.get("classname")
-        m = e.get("model", "")
-        if not cls or not m.startswith("*") or not m[1:].isdigit():
-            continue
-        if int(m[1:]) >= len(bboxes):
-            continue
-        if cls in ("trigger_teleport", "trigger_hurt", "trigger_push"):
-            continue
-        if cls.startswith(("info_player_start", "info_player_deathmatch")):
-            continue
-        skin = float(e.get("skin", -1.0 if cls == "func_illusionary" else 0.0))
-        if (cls in ("func_water", "func_ladder") or (cls == "func_illusionary" and skin < -1.0)
-                or (cls == "func_door" and skin < -1.0)):
-            continue
-        solid = cls in SOLID_CLASSES or cls == "func_door"
-        if solid and cls == "func_conveyor" and int(float(e.get("spawnflags", 0))) & 2:
-            solid = False
-        n += int(solid)
-    return n
+# src/sim.h before 6bd7f931 (2026-10-29) and src/bsp.c parse_entities' solid rule: one copy, in
+# surfgym.vision (the entity tag reads them)
+from surfgym.vision import OLD_MAX_SOLIDS, solid_entity_count  # noqa: E402,F401
 
 
 def expected_sigs(core, bsp) -> dict:
@@ -78,7 +52,7 @@ def expected_sigs(core, bsp) -> dict:
     from surfgym.texmap import TEXMAP_SEMANTICS
     from surfgym.zones import load_zones
     msig = vision._map_sig(Path(bsp))
-    ptag = vision.pane_tag(core)
+    ptag = vision.pane_tag(core) + vision.entity_tag(core)   # (each builder appends both)
     sdf_sig = f"{msig}_{vision._SDF_SEMANTICS}{ptag}"
     zone = load_zones(str(bsp))["end"]
     box = np.round(np.asarray(zone["mins"] + zone["maxs"], np.float64), 1)
@@ -90,7 +64,7 @@ def expected_sigs(core, bsp) -> dict:
     return {"goal": f"g{_GOAL_BUILDER_VERSION}_{tail}",
             "goalc": f"g{_GOAL_BUILDER_VERSION}_c1_{tail}",
             "sdf": sdf_sig, "slabocc": sdf_sig,
-            "occ": f"{msig}_{vision._OCC_SEMANTICS}",
+            "occ": f"{msig}_{vision._OCC_SEMANTICS}{vision.entity_tag(core)}",
             "faceid": f"{sdf_sig}_{TEXMAP_SEMANTICS}"}
 
 
@@ -145,8 +119,8 @@ def check_map(d: Path, stem: str) -> dict:
                 f"STALE: {n_sol} solid brush entities > the old core's {OLD_MAX_SOLIDS}, and "
                 f"occ_32 differs from this core's sampling in {diff:,} voxels: every grid of "
                 "this map (occ, slabocc, sdf, goal, goalc, faceid) was built by the pre-6bd7f931 "
-                "core; delete them and re-bake with the fixed core (goal fields and faceid on a "
-                "GPU) - their signatures match, so nothing re-bakes by itself")
+                "core; their signatures lack the entity tag, so they MISS and re-bake at startup "
+                "(goal fields and faceid on the GPU) - re-bake them before packing instead")
     return rep
 
 
