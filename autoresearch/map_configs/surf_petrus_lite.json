@@ -1,0 +1,12 @@
+{
+ "map": "maps/surf_petrus_lite.bsp",
+ "field": "maps/surf_petrus_lite.goalc_32.npz",
+ "start_d": 35940.0,
+ "start_d_span": [
+  35916.0,
+  35940.0
+ ],
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "the grading keys of the v14 single-map run's autoresearch/config.json (worktree ab14p, 2026-11-15)"
+}

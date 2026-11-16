@@ -1,0 +1,12 @@
+{
+ "map": "maps/surf_src_cannonball.bsp",
+ "field": "maps/surf_src_cannonball.goalc_32.npz",
+ "start_d": 199004.0,
+ "start_d_span": [
+  198980.0,
+  199028.0
+ ],
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "the grading keys of the v14 single-map run's autoresearch/config.json (worktree ab14c, 2026-11-15)"
+}

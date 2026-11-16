@@ -38,11 +38,18 @@ median progress, and the per-episode ends.
 
     python autoresearch/score.py runs/x/traj_0755499008.jsonl [more ...]
     python autoresearch/score.py --best runs/x/                # the best eval in a directory
+    python autoresearch/score.py --config cfg_petrus.json --best runs/mm/   # one map of a --maps run
+
+A --maps run writes every map's eval as traj_<step>_<tag>.jsonl (surfgym.mapfleet.map_tag): with
+--config naming that map, --best picks that map's files only (mm/s1). autoresearch/score_maps.py
+grades every map of such a run, one config per map. .jsonl.gz trajectories are read too.
 """
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -56,16 +63,49 @@ START_D = float(CFG.get("start_d", 97768.0))
 START_SPAN = tuple(float(x) for x in (CFG.get("start_d_span") or (START_D, START_D)))
 SCORE_EPISODES = int(CFG.get("score_episodes") or 0)
 EP_CAP_S = float(CFG.get("time_cap_s") or 300.0)   # the time term's cap (config.time_cap_s)
+MAPS_ROOT = REPO          # what config.map / config.field are relative to
 _FIELD = None
 _CPS = None
 _GOAL = None
+
+
+def use_config(cfg, root=None) -> None:
+    """Grade against ``cfg`` (a dict, or a path to a config JSON) instead of
+    autoresearch/config.json: map, field, start_d, start_d_span, score_episodes, time_cap_s.
+    ``root`` is what its relative map / field paths resolve against (default the repo).
+    The cached field, curtains and finish hull are dropped."""
+    global CFG, START_D, START_SPAN, SCORE_EPISODES, EP_CAP_S, MAPS_ROOT, _FIELD, _CPS, _GOAL
+    if not isinstance(cfg, dict):
+        cfg = json.loads(Path(cfg).read_text(encoding="utf-8"))
+    CFG = cfg
+    START_D = float(CFG.get("start_d", 97768.0))
+    START_SPAN = tuple(float(x) for x in (CFG.get("start_d_span") or (START_D, START_D)))
+    SCORE_EPISODES = int(CFG.get("score_episodes") or 0)
+    EP_CAP_S = float(CFG.get("time_cap_s") or 300.0)
+    MAPS_ROOT = Path(root) if root is not None else REPO
+    _FIELD = _CPS = _GOAL = None
+
+
+def _in_root(rel) -> Path:
+    p = Path(rel)
+    if p.is_absolute():
+        return p
+    q = MAPS_ROOT / p
+    # a staging directory may hold the maps flat (no maps/ prefix)
+    return q if q.exists() or MAPS_ROOT == REPO else MAPS_ROOT / p.name
+
+
+def map_tag_of_config() -> str:
+    """the tag a --maps run gives this config's map in its file names"""
+    from surfgym.mapfleet import map_tag
+    return map_tag(Path(CFG["map"]).stem)
 
 
 def field():
     global _FIELD
     if _FIELD is None:
         from surfgym.goalfield import GoalField
-        z = np.load(REPO / CFG["field"], allow_pickle=False)
+        z = np.load(_in_root(CFG["field"]), allow_pickle=False)
         _FIELD = GoalField(z["grid"].astype(np.float32) * float(z["quant"]), z["mins"],
                            float(z["cell"]), float(z["reach_max"]))
     return _FIELD
@@ -76,7 +116,7 @@ def curtains():
     global _CPS
     if _CPS is None:
         from surfgym.zones import parse_bsp
-        ents, bb = parse_bsp(str(REPO / CFG["map"]))
+        ents, bb = parse_bsp(str(_in_root(CFG["map"])))
         _CPS = []
         for e in ents:
             tn = e.get("targetname", "")
@@ -95,14 +135,14 @@ def goal_hull():
     global _GOAL
     if _GOAL is None:
         _GOAL = False
-        zp = (REPO / CFG["map"]).with_suffix(".zones.json")
+        zp = _in_root(CFG["map"]).with_suffix(".zones.json")
         try:
             end = json.loads(zp.read_text(encoding="utf-8")).get("end")
         except (OSError, ValueError):
             end = None
         if end and end.get("mins") and end.get("maxs"):
             from surfgym.goalhull import for_zone
-            _GOAL = for_zone(REPO / CFG["map"], end) or False
+            _GOAL = for_zone(_in_root(CFG["map"]), end) or False
     return _GOAL or None
 
 
@@ -110,7 +150,8 @@ def episodes(path: Path):
     """[(header, rows (n, k) float64, trailer)] - the record.py format: a header line, the
     rows, a trailer {"end": fail|done|trunc, ...}."""
     eps, hdr, cur = [], None, []
-    for line in open(path, encoding="utf-8"):
+    _open = gzip.open if str(path).endswith(".gz") else open
+    for line in _open(path, "rt", encoding="utf-8"):
         line = line.strip()
         if not line:
             continue
@@ -198,14 +239,31 @@ def score_file(path: Path) -> dict:
     return out
 
 
-def best_in(paths) -> dict:
+def eval_files(paths, tag=None) -> list:
+    """the greedy eval files under ``paths``: traj_<step>.jsonl, and a --maps run's
+    traj_<step>_<tag>.jsonl for ``tag`` (the record gate's traj_<step>_rec_*, _stoch and _mirror
+    files are not evals); .jsonl.gz too, the plain file winning a tie"""
     files = []
     for p in paths:
         p = Path(p)
-        files += (sorted(p.glob("traj_*.jsonl")) if p.is_dir() else [p])
-    # greedy evals only: traj_<step>.jsonl (the record gate's traj_<step>_rec_* are not evals)
-    import re
-    files = [x for x in files if re.fullmatch(r"traj_\d+\.jsonl", x.name)]
+        files += (sorted(list(p.glob("traj_*.jsonl")) + list(p.glob("traj_*.jsonl.gz")))
+                  if p.is_dir() else [p])
+    pat = (r"traj_\d+" + (f"(?:_{re.escape(tag)})?" if tag else "") + r"\.jsonl(?:\.gz)?")
+    keep, seen = [], set()
+    for x in sorted(files, key=lambda q: (q.name.endswith(".gz"), q.name)):
+        if not re.fullmatch(pat, x.name):
+            continue
+        stem = x.name[:-3] if x.name.endswith(".gz") else x.name
+        if stem in seen:
+            continue
+        seen.add(stem)
+        keep.append(x)
+    return sorted(keep, key=lambda q: q.name)
+
+
+def best_in(paths) -> dict:
+    # greedy evals only (eval_files); this config's map's files of a --maps run too
+    files = eval_files(paths, map_tag_of_config())
     scored = [score_file(x) for x in files]
     good = [s for s in scored if s["score"] is not None]
     best = max(good, key=lambda s: s["score"]) if good else None
@@ -218,13 +276,22 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--best", action="store_true", help="only the best eval, as JSON")
+    ap.add_argument("--config", default=None,
+                    help="grade against this config JSON (one map of a --maps run) instead of "
+                         "autoresearch/config.json")
+    ap.add_argument("--root", default=None,
+                    help="what the config's map / field paths are relative to (default: repo)")
     a = ap.parse_args(argv)
+    if a.config or a.root:
+        use_config(a.config or CFG, root=a.root)
     if a.best:
         print(json.dumps(best_in(a.paths), indent=1))
         return
     for p in a.paths:
         pp = Path(p)
-        for x in (sorted(pp.glob("traj_*.jsonl")) if pp.is_dir() else [pp]):
+        listing = (eval_files([pp], map_tag_of_config()) if a.config
+                   else sorted(pp.glob("traj_*.jsonl")))
+        for x in (listing if pp.is_dir() else [pp]):
             s = score_file(x)
             if s["score"] is None:
                 print(f"{x.name}: REJECTED - {s.get('error')}")

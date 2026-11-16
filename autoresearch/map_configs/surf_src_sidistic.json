@@ -1,0 +1,8 @@
+{
+ "map": "maps/surf_src_sidistic.bsp",
+ "field": "maps/surf_src_sidistic.goalc_32.npz",
+ "start_d": 99675.0,
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "the grading keys of the v14 single-map run's autoresearch/config.json (worktree ab13s, 2026-11-15)"
+}

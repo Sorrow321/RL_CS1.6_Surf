@@ -1,0 +1,12 @@
+{
+ "map": "maps/surf_edgeflow_blue200.bsp",
+ "field": "maps/surf_edgeflow_blue200.goalc_32.npz",
+ "start_d": 2672.0,
+ "start_d_span": [
+  2506.0,
+  2840.0
+ ],
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "the grading keys of the v14 single-map run's autoresearch/config.json (worktree ab14w, 2026-11-15)"
+}

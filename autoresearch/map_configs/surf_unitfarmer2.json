@@ -1,0 +1,12 @@
+{
+ "map": "maps/surf_unitfarmer2.bsp",
+ "field": "maps/surf_unitfarmer2.goalc_32.npz",
+ "start_d": 30647.5,
+ "start_d_span": [
+  30647.5,
+  30660.0
+ ],
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "the grading keys of the v14 single-map run's autoresearch/config.json (worktree abgate, 2026-11-15)"
+}
