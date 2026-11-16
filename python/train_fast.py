@@ -11772,7 +11772,9 @@ def main() -> None:
         for _flag, _on in (("--rnn", args.rnn not in (None, "none")),
                            ("--chunk", bool(args.chunk)),
                            ("--yaw-cond", YCOND),
-                           ("--maps", bool(args.maps)),
+                           # --maps: per map since mm/s1, on each map's reservoir reach
+                           (f"--maps and --unstuck-reach {args.unstuck_reach}",
+                            bool(args.maps) and args.unstuck_reach != "res"),
                            ("--spawn-burst", bool(args.spawn_burst)),
                            ("--ddp", D.enabled)):
             if _on:
@@ -16744,7 +16746,13 @@ def main() -> None:
         # env steps since the progress measure last improved, and the
         # all-time best of that measure (map units; the reservoir's reach,
         # or the arc reach where there is no reservoir reading)
-        CSV_COLS += ["unstuck/T", "unstuck/stuck_steps", "unstuck/best"]
+        if MULTI:
+            # --maps: one triple per map (each map's own schedule)
+            for _s in slots:
+                CSV_COLS += [f"unstuck/T.{_s.tag}", f"unstuck/stuck_steps.{_s.tag}",
+                             f"unstuck/best.{_s.tag}"]
+        else:
+            CSV_COLS += ["unstuck/T", "unstuck/stuck_steps", "unstuck/best"]
         if args.unstuck_reach == "alive":
             # the iteration's best alive reach (map units of depth) and how
             # many ended episodes qualified for it
@@ -18234,10 +18242,12 @@ def main() -> None:
     DFT = float(args.demo_front_temp or 0.0) > 0.0 and demo is not None
     GTEMP = float(args.respawn_greedy_temp or 0.0) > 0.0 and GREEDY is not None
     FRONT_RES = float(args.front_temp or 0.0) > 0.0
-    FRONT = FRONT_RES or DFT or GTEMP
+    # (--maps + --unstuck: each map's T is a per-env temperature, so the per-env slots are on)
+    FRONT = FRONT_RES or DFT or GTEMP or (MULTI and UNSTUCK_TEMP)
     greedy_sp = np.zeros(N, bool)        # --respawn-greedy-temp: env spawned on a greedy row
     gt_share = float("nan")
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
+    FRONT_BASE_ENV = np.zeros(N, np.float64)     # --maps: each env's map's --unstuck T
     front_thr = float("inf")             # d at the band's edge, re-read every iteration
     # --maps: the band edge per env (each map's own; only written under MULTI)
     FRONT_THR_ENV = np.full(N, np.inf, np.float64)
@@ -18312,9 +18322,16 @@ def main() -> None:
             d = reward_fn.paid_record() if FRONT_CONTACT else reward_fn._d
             band = (np.zeros(N, bool) if (d is None or not FRONT_RES)
                     else (np.asarray(d) <= front_thr))
-        tb = FRONT_BASE[0]
-        ftk_np[:] = np.where(band, _f_hot, 1.0 + tb * _f_mask_cat)
-        ftv_np[:] = np.where(band[:, None], _f_hot, 1.0 + tb * _f_mask_view[None, :])
+        if MULTI:
+            # out of the band each env keeps ITS map's --unstuck T on its heads
+            _tbe = FRONT_BASE_ENV
+            ftk_np[:] = np.where(band, _f_hot, 1.0 + _tbe * _f_mask_cat)
+            ftv_np[:] = np.where(band[:, None], _f_hot,
+                                 1.0 + _tbe[:, None] * _f_mask_view[None, :])
+        else:
+            tb = FRONT_BASE[0]
+            ftk_np[:] = np.where(band, _f_hot, 1.0 + tb * _f_mask_cat)
+            ftv_np[:] = np.where(band[:, None], _f_hot, 1.0 + tb * _f_mask_view[None, :])
         if DFT and _dft_len[0] is not None:
             # --demo-front-temp: the envs whose episode started on the curriculum's frontier
             # band (demo_idx is the spine index of each env's spawn), inside the hot window
@@ -19262,9 +19279,16 @@ def main() -> None:
 
     unstuck_sched, unstuck_T, INT_BASE, UR = None, 0.0, None, None
 
+    UNSTUCK_SL, UT_SL = [], [0.0] * len(slots)   # --maps: one schedule and one T per map
+
     def _unstuck_T_of(si=0):
         """the --unstuck temperature slot ``si``'s rollout runs at"""
-        return unstuck_T
+        return UT_SL[si] if MULTI else unstuck_T
+
+    def _own_step(si=0):
+        """slot ``si``'s OWN env steps: the fleet's global_step on a single-map run; under
+        --maps its share (D2: every per-map clock counts the map's own experience)"""
+        return global_step if not MULTI else (int(global_step) * slots[si].n) // N
     # --unstuck-reach eval: the last greedy frontier not yet observed (NaN =
     # no new reading)
     unstuck_eval_reach = float("nan")
@@ -19327,35 +19351,60 @@ def main() -> None:
 
         def _ur_end(ended, done, goal):
             UR.end(ended, np.asarray(done, bool) & ~np.asarray(goal, bool), goal)
-        unstuck_sched = UnstuckSchedule(
-            eps=args.unstuck_eps, patience=args.unstuck_patience,
-            rate=args.unstuck_rate, tmax=args.unstuck_max,
-            reset=bool(args.unstuck_reset), period=args.unstuck_period,
-            step=global_step)
-        if args.ckpt and ck.get("unstuck") is not None:
-            unstuck_sched.load_state_dict(ck["unstuck"])
-            print(f"restored --unstuck state: T {unstuck_sched.T:.3f}, "
-                  f"stuck {unstuck_sched.stuck_steps:,} steps, best "
-                  + (f"{unstuck_sched.best:,.0f}u"
-                     if unstuck_sched.best == unstuck_sched.best else "n/a")
-                  + f", {unstuck_sched.n_decays} count decays so far")
-            # a resume that switches the measure: the stored best was taken
-            # on the old one (a checkpoint from before --unstuck-reach
-            # existed watched the reservoir)
-            _ck_reach = (ck.get("config") or {}).get("unstuck_reach") or "res"
-            if _ck_reach != args.unstuck_reach:
-                unstuck_sched.reseed(global_step)
-                print(f"--unstuck-reach {args.unstuck_reach} (the checkpoint "
-                      f"watched {_ck_reach}): its best reading is dropped and "
-                      f"the patience window restarts at {global_step:,}; "
-                      f"T stays {unstuck_sched.T:.3f}")
-        unstuck_T = float(unstuck_sched.T)
-        INT_BASE = [float(_s.reward_fn.int_coef) for _s in slots]
-        if UNSTUCK_TEMP:
-            set_unstuck_temp(unstuck_T)
-        if UNSTUCK_INT:
-            for _s, _b in zip(slots, INT_BASE):
-                _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
+        if MULTI:
+            # --maps (mm/s1): ONE schedule per map, on its own reservoir reach and its OWN steps
+            def _new_unstuck(step):
+                return UnstuckSchedule(
+                    eps=args.unstuck_eps, patience=args.unstuck_patience,
+                    rate=args.unstuck_rate, tmax=args.unstuck_max,
+                    reset=bool(args.unstuck_reset), period=args.unstuck_period, step=step)
+            UNSTUCK_SL = [_new_unstuck(_own_step(_k)) for _k in range(len(slots))]
+            unstuck_sched = UNSTUCK_SL[0]
+            if args.ckpt and ck.get("unstuck") is not None:
+                for _k, _s in enumerate(slots):
+                    _usd = ck["unstuck"].get(_s.tag)
+                    if _usd is not None:
+                        UNSTUCK_SL[_k].load_state_dict(_usd)
+                        print(f"restored --unstuck state [{_s.tag}]: T {UNSTUCK_SL[_k].T:.3f}, "
+                              f"stuck {UNSTUCK_SL[_k].stuck_steps:,} steps")
+            UT_SL = [float(_u.T) for _u in UNSTUCK_SL]
+            unstuck_T = UT_SL[0]
+            INT_BASE = [float(_s.reward_fn.int_coef) for _s in slots]
+            for _k, _s in enumerate(slots):
+                if UNSTUCK_TEMP:
+                    FRONT_BASE_ENV[_s.sl] = UT_SL[_k]
+                if UNSTUCK_INT:
+                    _s.reward_fn.int_coef = INT_BASE[_k] * (1.0 + UT_SL[_k])
+        else:
+            unstuck_sched = UnstuckSchedule(
+                eps=args.unstuck_eps, patience=args.unstuck_patience,
+                rate=args.unstuck_rate, tmax=args.unstuck_max,
+                reset=bool(args.unstuck_reset), period=args.unstuck_period,
+                step=global_step)
+            if args.ckpt and ck.get("unstuck") is not None:
+                unstuck_sched.load_state_dict(ck["unstuck"])
+                print(f"restored --unstuck state: T {unstuck_sched.T:.3f}, "
+                      f"stuck {unstuck_sched.stuck_steps:,} steps, best "
+                      + (f"{unstuck_sched.best:,.0f}u"
+                         if unstuck_sched.best == unstuck_sched.best else "n/a")
+                      + f", {unstuck_sched.n_decays} count decays so far")
+                # a resume that switches the measure: the stored best was taken
+                # on the old one (a checkpoint from before --unstuck-reach
+                # existed watched the reservoir)
+                _ck_reach = (ck.get("config") or {}).get("unstuck_reach") or "res"
+                if _ck_reach != args.unstuck_reach:
+                    unstuck_sched.reseed(global_step)
+                    print(f"--unstuck-reach {args.unstuck_reach} (the checkpoint "
+                          f"watched {_ck_reach}): its best reading is dropped and "
+                          f"the patience window restarts at {global_step:,}; "
+                          f"T stays {unstuck_sched.T:.3f}")
+            unstuck_T = float(unstuck_sched.T)
+            INT_BASE = [float(_s.reward_fn.int_coef) for _s in slots]
+            if UNSTUCK_TEMP:
+                set_unstuck_temp(unstuck_T)
+            if UNSTUCK_INT:
+                for _s, _b in zip(slots, INT_BASE):
+                    _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
     SS_RNG = np.random.default_rng(int(args.seed) + 4242)     # --spawn-states draws
     if float(args.ge_minutes or 0.0) > 0.0 and SPAWN_STATES is not None:
         # --ge-minutes: archive cells BEHIND the start on the shaping field are dropped - dead
@@ -19501,7 +19550,8 @@ def main() -> None:
             # the schedule's run state (T, the bests, the step they were
             # set at): a resume continues the plateau clock rather than
             # granting the run a fresh patience window
-            state["unstuck"] = unstuck_sched.state_dict()
+            state["unstuck"] = ({_s.tag: _u.state_dict() for _s, _u in zip(slots, UNSTUCK_SL)}
+                                if MULTI else unstuck_sched.state_dict())
         if ARCH is not None:
             state["archive"] = ARCH.state_dict()
         if AUTO_SPINE and args.auto_spine_archive_bar:
@@ -19585,6 +19635,10 @@ def main() -> None:
     # graph and never re-traces. The gathers stay INSIDE: fusing them with the
     # bf16 cast is part of what the compile buys.
     ent_t = torch.zeros((), device=device)
+    # --maps + --unstuck (D4): the entropy bonus per ROW, x (1 + the T its map's rollout ran
+    # at); a Python constant, so every other run traces the graph it always traced
+    ENT_ROW = bool(MULTI and UNSTUCK_ENT)
+    ent_w_env = torch.ones((N,), device=device)
 
     SIL = None
     if SIL_COEF > 0.0:
@@ -19783,7 +19837,7 @@ def main() -> None:
             # critic warmup optimises both heads, and the logged
             # train/value_loss stays the value term the loss weights
             vl = vl + INT_VF_RATIO * 0.5 * (value_i - f_reti[idx]).pow(2).mean()
-        el = -ent.mean()
+        el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())
         loss = pg + args.vf * vl + ent_coef * el
         if H > 0:
             # two entropy terms, opposite jobs: ent_coef keeps CODE CHOICE
@@ -22377,7 +22431,12 @@ def main() -> None:
             ent_coef = args.ent + (args.ent_final - args.ent) * frac
         else:
             ent_coef = args.ent
-        if UNSTUCK_ENT:
+        if ENT_ROW:
+            # --unstuck (b) per map (D4): each row's entropy bonus x (1 + its map's T)
+            ent_w_env.copy_(torch.as_tensor(np.concatenate(
+                [np.full(_s.n, 1.0 + UT_SL[_k], np.float32) for _k, _s in enumerate(slots)]),
+                device=device))
+        elif UNSTUCK_ENT:
             # --unstuck (b): the entropy bonus of THIS rollout's update is
             # scaled by the temperature the rollout ran at
             ent_coef = ent_coef * (1.0 + unstuck_T)
@@ -22795,7 +22854,33 @@ def main() -> None:
         # on the period pulse, decays the novelty counts. The CSV / step
         # line report the T THIS iteration ran at.
         unstuck_note, unstuck_row = "", None
-        if UNSTUCK:
+        if UNSTUCK and MULTI:
+            # --maps (mm/s1): every map's own schedule, on its own reservoir reach and steps
+            unstuck_row, _uns = [], []
+            for _k, (_s, _mfk) in enumerate(zip(slots, fleet.reservoir_min_depths())):
+                _Tu = UT_SL[_k]
+                _rpk = (float(_s.rf_d0) * (1.0 - float(_mfk))
+                        if (_mfk == _mfk and _s.rf_d0) else float("nan"))
+                _Tn, _ddk = UNSTUCK_SL[_k].observe(_own_step(_k), _rpk, float("nan"))
+                if _ddk and UNSTUCK_INT and args.unstuck_count_decay < 1.0:
+                    _nzk = _s.reward_fn.decay_counts(args.unstuck_count_decay)
+                    print(f"[{global_step:>13,d}] --unstuck[{_s.tag}]: novelty counts x "
+                          f"{args.unstuck_count_decay:g} (decay #{UNSTUCK_SL[_k].n_decays}; "
+                          f"{_nzk:,} cells still non-zero)")
+                UT_SL[_k] = float(_Tn)
+                if UNSTUCK_TEMP:
+                    FRONT_BASE_ENV[_s.sl] = float(_Tn)
+                if UNSTUCK_INT:
+                    _s.reward_fn.int_coef = INT_BASE[_k] * (1.0 + float(_Tn))
+                _ubk = UNSTUCK_SL[_k].best
+                unstuck_row += [round(_Tu, 4), int(UNSTUCK_SL[_k].stuck_steps),
+                                (round(_ubk, 1) if _ubk == _ubk else "")]
+                _uns.append(f"{_s.tag} T {_Tu:.2f}"
+                            + (f"->{_Tn:.2f}" if abs(_Tn - _Tu) >= 5e-3 else "")
+                            + f" stuck {UNSTUCK_SL[_k].stuck_steps / 1e6:,.1f}M")
+            unstuck_T = UT_SL[0]
+            unstuck_note = "  " + "; ".join(_uns)
+        elif UNSTUCK:
             _T_used = unstuck_T
             _res_prog = float("nan")
             _reach_row = []

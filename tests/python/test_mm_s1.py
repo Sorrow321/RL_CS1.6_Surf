@@ -157,3 +157,32 @@ def test_f_one_greedy_pool_per_map_seeded_like_the_reservoir():
     assert "GREEDY = _greedy_pool(int(args.seed) + 9191)" in src
     assert "_greedy_pool(int(args.seed) + 9191 + 101 * _gi)" in src
     assert "GREEDY_S[_s.tag].build(" in src and "GREEDY_S[_s.tag].hook(N_EVAL_PAR)" in src
+
+
+@needs_mm
+def test_h_unstuck_per_map_with_per_row_entropy():
+    import torch
+    tags = map_tags([m.stem for m in V.MM_MAPS])
+    drop = [f for f in NOT_YET if f not in ("int_gate", "energy_front", "front_temp",
+                                            "greedy", "greedy_temp", "front_perturb",
+                                            "unstuck")]
+    r, d = V.run_line(V.ROOT, "mms1_h", MAPS_ARG, drop=drop, steps=12288)
+    try:
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        head = (d / "progress.csv").read_text().splitlines()[0].split(",")
+        for t in tags:
+            assert all(f"unstuck/{c}.{t}" in head for c in ("T", "stuck_steps", "best")), t
+        steps = [ln for ln in out.splitlines() if ln.startswith("step ")]
+        assert steps and all(f"{tags[0]} T " in ln and f"{tags[1]} T " in ln for ln in steps)
+        ck = torch.load(d / "ckpt_latest.pt", map_location="cpu", weights_only=False)
+        assert sorted(ck["unstuck"]) == sorted(tags)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_h_the_entropy_weight_is_per_row_only_under_maps():
+    src = (V.ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert "ENT_ROW = bool(MULTI and UNSTUCK_ENT)" in src
+    assert "el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())" in src
+    assert "return global_step if not MULTI else (int(global_step) * slots[si].n) // N" in src
