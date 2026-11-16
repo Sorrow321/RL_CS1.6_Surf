@@ -1,8 +1,8 @@
 {
-  "_doc": "Multi-map pilot P1 (mm/s1, 2026-11-16): ONE policy, recipe v14 exactly, on surf_petrus_lite + surf_edgeflow_blue200 + surf_src_celestial from scratch (box.py launch --multimap). Pre-launch body: abl/ledger/mm_p1_pre.md.",
-  "goal": "P1: does ONE policy trained with recipe v14 (unchanged) on petrus_lite, edgeflow_blue200 and src_celestial at once, from the true starts, champion-free, finish all three, and how many of its OWN steps does each map need against the single-map v14 runs (first greedy finish 302.5M / 982.0M / 680.0M)?",
-  "map": "maps/surf_petrus_lite.bsp",
-  "field": "maps/surf_petrus_lite.goalc_32.npz",
+  "_doc": "Multi-map run mm7 (mm/s7, 2026-11-16): ONE policy, recipe v14 exactly, on the seven development maps from scratch (box.py launch --multimap). Pre-launch body: abl/ledger/mm7_pre.md. Launches after P1 ends and only once the user tops up.",
+  "goal": "mm7: does training ONE v14 policy on seven maps at once speed up surf_princessburglar_b26, counted in pb's OWN steps, against v14 alone (room exit ~1.96B, the x -1,005 wall 9.59B, the shaft 14.27B, first finish 17.29B)? And each map at matched own steps against its v14-alone run.",
+  "map": "maps/surf_princessburglar_b26.bsp",
+  "field": "maps/surf_princessburglar_b26.goalc_32.npz",
   "_field_doc": "surf_unitfarmer2's goal graph WITHOUT corner cutting at lidar cell 32, the field the recipe shapes on (--race-no-corner-cut 1). All caches (goal_32, goalc_32, occ_32, slabocc_32, sdf_32, faceid_32) were baked on 2026-10-30 by the smoke launch uf2op_bake on a box, on a core that already loads every brush entity (6bd7f931), and are deployed from ~/ar_m2/maps/uf2_maps.tar.gz (md5 84e7daa0, a copy of ~/ar_uf2/maps/uf2_maps.tar.gz; goalc_32 md5 bfd4e79b, bsp md5 9834c24c). The field builder is unchanged for a single-box zone since that bake (the only change, 2026-10-31, adds a signature suffix for zones of several boxes), so the box bakes nothing. goalc_32: 6.84M voxels, reach_max 34,596 u; the field is seeded from the finish trigger's bounding box while the finish itself is tested on the clip hull.",
   "score_episodes": 9,
   "_score_episodes_doc": "score.py counts only the first N episodes of an eval (header episode index < N): its score is a max over episodes, so an eval with more episodes would buy lottery tickets (r6b1 scored 98.418 with 54-episode evals of the incumbent's weights). 0 = all.",
@@ -21,19 +21,17 @@
   "_budget_end_hours_doc": "Hours from this program's start (state.json started) over which box.py spreads the credit above the reserve: ~$11.5 above the $10 reserve at the start = two fast boxes for about 14 h. No top-ups by the operator.",
   "gpu_tiers": [
     [
-      "RTX_5080",
-      "RTX_4080S",
-      "RTX_4080"
+      "RTX_4090",
+      "RTX_5090"
     ]
   ],
-  "_gpu_tiers_doc": "P1: the tier the single-map v14 references ran on (RTX 5080 / 4080 SUPER / 4080, 16 GB); the three maps' grids are ~0.9 GB uncompressed (celestial 826 MB).",
+  "_gpu_tiers_doc": "mm7: >= 24 GB cards (the seven maps' grids: cannonball alone holds ~2.6 GB of SDF + face-id grid on the GPU); one tier, cheapest offer first.",
   "max_dph": {
-    "RTX_5080": 0.45,
-    "RTX_4080S": 0.45,
-    "RTX_4080": 0.45
+    "RTX_4090": 0.45,
+    "RTX_5090": 0.6
   },
   "_max_dph_doc": "$/h for the WHOLE box, its disk_gb of storage included: box.py prices offers with --storage disk_gb, and the fleet watchdog checks the instance's dph_total against its own caps (this table is a subset of them). FAST cards first in this program, because a 26 h round is read in steps: measured on the recipe last round, RTX 5080 368k steps/s, RTX 4080 282k, RTX 3090 215k, RTX 5060 Ti 125-179k (the host CPU is half of it). So tier 0 is the 5080 class, then the 3090s, then two 16 GB fallbacks, then a 4090 or 5090 at its old cap; the 4070 / 3080 / 5060 class of 2026-10-25 is out (10B steps in 20 h would not reach the late walls). Caps sit just above the market of 2026-11-09 (5080 0.28-0.31, 4080S 0.41, 3090 0.29-0.36): a 5080 at 0.59 is double the going rate and is not rented (CLAUDE.md: never rent above the market price).",
-  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=32 cpu_ghz>=2.5 verified=true gpu_ram>=12 geolocation notin [CN]",
+  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=32 cpu_ghz>=2.5 verified=true gpu_ram>=23 cpu_ram>=48000 geolocation notin [CN]",
   "cpu_exclude": [
     "Xeon.* E[57]-"
   ],
@@ -77,7 +75,7 @@
   "disk_gb": 60,
   "ready_running_s": 330,
   "ready_ssh_s": 90,
-  "box_hours_default": 6.5,
+  "box_hours_default": 24.0,
   "incumbent_recipe": [
     "--envs",
     "1024",
@@ -240,39 +238,43 @@
     "--int-share-max",
     "0.25"
   ],
-  "start_d": 35940.0,
-  "start_d_span": [
-    35916.0,
-    35940.0
-  ],
+  "start_d": 57191.1,
   "_start_d_span_doc": "score.py: the goalc_32 field at the map's ONE spawn point (-2176, -2272, 1192) reads 30,660 u; the player drops 4 u onto the start platform, where an episode's first row reads 30,647.5 (October's start_d). The 2% start test is taken outside this span. Grader only: nothing in training reads it.",
   "model": "claude-opus-5-5",
   "effort": "max",
-  "_offer_query_doc": "P1: the v14 runs' query (>= 32 effective threads at >= 2.5 GHz: physics is CPU-bound; verified; 60 GB disk; gpu_ram >= 12) with hosts in China left out (the operator's rule for this pilot: the deploy clones from GitHub and the watch, tunnel and harvest ride ssh from the droplet).",
+  "_offer_query_doc": "mm7: the v14 runs' query with gpu_ram >= 23 GB (a 24 GB card) and cpu_ram >= 48000 MB (the seven maps' fields and grids on the host: ~7 GB uncompressed, cannonball 5.2 GB, plus the trainer, the record gate and one search), hosts in China left out as for P1.",
   "_incumbent_recipe_doc": "RECIPE v14, 160 tokens, exactly wt/ab14p's (md5 6e2a72ca over the 158 tokens without --maxvel, ledger c1d4d88e). box.py launch --multimap replaces its --envs and --maxvel with config multimap's and appends multimap.extra, v14's launch extra (-- --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2'); a resume (--multimap --resume) passes the same tokens with --envs and --maxvel from the pushed checkpoint.",
   "agent_prefix": "mm",
   "_agent_prefix_doc": "Multi-map pilots: box owners mm<pilot>, run names <owner>_<n>.",
-  "maps_tarball": "mm_p1_maps.tar.gz",
+  "maps_tarball": "mm7_maps.tar.gz",
   "_budget_doc": "No budget_rate_usd_h: box.py's pacer. The reserve is held by extend's burn x hours check and by the box deadlines.",
   "time_cap_s": 300.0,
   "_time_cap_s_doc": "score.py's time term is 10 * (1 - best_finish_s / time_cap_s): 300 s, the episode cap.",
   "multimap": {
     "maps": [
-      "maps/surf_petrus_lite.bsp",
+      "maps/surf_princessburglar_b26.bsp",
+      "maps/surf_src_sidistic.bsp",
+      "maps/surf_unitfarmer2.bsp",
+      "maps/surf_src_cannonball.bsp",
       "maps/surf_edgeflow_blue200.bsp",
-      "maps/surf_src_celestial.bsp"
+      "maps/surf_src_celestial.bsp",
+      "maps/surf_petrus_lite.bsp"
     ],
     "maxvel": [
+      3500,
+      4000,
+      3500,
+      4000,
       4000,
       4000,
       4000
     ],
-    "envs": 1023,
+    "envs": 1029,
     "extra": [
       "--auto-spine-mcts-args",
       "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2"
     ]
   },
-  "_multimap_doc": "P1: --envs 1023 = 341 per map (the trainer refuses a count the maps do not divide); --maxvel 4000 on all three (each map's v14 run's value); every clock of the search loop and every eval count each map's OWN steps (fleet steps x 341/1023), each map evaluated every --record-every of its own steps; one search at a time, FIFO, a quorum request first (mm/s1 D2, D3). Grade with autoresearch/score_maps.py runs/<run> (autoresearch/map_configs/<stem>.json).",
-  "_box_hours_default_doc": "P1: the cut is 6.0B fleet steps at ~1.0-1.5B/h (multi-map throughput unmeasured): ~4-6 h, plus deploy and harvest."
+  "_multimap_doc": "mm7: --envs 1029 = 147 per map (7 x 147; v14 runs 1024); --maxvel 3500 on pb and unitfarmer2, 4000 on the rest (each map's v14 value). The ORDER is a choice and it is not only memory: it sets each map's env slice and per-slot seeds, and the FIFO order when requests tie - all seven maps pass the 3e8 own-step search delay at the same eval, and the last in the order waits ~6 searches (~1 h, ~0.13B own steps). pb (the question) goes first, then the maps by their v14-alone first finish, slowest first. Cannonball is not put first for memory: the steady state holds every map's grids whatever the order.",
+  "_box_hours_default_doc": "mm7 has no step cap: the box's first deadline is 24 h; the operator extends it (box.py extend) while the credit floor (budget_reserve_usd) holds."
 }
