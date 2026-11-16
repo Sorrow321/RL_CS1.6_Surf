@@ -48819,3 +48819,64 @@ on each arm's own worktree and core build.
 * BUNDLE OK (md5 = box): ~/ar_m2/runs/abzl/abzl_1 (evals gzipped after the check, pre-gzip md5s in
   traj_md5_before_gzip.txt), ckpts_1 (11 checkpoints incl. ckpt_latest), auto_1. Box 60843051
   destroyed 05:11 UTC; tunnel 8645 stopped. Cost about $2.8 (7.1 h at $0.387/h).
+
+## 2026-11-16 07:30 UTC: PRE-LAUNCH (sub-agent P) - cross-map test of arm A (v14 with energy-record pay) from scratch on petrus and blue200
+
+P wrote this before the petrus launch (07:28 UTC); committed here after it, unchanged.
+
+## PRE-LAUNCH wave 20: za_loop arm A's ingredient (the energy ratchet) on petrus and blue200
+
+Sub-agent P, 2026-11-16 ~07:30 UTC. Written BEFORE the launch; the operator's GO came at ~07:20 UTC.
+
+### The question
+
+* **What arm A does on za_loop.** It replaces v14's band energy bonus with the energy ratchet:
+  `--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --energy-ratchet 1` pays new
+  records of the episode's energy height and never charges a loss.
+  * On za_loop it climbed past v14's 28% plateau.
+  * zlA reached the second trough at 755.5M against v14's 3.25B. The operator's read at ~07:20
+    UTC was 34.2% at 3.02B.
+* **What we need to know.** Does the ratchet cost anything on maps v14 already finishes?
+* **The two maps, the cheapest and most telling:**
+  * petrus, where the contact rule's cost showed first (99c98925);
+  * blue200, the map with the most energy gained after the start (w18: 180 u per episode after the
+    first 5 s, against 0-39 u on the other finished maps).
+
+### The runs (from scratch, seed 0, no checkpoint, no demo, every line the loop's own)
+
+* **Code:** ab/eratchet 97dffa6f, the same as the za_loop arms.
+* **Recipe:** 162 tokens, the same list as zlA (md5 f9dbcf95 without --maxvel).
+  * abl/launch/mkcfg_w20.py asserts that it equals the map's own v14 list (ab14p / ab14w,
+    md5 6e2a72ca) outside the in-place change.
+  * --maxvel 4000; the launch extra is unchanged.
+
+| run | map | branch (commit) | start_d, span (= v14's) | v14 first finish |
+|---|---|---|---|---|
+| abrp_1 | petrus_lite | ab/abrp f81ac95d | 35,940 [35,916, 35,940] | 302.5M, 30.10 s |
+| abrw_1 | edgeflow_blue200 | ab/abrw 4a22197d | 2,672 [2,506, 2,840] | 982.0M, 12.14 s |
+
+* **CPU smokes of both complete lines:** 92 pins + 162 + 2 extra, 40,960 steps, rc 0.
+  * Both print the ratchet line and read en +1/-10u/ep.
+  * They ran on unitfarmer2's map: --obs-normal needs a face-id map, and petrus and blue200 have
+    none baked on the droplet (the bake needs a GPU), as in w17.
+
+### Reads, cut, budget
+
+* **Reads:**
+  * the first greedy finish step and the best time (score.py in wt/abrp, wt/abrw);
+  * the en read-out (records paid per episode) and the novelty share;
+  * where the greedy stalls before its first finish.
+* **Comparison** (v14 and the contact rule, both graded the same way):
+  * petrus v14 302.5M (7/9), best by first finish + 2 evals 30.34 s; contact 831.0M (2.75x),
+    32.26 s;
+  * blue200 v14 982.0M (9/9), 12.21 s; contact 906.5M (0.92x), 14.05 s.
+* **Prediction from w18 (v14's own greedy, K 12):**
+  * The ratchet would pay ~130 u per episode on petrus (+1.6), all in the first 5 s, and ~411 u
+    on blue200 (+4.9), 180 u of it after the first 5 s. Never a charge.
+  * Expect no change on petrus beyond seed noise; blue200 is where a cost or a gain would show.
+* **Cut:** the first greedy finish + 2 evals, or 3x v14's first-finish step: petrus 1.0B,
+  blue200 3.0B.
+* **Budget:**
+  * <= $2 for the two: petrus ~1.2 h and blue200 ~2.4 h at <= $0.45/h, ~$1.6.
+  * Boxes via ab_w2_retry.sh on ports 8649 and 8650, watchdog with harvest + pid, record gate.
+  * The fleet is then 5 boxes (3 za_loop arms + these 2), the cap.
