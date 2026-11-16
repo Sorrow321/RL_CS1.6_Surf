@@ -362,7 +362,7 @@ class TextureMap:
                                             torch.as_tensor(tface, device=device))
             np.savez_compressed(cfile, idx=idx.astype(np.int32), face=face.astype(np.int16),
                                 sig=np.str_(sig))
-        n_set = int((fid >= 0).sum())
+        n_set = count_set(fid)
         msg = (f"texture: {len(tris):,} visible triangles of {len(set(tface.tolist())):,} faces "
                f"({nkeep}/{nmod} models), {len(tex)} textures ({at.size * 4 / 1e6:.1f} MB RGBA), "
                f"face-id grid {'BAKED' if baked else 'cached'}: {n_set:,} surface voxels "
@@ -372,6 +372,15 @@ class TextureMap:
         return cls(fid, t(fd, device=device).reshape(-1).contiguous(), t(ft, device=device),
                    t(at, device=device), t(tmip, device=device), t(tdim, device=device),
                    t(tavg, device=device), t(tsky, device=device), describe=msg)
+
+
+def count_set(fid, chunk: int = 1 << 22) -> int:
+    """``int((fid >= 0).sum())`` counted in chunks of ``chunk`` voxels. The one-shot form builds a
+    bool AND an int64 copy of the whole grid on its device - 9 B per voxel, 5.6 GiB on
+    cannonball's 671M voxels, the allocation its search 11 died on beside the trainer - for a
+    number that only goes into the log line. The count is the same."""
+    flat = fid.reshape(-1)
+    return sum(int((flat[i:i + chunk] >= 0).sum()) for i in range(0, int(flat.numel()), chunk))
 
 
 def bake_face_grid(sdf_flat, dims, mins, cell, tri9, tface, reach_cells=FACE_REACH_CELLS):
