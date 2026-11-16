@@ -1,8 +1,8 @@
 {
  "map": "maps/surf_princessburglar_b26.bsp",
  "field": "maps/surf_princessburglar_b26.goalc_32.npz",
- "start_d": 57149.0,
+ "start_d": 57191.1,
  "score_episodes": 9,
  "time_cap_s": 300.0,
- "_source": "the grading keys of the v14 single-map run's autoresearch/config.json (worktree ab13b, 2026-11-15)"
+ "_source": "the grading keys of the v14 single-map run's autoresearch/config.json (worktree ab13b, 2026-11-15); start_d re-measured on the goalc_32 the fixed core builds since the entity tag ed329d70 (the four walls: 57,149.1 -> 57,191.1 at the spawn)"
 }
