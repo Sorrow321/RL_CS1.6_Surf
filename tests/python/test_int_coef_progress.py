@@ -122,19 +122,22 @@ def test_the_trainer_wires_it():
     assert 'meta["config"]["int_coef_progress"] = [float(v) for v in INTP]' in src
     # refused where its reading or its coefficient would not be the run's one
     assert 'raise SystemExit("--int-coef-progress and --int-match both set the novelty "' in src
-    assert 'raise SystemExit("--int-coef-progress reads ONE map\'s greedy frontier on the main "' \
+    # (mm/s1: each map's own eval sets its own coefficient under --maps; only --ddp is refused)
+    assert 'raise SystemExit("--int-coef-progress reads each map\'s greedy frontier on the main "' \
         in src
     # the coefficient starts from the checkpoint (or HI) BEFORE --unstuck takes its base
     i_rest = src.index('if ck is not None and ck.get("int_coef_progress") is not None:')
-    i_set = src.index('_s.reward_fn.int_coef = float(INTP_ST["coef"])')
+    i_set = src.index('_s.reward_fn.int_coef = float(INTP_SL[_k]["coef"])')   # slot 0 = INTP_ST
     i_base = src.index("INT_BASE = [float(_s.reward_fn.int_coef) for _s in slots]")
     assert i_rest < i_set < i_base
     # every greedy eval of the first map is read after the eval block; --unstuck's base moves too
-    assert 'INTP_ST["eval"] = path  # --int-coef-progress: read after the eval block' in src
-    assert "_int_progress_after_eval(_ipp)" in src
-    assert "INT_BASE[:] = [c] * len(INT_BASE)" in src
+    # (every map its own state since mm/s1: INTP_SL[0] IS INTP_ST, so one map reads as before)
+    assert 'INTP_SL[_i]["eval"] = path' in src
+    assert "_int_progress_after_eval(_ipp, _ipk)" in src
+    assert "INT_BASE[si] = c" in src
     # and the checkpoint carries the coefficient with its reading
-    assert 'state["int_coef_progress"] = {"progress": float(INTP_ST["progress"]),' in src
+    assert '_icps = [{"progress": float(_st["progress"]), "coef": float(_st["coef"])}' in src
+    assert 'if MULTI else _icps[0])' in src
 
 
 # --- 3. CPU runs ----------------------------------------------------------------------------------

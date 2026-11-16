@@ -75,14 +75,15 @@ def test_the_trainer_wires_it():
     assert 'meta["config"]["auto_spine_patience_max"] = float(args.auto_spine_patience_max)' in src
     # the cap is one term of the decision, after the finish stop, before go
     i_fin = src.index('AUTO["fin"] = _nf >= int(args.auto_spine_quorum)')
-    i_pmax = src.index("pmax = patience_max_due(global_step, AUTO[\"t_hold\"],")
+    # (the loop's clocks read _ost, the map's own steps: global_step on one map, mm/s1 D2)
+    i_pmax = src.index("pmax = patience_max_due(_ost, AUTO[\"t_hold\"],")
     i_or = src.index("pat = pat or pmax", i_pmax)
-    i_go = src.index('go = (quorum or pat) and global_step >= AUTO["retry_at"]', i_or)
+    i_go = src.index('go = (quorum or pat) and _ost >= AUTO["retry_at"]', i_or)
     assert i_fin < i_pmax < i_or < i_go
     # the clock: an adoption, a search's start, a finishing greedy
-    assert src.count('AUTO["t_hold"] = int(global_step)') == 4         # + the first eval's
+    assert src.count('AUTO["t_hold"] = int(_ost)') == 4                # + the first eval's
     i_k = src.index('AUTO["k"] += 1')
-    assert src.index('AUTO["t_hold"] = int(global_step)', i_k) < src.index("kdir = adir", i_k)
+    assert src.index('AUTO["t_hold"] = int(_ost)', i_k) < src.index("kdir = adir", i_k)
     import record_ckpt
     assert "auto_spine_patience_max" in record_ckpt.TRAIN_ONLY
 

@@ -47,8 +47,11 @@ def test_the_gate():
 def test_the_trainer_wires_it():
     src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
     assert '"--demo-success-bonus-energy-only"' in src
-    # both payment sites go through the gate, none pays on the bare bonus any more
-    assert src.count("bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN)") == 2
+    # both payment sites go through the gate, none pays on the bare bonus any more (and since
+    # mm/s1 each has a --maps twin that gates every map on its own held line, map by map)
+    assert src.count("bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN)") == 4
+    assert len(re.findall(r"_use_dslot\(_bk\)\n\s*if bonus_live\(DEMO_BONUS, BONUS_E_ONLY, "
+                          r"DEMO_H_MIN\):", src)) == 2
     assert "if DEMO_BONUS and r is not None:" not in src
     assert not re.search(r"\n\s*if DEMO_BONUS:\n\s*r_dec = _demo_bonus_pay", src)
     assert 'meta["config"]["demo_success_bonus_energy_only"] = 1' in src

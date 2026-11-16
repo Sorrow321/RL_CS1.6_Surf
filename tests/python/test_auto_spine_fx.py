@@ -79,7 +79,8 @@ def test_the_trainer_wires_it():
     # a finishing quorum and a new low of tau are read before the quorum / patience decide
     i_tau = src.index('AUTO["tau_low"] = int(demo.tau)')
     i_fin = src.index('AUTO["fin"] = _nf >= int(args.auto_spine_quorum)')
-    i_go = src.index("go = (quorum or pat) and global_step >= AUTO[\"retry_at\"]")
+    # (the loop's clocks read _ost, the map's own steps: global_step on one map, mm/s1 D2)
+    i_go = src.index("go = (quorum or pat) and _ost >= AUTO[\"retry_at\"]")
     assert i_tau < i_fin < i_go
     # a search that ends after a finishing eval is discarded before the curriculum is touched
     i_disc = src.index('if args.auto_spine_finish_stop and AUTO.get("fin"):')
@@ -192,6 +193,8 @@ def test_a_finishing_quorum_starts_no_search():
     a = src.index("        if args.auto_spine_finish_stop:\n            _nf = ")
     b = src.index("        quorum = m >= int(args.auto_spine_quorum)", a)
     fn = ("def f(args, AUTO, _eval_finishes, ev_path, eps, med, global_step):\n"
+          # (mm/s1: the loop reads the map's own steps and prints its tag; one map: these)
+          "    _ost, _tg = global_step, ''\n"
           + textwrap.indent(textwrap.dedent(src[a:b]), "    ") + "    return 'search rule'\n")
     ns = {}
     exec(fn, ns)

@@ -106,11 +106,12 @@ def test_the_trainer_wires_it():
     i_unst = src.index("_s.reward_fn.int_coef = _b * (1.0 + _T_next)")
     assert i_upd < i_base < i_unst
     # the gate's reading at every eval carries the multiplier past the knee, and only there
-    assert "if _ism_active():" in src and "c = c * ISM_ST[\"m\"]" in src
+    # (per map since mm/s1: ISM_SL[0] IS ISM_ST, so one map reads as before)
+    assert "if _ism_active(si):" in src and "c = c * ISM_SL[si][\"m\"]" in src
     assert "return bool(ISM) and p == p and p >= ISM_KNEE" in src
     # checkpointed and restored
-    assert 'state["int_share_max"] = {"m": float(ISM_ST["m"])}' in src
-    assert 'ISM_ST["m"] = float(ck["int_share_max"]["m"])' in src
+    assert '_isms = [{"m": float(_st["m"])} for _st in ISM_SL]' in src
+    assert 'ISM_SL[_k]["m"] = float(_im["m"])' in src
 
 
 # --- 3. CPU runs ----------------------------------------------------------------------------------

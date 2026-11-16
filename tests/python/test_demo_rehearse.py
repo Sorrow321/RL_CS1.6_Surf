@@ -98,7 +98,8 @@ def test_the_trainer_wires_it():
     assert '"--demo-rehearse"' in src and '"--demo-rehearse-r"' in src
     assert 'raise SystemExit("--demo-rehearse keeps a learned line' in src
     assert 'meta["config"]["demo_rehearse"] = float(args.demo_rehearse)' in src
-    i_go = src.index('go = (quorum or pat) and global_step >= AUTO["retry_at"]')
+    # (the loop's clocks read _ost, the map's own steps: global_step on one map, mm/s1 D2)
+    i_go = src.index('go = (quorum or pat) and _ost >= AUTO["retry_at"]')
     i_trig = src.index('AUTO["trig"] = "quorum" if quorum else "patience"')
     assert i_go < i_trig
     i_j = src.index('if REHEARSE and AUTO.get("trig") == "quorum" and demo.n > 2:')

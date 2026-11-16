@@ -71,7 +71,8 @@ def test_the_trainer_wires_it():
             'search: give "') in src
     assert 'meta["config"]["auto_spine_archive_bar"] = 1' in src
     # the failure is read from the trigger (patience, no quorum) before the command is run
-    i_go = src.index("go = (quorum or pat) and global_step >= AUTO[\"retry_at\"]")
+    # (the loop's clocks read _ost, the map's own steps: global_step on one map, mm/s1 D2)
+    i_go = src.index("go = (quorum or pat) and _ost >= AUTO[\"retry_at\"]")
     i_mark = src.index("if pat and not quorum and mark_failed_archive(_fa, AUTO.get(\"src\"), "
                        "_held):")
     i_bar = src.index('cmd += ["--archive-bar", f"{archive_bar(_fa):.1f}"]')

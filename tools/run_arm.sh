@@ -369,7 +369,7 @@ fi
 # recipe's tokens trailing as always (box.py launch --multimap writes the
 # recipe's --envs and per-map --maxvel from config "multimap"). This is not
 # the MULTIMAP branch above, whose base is an older pool recipe (--n-steps 32,
-# --ep-ticks 6000, no keys-hold / potential channel). Without MAPS this branch
+# --ep-ticks 6000, no held-key bins, no potential channel). Without MAPS this branch
 # passes exactly the tokens it always did. The liveness window is the MULTIMAP
 # branch's 300 s: every map's iteration-1 eval runs before the first step line.
 # DRY_RUN=1 prints the trainer's command line and exits (the launcher's test).
