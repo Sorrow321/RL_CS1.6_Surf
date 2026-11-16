@@ -48,3 +48,23 @@ def test_a_eval_parallel_records_every_map_side_by_side():
                 assert all(h.get("eval_parallel") == 1 for h in hs), f
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_mm
+def test_c_the_novelty_gate_and_its_share_cap_per_map():
+    import torch
+    tags = map_tags([m.stem for m in V.MM_MAPS])
+    drop = [f for f in NOT_YET if f != "int_gate"]
+    r, d = V.run_line(V.ROOT, "mms1_c", MAPS_ARG, drop=drop, steps=4096)
+    try:
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        for tag in tags:
+            assert f"--int-coef-progress[{tag}]: greedy frontier" in out, tag
+        assert "share-cap m " + ", ".join(f"{t} off" for t in tags) in out
+        ck = torch.load(d / "ckpt_latest.pt", map_location="cpu", weights_only=False)
+        assert sorted(ck["int_coef_progress"]) == sorted(tags)
+        assert sorted(ck["int_share_max"]) == sorted(tags)
+        assert all(set(v) == {"progress", "coef"} for v in ck["int_coef_progress"].values())
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

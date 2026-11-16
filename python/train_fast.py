@@ -11529,9 +11529,10 @@ def main() -> None:
         if IMATCH:
             raise SystemExit("--int-coef-progress and --int-match both set the novelty "
                              "coefficient - pick one")
-        if args.maps or D.enabled:
-            raise SystemExit("--int-coef-progress reads ONE map's greedy frontier on the main "
-                             "rank: not implemented with --maps or --ddp")
+        if D.enabled:
+            # (--maps is per map since mm/s1: each map's own eval sets its own coefficient)
+            raise SystemExit("--int-coef-progress reads each map's greedy frontier on the main "
+                             "rank: not implemented with --ddp")
         if isinstance(INTP, ProgressPoints):
             print(f"--int-coef-progress {INTP.text()}: the novelty coefficient (not --int-coef "
                   f"{float(args.int_coef):g}) is piecewise linear in the frontier progress through "
@@ -19141,31 +19142,47 @@ def main() -> None:
     # Every slot's novelty starts at it - HI on a fresh run - and --unstuck's base reads it below
     INTP_ST = {"progress": float("nan"),
                "coef": None if INTP is None else int_coef_progress_start(INTP), "eval": None}
+    # --maps (mm/s1): ONE state per map - each map's own greedy frontier sets its own coefficient;
+    # slot 0's state IS INTP_ST, so a single-map run reads and writes exactly what it did
+    INTP_SL = [INTP_ST] + [dict(INTP_ST) for _ in slots[1:]]
     if INTP is not None:
         if ck is not None and ck.get("int_coef_progress") is not None:
             _icp = ck["int_coef_progress"]
-            INTP_ST.update(progress=float(_icp.get("progress", float("nan"))),
-                           coef=float(_icp["coef"]))
-            print(f"--int-coef-progress: restored the novelty coefficient {INTP_ST['coef']:.4g} "
-                  f"(greedy frontier {INTP_ST['progress']:.2%} of the spawn's d)", flush=True)
-        for _s in slots:
-            _s.reward_fn.int_coef = float(INTP_ST["coef"])
+            # a multi-map checkpoint keys the state by map tag
+            _icps = ([_icp.get(_s.tag) for _s in slots] if MULTI else [_icp])
+            for _k, _ic in enumerate(_icps):
+                if _ic is None:
+                    continue
+                INTP_SL[_k].update(progress=float(_ic.get("progress", float("nan"))),
+                                   coef=float(_ic["coef"]))
+                print(f"--int-coef-progress{f'[{slots[_k].tag}]' if MULTI else ''}: restored "
+                      f"the novelty coefficient {INTP_SL[_k]['coef']:.4g} (greedy frontier "
+                      f"{INTP_SL[_k]['progress']:.2%} of the spawn's d)", flush=True)
+        for _k, _s in enumerate(slots):
+            _s.reward_fn.int_coef = float(INTP_SL[_k]["coef"])
 
     # --int-share-max: the cap's multiplier (checkpointed) on the gate's coefficient, acting only
-    # while the gate's frontier reading is at or past its knee
+    # while the gate's frontier reading is at or past its knee (per map under --maps)
     ISM_ST = {"m": 1.0, "rsum": 0.0}
+    ISM_SL = [ISM_ST] + [{"m": 1.0, "rsum": 0.0} for _ in slots[1:]]
 
-    def _ism_active():
-        p = INTP_ST["progress"]
+    def _ism_active(si=0):
+        p = INTP_SL[si]["progress"]
         return bool(ISM) and p == p and p >= ISM_KNEE
 
     if ISM:
         if ck is not None and ck.get("int_share_max") is not None:
-            ISM_ST["m"] = float(ck["int_share_max"]["m"])
-            print(f"--int-share-max: restored the cap's multiplier {ISM_ST['m']:.4g}", flush=True)
-        if _ism_active():
-            for _s in slots:
-                _s.reward_fn.int_coef = float(INTP_ST["coef"]) * ISM_ST["m"]
+            _ismc = ck["int_share_max"]
+            _isms = ([_ismc.get(_s.tag) for _s in slots] if MULTI else [_ismc])
+            for _k, _im in enumerate(_isms):
+                if _im is None:
+                    continue
+                ISM_SL[_k]["m"] = float(_im["m"])
+                print(f"--int-share-max{f'[{slots[_k].tag}]' if MULTI else ''}: restored the "
+                      f"cap's multiplier {ISM_SL[_k]['m']:.4g}", flush=True)
+        for _k, _s in enumerate(slots):
+            if _ism_active(_k):
+                _s.reward_fn.int_coef = float(INTP_SL[_k]["coef"]) * ISM_SL[_k]["m"]
 
     # --yaw-entropy-progress: the share and the frontier reading it came from (checkpointed);
     # a fresh run starts at HI. The loss reads the 0-d tensor, rewritten in place
@@ -19180,11 +19197,12 @@ def main() -> None:
                   f"(greedy frontier {YEP_ST['progress']:.2%} of the spawn's d)", flush=True)
         YAW_ENT_ARG = torch.tensor(float(YEP_ST["coef"]), device=device)
 
-    def _greedy_eval_progress(ev_path):
+    def _greedy_eval_progress(ev_path, si=0):
         """The greedy eval's frontier as a fraction of the spawn's d (greedy_frontier_progress on
-        slot 0's field): what --int-coef-progress and --yaw-entropy-progress read."""
+        slot ``si``'s field; slot 0 on a single-map run): what --int-coef-progress and
+        --yaw-entropy-progress read."""
         from surfgym.route import episodes_from_traj
-        _s0 = slots[0]
+        _s0 = slots[si]
         _fd = _s0.reward_field if _s0.reward_field is not None else _s0.goal_field
         eps = [e for e in episodes_from_traj(ev_path) if len(e)][:max(1, int(args.eval_eps or 9))]
         _gs = -float(_s0.core.config.phys.sv_gravity) * float(TICK.ms) / 1000.0
@@ -19203,29 +19221,33 @@ def main() -> None:
         print(f"[{global_step:>13,d}] --yaw-entropy-progress: greedy frontier {prog:.2%} of the "
               f"spawn's d -> yaw entropy share {c:.4g}", flush=True)
 
-    def _int_progress_after_eval(ev_path):
+    def _int_progress_after_eval(ev_path, si=0):
         """--int-coef-progress: the greedy eval just written sets the novelty coefficient from
-        its frontier progress (x (1 + T) under --unstuck's novelty scaling)."""
-        prog = _greedy_eval_progress(ev_path)
+        its frontier progress (x (1 + T) under --unstuck's novelty scaling). Under --maps each
+        map's own eval sets its own map's coefficient (slot ``si``)."""
+        prog = _greedy_eval_progress(ev_path, si)
         if prog != prog:
             return
         c = int_coef_progress_at(prog, INTP)
-        INTP_ST.update(progress=float(prog), coef=float(c))
+        INTP_SL[si].update(progress=float(prog), coef=float(c))
         cap = ""
-        if _ism_active():
+        if _ism_active(si):
             # --int-share-max: past the knee the cap's multiplier rides on the gate's value
-            cap = f" (the gate's {c:.4g} x {ISM_ST['m']:.4g} under --int-share-max)"
-            c = c * ISM_ST["m"]
+            cap = f" (the gate's {c:.4g} x {ISM_SL[si]['m']:.4g} under --int-share-max)"
+            c = c * ISM_SL[si]["m"]
         if INT_BASE is not None:
-            INT_BASE[:] = [c] * len(INT_BASE)
-        mult = (1.0 + float(unstuck_T)) if UNSTUCK_INT else 1.0
-        for _s in slots:
-            _s.reward_fn.int_coef = c * mult
-        print(f"[{global_step:>13,d}] --int-coef-progress: greedy frontier {prog:.2%} of the "
-              f"spawn's d -> novelty coefficient {c:.4g}" + cap
-              + (f" (x {mult:.2f} under --unstuck)" if mult != 1.0 else ""), flush=True)
+            INT_BASE[si] = c
+        mult = (1.0 + float(_unstuck_T_of(si))) if UNSTUCK_INT else 1.0
+        slots[si].reward_fn.int_coef = c * mult
+        print(f"[{global_step:>13,d}] --int-coef-progress{f'[{slots[si].tag}]' if MULTI else ''}"
+              f": greedy frontier {prog:.2%} of the spawn's d -> novelty coefficient {c:.4g}"
+              + cap + (f" (x {mult:.2f} under --unstuck)" if mult != 1.0 else ""), flush=True)
 
     unstuck_sched, unstuck_T, INT_BASE, UR = None, 0.0, None, None
+
+    def _unstuck_T_of(si=0):
+        """the --unstuck temperature slot ``si``'s rollout runs at"""
+        return unstuck_T
     # --unstuck-reach eval: the last greedy frontier not yet observed (NaN =
     # no new reading)
     unstuck_eval_reach = float("nan")
@@ -19467,11 +19489,16 @@ def main() -> None:
         if INTP is not None:
             # --int-coef-progress: the coefficient and its frontier reading, so a resume keeps
             # the novelty the run had reached until its next greedy eval
-            state["int_coef_progress"] = {"progress": float(INTP_ST["progress"]),
-                                          "coef": float(INTP_ST["coef"])}
+            _icps = [{"progress": float(_st["progress"]), "coef": float(_st["coef"])}
+                     for _st in INTP_SL]
+            # (multi-map: one state per map tag)
+            state["int_coef_progress"] = ({_s.tag: _v for _s, _v in zip(slots, _icps)}
+                                          if MULTI else _icps[0])
         if ISM:
             # --int-share-max: the cap's multiplier, so a resume keeps the share it had reached
-            state["int_share_max"] = {"m": float(ISM_ST["m"])}
+            _isms = [{"m": float(_st["m"])} for _st in ISM_SL]
+            state["int_share_max"] = ({_s.tag: _v for _s, _v in zip(slots, _isms)}
+                                      if MULTI else _isms[0])
         if YEP is not None:
             # --yaw-entropy-progress: likewise, the yaw entropy share a resume keeps
             state["yaw_entropy_progress"] = {"progress": float(YEP_ST["progress"]),
@@ -21644,7 +21671,12 @@ def main() -> None:
                         if IMATCH:
                             imatch_rsum += float(r.sum())
                         if ISM:
-                            ism_rsum += float(r.sum())
+                            if MULTI:
+                                # --int-share-max per map: each map's paid reward
+                                for _isk, _iss in enumerate(slots):
+                                    ISM_SL[_isk]["rsum"] += float(r[_iss.sl].sum())
+                            else:
+                                ism_rsum += float(r.sum())
                         if INT_SPLIT:
                             rint_acc += _int_r()
                     ended_acc |= ended
@@ -22660,7 +22692,29 @@ def main() -> None:
                 imatch_note = (f"  int-match c {slots[0].reward_fn.int_coef:.4g} (novelty "
                                f"{_ip:,.0f} vs rest {_ext:,.0f} this iter)")
                 imatch_rsum = 0.0
-            if ISM:
+            if ISM and MULTI:
+                # --int-share-max per map (mm/s1): each map's novelty paid vs the rest of its
+                # reward over the same ticks (fleet.pop_stats kept every map's own stats)
+                _isn = []
+                _lss = getattr(fleet, "last_slot_stats", None) or [None] * len(slots)
+                for _k, _s in enumerate(slots):
+                    _st = _lss[_k] or {}
+                    _ek, _ipe = _st.get("episodes") or 0, _st.get("int_per_ep", float("nan"))
+                    _ipk = float(_ipe) * float(_ek) if (_ek and _ipe == _ipe) else 0.0
+                    _extk = ISM_SL[_k]["rsum"] - _ipk
+                    ISM_SL[_k]["rsum"] = 0.0
+                    if _ism_active(_k):
+                        ISM_SL[_k]["m"] = share_cap_step(ISM_SL[_k]["m"], _ipk, _extk, ISM)
+                        _cb = float(INTP_SL[_k]["coef"]) * ISM_SL[_k]["m"]
+                        if INT_BASE is not None:
+                            INT_BASE[_k] = _cb
+                        _mu = (1.0 + float(_unstuck_T_of(_k))) if UNSTUCK_INT else 1.0
+                        _s.reward_fn.int_coef = _cb * _mu
+                        _isn.append(f"{_s.tag} {ISM_SL[_k]['m']:.3g}")
+                    else:
+                        _isn.append(f"{_s.tag} off")
+                ism_note = "  share-cap m " + ", ".join(_isn)
+            elif ISM:
                 # --int-share-max: this iteration's novelty paid vs the rest, over the same ticks;
                 # past the gate's knee the multiplier moves, and the base --unstuck multiplies
                 # (below) is the gate's coefficient x the multiplier
@@ -23208,8 +23262,9 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] " + GREEDY.line())
                 if AUTO_SPINE and _i == 0 and not _s.heldout:
                     AUTO["eval"] = path     # --auto-spine: read after the eval block
-                if INTP is not None and _i == 0 and not _s.heldout:
-                    INTP_ST["eval"] = path  # --int-coef-progress: read after the eval block
+                if INTP is not None and not _s.heldout:
+                    # --int-coef-progress: read after the eval block (every map its own)
+                    INTP_SL[_i]["eval"] = path
                 if YEP is not None and _i == 0 and not _s.heldout:
                     YEP_ST["eval"] = path   # --yaw-entropy-progress: likewise
                 if args.auto_finish and _i == 0 and not _s.heldout:
@@ -23497,11 +23552,14 @@ def main() -> None:
             except Exception as _ex:         # a failed search never ends the run
                 AFIN["retry_at"] = int(global_step + float(args.auto_finish_retry))
                 print(f"!! auto-finish: {type(_ex).__name__}: {_ex}", flush=True)
-        if INTP is not None and INTP_ST["eval"] is not None:
+        for _ipk, _ipst in enumerate(INTP_SL if INTP is not None else ()):
+            if _ipst["eval"] is None:
+                continue
             # --int-coef-progress: the greedy eval just written sets the novelty coefficient
-            _ipp, INTP_ST["eval"] = INTP_ST["eval"], None
+            # (each map's own eval its own map's)
+            _ipp, _ipst["eval"] = _ipst["eval"], None
             try:
-                _int_progress_after_eval(_ipp)
+                _int_progress_after_eval(_ipp, _ipk)
             except Exception as _ex:         # a failed reading keeps the coefficient
                 print(f"!! --int-coef-progress: {type(_ex).__name__}: {_ex}", flush=True)
         if YEP is not None and YEP_ST["eval"] is not None:

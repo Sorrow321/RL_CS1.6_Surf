@@ -790,11 +790,17 @@ class MapFleet:
         sr = fin = ipe = 0.0
         n_fin = n_int = 0
         n_air = n_paid = n_dive = 0.0
+        # every slot's own stats of this call (None where there are none), for the per-map
+        # rules that need one map's numbers (--int-share-max under --maps); the pooled return
+        # below is unchanged
+        self.last_slot_stats = []
         for s in self.slots:
             pop = getattr(s.reward_fn, "pop_stats", None)
             if pop is None:
+                self.last_slot_stats.append(None)
                 continue
             st = pop()
+            self.last_slot_stats.append(st)
             e = int(st.get("episodes") or 0)
             n_ep += e
             if e and st["success_rate"] == st["success_rate"]:
