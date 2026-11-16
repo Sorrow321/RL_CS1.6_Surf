@@ -10181,8 +10181,7 @@ def main() -> None:
             raise SystemExit("--energy-pot-front B limits --energy-pot: it needs --energy-pot K > 0")
         if not args.energy_pot_front < 1.0:
             raise SystemExit("--energy-pot-front B needs 0 < B < 1 (0 = off)")
-        if args.maps:
-            raise SystemExit("--energy-pot-front reads one map's reservoir band: single map only")
+        # (--maps: each map's band from its own reservoir since mm/s1)
     if args.energy_pot_front_bonus is None:
         args.energy_pot_front_bonus = 0
     if args.energy_pot_front_bonus and not args.energy_pot_front > 0.0:
@@ -20897,7 +20896,16 @@ def main() -> None:
                 _dc = min(FC_HIST) if FC_HIST else float("inf")
                 front_thr = (_d0f - (1.0 - float(args.front_band)) * (_d0f - _dc)
                              if (_dc < float("inf") and _d0f > 0.0) else float("-inf"))
-        if EN_FRONT:
+        if EN_FRONT and MULTI:
+            # --energy-pot-front per map (mm/s1): each map's band edge from ITS OWN reservoir's
+            # deepest state and ITS d0, handed to its own race reward
+            for _ens, _mfk in zip(fleet.slots, fleet.reservoir_min_depths()):
+                _d0k = float(_ens.rf_d0 or 0.0)
+                _thr_k = (_d0k - (1.0 - float(args.energy_pot_front)) * _d0k * (1.0 - _mfk)
+                          if (_mfk == _mfk and _d0k > 0.0) else float("inf"))
+                if isinstance(_ens.reward_fn, RaceReward):
+                    _ens.reward_fn.en_front_d = float(_thr_k)
+        elif EN_FRONT:
             # --energy-pot-front: the band edge in d (the --front-temp rule with B =
             # --energy-pot-front), handed to every training slot's race reward
             _mf = fleet.reservoir_min_depth()

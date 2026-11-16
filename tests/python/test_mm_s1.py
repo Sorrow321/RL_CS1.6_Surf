@@ -68,3 +68,46 @@ def test_c_the_novelty_gate_and_its_share_cap_per_map():
         assert all(set(v) == {"progress", "coef"} for v in ck["int_coef_progress"].values())
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def test_d_reservoir_depth_per_map():
+    """MapFleet.reservoir_min_depths: each slot's deepest reservoir state over ITS d0 (the
+    per-map band edges of --energy-pot-front / --front-temp / --unstuck), while
+    reservoir_min_depth keeps the fleet minimum"""
+    import numpy as np
+    from surfgym.mapfleet import MapFleet, MapSlot
+
+    class _Core:
+        obs_dim = 15
+
+        def __init__(self, n):
+            self.num_envs = n
+
+    class _Res:
+        def __init__(self, d):
+            self._d = np.asarray(d, np.float64)
+            self.size = len(d)
+
+    slots = []
+    for i, (n, d, d0) in enumerate([(4, [900.0, 300.0, 500.0], 1000.0),
+                                    (4, [20000.0, 15000.0], 40000.0),
+                                    (4, [], 5000.0)]):
+        s = MapSlot(f"m{i}", f"m{i}.bsp", _Core(n), 4 * i, 4 * i + 4)
+        s.respawn, s.rf_d0 = _Res(d), d0
+        slots.append(s)
+    f = MapFleet(slots)
+    got = f.reservoir_min_depths()
+    assert got[0] == 300.0 / 1000.0 and got[1] == 15000.0 / 40000.0 and got[2] != got[2]
+    assert f.reservoir_min_depth() == 0.3
+
+
+@needs_mm
+def test_d_the_energy_band_runs_per_map():
+    drop = [f for f in NOT_YET if f not in ("int_gate", "energy_front")]
+    r, d = V.run_line(V.ROOT, "mms1_d", MAPS_ARG, drop=drop, steps=4096)
+    try:
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        assert "--energy-pot-front 0.01: the energy term is paid only until" in out
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

@@ -916,6 +916,38 @@ class MapFleet:
             else self._mind_age + 1
         return best
 
+    def reservoir_min_depths(self) -> list:
+        """:meth:`reservoir_min_depth` per slot: each slot's own deepest reservoir state as a
+        fraction of ITS d0 (NaN where its reservoir is empty), with the same cache and cadence.
+        The per-map bands of a --maps run (--front-temp, --energy-pot-front, --unstuck's
+        reservoir reach) read their own map's entry; the single-map rules keep calling
+        reservoir_min_depth, untouched."""
+        out = []
+        for s in self.slots:
+            r = s.respawn
+            if r is None or not r.size or not s.rf_d0:
+                out.append(float("nan"))
+                continue
+            d = getattr(r, "_d", None)
+            if d is not None:
+                lo = float(d[:r.size].min())
+            else:
+                fld = (s.reward_field if s.reward_field is not None
+                       else s.goal_field)
+                if fld is None:
+                    out.append(float("nan"))
+                    continue
+                cache = self._mind.get(id(r))
+                if cache is not None and self._mind_age < self.MIND_EVERY:
+                    lo = cache
+                else:
+                    lo = float(fld.sample(r._store[:r.size]["origin"]).min())
+                    self._mind[id(r)] = lo
+            out.append(lo / s.rf_d0)
+        self._mind_age = 0 if self._mind_age >= self.MIND_EVERY \
+            else self._mind_age + 1
+        return out
+
     # -- DDP: fixed-shape reductions over the (replicated) slot list --------
     # Every rank holds every slot, so each of these is one collective whose
     # shape does not depend on the rank. That property is the reason maps are
