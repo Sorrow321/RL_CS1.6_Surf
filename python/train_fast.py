@@ -10051,8 +10051,10 @@ def main() -> None:
     if float(args.front_temp) != 0.0:
         # --sil-coef rides along UNTEMPERED (ab/sil, 2026-11-14): its buffer keeps no per-row
         # temperature, so a stored row is scored under the plain policy - "do more of what
-        # beat the critic"; only --sil-tempered needs the per-row T and is refused
-        _bad = [f for f, on in (("--maps", args.maps),
+        # beat the critic"; only --sil-tempered needs the per-row T and is refused.
+        # --maps: per map since mm/s1, except the --front-contact record (a single-map read)
+        _bad = [f for f, on in (("--maps with --front-contact",
+                                 bool(args.maps) and bool(args.front_contact)),
                                 ("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
                                 ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
@@ -18229,6 +18231,8 @@ def main() -> None:
     gt_share = float("nan")
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
     front_thr = float("inf")             # d at the band's edge, re-read every iteration
+    # --maps: the band edge per env (each map's own; only written under MULTI)
+    FRONT_THR_ENV = np.full(N, np.inf, np.float64)
     FRONT_CONTACT = bool(args.front_contact)
     FC_HIST = deque(maxlen=50)           # --front-contact: per-iteration paid contact minima
     front_share = float("nan")
@@ -18291,9 +18295,15 @@ def main() -> None:
         """--front-temp: this decision's per-env temperatures from the band (reward_fn._d is
         the post-step distance of every env, the new spawn's for an env that just ended)."""
         nonlocal front_share, dft_share, gt_share
-        d = reward_fn.paid_record() if FRONT_CONTACT else reward_fn._d
-        band = (np.zeros(N, bool) if (d is None or not FRONT_RES)
-                else (np.asarray(d) <= front_thr))
+        if MULTI:
+            # per map (mm/s1): every map's own distances against its own band edge
+            _fds = [_s.reward_fn._d for _s in slots]
+            band = (np.zeros(N, bool) if (not FRONT_RES or any(x is None for x in _fds))
+                    else (np.concatenate([np.asarray(x) for x in _fds]) <= FRONT_THR_ENV))
+        else:
+            d = reward_fn.paid_record() if FRONT_CONTACT else reward_fn._d
+            band = (np.zeros(N, bool) if (d is None or not FRONT_RES)
+                    else (np.asarray(d) <= front_thr))
         tb = FRONT_BASE[0]
         ftk_np[:] = np.where(band, _f_hot, 1.0 + tb * _f_mask_cat)
         ftv_np[:] = np.where(band[:, None], _f_hot, 1.0 + tb * _f_mask_view[None, :])
@@ -20884,7 +20894,14 @@ def main() -> None:
         if SR_SELECT:
             sr_eps_list.clear()
             sr_seg.fill(0)
-        if FRONT:
+        if FRONT and MULTI:
+            # --front-temp per map (mm/s1): every map's band edge from its own reservoir's
+            # deepest state and its own d0, one per env (--front-contact is refused with --maps)
+            for _s, _mfk in zip(fleet.slots, fleet.reservoir_min_depths()):
+                _d0k = float(_s.rf_d0 or 0.0)
+                FRONT_THR_ENV[_s.sl] = (_d0k - (1.0 - float(args.front_band)) * _d0k * (1.0 - _mfk)
+                                        if (_mfk == _mfk and _d0k > 0.0) else float("inf"))
+        elif FRONT:
             # --front-temp: the band edge (the --ez-front rule below, with --front-band)
             _mf = fleet.reservoir_min_depth()
             _d0f = float(fleet.slots[0].rf_d0 or 0.0)

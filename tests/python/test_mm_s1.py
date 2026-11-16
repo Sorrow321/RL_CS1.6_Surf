@@ -111,3 +111,20 @@ def test_d_the_energy_band_runs_per_map():
         assert "--energy-pot-front 0.01: the energy term is paid only until" in out
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_mm
+def test_e_the_front_temperature_band_per_map():
+    drop = [f for f in NOT_YET if f not in ("int_gate", "energy_front", "front_temp")]
+    r, d = V.run_line(V.ROOT, "mms1_e", MAPS_ARG, drop=drop, steps=4096)
+    try:
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        assert "--front-temp 1: an env whose progress is >=" in out
+        assert any(ln.startswith("step ") and " fronttemp " in ln for ln in out.splitlines())
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    bad = V.run_line(V.ROOT, "mms1_e2", MAPS_ARG, drop=drop, steps=2048,
+                     extra=["--front-contact", "1", "--ratchet-contact", "1"])[0]
+    assert bad.returncode != 0 and "--maps with --front-contact" in (bad.stdout + bad.stderr)
+    shutil.rmtree(V.ROOT / "runs" / "mms1_e2", ignore_errors=True)
