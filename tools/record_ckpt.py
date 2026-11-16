@@ -95,6 +95,8 @@ TRAIN_ONLY = frozenset({
     "speed_pot",
     # --energy-pot: a training reward term (the --speed-pot form on z + |v|^2 / 2g)
     "energy_pot", "energy_pot_front", "energy_pot_front_bonus",
+    # --energy-ratchet: a form of the TRAINING energy term - TRAIN_ONLY like energy_pot
+    "energy_ratchet",
     # --ratchet-contact: WHICH ticks move the training ratchet's PAID record; the (d - b)/d0
     # observation column keeps the all-state record, which the ratchet mirror below rebuilds
     "ratchet_contact",

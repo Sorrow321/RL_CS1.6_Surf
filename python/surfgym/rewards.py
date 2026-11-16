@@ -1117,6 +1117,15 @@ class RaceReward:
         # on the way (so dying before the band forfeits it and is never the cheaper end; the
         # kinetic part, not z, so the map's coordinate origin does not enter)
         self.en_front_bonus = False
+        # --energy-ratchet (zlr1b2 4439aab8, ported to ab/eratchet 2026-11-16): --energy-pot's
+        # RATCHET form. Pay only NEW records of the episode's energy height, K x (h - best h so
+        # far) / 1000 when positive, and charge nothing for a loss: a learner that cannot pump
+        # yet is never charged for its landings, so living is never priced below dying by the
+        # energy term, and a lost-and-regained h is paid once. Bounded per episode by
+        # K x (h max - h at spawn). Ended rows re-anchor on the next spawn. False = the per-call
+        # form, bit-identical (no array, no branch taken).
+        self.en_ratchet = False
+        self._en_rec = None
         # --energy-stall EPS (zlr1b4, 2026-10-31): ENERGY HEIGHT counts as progress for the stall
         # detector. The field watches where the player is; a surfer pumping a ramp for speed (a
         # loop, a half-pipe) makes no field progress while it builds the energy it needs, and the
@@ -1327,6 +1336,7 @@ class RaceReward:
         self._vmax = float(getattr(core.config.phys, "sv_maxvelocity", 0.0) or 0.0)
         self._spd_prev = None        # --speed-pot re-anchors on the first call
         self._en_prev = None         # --energy-pot re-anchors on the first call
+        self._en_rec = None          # --energy-ratchet re-anchors on the first call
         self._en_off = None          # --energy-pot-front: no episode is latched yet
         self._g_en = float(core.config.phys.sv_gravity)
         self._best = self._d.copy()
@@ -1717,7 +1727,17 @@ class RaceReward:
                 self._en_prev = h.copy()
             dh = h - self._en_prev
             dh[ended] = 0.0
-            if self.en_front_d < float("inf"):
+            if self.en_ratchet:
+                # --energy-ratchet: only the record's rise is paid (never negative); the raw
+                # losses are still counted for the read-out
+                if self._en_rec is None or self._en_rec.shape != h.shape:
+                    self._en_rec = self._en_prev.copy()
+                self.en_loss -= float(dh[dh < 0.0].sum())
+                dh = np.maximum(h - self._en_rec, 0.0)
+                dh[ended] = 0.0
+                self._en_rec = np.maximum(self._en_rec, h)
+                self._en_rec[ended] = h[ended]
+            elif self.en_front_d < float("inf"):
                 # --energy-pot-front: the latch as it stood before this call governs this
                 # transition (the one that enters the band is still paid); then it latches on
                 # this call's record, and an ended row's new episode starts latched iff its
@@ -1739,7 +1759,8 @@ class RaceReward:
                 dh = np.zeros_like(dh)       # no band yet (an empty reservoir): nothing to pay
             r += ((self.energy_pot / 1000.0) * dh).astype(np.float32)
             self.en_gain += float(dh[dh > 0.0].sum())
-            self.en_loss -= float(dh[dh < 0.0].sum())
+            if not self.en_ratchet:
+                self.en_loss -= float(dh[dh < 0.0].sum())
             self._en_prev = h
         if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
             # `_rec` already holds this state's record (updated above), so
