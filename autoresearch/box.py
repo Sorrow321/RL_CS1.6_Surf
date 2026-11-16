@@ -510,6 +510,23 @@ def md5(p: Path) -> str:
     return h.hexdigest()
 
 
+def ckpt_info(ck: Path) -> dict:
+    """What a resume needs from the checkpoint's own config (CPU torch.load): its step, its map
+    list (stems; None on a single-map run), --envs and --maxvel (one value per map tag for a
+    per-map run). The trainer restores the map list and the per-map --maxvel itself, never
+    --envs."""
+    import torch
+    c = torch.load(str(ck), map_location="cpu", weights_only=False)
+    cfg = c.get("config") or {}
+    return {"global_step": int(c.get("global_step") or 0),
+            "maps": [str(m) for m in cfg["maps"]] if cfg.get("maps") else None,
+            "map": cfg.get("map"),
+            "envs": int(cfg["envs"]) if cfg.get("envs") is not None else None,
+            "maxvel": float(cfg["maxvel"]) if cfg.get("maxvel") is not None else None,
+            "maxvel_maps": ({str(k): float(v) for k, v in cfg["maxvel_maps"].items()}
+                            if cfg.get("maxvel_maps") else None)}
+
+
 def push_ckpt(rec: dict, ck: Path) -> None:
     if not ck.exists():
         die(f"no checkpoint at {ck}")
@@ -520,7 +537,11 @@ def push_ckpt(rec: dict, ck: Path) -> None:
     got = ssh(rec, "md5sum /root/RL_Surf/runs_ckpt.pt | cut -d' ' -f1", check=True).stdout.strip()
     if got != want:
         die(f"checkpoint md5 on the box {got} != {want} (TRUNCATED transfer)")
-    log(f"checkpoint {ck.name} on box {rec['id']} (md5 {want})")
+    # what launch --resume reads (a --multimap resume takes its --envs and --maxvel from here)
+    rec["ckpt_cfg"] = dict(ckpt_info(ck), md5=want, file=str(ck))
+    log(f"checkpoint {ck.name} on box {rec['id']} (md5 {want}, step "
+        f"{rec['ckpt_cfg']['global_step']:,}"
+        + (f", maps {','.join(rec['ckpt_cfg']['maps'])}" if rec["ckpt_cfg"]["maps"] else "") + ")")
 
 
 def cmd_ssh(a):
@@ -547,15 +568,27 @@ def cmd_launch(a):
         extra = extra[1:]
     recipe = [] if a.no_recipe else list(CFG["incumbent_recipe"])
     maps = None
+    mm_resume = None
     if getattr(a, "multimap", False):
         # --multimap (mm/s0): ONE policy over config "multimap" maps, from scratch, with the
         # recipe's own tokens except its --envs (a multiple of the map count) and its --maxvel
         # (one value per map, each map server's physics) - see multimap_recipe()
-        if a.resume:
-            die("--multimap launches from scratch (a resume restores its maps from the ckpt)")
         maps, recipe = multimap_recipe(CFG.get("multimap"), recipe)
-    env = ((f"MAPS={shlex.quote(','.join(maps))} " if maps else
-            f"MAP={shlex.quote(CFG['map'])} ")
+        if a.resume:
+            # (mm/s1) a crash-resume of that run: the SAME tokens as its launch (a bare resume
+            # restores neither the --auto-spine* flags nor most of the recipe's others, and a
+            # --maps run cannot take map 0's spine as its --demo-file), with its own --envs and
+            # per-map --maxvel from the pushed checkpoint (multimap_resume_args); the map list
+            # comes back from the checkpoint, which must be the one read at the push
+            _rs = multimap_resume_args(CFG.get("multimap"), rec.get("ckpt_cfg"))
+            mm_resume = _with_value(_with_value(recipe, "--envs", _rs[1]), "--maxvel", _rs[3])
+            got = ssh(rec, "md5sum /root/RL_Surf/runs_ckpt.pt | cut -d' ' -f1",
+                      check=True).stdout.strip()
+            if got != rec["ckpt_cfg"]["md5"]:
+                die(f"runs_ckpt.pt on the box (md5 {got}) is not the checkpoint deploy --ckpt "
+                    f"pushed ({rec['ckpt_cfg']['md5']}): push it again")
+    env = ((f"MAPS={shlex.quote(','.join(maps))} " if maps and not a.resume else
+            "" if maps else f"MAP={shlex.quote(CFG['map'])} ")
            + f"BUDGET={shlex.quote(str(int(float(a.steps))))} "
            f"RECORD_EVERY={shlex.quote(a.record_every)} ")
     if a.self_states is not None:
@@ -571,7 +604,7 @@ def cmd_launch(a):
         # a resume restores every shape-changing flag from the checkpoint and REFUSES a
         # disagreeing one, so none is passed (CLAUDE.md); --envs is not restored and the
         # trainer default (2048) broke torch.compile on a SimBa resume once
-        recipe = ["--envs", "1024"]
+        recipe = mm_resume if mm_resume is not None else ["--envs", "1024"]
     else:
         env += "SCRATCH=1 "
     flags = " ".join(shlex.quote(x) for x in recipe + extra)
@@ -607,9 +640,11 @@ def _with_value(tokens: list, flag: str, value: str) -> list:
 
 
 def multimap_recipe(mm, recipe: list):
-    """config "multimap" = {"maps": [bsp, ...], "maxvel": [one per map], "envs": N} -> (maps, the
-    recipe with --envs N and --maxvel V1,V2,...). N must divide over the maps (the trainer
-    refuses otherwise); every other token is the recipe's own."""
+    """config "multimap" = {"maps": [bsp, ...], "maxvel": [one per map], "envs": N, "extra":
+    [tokens]} -> (maps, the recipe with --envs N and --maxvel V1,V2,... and then "extra", the
+    launch's own trailing tokens - v14's --auto-spine-mcts-args - so that a resume repeats them
+    too). N must divide over the maps (the trainer refuses otherwise); every other token is the
+    recipe's own."""
     mm = mm or {}
     maps = [str(m) for m in (mm.get("maps") or [])]
     mv = [float(v) for v in (mm.get("maxvel") or [])]
@@ -625,7 +660,38 @@ def multimap_recipe(mm, recipe: list):
         die(f"config multimap envs {envs} is not a positive multiple of {len(maps)} maps")
     out = _with_value(recipe, "--envs", str(envs))
     out = _with_value(out, "--maxvel", ",".join(f"{v:g}" for v in mv))
-    return maps, out
+    extra = mm.get("extra") or []
+    if not isinstance(extra, list) or not all(isinstance(t, str) for t in extra):
+        die(f"config multimap extra: a list of string tokens, got {extra!r}")
+    return maps, out + list(extra)
+
+
+def multimap_resume_args(mm, ck) -> list:
+    """--multimap --resume: the run's own --envs and per-map --maxvel, from the checkpoint that
+    deploy --ckpt pushed (its config, read at the push) and checked against config "multimap"
+    - a resume is the SAME run, so a disagreement is refused, never resolved. The map list is
+    not passed: the trainer restores it from the checkpoint. (box.py's single-map resume passes
+    --envs 1024, which no 3- or 7-map split divides.)"""
+    maps, _ = multimap_recipe(mm, [])
+    if not ck or not ck.get("maps"):
+        die("--multimap --resume needs the run's multi-map checkpoint pushed with deploy --ckpt "
+            "(its config is read at the push)")
+    stems = [Path(m).stem for m in maps]
+    if list(ck["maps"]) != stems:
+        die(f"the checkpoint's maps {ck['maps']} are not config multimap's {stems} (same order): "
+            "a resume continues the checkpoint's run")
+    if int(ck.get("envs") or 0) != int(mm["envs"]):
+        die(f"the checkpoint ran --envs {ck.get('envs')}, config multimap says {mm['envs']}")
+    sys.path.insert(0, str(REPO / "python"))
+    from surfgym.mapfleet import map_tags
+    tags = map_tags(stems)
+    per = ck.get("maxvel_maps") or {}
+    mv = [float(per.get(t, ck.get("maxvel") or 0.0)) for t in tags]
+    want = [float(v) for v in mm["maxvel"]]
+    if mv != want:
+        die(f"the checkpoint's --maxvel per map {dict(zip(tags, mv))} is not config multimap's "
+            f"{dict(zip(tags, want))}")
+    return ["--envs", str(int(ck["envs"])), "--maxvel", ",".join(f"{v:g}" for v in mv)]
 
 
 def cmd_pull(a):
@@ -779,7 +845,9 @@ def main(argv=None):
     p.add_argument("--multimap", action="store_true",
                    help="ONE policy over config multimap's maps (run_arm.sh SCRATCH + MAPS): "
                         "the recipe's tokens with its --envs and per-map --maxvel from that "
-                        "config section; deploy the maps' combined tarball (tools/mm_assets.py)")
+                        "config section, then its extra tokens; deploy the maps' combined "
+                        "tarball (tools/mm_assets.py). With --resume: the same tokens, --envs "
+                        "and --maxvel from the checkpoint deploy --ckpt pushed (ARM_RESUME)")
     p.add_argument("extra", nargs=argparse.REMAINDER)
     p.set_defaults(fn=cmd_launch)
     p = sub.add_parser("pull")

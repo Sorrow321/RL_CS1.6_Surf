@@ -461,7 +461,10 @@ if [ -n "$EXPECT_MD5" ] && [ "$GOT" != "$EXPECT_MD5" ]; then
 fi
 echo "   $CKPT $GOT  (stuck checkpoint, verified)"
 echo "== record gate (pre-launch): the source checkpoint must record before compile time is spent"
-if ! $PY tools/record_gate.py "$RUN" --ckpt "$CKPT" --modes greedy; then
+if [ "${DRY_RUN:-0}" = "1" ]; then
+  # DRY_RUN=1 (the launcher's test): nothing is recorded and nothing is started
+  echo "   DRY_RUN: skipped"
+elif ! $PY tools/record_gate.py "$RUN" --ckpt "$CKPT" --modes greedy; then
   echo "!! record gate FAILED on $CKPT: not launching"
   exit 1
 fi
@@ -470,7 +473,7 @@ fi
 # resolve: under Git Bash /tmp is NOT C:\tmp, so a Windows python writing
 # '/tmp/ck_step' lands on a different file than `cat /tmp/ck_step` reads
 # (found by tools/expert_loop.py, the first local user of this branch)
-CKF="/tmp/ck_step"
+CKF="${CKF:-/tmp/ck_step}"   # (CKF=<path>: the launcher's test keeps off the shared /tmp file)
 if command -v cygpath >/dev/null 2>&1; then CKF_PY=$(cygpath -w "$CKF"); else CKF_PY="$CKF"; fi
 if [ "${SKIP_CFG_GUARD:-0}" = "1" ]; then
   echo "== baseline config guard SKIPPED (ARM_RESUME)"
@@ -528,6 +531,10 @@ echo "   $PY -u python/train_fast.py ${ARGS[*]}"
 echo "   budget $BUDGET steps -> stop at $STOP   log $LOG"
 echo "   view: whatever $CKPT carries (view_continuous / view_absolute are restored from it; VIEW=$VIEW is ignored on a resume)"
 echo "   keys/pot: whatever $CKPT carries (keys_hold / obs_potential / obs_potential_curtain are restored from it; KEYS and POT are ignored on a resume - both change tensor shapes and a checkpoint's head and conv1 cannot be re-read)"
+if [ "${DRY_RUN:-0}" = "1" ]; then
+  printf 'DRY_RUN_ARG %s\n' "${ARGS[@]}"
+  exit 0
+fi
 # nohup + background, NOT setsid: with setsid $! is the setsid wrapper, which
 # may or may not still exist a second later, and the liveness check below
 # would be testing the wrong pid. nohup alone already survives the ssh
