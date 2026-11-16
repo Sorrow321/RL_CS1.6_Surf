@@ -258,7 +258,9 @@ def eval_files(paths, tag=None) -> list:
             continue
         seen.add(stem)
         keep.append(x)
-    return sorted(keep, key=lambda q: q.name)
+    # by the STEP in the name, not the string: the trainer pads to 10 digits, so from 10B steps
+    # on traj_10041688064 would sort before traj_1359476736
+    return sorted(keep, key=lambda q: (int(re.match(r"traj_(\d+)", q.name).group(1)), q.name))
 
 
 def best_in(paths) -> dict:
