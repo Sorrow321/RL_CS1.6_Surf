@@ -48425,3 +48425,254 @@ All runs are one seed, from scratch. "+2" is the best time by the first finish +
   may be left out of the big pool if no generic ingredient works). So the cut is now 10B steps (the
   flat rule would have stopped it at 9.47B after search 7's line). Box extended to 06:22 UTC.
 * The contact rule, one candidate, is already measured and rejected (99c98925).
+
+## 2026-11-16 03:48 UTC: za_loop missing-ingredient analysis (sub-agent P, offline): v14 is not PAID for pumping the second trough
+
+Sub-agent P, wave 18 (offline, no rental): what blocks recipe v14 on surf_za_loop at ~27%, what
+the za_loop program had at the same spot, and three one-ingredient arms. Task from the operator,
+2026-11-16 ~03:25 UTC, after the user: "find out the missing ingredient that allowed us to pass
+[za_loop] previously, but now we don't have it ... then see how it affects other maps ... the big
+goal is to unite the recipe."
+
+Data: abzl_1 evals synced to 7.32B (~/ar_m2/runs/abzl/abzl_1), its launch log and run.json (read
+from the box), its search lines k05-k07 (spine.npy, allow_pickle=False); the program's lineage
+zlr1b4_e2 / e3 / e13 (~/ar_loop/runs/zlr1b4, run.json, launch logs, evals); the round-1 notes
+(~/ar_loop/archive/r1/zlr1b2/NOTES.md); v14's evals and logs on the seven maps (~/ar_m2/runs/ab7c,
+ab8n, ab12s). Every % is autoresearch/score.py in wt/abzl (start_d 6,361.8). Energy height
+E = z + |v|^2/1600. Tools in abl/w18/tools (zlep, hpipe, ecurve, stepsum, cfgdiff, erearm, epot,
+erec).
+
+### 1. Where v14 stops, and why
+
+* **The spot is the second trough.** It is a half-pipe at y ~ -400..-880, swinging x -1,800..2,800,
+  with its bottom near z -2,550. The record's route reaches it at ~70 s (17.5%, b2's notes).
+  * v14's greedy arrives at 28-31 s with E ~ -1,760, and sets its record at a swing top at the
+    pipe's east or west end: 25-28%, z -1,700..-1,820.
+  * The plateau dates from 3.25-3.47B (24.0, 27.5, 27.8, 28.0%). Every eval from 3.55B to 7.32B
+    reads 24.6-27.7%.
+  * In the program's lineage this trough spans ~17-36%. The lineage was in it from 0.45B to
+    0.86B (16.4 -> 36.4%) and past it by 0.94B (46.9%).
+* **It pumps briefly, then leaves.** Measured from the first tick with a record >= 22%:
+
+| greedy eval | arrives | best-E gain, 10 s / 20 s | record 20 s on (max) | in the pipe 20 s on |
+|---|---|---|---|---|
+| program E2 529M | 30-39 s | +19 / +10 u/s | 22.9% (24.0) | 3/9 |
+| program E3 560M | 24-28 s | +54 / +34 u/s | 25.8% (26.3) | 2/9 |
+| program E3 635M | 24-30 s | +58 / +48 u/s | 28.9% (30.9) | 1/9 |
+| program E3 786M | 24-30 s | +53 / +52 u/s | 31.7% (32.7) | **9/9** |
+| v14 3.47B | 30 s | +40 / +32 u/s | 27.5% (28.0) | 0/9 |
+| v14 4.30B | 30-31 s | +30 / +20 u/s | 25.7% (25.8) | 0/9 |
+| v14 5.66B | 28-32 s | +28 / +19 u/s | 25.1% (26.2) | 0/9 |
+| v14 7.32B | 28-29 s | +29 / +16 u/s | 25.1% (26.6) | 0/9 |
+
+  ("In the pipe 20 s on" counts episodes alive 20 s after arriving that never left y -1,400..0
+  in between. At 4.30B, 7/9 are alive at that point, but all of them have left the pipe.)
+  * v14's pump has weakened as training went on: +40 -> +29 u/s over 10 s from 3.47B to 7.32B.
+* **How the episodes end:**
+  * 4.30B: 4/9 cut by --eval-patience 30 at 69.8-70.0 s, alive but swinging in the troughs
+    below after leaving the pipe. The other 5/9 fall into the bottom teleport at 49-56 s.
+  * 7.32B: 9/9 fall, at 37-45 s, 2.5-8.0 s after their record.
+  * Example, 7.32B ep0: record 25.2% at 33.9 s at the east end (2,232, -800, -1,916). On the
+    return swing it goes north out of the pipe (y -422 -> +341 -> +3,334) and falls into the
+    teleport at 40.9 s.
+  * The program's 786M ep0 keeps every swing inside y -416..-823. Its E goes -1,752 -> -817 over
+    20 s and its record 22.3 -> 29.6%.
+* **Training (step lines, per 500M):**
+  * Stall-killed episodes are 33-37% until 3B and 46-54% after. Almost all the rest end in a
+    fall: truncation 0%, win rate 0-0.16%.
+  * The energy term pays nothing. The band bonus (`--energy-pot 3 --energy-pot-front 0.01
+    --energy-pot-front-bonus 1`) reads en +0..16 u/ep, at most 0.05 reward.
+  * Novelty was 69-94% of the return until 3.0B, then held at ~25% by the share cap
+    (m 0.41-0.56). The novelty gate's knee reads the greedy's contact-banked progress, which
+    stayed below 10% until 3.0B.
+* **The search loop hands back lines the greedy already flies.**
+  * Lines k05 (beam, 3.96B), k06 (MC, 5.66B) and k07 (beam, 7.47B) end at 24.9 / 26.3 / 25.7%,
+    at the pipe's swing tops, with E -1,558 / -1,367 / -1,476. That is no more energy than the
+    greedy's own.
+  * The greedy's grader best when each was handed back was 26.5 / 26.2 / 26.0%.
+  * The lines are "330-420 u past the greedy" only against its contact-banked frontier (d 5,106 =
+    19.7%), so a depth stage always returns one.
+  * As a result the energy stage (`--auto-spine-energy 150`, which runs only when no deeper line
+    exists) never ran. Every beam and MC stage ranks on d (auto_spine.py passes `--score d`).
+
+### 2. How the program passed the same spot
+
+* **Same grader, same spot, one lineage:**
+  * E2: 16.4% (453M), 24.0% (529M).
+  * E3: 26.3 (560M), 30.9 (635M), 33.6 (711M), 35.1 (786M), 36.4 (862M), 46.9 (937M),
+    55.3 (1,013M), 57.4% (1,088M).
+* **It passed by RL alone.**
+  * E3 is E2 + `--auto-spine` only (cfgdiff). E3's first search line was adopted at 1,071.6M,
+    when the greedy was already at 55%.
+  * The pipe was climbed holding E2's spine: a Go-Explore line from the true spawn that ends at
+    9.48%, in the first trough.
+  * At 529M the program's greedy looked like v14's (+19 u/s, 22.9%). ~30M steps later it pumped
+    at +54 u/s.
+* **Its training (step lines, E2/E3 to 1.1B):**
+  * Energy height gained per episode +1,217..3,351 u and lost 500..1,300 u. At K 12 per call that
+    is +9..25 reward net per episode, 19-51% of the return (45-69).
+  * 4-19% of episodes stall-killed.
+  * Novelty 0.2-5.0 per episode (1-7%).
+  * No death charge: `--fail-pen 3` came at E8, after 57%.
+* **What E2/E3 ran differently from v14** (run.json diff, abl/w18/tools/cfgdiff.py):
+
+| group | program E2/E3 | v14 on za_loop |
+|---|---|---|
+| energy pay | `--energy-pot 12` per call, gains paid and losses charged | K 3, once at a band: ~0 |
+| energy clock | `--energy-stall 32`: E records re-arm stall + patience | off |
+| death | `--fail-pen 0` (3 from E8, after 57%) | none |
+| novelty | 0.25 flat, view 8, speed 3 | 2.5 gated to 0.25, view 0, speed 8, cap 0.25 |
+| unstuck | max 0.2, reach eval, patience 2e8 | max 0.5, reach res, 2e7 (stuck 3.07B) |
+| caps | ep 910 s (130,000 ticks) | 230 s (30,000 ticks) |
+| tick | 7.0 ms | 7.63 ms ([8,8,7]) |
+| first spine | Go-Explore line from the true spawn (E2) | the loop's own lines |
+| search | auto-spine, beam + GE, 4,096 envs, delay 5e7 | MCTS / MC / beam / GE, delay 3e8 |
+
+### 3. Which differences matter at this spot
+
+* **Pay for pumping: STRONG.**
+  * Nothing in v14's reward pays staying in the pipe: the ratchet pays only new field records,
+    the energy term pays ~0, and with no death charge a fall ends the time penalty (0.1/s).
+  * From 3.47B on, 0/9 of its greedy episodes stay in the pipe for 20 s, and its pump has
+    weakened.
+  * The program paid the pump at K 12 x 47 u/s = 0.56/s, more than 5x the time penalty. Its
+    policy learned to pump in the pipe within ~30-100M steps of arriving, with no new search line.
+* **Energy clock: MEDIUM.**
+  * v14's training stall share rose from ~35% to ~50% when the greedy reached the pipe (3B); the
+    program's was 4-19%.
+  * The program never ran the pay without the clock, so the evidence does not separate the two.
+  * A clock alone does not pay staying; it only stops cutting the episodes that stay.
+* **Death price: MEDIUM.** v14's greedy at 7.32B dies 2.5-8 s after its record, every time.
+  Without a death charge, that is the cheapest ending once no further record is in reach.
+* **Not the block at 27%:**
+  * The episode cap: the greedy ends at 37-70 s and training episodes average 15-29 s. It matters
+    later, since the program's first finishes took 168 s.
+  * The tick: 7.63 ms gives 9.6% less air acceleration per second than 7 ms. v14 pumps at
+    31-55% of E3's rate, and E2 at 7 ms pumped only +19 u/s.
+  * Already rejected or later-stage: the contact rule (round 2; rejected 99c98925),
+    `--fail-pen 3` (after 57%), energy-ranked beams and `--finish-line` (round 3), and the hand
+    placements.
+* **Novelty delayed the arrival but is not the plateau.**
+  * At 69-94% of the return for 3.0B steps, it put v14 in the pipe at ~3.25B against the
+    program's ~0.5B. The cap has held it at 25% for the 4B steps since, and the plateau stays.
+  * Not proposed: its constants are what unitfarmer2's dive needs (the ablation round).
+* **Generic vs map-specific (CLAUDE.md 0b):**
+  * Generic, one value set once:
+    * `--energy-stall 32` (32 = the eval patience's own threshold);
+    * energy pay (K 12, carried from pb/uf2, not tuned here);
+    * the time-neutral death charge (`--fail-pen 2` = time_pen_tick / (1 - gamma_tick));
+    * Go-Explore from the true spawn, `--auto-spine`, energy-ranked beams, `--finish-line`.
+  * Map-tuned or by hand, kept out:
+    * `--ep-ticks 130000`, `time_cap_s 900`, `--max-ticks 25000`;
+    * `--fail-pen 3`, `--front-temp 0.5`, `--score-energy 30` (picked on za_loop);
+    * the curriculum band moved by hand (rc4), spine swaps (rc5/rc6), GE cell sizes per branch.
+  * `--tick-ms 7` is server physics like `--maxvel` (the record's frames), not a training signal.
+
+### 4. Three arms: v14 + ONE ingredient each, from scratch on za_loop, seed 0, the strongest first
+
+Shared for all three:
+* **Smoke:** a CPU smoke of the complete line with abl/smoke/full_smoke_v1.py (launcher pins +
+  tokens + the launch extra, wt/abzl, 40,960 steps).
+* **Main read:** the pipe's best-E gain rate (abl/w18/tools/hpipe.py; v14 +16..32 u/s over 20 s,
+  E3 +48..52); the grader best above 28.0% (v14's best); the training stall share and energy term.
+* **Cut:**
+  * null if no grader best is above 28.0% by 4.5B (v14 reached 28.0% at 3.47B);
+  * otherwise the standing za_loop rule: first finish + 5 evals; or no new best >= 0.1 point
+    for 2.0B steps, not before 4.0B; or 20B.
+
+**Arm 1: energy records paid (the ratchet form of `--energy-pot`). Needs a port.**
+* **Tokens.** Replace `--energy-pot 3 --energy-pot-front 0.01 --energy-pot-front-bonus 1` with
+  `--energy-pot 12 --energy-pot-front 0 --energy-pot-front-bonus 0 --energy-ratchet 1` (162 tokens
+  with --maxvel 3500).
+* **What it pays.** K x the rise of the episode's energy-height record / 1000, and never a charge.
+  This is commit 4439aab8 on ar/zlr1b2 (RL_Surf_loop; ~20 lines in rewards.py), never on
+  ab/share.
+* **Code needed:**
+  * the flag, checkpoint restore, and record_ckpt TRAIN_ONLY;
+  * a test: records only, never negative, ended rows re-anchor, off = bit-identical.
+* **Measured on recorded greedy episodes, at K 12:**
+  * It would pay za_loop v14 1,741 u of records per episode (+20.9) and the program's E3
+    2,914 u (+35.0).
+  * On the seven maps it pays 130-411 u (+1.6..4.9 per episode). Almost all of it is the start's
+    acceleration: 0-1 u after the first 5 s on petrus, celestial, sidistic and unitfarmer2, 39 u
+    on cannonball, 180 u on blue200 (median; princessburglar 0, max 128).
+* **Why the ratchet, not the program's per-call form.** Per-call K 12 also charges every loss.
+  On v14's recorded finishing greedy it would net per episode: -15.8 petrus, -73.9 celestial,
+  -79.5 cannonball, -9.4 unitfarmer2, +3.8 blue200; sidistic's eval read -42.6. The race shaping
+  is 100 per map. On za_loop from scratch the per-call form made the program's A1 dive into the
+  kill plane in 3-5 s (zlr1b2 notes).
+* **Smoke checks:**
+  * the unit test;
+  * the trainer prints the ratchet rule;
+  * the step line's en +a/-b: +a > 0 once the agent gains energy, -b is still counted but never
+    paid.
+* **Expected read.** The pipe gain rate over 20 s at or above +40 u/s, episodes still in the pipe
+  20 s on, and the grader past 28%. Possibly an earlier arrival than v14's 3.25B (the first
+  troughs are paid too).
+* **How it could hurt:**
+  * A small start bonus (+1.6..2.9) for accelerating before leaving the start, and +2.2 on
+    blue200's climbs.
+  * Blue200 shows it first among the cheap maps: v14 first finished it at 982M, and it has the
+    most energy after the start.
+  * Princessburglar's start room is the slow-map risk: speed farming in the room, bounded at
+    ~2.9 per episode; the stall kill still applies.
+
+**Arm 2: `--energy-stall 32` (exists in v14's code).**
+* **Tokens.** + `--energy-stall 32` (162 with --maxvel).
+* **What it changes.** Training stall kills and the eval patience also re-arm when the episode's
+  best E rises 32 u above its value at the last energy re-arm.
+* **Measured on v14's greedy evals:**
+  * On six maps no greedy episode has a field gap of 15 s or more. On princessburglar the 30 s
+    gaps (the patience cut in the room) are not broken by energy records. The rule would change
+    no greedy flight.
+  * Energy re-arms after the first 5 s, median per episode: 0 on petrus, celestial, sidistic,
+    unitfarmer2 and princessburglar; 1 on cannonball; 6 on blue200. On za_loop: 49 (v14 4.30B)
+    and 85 (the program's E3 786M).
+  * v14's training stall share is 0.2-7.4% on celestial, blue200, cannonball, sidistic and
+    unitfarmer2, and 54-98% on princessburglar. Petrus's log has no stall read-out.
+* **Smoke checks.** rc 0; the trainer prints "--energy-stall 32: an energy-height record ...".
+* **Expected read.** The training stall share falls from ~50% toward the program's 4-19%, then
+  the pipe gain rate and grader as above.
+* **How it could hurt.** A pump or bhop farm is no longer stall-killed while its energy keeps
+  rising. Princessburglar shows it first: its training episodes are 54-98% stall-killed in the
+  start room, but its greedy gains no energy there today.
+* **Its weakness.** It pays nothing for staying, so alone it may only lengthen the episodes that
+  leave the pipe.
+
+**Arm 3: `--fail-pen 2`, the time-neutral death charge (exists).**
+* **Tokens.** + `--fail-pen 2` (162 with --maxvel).
+* **Where 2.0 comes from.** time_pen_tick / (1 - gamma_tick) = 0.000766667 / 0.000383356 at
+  v14's tick (the same at any tick). It is the discounted value of the time-penalty stream, so
+  WHEN to die is neutral (the derivation in zlr1b2 A2). No map constant. The program ran 3 from
+  E8 (57.9 -> 64.7%); 10 stopped the pumping.
+* **Why.** v14's greedy dies 9/9 just after its record. With a time penalty and no death charge,
+  that is the cheapest ending.
+* **Smoke checks.** rc 0; fail_pen 2.0 in run.json.
+* **Expected read.** Fewer greedy deaths after the record, and episodes that stay and swing (the
+  eval patience then cuts them unless they keep improving). The grader past 28% only if staying
+  turns into pumping.
+* **How it could hurt.** Every death costs 2.0, and in v14's code that includes falls, nets AND
+  stall kills. Risky flights get dearer to try:
+  * petrus's 22% ledge jump (v14 first finish 302.5M) shows it first;
+  * then celestial's 75% turn-back flight and unitfarmer2's start dive.
+  * On princessburglar every stall kill in the room would cost 2.0.
+
+**If only one runs: arm 1, after the port** (about 40 min; I can build it before the 10B read).
+* The program never ran the pay without the clock. If arm 1 passes 28% but stalls in a later
+  structure, arm 1 + arm 2 is the program's pair.
+* No-code fallback for arm 1: the program's per-call form (`--energy-pot 12
+  --energy-pot-front 0 --energy-pot-front-bonus 0`). It carries the downhill charges above and
+  would show them first on celestial (-73.9 per finishing episode). Not recommended for a joint
+  recipe.
+
+### Also found (not arms)
+
+* **A loop defect, generic, not built.**
+  * The search judges a line's end by raw field d, but the greedy's frontier by its
+    contact-banked d.
+  * On a map whose records are set at air apexes, the depth stages therefore return lines the
+    greedy already flies, and the energy stage never gets its turn.
+  * Fix candidates: judge both on the same measure, or run an energy-ranked beam wave beside the
+    depth wave (meta-analysis Stage C).
+* **The eval patience is not what ends v14's greedy now.** 9/9 fall at 7.32B. At 4.30B it cut
+  4/9 that had already left the pipe and stopped gaining energy.
