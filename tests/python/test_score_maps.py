@@ -42,6 +42,16 @@ def test_the_eval_files_of_one_map(tmp_path):
     assert [p.name for p in score.eval_files([tmp_path], None)] == ["traj_0000000100.jsonl"]
 
 
+def test_the_eval_files_come_in_step_order_past_10b(tmp_path):
+    """the trainer pads steps to 10 digits: an 11-digit step must not sort before a 10-digit one"""
+    for n in ("traj_9661579264_x.jsonl", "traj_10718543872_x.jsonl", "traj_1359476736_x.jsonl",
+              "traj_0000524288_x.jsonl"):
+        _touch(tmp_path, n)
+    got = [p.name for p in score.eval_files([tmp_path], "x")]
+    assert got == ["traj_0000524288_x.jsonl", "traj_1359476736_x.jsonl",
+                   "traj_9661579264_x.jsonl", "traj_10718543872_x.jsonl"]
+
+
 def test_gz_reads_like_plain(tmp_path):
     text = ('{"map": "m", "episode": 0}\n[0, 1.0, 2.0, 3.0]\n[1, 1.5, 2.0, 3.0]\n'
             '{"end": "fail"}\n')

@@ -1,0 +1,54 @@
+{
+ "_doc": "v14 ALONE (one map per run, from scratch, seed 0; ledger c1d4d88e), read by the grader with the rule mm_cut.py applies to a --maps run: the first greedy eval with a finish, and for pb the first eval whose best episode passes each threshold (% of the grader field). Steps are the single-map runs' own steps. Computed 2026-11-16 from the bundles below (each on the grids it trained with; pb on the pre-entity-tag grids, start_d 57,149).",
+ "surf_petrus_lite": {
+  "bundle": "ab7c/ab7c_p14",
+  "first_finish": 302514176
+ },
+ "surf_edgeflow_blue200": {
+  "bundle": "ab7c/ab7c_w14",
+  "first_finish": 981991424
+ },
+ "surf_src_celestial": {
+  "bundle": "ab7c/ab7c_l14",
+  "first_finish": 680001536
+ },
+ "surf_src_cannonball": {
+  "bundle": "ab8n/ab8n_v14",
+  "first_finish": 2416443392
+ },
+ "surf_unitfarmer2": {
+  "bundle": "ab8n/ab8n_u14",
+  "first_finish": 3095920640
+ },
+ "surf_src_sidistic": {
+  "bundle": "ab12s/ab12s_v14",
+  "first_finish": 4001890304
+ },
+ "surf_princessburglar_b26": {
+  "bundle": "ab7c/ab7c_b14",
+  "first_finish": 17289445376,
+  "milestones": [
+   [
+    "room exit",
+    1.0,
+    1283981312
+   ],
+   [
+    "past the x -1,005 wall",
+    7.5,
+    9286713344
+   ],
+   [
+    "the shaft",
+    56.0,
+    14194049024
+   ],
+   [
+    "the finish",
+    null,
+    17289445376
+   ]
+  ],
+  "caveat": "v14 alone ran on pb grids without the four walls (before the entity tag): like for like only before ~17% of the course - the room exit (0.4% -> 3.2%) and the x -1,005 wall (6.9% -> 15.3%); the shaft and the finish are the same physics with different depth, normal, potential and shaping grids. The ledger's 'room exit ~1.96B' and 'wall 9.59B (21.4%)' used other readings; by this rule v14 alone left the room at 1.284B (median episode 1.359B) and passed the wall at 9.287B"
+ }
+}
