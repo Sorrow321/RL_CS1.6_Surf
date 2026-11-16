@@ -10076,9 +10076,9 @@ def main() -> None:
                              + ", ".join(_bad))
     if args.demo_front_temp is not None:
         # --demo-front-temp rides the --front-temp slots (the per-env temperature tensors and
-        # the update's per-row scoring), so it has the same rollout requirements
-        _bad = [f for f, on in (("--maps", args.maps),
-                                ("--rnn", args.rnn not in (None, "none")),
+        # the update's per-row scoring), so it has the same rollout requirements (--maps: each
+        # map's rows against its own curriculum's band since mm/s1)
+        _bad = [f for f, on in (("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
                                 ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
                                 ("--sil-coef with --sil-tempered",
@@ -12227,7 +12227,22 @@ def main() -> None:
             raise SystemExit("--route is ONE map's reference line; a "
                              "multi-map run would feed the other maps a fan "
                              "sampled from geometry they do not have")
-        if args.demo_file:
+        for _f, _on in (("--demo-stall-cut", float(args.demo_stall_cut or 0.0) > 0.0),
+                        ("--demo-milestones", bool(args.demo_milestones)),
+                        ("--auto-spine-milestones", bool(args.auto_spine_milestones)),
+                        ("--demo-success-pace", args.demo_success_pace is not None),
+                        ("--demo-success-alive", float(args.demo_success_alive or 0.0) > 0.0),
+                        ("--demo-success-strict", bool(args.demo_success_strict)),
+                        ("--demo-success-energy", args.demo_success_energy is not None),
+                        ("--demo-keys", bool(args.demo_keys)),
+                        ("--demo-share", args.demo_share is not None),
+                        ("--keys-hold-spawn-duck", bool(args.keys_hold_spawn_duck))):
+            if _on:
+                raise SystemExit(f"{_f} is not wired with --maps: mm/s1 ports recipe v14's "
+                                 "curriculum rules per map, not this one")
+        if args.demo_file and not (args.auto_spine_scratch and args.ckpt):
+            # (a --maps resume of --auto-spine-scratch restores slot 0's own spine here; every
+            # map's held spine comes back from the checkpoint - mm/s1)
             raise SystemExit("--demo-file is ONE map's demo spine (raw map "
                              "coordinates); it cannot seed a second map")
         if args.race_dfloor > 0.0:
@@ -12801,14 +12816,37 @@ def main() -> None:
     else:
         respawn = None
     demo = None
+    SPINES0 = [None] * len(slots)        # --maps + --auto-spine-scratch: each map's first spine
+    DEMOS = []                           # --maps: each map's curriculum (DEMOS[0] IS demo)
     if args.auto_spine_scratch:
         # --auto-spine-scratch: the first spine is the map's own spawn (two copies), written next
         # to the run; a crash-resume finds it restored as demo_file and keeps it
         if not args.auto_spine:
             raise SystemExit("--auto-spine-scratch is the first spine of --auto-spine: give it")
-        if args.maps or D.enabled:
-            raise SystemExit("--auto-spine-scratch is single-map, single-GPU (--auto-spine)")
-        if not args.demo_file:
+        if D.enabled:
+            raise SystemExit("--auto-spine-scratch is single-GPU (--auto-spine)")
+        if MULTI:
+            # --maps (mm/s1): every map's own first spine (its spawn, two copies) in its own
+            # auto/<tag>/; a resume restores each map's held spine from the checkpoint
+            from surfgym.core import STATE_DTYPE as _SD0
+            _ck_sp = (ck.get("auto_spine_spines") or {}) if ck is not None else {}
+            for _k, _s in enumerate(slots):
+                _held = _ck_sp.get(_s.tag)
+                if _held and Path(_held).exists():
+                    SPINES0[_k] = str(_held)
+                    print(f"--auto-spine-scratch[{_s.tag}]: resumes on its held spine {_held}")
+                    continue
+                _sp0 = np.asarray(_s.pool[:1], _SD0).copy()
+                _sp0["tick"] = 0
+                _sp0["stuck_ticks"] = 0
+                (out / "auto" / _s.tag).mkdir(parents=True, exist_ok=True)
+                SPINES0[_k] = str(out / "auto" / _s.tag / "spine0.npy")
+                np.save(SPINES0[_k], np.concatenate([_sp0, _sp0]))
+                print(f"--auto-spine-scratch[{_s.tag}]: the first spine is the map's spawn state "
+                      f"{np.round(np.asarray(_sp0[0]['origin'], np.float64))} (2 rows) -> "
+                      f"{SPINES0[_k]} (provenance: map spawn + own search, no demo)")
+            args.demo_file = SPINES0[0]
+        elif not args.demo_file:
             from surfgym.core import STATE_DTYPE as _SD0
             _sp0 = np.asarray(slots[0].pool[:1], _SD0).copy()
             _sp0["tick"] = 0
@@ -12861,6 +12899,15 @@ def main() -> None:
                               min_ep=args.demo_min_ep, grow=args.demo_grow,
                               front_frac=float(args.demo_front_frac),
                               tau0=args.demo_tau0, **_dkw)
+        DEMOS = [demo]
+        if MULTI:
+            # --maps: the other maps' curricula, the same pace, each on its own spine
+            for _k in range(1, len(slots)):
+                DEMOS.append(DemoCurriculum(np.load(SPINES0[_k]),
+                                            window=args.demo_window, rate=args.demo_rate,
+                                            min_ep=args.demo_min_ep, grow=args.demo_grow,
+                                            front_frac=float(args.demo_front_frac),
+                                            tau0=args.demo_tau0, **_dkw))
         if _dkw:
             print("demo curriculum pace: "
                   + (f"cooldown {demo.cooldown} iterations" if "cooldown" in _dkw else "")
@@ -12940,13 +12987,13 @@ def main() -> None:
             if not args.race_ratchet:
                 raise SystemExit("--demo-success-d reads the ratchet record: it needs "
                                  "--race-ratchet")
-            if args.maps:
-                raise SystemExit("--demo-success-d is single-map")
+            # (--maps: one success line per map since mm/s1)
         if args.auto_spine:
             if args.demo_success_d is None:
                 raise SystemExit("--auto-spine moves the --demo-success-d line: give it")
-            if args.maps or D.enabled:
-                raise SystemExit("--auto-spine is single-map, single-GPU")
+            if D.enabled:
+                # (--maps: one loop per map, one search at a time - mm/s1)
+                raise SystemExit("--auto-spine is single-GPU")
             if int(args.auto_spine_quorum) < 1:
                 raise SystemExit("--auto-spine-quorum must be >= 1")
             print(f"--auto-spine: a greedy eval with >= {int(args.auto_spine_quorum)} episodes "
@@ -17331,6 +17378,14 @@ def main() -> None:
               f"mean 1 per group. Watch tail/n_med: if it falls under "
               f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
+    # --maps (mm/s1): the map whose curriculum state the names below hold right now (0 on a
+    # single-map run, always; _use_dslot swaps a map's state in and out)
+    DSI = [0]
+
+    def _own_step(si=0):
+        """slot ``si``'s OWN env steps: the fleet's global_step on a single-map run; under
+        --maps its share (D2: every per-map clock counts the map's own experience)"""
+        return global_step if not MULTI else (int(global_step) * slots[si].n) // N
     fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
     fin_paced = np.zeros(N, bool)         # --finish-line-pace: this tick's paced finishes
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
@@ -17370,11 +17425,11 @@ def main() -> None:
               f"ticks); off the spine never, a finish without it is a failure")
 
     def _alive_field():
-        return (slots[0].reward_field if slots[0].reward_field is not None
-                else slots[0].goal_field)
+        return (slots[DSI[0]].reward_field if slots[DSI[0]].reward_field is not None
+                else slots[DSI[0]].goal_field)
 
     def _en_height():
-        sv = slots[0].core.states_view
+        sv = slots[DSI[0]].core.states_view
         v = np.asarray(sv["velocity"], np.float64)
         return np.asarray(sv["origin"], np.float64)[:, 2] + (v * v).sum(axis=1) / 1600.0
     if DEMO_END_D is not None and float(args.demo_success_bonus or 0.0) > 0.0:
@@ -17421,7 +17476,7 @@ def main() -> None:
         line; an episode is paid once, and one that spawns past the line never."""
         # the PAID record (--ratchet-contact: the contact record, so a ballistic apex past the
         # line never crosses it; else the all-state record, as before)
-        rec = np.asarray(reward_fn.paid_record())
+        rec = np.asarray(slots[DSI[0]].reward_fn.paid_record())
         if DEMO_PAID[0] is None:
             DEMO_PAID[0] = rec <= DEMO_END_D
         paid = DEMO_PAID[0]
@@ -17474,7 +17529,7 @@ def main() -> None:
     # the greedy eval below; the hook after the eval block reads it.
     AUTO_SPINE = bool(args.auto_spine) and demo is not None and DEMO_END_D is not None
     AUTO = {"eval": None, "last": None, "retry_at": 0, "k": 0, "field": None}
-    if AUTO_SPINE and args.auto_spine_archive_bar and ck is not None \
+    if AUTO_SPINE and args.auto_spine_archive_bar and ck is not None and not MULTI \
             and ck.get("auto_spine_failed") is not None:
         # --auto-spine-archive-bar: a resume keeps the failed lines' ends (the d-bar, the ban, the
         # dead ends) - lost on resume before ab/v2 - and the held line's source if it holds it
@@ -17487,16 +17542,80 @@ def main() -> None:
                  "not restored (the resumed spine does not end where the saved one did)"),
               flush=True)
     if AUTO_SPINE and float(args.auto_spine_delay) > 0:
-        AUTO["retry_at"] = int(global_step + float(args.auto_spine_delay))
-        print(f"--auto-spine-delay: no search before step {AUTO['retry_at']:,}")
+        AUTO["retry_at"] = int(_own_step(0) + float(args.auto_spine_delay))
+        print(f"--auto-spine-delay: no search before step {AUTO['retry_at']:,}"
+              + (" (each map's own steps)" if MULTI else ""))
 
-    def _auto_spine_after_eval(ev_path):
+    def _adir():
+        """the search directory of the map whose loop state is loaded (auto/ on one map)"""
+        return (out / "auto" / slots[DSI[0]].tag) if MULTI else (out / "auto")
+
+    def _dsl():
+        """the env rows of the map whose loop state is loaded (all of them on one map)"""
+        return slots[DSI[0]].sl if MULTI else slice(None)
+
+    # --maps (mm/s1): ONE curriculum + loop state per map. Slot 0's bundle holds the very
+    # objects the names above hold; _use_dslot(k) swaps map k's state into those names, so the
+    # single-map code paths run unchanged for map k. A single-map run never swaps.
+    DSL = [dict(demo=demo, end_d=DEMO_END_D, h_min=DEMO_H_MIN, paid=DEMO_PAID, ok=DEMO_OK,
+                alv=ALV, miles=MILES, keys=DEMO_KEYS, auto=AUTO, pace=PACE)]
+    AQ = {"q": [], "run": None}      # --maps: the FIFO search queue [(k, trigger)], the map running
+    SIDX = {_s.tag: _k for _k, _s in enumerate(slots)}
+    if MULTI and demo is not None:
+        for _k in range(1, len(slots)):
+            _dm, _sk = DEMOS[_k], slots[_k]
+            _fk = _sk.reward_field if _sk.reward_field is not None else _sk.goal_field
+            _edk = None
+            if args.demo_success_d is not None:
+                _edk = float(_fk.sample(np.asarray(_dm.S[-1]["origin"], np.float64)[None])[0]) \
+                    + float(args.demo_success_d)
+            _au = {"eval": None, "last": None, "retry_at": 0, "k": 0, "field": None}
+            if AUTO_SPINE and float(args.auto_spine_delay) > 0:
+                _au["retry_at"] = int(_own_step(_k) + float(args.auto_spine_delay))
+            _kk = [None]
+            if DEMO_KEYS[0] is not None:
+                # (--auto-spine-keys: the first spine holds neutral keys, as slot 0's)
+                _kk = [np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (_dm.n, 1))]
+            DSL.append(dict(demo=_dm, end_d=_edk, h_min=None, paid=[None], ok=[None, None],
+                            alv=[None] * 5, miles=[np.asarray(MILES[0]).copy(), None],
+                            keys=_kk, auto=_au, pace=None))
+            if _edk is not None:
+                print(f"--demo-success-d[{_sk.tag}]: success line d <= {_edk:,.0f}")
+        if AUTO_SPINE and args.auto_spine_archive_bar and ck is not None \
+                and isinstance(ck.get("auto_spine_failed"), dict):
+            for _k, _sk in enumerate(slots):
+                _af = ck["auto_spine_failed"].get(_sk.tag)
+                if _af is not None:
+                    restore_auto_failed(DSL[_k]["auto"], _af, DSL[_k]["demo"].S[-1]["origin"])
+                    print(f"auto-spine[{_sk.tag}]: failed-line state restored from the checkpoint")
+
+    def _use_dslot(k):
+        """--maps: load map k's curriculum / loop state into the names the loop code reads,
+        after saving the loaded map's back into its bundle (a no-op when k is loaded)"""
+        nonlocal demo, DEMO_END_D, DEMO_H_MIN, DEMO_PAID, DEMO_OK, ALV, MILES, DEMO_KEYS
+        nonlocal AUTO, PACE
+        if k == DSI[0]:
+            return
+        DSL[DSI[0]].update(demo=demo, end_d=DEMO_END_D, h_min=DEMO_H_MIN, paid=DEMO_PAID,
+                           ok=DEMO_OK, alv=ALV, miles=MILES, keys=DEMO_KEYS, auto=AUTO,
+                           pace=PACE)
+        _b = DSL[k]
+        demo, DEMO_END_D, DEMO_H_MIN = _b["demo"], _b["end_d"], _b["h_min"]
+        DEMO_PAID, DEMO_OK, ALV, MILES = _b["paid"], _b["ok"], _b["alv"], _b["miles"]
+        DEMO_KEYS, AUTO, PACE = _b["keys"], _b["auto"], _b["pace"]
+        DSI[0] = k
+
+    def _auto_spine_after_eval(ev_path, start=True, force=None):
         """Read the greedy eval; on the quorum (or the patience) run tools/auto_spine.py on
-        ckpt_latest and swap a spine that beats the greedy frontier into the curriculum."""
+        ckpt_latest and swap a spine that beats the greedy frontier into the curriculum.
+        --maps: start=False only decides (returns "quorum" / "patience" / None); force= serves
+        a queued request as it was made ("quorum" / "patience") on the map's latest eval."""
         nonlocal DEMO_END_D, DEMO_H_MIN
+        _tg = f"[{slots[DSI[0]].tag}]" if MULTI else ""   # the map, under --maps
+        _ost = _own_step(DSI[0])        # this map's OWN steps (D2; global on one map)
         import subprocess as _sp
         from surfgym.route import episodes_from_traj
-        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
+        _f = slots[DSI[0]].reward_field if slots[DSI[0]].reward_field is not None else slots[DSI[0]].goal_field
         eps = [e for e in episodes_from_traj(ev_path) if len(e)][:max(1, int(args.eval_eps
                                                                             or 9))]
         if not eps:
@@ -17518,9 +17637,9 @@ def main() -> None:
                 # --auto-spine-banked: the frontier and the quorum read the contact-banked depth
                 # (a fatal dive after the last contact does not count), the measure an MCTS line
                 # ends at
-                _gs = -float(slots[0].core.config.phys.sv_gravity) * float(TICK.ms) / 1000.0
+                _gs = -float(slots[DSI[0]].core.config.phys.sv_gravity) * float(TICK.ms) / 1000.0
                 bests.append(banked_min_d(d, e[:, 6], _gs, 1.0,
-                                          float(slots[0].core.config.phys.sv_maxvelocity)))
+                                          float(slots[DSI[0]].core.config.phys.sv_maxvelocity)))
             else:
                 bests.append(float(d.min()))
             if args.auto_spine_energy is not None:
@@ -17555,62 +17674,69 @@ def main() -> None:
         if args.auto_spine_energy is not None and DEMO_H_MIN is not None:
             # an energy spine: its success line is no deeper than the greedy, so the quorum
             # counts the crossings that carry the spine's energy
-            print(f"[{global_step:>13,d}] auto-spine: energy spine - {n_en}/{len(eps)} greedy "
+            print(f"[{global_step:>13,d}] auto-spine{_tg}: energy spine - {n_en}/{len(eps)} greedy "
                   f"episodes cross d <= {DEMO_END_D:,.0f} with energy height >= "
                   f"{DEMO_H_MIN:,.0f} ({m} cross it)", flush=True)
             m = int(n_en)
         if ALIVE_T:
-            print(f"[{global_step:>13,d}] auto-spine: --demo-success-alive - {n_alive}/{len(eps)} "
+            print(f"[{global_step:>13,d}] auto-spine{_tg}: --demo-success-alive - {n_alive}/{len(eps)} "
                   f"greedy episodes stay alive {need_q} ticks past their crossing", flush=True)
             m = int(n_alive)
         med = float(np.median(bests))
         AUTO["med"] = med                 # --demo-stall-cut reads the greedy frontier
         if AUTO["last"] is None:
-            AUTO["last"] = int(global_step)
+            AUTO["last"] = int(_ost)
         if args.auto_spine_patience_tau and (AUTO.get("tau_low") is None
                                              or int(demo.tau) < AUTO["tau_low"]):
             # --auto-spine-patience-tau: the curriculum moved earlier on its line since the
             # last eval that looked - the line is still being learned, the patience restarts
             AUTO["tau_low"] = int(demo.tau)
-            AUTO["last"] = int(global_step)
+            AUTO["last"] = int(_ost)
         if args.auto_spine_finish_stop:
             _nf = int(_eval_finishes(ev_path)[0])
             AUTO["fin"] = _nf >= int(args.auto_spine_quorum)
             if AUTO["fin"]:
                 # --auto-spine-finish-stop: the greedy finishes the map - no search, and the
                 # patience restarts (and --auto-spine-patience-max's clock with it)
-                AUTO["last"] = int(global_step)
-                AUTO["t_hold"] = int(global_step)
-                print(f"[{global_step:>13,d}] auto-spine: {_nf}/{len(eps)} greedy episodes "
+                AUTO["last"] = int(_ost)
+                AUTO["t_hold"] = int(_ost)
+                print(f"[{global_step:>13,d}] auto-spine{_tg}: {_nf}/{len(eps)} greedy episodes "
                       f"FINISH (greedy frontier {med:,.0f}): no search", flush=True)
                 return
         quorum = m >= int(args.auto_spine_quorum)
         pat = (float(args.auto_spine_patience) > 0
-               and global_step - AUTO["last"] >= float(args.auto_spine_patience))
+               and _ost - AUTO["last"] >= float(args.auto_spine_patience))
         if AUTO.get("t_hold") is None:
-            AUTO["t_hold"] = int(global_step)   # --auto-spine-patience-max: the held line's clock
-        pmax = patience_max_due(global_step, AUTO["t_hold"],
+            AUTO["t_hold"] = int(_ost)   # --auto-spine-patience-max: the held line's clock
+        pmax = patience_max_due(_ost, AUTO["t_hold"],
                                 float(args.auto_spine_patience_max or 0.0), quorum)
         pat = pat or pmax
-        go = (quorum or pat) and global_step >= AUTO["retry_at"]
+        if force is not None:
+            # --maps (mm/s1, D3): the queued request, as its own eval made it (a map waiting
+            # for the card searches as v14 would have searched at that eval)
+            quorum, pat = force == "quorum", force == "patience"
+        go = (quorum or pat) and _ost >= AUTO["retry_at"]
         if go and AUTO.get("proc") is None:
             # --demo-rehearse: a QUORUM search means the held line is learned
             AUTO["trig"] = "quorum" if quorum else "patience"
-        print(f"[{global_step:>13,d}] auto-spine: {m}/{len(eps)} greedy episodes past the "
+        print(f"[{global_step:>13,d}] auto-spine{_tg}: {m}/{len(eps)} greedy episodes past the "
               f"success line d <= {DEMO_END_D:,.0f}; greedy frontier (median deepest d) "
               f"{med:,.0f}" + ("  -> SEARCH" + (" (patience)" if pat and not quorum else "")
-                               + (f" (patience max: {(global_step - AUTO['t_hold']) / 1e9:.2f}B "
+                               + (f" (patience max: {(_ost - AUTO['t_hold']) / 1e9:.2f}B "
                                   f"steps on this line)" if pmax else "")
                                if go else ""), flush=True)
         if not go:
             return
+        if not start:
+            # --maps (mm/s1): the decision only - the FIFO queue starts it when the card is free
+            return "quorum" if quorum else "patience"
         if AUTO.get("proc") is not None:
             # --auto-spine-async: one search at a time; the running one decides
-            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']} still running beside "
+            print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']} still running beside "
                   f"the training ({time.time() - AUTO['proc'][2]:.0f}s); no second search",
                   flush=True)
             return
-        adir = out / "auto"
+        adir = _adir()
         adir.mkdir(parents=True, exist_ok=True)
         if AUTO["field"] is None:
             AUTO["field"] = adir / "field.npz"
@@ -17619,7 +17745,7 @@ def main() -> None:
                      cell=np.float64(_f.cell), reach_max=np.float64(_f.reach_max))
         save_ckpt("latest")
         AUTO["k"] += 1
-        AUTO["t_hold"] = int(global_step)   # --auto-spine-patience-max: a search started
+        AUTO["t_hold"] = int(_ost)   # --auto-spine-patience-max: a search started
         kdir = adir / f"k{AUTO['k']:02d}"
         # the branched beam forks half a second before the greedy line's median launch into a
         # fatal flight (0 = none: no fatal flight in this eval)
@@ -17630,7 +17756,7 @@ def main() -> None:
                    else int(max(1, np.median(stalls) - 1.0 * tps)))
         cmd = [sys.executable, "-u", str(Path(__file__).resolve().parents[1] / "tools"
                                          / "auto_spine.py"),
-               "--ckpt", str(out / "ckpt_latest.pt"), "--map", str(slots[0].core.bsp_path),
+               "--ckpt", str(out / "ckpt_latest.pt"), "--map", str(slots[DSI[0]].core.bsp_path),
                "--field", str(AUTO["field"]), "--out", str(kdir), "--greedy-d", f"{med:.1f}",
                "--gain", f"{float(args.auto_spine_gain):g}",
                "--beam-ticks", str(int(max(lens) + float(args.auto_spine_extra_secs) * tps)),
@@ -17640,7 +17766,8 @@ def main() -> None:
                "--branch-tick", str(br_tick),
                "--timeout", f"{float(args.auto_spine_timeout):g}"]
         if args.maxvel is not None:
-            cmd += ["--maxvel", f"{float(args.maxvel):g}"]
+            # (the searched map's own --maxvel; args.maxvel on a single-map run)
+            cmd += ["--maxvel", f"{float(SLOT_MAXVEL[DSI[0]]):g}"]
         if args.auto_spine_energy is not None:
             cmd += ["--energy-gain", f"{float(args.auto_spine_energy):g}"]
         if args.auto_spine_explorer == "mcts":
@@ -17659,7 +17786,7 @@ def main() -> None:
             _held = float(_f.sample(np.asarray(demo.S[-1]["origin"], np.float64)[None])[0])
             _fa = AUTO.setdefault("failed_arch", [])
             if pat and not quorum and mark_failed_archive(_fa, AUTO.get("src"), _held):
-                print(f"[{global_step:>13,d}] auto-spine: the held line ({AUTO.get('src')}, end d "
+                print(f"[{global_step:>13,d}] auto-spine{_tg}: the held line ({AUTO.get('src')}, end d "
                       f"{_held:,.0f}) failed its curriculum; archive lines must now end "
                       f"{float(args.auto_spine_gain):g} u past {archive_bar(_fa):,.0f}",
                       flush=True)
@@ -17667,7 +17794,7 @@ def main() -> None:
                     # --auto-spine-archive-ban: where that failed archive line ended
                     _hp = [float(v) for v in np.asarray(demo.S[-1]["origin"], np.float64)]
                     AUTO.setdefault("failed_arch_pos", []).append(_hp)
-                    print(f"[{global_step:>13,d}] auto-spine: archive chains within "
+                    print(f"[{global_step:>13,d}] auto-spine{_tg}: archive chains within "
                           f"{float(args.auto_spine_archive_ban):g} u of its end "
                           f"({_hp[0]:,.0f}, {_hp[1]:,.0f}, {_hp[2]:,.0f}) are refused from now on",
                           flush=True)
@@ -17691,13 +17818,13 @@ def main() -> None:
                 _hp = [float(v) for v in np.asarray(demo.S[-1]["origin"], np.float64)]
                 if pat and not quorum and mark_dead_end(_de_all, AUTO.get("src"), _hp, _held,
                                                         float(_f.cell)):
-                    print(f"[{global_step:>13,d}] auto-spine: the held line ({AUTO.get('src')}) "
+                    print(f"[{global_step:>13,d}] auto-spine{_tg}: the held line ({AUTO.get('src')}) "
                           f"ended at ({_hp[0]:,.0f}, {_hp[1]:,.0f}, {_hp[2]:,.0f}), d {_held:,.0f} "
                           f"- a dead end: lines that end within "
                           f"{float(args.auto_spine_archive_ban):g} u of it are refused", flush=True)
                 _live, _gone = live_dead_ends(_de_all, med, float(args.auto_spine_gain))
                 if _gone:
-                    print(f"[{global_step:>13,d}] auto-spine: the greedy frontier {med:,.0f} has "
+                    print(f"[{global_step:>13,d}] auto-spine{_tg}: the greedy frontier {med:,.0f} has "
                           f"reached {len(_gone)} dead end(s) (d "
                           + ", ".join(f"{e[3]:,.0f}" for e in _gone) + "): not refused",
                           flush=True)
@@ -17717,20 +17844,20 @@ def main() -> None:
             kdir.mkdir(parents=True, exist_ok=True)
             _sh.copyfile(out / "ckpt_latest.pt", kdir / "ckpt.pt")
             cmd[cmd.index("--ckpt") + 1] = str(kdir / "ckpt.pt")
-        print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: " + " ".join(cmd),
+        print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: " + " ".join(cmd),
               flush=True)
         if args.auto_spine_async:
             try:
                 fh = open(kdir / "auto_spine.log", "w", encoding="utf-8", errors="replace")
                 proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT)
             except OSError as ex:
-                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
-                AUTO["last"] = int(global_step)
-                print(f"!! auto-spine search {AUTO['k']} did not start: {ex}; next try at step "
+                AUTO["retry_at"] = int(_ost + float(args.auto_spine_retry))
+                AUTO["last"] = int(_ost)
+                print(f"!! auto-spine{_tg} search {AUTO['k']} did not start: {ex}; next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
             AUTO["proc"] = (proc, fh, t0, kdir, med)
-            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: running beside the "
+            print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: running beside the "
                   f"training (pid {proc.pid}, log {kdir / 'auto_spine.log'})", flush=True)
             return
         res = None
@@ -17743,12 +17870,13 @@ def main() -> None:
                     res = json.loads(ln[len("AUTO_SPINE "):])
                     break
         except (_sp.TimeoutExpired, OSError, ValueError) as ex:
-            print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
+            print(f"!! auto-spine{_tg} search {AUTO['k']} failed: {ex}", flush=True)
         _auto_spine_finish(res, time.time() - t0, med)
 
     def _auto_spine_poll():
         """--auto-spine-async: when the search running beside the training has ended (or
         outlived its cap: killed), read its AUTO_SPINE line and swap its spine in."""
+        _tg = f"[{slots[DSI[0]].tag}]" if MULTI else ""   # the map, under --maps
         pr = AUTO.get("proc")
         if pr is None:
             return
@@ -17758,7 +17886,7 @@ def main() -> None:
                 return
             proc.kill()
             proc.wait()
-            print(f"!! auto-spine search {AUTO['k']} killed after {time.time() - t0:.0f}s",
+            print(f"!! auto-spine{_tg} search {AUTO['k']} killed after {time.time() - t0:.0f}s",
                   flush=True)
         fh.close()
         AUTO["proc"] = None
@@ -17770,15 +17898,16 @@ def main() -> None:
                     res = json.loads(ln[len("AUTO_SPINE "):])
                     break
         except (OSError, ValueError) as ex:
-            print(f"!! auto-spine search {AUTO['k']} failed: {ex}", flush=True)
-        print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: ended beside the training "
+            print(f"!! auto-spine{_tg} search {AUTO['k']} failed: {ex}", flush=True)
+        print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: ended beside the training "
               f"(exit {proc.returncode})", flush=True)
         _auto_spine_finish(res, time.time() - t0, med)
 
     def _auto_spine_kill():
-        pr = AUTO.get("proc")
-        if pr is not None and pr[0].poll() is None:
-            pr[0].kill()
+        for _b in (DSL if MULTI else [{"auto": AUTO}]):
+            pr = (_b["auto"] if _b["auto"] is not None else {}).get("proc")
+            if pr is not None and pr[0].poll() is None:
+                pr[0].kill()
 
     if AUTO_SPINE and args.auto_spine_async:
         import atexit
@@ -17903,19 +18032,21 @@ def main() -> None:
     def _auto_spine_finish(res, dt, med):
         """A search's result: no spine -> retry later; a spine -> it replaces the curriculum's."""
         nonlocal DEMO_END_D, DEMO_H_MIN
-        _f = slots[0].reward_field if slots[0].reward_field is not None else slots[0].goal_field
-        adir = out / "auto"
+        _tg = f"[{slots[DSI[0]].tag}]" if MULTI else ""   # the map, under --maps
+        _ost = _own_step(DSI[0])        # this map's OWN steps (D2; global on one map)
+        _f = slots[DSI[0]].reward_field if slots[DSI[0]].reward_field is not None else slots[DSI[0]].goal_field
+        adir = _adir()
         if not res or not res.get("spine"):
-            AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
-            AUTO["last"] = int(global_step)
-            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NO new spine in "
+            AUTO["retry_at"] = int(_ost + float(args.auto_spine_retry))
+            AUTO["last"] = int(_ost)
+            print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: NO new spine in "
                   f"{dt:.0f}s ({json.dumps(res) if res else 'no result'}); next try at "
                   f"step {AUTO['retry_at']:,}", flush=True)
             return
         if args.auto_spine_finish_stop and AUTO.get("fin"):
             # --auto-spine-finish-stop: the greedy began to finish while the search ran
-            AUTO["last"] = int(global_step)
-            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: spine discarded - the "
+            AUTO["last"] = int(_ost)
+            print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: spine discarded - the "
                   f"latest greedy eval finishes the map", flush=True)
             return
         sp = np.load(res["spine"])
@@ -17931,22 +18062,22 @@ def main() -> None:
             _fresh, _n_en = recheck_spine(_de_new, AUTO.get("med"), float(args.auto_spine_gain),
                                           _er, AUTO.get("eval_dh"), int(args.auto_spine_quorum))
             if not _fresh:
-                AUTO["retry_at"] = int(global_step + float(args.auto_spine_retry))
-                AUTO["last"] = int(global_step)
+                AUTO["retry_at"] = int(_ost + float(args.auto_spine_retry))
+                AUTO["last"] = int(_ost)
                 if _er is not None:
-                    print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: STALE energy "
+                    print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: STALE energy "
                           f"spine discarded - {_n_en}/{len(AUTO['eval_dh'])} greedy episodes of "
                           f"the latest eval already cross d <= {_er[0]:,.0f} with energy height "
                           f">= {_er[1]:,.0f}; next try at step {AUTO['retry_at']:,}", flush=True)
                     return
-                print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: STALE spine "
+                print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: STALE spine "
                       f"discarded - its end d {_de_new:,.0f} does not beat the latest greedy "
                       f"frontier {float(AUTO['med']):,.0f} by {float(args.auto_spine_gain):g} u "
                       f"(the search started at {med:,.0f}); next try at step "
                       f"{AUTO['retry_at']:,}", flush=True)
                 return
             if _er is not None:
-                print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: the energy spine is "
+                print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: the energy spine is "
                       f"fresh - {_n_en}/{len(AUTO.get('eval_dh') or [])} greedy episodes of the "
                       f"latest eval cross d <= {_er[0]:,.0f} with energy height >= "
                       f"{_er[1]:,.0f} (the depth gain does not apply to it)", flush=True)
@@ -17995,10 +18126,10 @@ def main() -> None:
         DEMO_END_D = _de + float(args.demo_success_d)
         DEMO_PAID[0] = None
         ALV[:] = [None, None, None, None, None]
-        demo_idx[:] = -1
-        AUTO["last"] = int(global_step)
+        demo_idx[_dsl()] = -1
+        AUTO["last"] = int(_ost)
         AUTO["retry_at"] = 0
-        AUTO["t_hold"] = int(global_step)   # --auto-spine-patience-max: a new line is held
+        AUTO["t_hold"] = int(_ost)   # --auto-spine-patience-max: a new line is held
         if args.auto_spine_patience_tau:
             AUTO["tau_low"] = int(demo.tau)   # the new line's own walk back starts here
         _en = {}
@@ -18014,7 +18145,7 @@ def main() -> None:
             DEMO_H_MIN = spine_energy_rule(res, demo.S[-1], float(args.auto_spine_energy))
             DEMO_OK[0] = DEMO_OK[1] = None
             _en["energy_h_min"] = DEMO_H_MIN
-            print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: "
+            print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: "
                   + (f"an ENERGY spine (+{float(res.get('energy_gain', 0.0)):,.0f} u over the "
                      f"policy's line): success only with energy height >= {DEMO_H_MIN:,.0f}"
                      if DEMO_H_MIN is not None else "a depth spine: the depth success rule"),
@@ -18023,7 +18154,7 @@ def main() -> None:
             {"step": int(global_step), "k": AUTO["k"], "spine": res["spine"],
              "success_d": DEMO_END_D, "milestones": [float(v) for v in MILES[0]], **_en, **res},
             indent=1), encoding="utf-8")
-        print(f"[{global_step:>13,d}] auto-spine search {AUTO['k']}: NEW SPINE from "
+        print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: NEW SPINE from "
               f"{res.get('source')} ({demo.n} states, end d {_de:,.0f}, greedy frontier "
               f"{med:,.0f}) in {dt:.0f}s -> {res['spine']}; success line d <= "
               f"{DEMO_END_D:,.0f}; the curriculum restarts at its end", flush=True)
@@ -18335,7 +18466,14 @@ def main() -> None:
         if DFT and _dft_len[0] is not None:
             # --demo-front-temp: the envs whose episode started on the curriculum's frontier
             # band (demo_idx is the spine index of each env's spawn), inside the hot window
-            hot = demo_hot_mask(demo_idx, demo._band(), _dft_len[0], DFT_TICKS)
+            if MULTI:
+                # --maps (mm/s1): each map's rows against its own curriculum's band
+                hot = np.zeros(N, bool)
+                for _hk, _hs in enumerate(slots):
+                    hot[_hs.sl] = demo_hot_mask(demo_idx[_hs.sl], DSL[_hk]["demo"]._band(),
+                                                np.asarray(_dft_len[0])[_hs.sl], DFT_TICKS)
+            else:
+                hot = demo_hot_mask(demo_idx, demo._band(), _dft_len[0], DFT_TICKS)
             ftk_np[hot] = _dft_k
             # the yaw head(s); the pitch head (the last column) moves only the camera, so it
             # keeps the cold value
@@ -19164,7 +19302,10 @@ def main() -> None:
     front_reach = [deque() for _ in slots]
     len_hist = deque(maxlen=200)
 
-    next_record = (global_step + int(args.record_every)
+    # --maps (D2): every map is evaluated at v14's rate in its OWN steps - with the envs split
+    # evenly that is --record-every x the map count of fleet steps; one map: --record-every
+    REC_EVERY_G = int(args.record_every) * (NMAPS if MULTI else 1)
+    next_record = (global_step + REC_EVERY_G
                    if args.no_eval_at_start else global_step)
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
@@ -19285,10 +19426,6 @@ def main() -> None:
         """the --unstuck temperature slot ``si``'s rollout runs at"""
         return UT_SL[si] if MULTI else unstuck_T
 
-    def _own_step(si=0):
-        """slot ``si``'s OWN env steps: the fleet's global_step on a single-map run; under
-        --maps its share (D2: every per-map clock counts the map's own experience)"""
-        return global_step if not MULTI else (int(global_step) * slots[si].n) // N
     # --unstuck-reach eval: the last greedy frontier not yet observed (NaN =
     # no new reading)
     unstuck_eval_reach = float("nan")
@@ -19557,7 +19694,24 @@ def main() -> None:
         if AUTO_SPINE and args.auto_spine_archive_bar:
             # --auto-spine-archive-bar (ab/v2): the failed lines' ends and the held line's source,
             # so a resume keeps refusing what failed
-            state["auto_spine_failed"] = auto_failed_state(AUTO, demo.S[-1]["origin"])
+            if MULTI:
+                state["auto_spine_failed"] = {
+                    _s.tag: auto_failed_state(DSL[_k]["auto"] if _k != DSI[0] else AUTO,
+                                              (DSL[_k]["demo"] if _k != DSI[0] else demo)
+                                              .S[-1]["origin"])
+                    for _k, _s in enumerate(slots)}
+            else:
+                state["auto_spine_failed"] = auto_failed_state(AUTO, demo.S[-1]["origin"])
+        if AUTO_SPINE and MULTI:
+            # --maps: each map's held spine, so a resume restarts every curriculum on its own line
+            _held = {}
+            for _k, _s in enumerate(slots):
+                _cj = (out / "auto" / _s.tag / "current.json")
+                try:
+                    _held[_s.tag] = json.loads(_cj.read_text(encoding="utf-8"))["spine"]
+                except (OSError, ValueError, KeyError):
+                    _held[_s.tag] = SPINES0[_k]
+            state["auto_spine_spines"] = _held
         if INTP is not None:
             # --int-coef-progress: the coefficient and its frontier reading, so a resume keeps
             # the novelty the run had reached until its next greedy eval
@@ -20755,9 +20909,10 @@ def main() -> None:
             if demo is not None and DEMO_SHARE is None:
                 # Salimans-Chen: the reservoir share of the pool is replaced
                 # by exact demo-window states (velocities unscaled — the
-                # paper resets to the demonstration state itself)
-                _dpool = demo.build_pool(_s.pool,
-                                         fresh_frac=1.0 - args.respawn_frac)
+                # paper resets to the demonstration state itself); each map's
+                # own curriculum under --maps
+                _dpool = DSL[SIDX[_s.tag]]["demo"].build_pool(
+                    _s.pool, fresh_frac=1.0 - args.respawn_frac)
                 if ((FPERT > 0.0 or GREEDY is not None) and _s.respawn is not None
                         and _s.respawn.size >= 2000):
                     # --respawn-front-perturb / --respawn-greedy with the curriculum: the
@@ -20933,7 +21088,13 @@ def main() -> None:
                     wins = res.bin_win.sum()
                     print(f"  {res.last_info}  |  outcome-tracked eps "
                           f"{ep.sum():,.0f}  wins {wins:,.1f}")
-        if demo is not None and it_no % 100 == 1 and demo.last_info:
+        if demo is not None and MULTI and it_no % 100 == 1:
+            for _k, _s in enumerate(slots):
+                _dmk = DSL[_k]["demo"]
+                if _dmk.last_info:
+                    print(f"  [{_s.tag}] {_dmk.last_info}  |  demo-tracked eps "
+                          f"{_dmk.ep.sum():,.0f}  wins {_dmk.win.sum():,.1f}")
+        elif demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}"
                   + (f"  |  spine-line bonuses {DEMO_BONUS_N[0]:,}" if DEMO_BONUS else ""))
@@ -21322,7 +21483,15 @@ def main() -> None:
                         goalsys.on_reward(r)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
-                    if bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN) and r is not None:
+                    if MULTI and r is not None and demo is not None:
+                        # --demo-success-bonus per map: each map's own line, rows and record
+                        r = np.array(r, copy=True)
+                        for _bk, _bs in enumerate(slots):
+                            _use_dslot(_bk)
+                            if bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN):
+                                r[_bs.sl] = _demo_bonus_pay(r[_bs.sl], ended[_bs.sl])
+                        _use_dslot(0)
+                    elif bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN) and r is not None:
                         # --demo-success-bonus on the per-tick reward path
                         r = _demo_bonus_pay(r, ended)
                     if FINL_PACE is not None and FINL is not None and r is not None \
@@ -21692,7 +21861,33 @@ def main() -> None:
                             # states_view are already the fresh spawns)
                             fleet.track_start_bins(ended, fleet.goal_hits(),
                                                    start_bin)
-                        if demo is not None and ended.any():
+                        if demo is not None and MULTI and ended.any():
+                            # --maps: each map's ended episodes against its own curriculum,
+                            # its own success line / energy crossings, its own new spawns
+                            _gha = fleet.goal_hits().astype(bool)
+                            for _ok_k, _os in enumerate(slots):
+                                _el = np.flatnonzero(ended[_os.sl])
+                                if not len(_el):
+                                    continue
+                                _use_dslot(_ok_k)
+                                _eg = _el + _os.lo
+                                _gn = _gha[_eg]
+                                if DEMO_END_D is not None and DEMO_H_MIN is not None:
+                                    if DEMO_OK[1] is not None:
+                                        _gn = _gn | np.asarray(DEMO_OK[1])[_el]
+                                elif DEMO_END_D is not None:
+                                    _rbk = (_os.reward_fn.paid_record(boot=True)
+                                            if hasattr(_os.reward_fn, "paid_record")
+                                            else getattr(_os.reward_fn, "_rec_boot", None))
+                                    if _rbk is not None:
+                                        _gn = _gn | (np.asarray(_rbk)[_el] <= DEMO_END_D)
+                                _kn = demo_idx[_eg] >= 0
+                                if _kn.any():
+                                    demo.note_outcomes(demo_idx[_eg][_kn], _gn[_kn])
+                                demo_idx[_eg] = demo.match(
+                                    _os.core.states_view[_el]["origin"])
+                            _use_dslot(0)
+                        elif demo is not None and ended.any():
                             # same stash-and-attribute, in demo-index space
                             ei = np.flatnonzero(ended)
                             goal_now = fleet.goal_hits().astype(bool)[ei]
@@ -21793,7 +21988,14 @@ def main() -> None:
                     r_dec = reward_fn(prev_obs, o2, term_obs, base_r,
                                       done_acc, ended_acc & ~done_acc, core,
                                       goal=goal_acc)
-                    if bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN):
+                    if MULTI and demo is not None:
+                        r_dec = np.array(r_dec, copy=True)
+                        for _bk, _bs in enumerate(slots):
+                            _use_dslot(_bk)
+                            if bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN):
+                                r_dec[_bs.sl] = _demo_bonus_pay(r_dec[_bs.sl], ended_acc[_bs.sl])
+                        _use_dslot(0)
+                    elif bonus_live(DEMO_BONUS, BONUS_E_ONLY, DEMO_H_MIN):
                         r_dec = _demo_bonus_pay(r_dec, ended_acc)
                     r_acc += r_dec
                     if INT_SPLIT:
@@ -21951,7 +22153,14 @@ def main() -> None:
                         # crouched holds duck (engine bin 1) from its first tick
                         _dk = ended_acc & (np.asarray(sv_view["ducked"]) > 0)
                         keys.state[_dk, 2] = 1
-                    if DEMO_KEYS[0] is not None and ended_acc.any():
+                    if MULTI and DEMO_KEYS[0] is not None and ended_acc.any():
+                        # --maps: each map's spawns hold its own spine's keys
+                        for _kk, _ks in enumerate(slots):
+                            _kt = DSL[_kk]["keys"][0]
+                            _de = np.flatnonzero(ended_acc[_ks.sl] & (demo_idx[_ks.sl] >= 0))
+                            if _kt is not None and _de.size:
+                                keys.state[_de + _ks.lo] = _kt[demo_idx[_de + _ks.lo]]
+                    elif DEMO_KEYS[0] is not None and ended_acc.any():
                         # --demo-keys: a fresh episode spawned on spine row i holds the keys
                         # the line held there (demo_idx was set when the old episode ended)
                         _de = np.flatnonzero(ended_acc & (demo_idx >= 0))
@@ -23240,7 +23449,7 @@ def main() -> None:
             D.assert_equal("eval_trigger", torch.tensor(
                 [int(global_step), int(next_record)], dtype=torch.int64,
                 device=device))
-            next_record = global_step + int(args.record_every)
+            next_record = global_step + REC_EVERY_G
             # per-recording seed: a fixed seed replays the same few spawns
             # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
             # single weak-tail spawn makes every eval look bad
@@ -23393,8 +23602,9 @@ def main() -> None:
                                            d_fn=None if _gfld is None else _rg_d)
                     print(f"[{global_step:>13,d}] " + (f"[{_s.tag}] " if MULTI else "")
                           + GREEDY_S[_s.tag].line())
-                if AUTO_SPINE and _i == 0 and not _s.heldout:
-                    AUTO["eval"] = path     # --auto-spine: read after the eval block
+                if AUTO_SPINE and not _s.heldout and (MULTI or _i == 0):
+                    # --auto-spine: read after the eval block (every map its own, mm/s1)
+                    DSL[_i]["auto"]["eval"] = path
                 if INTP is not None and not _s.heldout:
                     # --int-coef-progress: read after the eval block (every map its own)
                     INTP_SL[_i]["eval"] = path
@@ -23662,7 +23872,20 @@ def main() -> None:
                       f"finished {agg_fin_trig:6.2%} "
                       f"({AGG['n_trigger']} maps)")
         tm.add("record", t_rec)
-        if AUTO_SPINE and AUTO.get("proc") is not None:
+        if AUTO_SPINE and MULTI and AQ["run"] is not None:
+            # --maps: the one search running beside the training (map AQ["run"]) may have ended
+            _use_dslot(AQ["run"])
+            try:
+                _auto_spine_poll()
+            except Exception as _ex:         # a failed search never ends the run
+                AUTO["proc"] = None
+                AUTO["retry_at"] = int(_own_step(DSI[0]) + float(args.auto_spine_retry))
+                print(f"!! auto-spine[{slots[DSI[0]].tag}]: {type(_ex).__name__}: {_ex}",
+                      flush=True)
+            if AUTO.get("proc") is None:
+                AQ["run"] = None
+            _use_dslot(0)
+        elif AUTO_SPINE and AUTO.get("proc") is not None:
             # --auto-spine-async: a search running beside the training may have ended
             try:
                 _auto_spine_poll()
@@ -23702,7 +23925,55 @@ def main() -> None:
                 _yaw_progress_after_eval(_ypp)
             except Exception as _ex:         # a failed reading keeps the share
                 print(f"!! --yaw-entropy-progress: {type(_ex).__name__}: {_ex}", flush=True)
-        if AUTO_SPINE and AUTO["eval"] is not None:
+        if AUTO_SPINE and MULTI:
+            # --maps (mm/s1, D3): every map's own eval decides for its own loop; a map that
+            # asks for a search joins ONE FIFO queue (a learned line - a quorum - ahead of a
+            # patience request), and the next search starts only when the card is free. A
+            # map whose own search is running is not queued again (v14's rule).
+            for _k, _s in enumerate(slots):
+                if DSL[_k]["auto"]["eval"] is None:
+                    continue
+                _use_dslot(_k)
+                _ap, AUTO["eval"] = AUTO["eval"], None
+                AUTO["last_eval"] = _ap
+                try:
+                    _trig = _auto_spine_after_eval(_ap, start=False)
+                except Exception as _ex:     # a failed reading never ends the run
+                    _trig = None
+                    print(f"!! auto-spine[{_s.tag}]: {type(_ex).__name__}: {_ex}", flush=True)
+                if _trig and AQ["run"] == _k:
+                    print(f"[{global_step:>13,d}] auto-spine[{_s.tag}]: its search is still "
+                          f"running; no second search", flush=True)
+                elif _trig:
+                    _qi = [_j for _j, (_qk, _) in enumerate(AQ["q"]) if _qk == _k]
+                    if not _qi:
+                        AQ["q"].append((_k, _trig))
+                        _what = f"{_trig} request queued"
+                    elif _trig == "quorum" and AQ["q"][_qi[0]][1] != "quorum":
+                        AQ["q"][_qi[0]] = (_k, "quorum")      # a learned line goes first
+                        _what = "its queued patience request is now a quorum request"
+                    else:
+                        _what = f"{AQ['q'][_qi[0]][1]} request already queued"
+                    print(f"[{global_step:>13,d}] auto-spine[{_s.tag}]: {_what} (queue: "
+                          f"{', '.join(slots[_qk].tag + ':' + _qt for _qk, _qt in AQ['q'])})",
+                          flush=True)
+            while AQ["run"] is None and AQ["q"]:
+                # the card is free: the first quorum request, else the oldest request
+                _qq = [_j for _j, (_, _qt) in enumerate(AQ["q"]) if _qt == "quorum"]
+                _k, _qt = AQ["q"].pop(_qq[0] if _qq else 0)
+                _use_dslot(_k)
+                try:
+                    # served as it was made, on the map's latest eval (weights, frontier, fork
+                    # tick); a map whose latest eval finishes (--auto-spine-finish-stop) skips
+                    _auto_spine_after_eval(AUTO.get("last_eval"), start=True, force=_qt)
+                except Exception as _ex:     # a failed search never ends the run
+                    AUTO["retry_at"] = int(_own_step(_k) + float(args.auto_spine_retry))
+                    print(f"!! auto-spine[{slots[_k].tag}]: {type(_ex).__name__}: {_ex}; next "
+                          f"try at its step {AUTO['retry_at']:,}", flush=True)
+                if AUTO.get("proc") is not None:
+                    AQ["run"] = _k
+            _use_dslot(0)
+        elif AUTO_SPINE and AUTO["eval"] is not None:
             # --auto-spine: the greedy eval just written decides whether to search
             _ap, AUTO["eval"] = AUTO["eval"], None
             try:

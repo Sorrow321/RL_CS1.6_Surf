@@ -21,7 +21,8 @@ needs_mm = pytest.mark.skipif(not V.have_maps(), reason="needs two maps with the
                                                         "cell-32 caches (MM_TEST_MAPS)")
 # the families still refused with --maps; each S1 item removes its own
 NOT_YET = ["front_temp", "demo_front_temp", "greedy_temp", "energy_front", "int_gate",
-           "unstuck", "front_perturb", "greedy", "loop"]
+           "unstuck", "front_perturb", "greedy", "loop"]     # (the per-item tests keep it; the
+# full v14 line runs with every family since item i)
 MAPS_ARG = ["--maps", ",".join(str(m) for m in V.MM_MAPS)]
 
 
@@ -186,3 +187,28 @@ def test_h_the_entropy_weight_is_per_row_only_under_maps():
     assert "ENT_ROW = bool(MULTI and UNSTUCK_ENT)" in src
     assert "el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())" in src
     assert "return global_step if not MULTI else (int(global_step) * slots[si].n) // N" in src
+
+
+@needs_mm
+def test_i_j_the_whole_v14_line_per_map_without_a_search():
+    """every family on (the search held off): per-map spines, success lines, eval-driven
+    decisions on each map's own eval, per-map checkpoint state"""
+    import torch
+    tags = map_tags([m.stem for m in V.MM_MAPS])
+    r, d = V.run_line(V.ROOT, "mms1_i", MAPS_ARG, steps=8192)
+    try:
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-4000:]
+        for t in tags:
+            assert (d / "auto" / t / "spine0.npy").exists(), t
+            assert f"--auto-spine-scratch[{t}]: the first spine is the map's spawn state" in out
+            assert f"auto-spine[{t}]: 0/2 greedy episodes past the success line" in out or \
+                f"auto-spine[{t}]: " in out, t
+        assert "--demo-front-temp 0.5: an env whose episode started on the" in out
+        ck = torch.load(d / "ckpt_latest.pt", map_location="cpu", weights_only=False)
+        assert sorted(ck["auto_spine_failed"]) == sorted(tags)
+        assert sorted(ck["auto_spine_spines"]) == sorted(tags)
+        cfg = json.loads((d / "run.json").read_text())["config"]
+        assert cfg["maps"] == [m.stem for m in V.MM_MAPS]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

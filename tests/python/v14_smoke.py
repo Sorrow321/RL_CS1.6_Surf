@@ -74,8 +74,13 @@ def smoke(steps=12288, envs=64, search=False):
          "0.05", "--auto-spine-ge-minutes", "0.05", "--auto-spine-patience", "1",
          "--auto-spine-retry", "1", "--auto-spine-extra-secs", "1", "--no-compile", "--fp32",
          "--seed", "0"]
-    if not search:
-        s += ["--auto-spine-delay", "1e12"]
+    # identity runs hold the search off; a search smoke lets it start at once (v14's own
+    # --auto-spine-delay 3e8 would keep any CPU-sized run from ever searching)
+    s += ["--auto-spine-delay", "1e12" if not search else "0"]
+    if search:
+        # a CPU search at smoke scale: the MC stage's 4096 envs -> 64 (v14's other search args)
+        i = V14.index("--auto-spine-args")
+        s += ["--auto-spine-args", V14[i + 1].replace("--mc-envs 4096", "--mc-envs 64")]
     return s
 
 
