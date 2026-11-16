@@ -10326,13 +10326,14 @@ def main() -> None:
     if args.eval_parallel is None:
         args.eval_parallel = 0
     if args.eval_parallel:
-        # the side-by-side recorder serves the plain greedy eval of ONE map; every other
-        # eval path drives the eval core one episode at a time (env 0)
+        # the side-by-side recorder serves the plain greedy eval; every other eval path drives
+        # the eval core one episode at a time (env 0). --maps is fine (mm/s1): every training
+        # slot's eval core is N_EVAL_PAR wide and the eval loop records slot by slot; a held-out
+        # map's core is the 1-env core, so --heldout-maps stays refused
         _bad = [f for f, on in (("--eval-stall", args.eval_stall),
                                 ("--eval-mirror", int(args.eval_mirror or 0)),
                                 ("--goal-planner", args.goal_planner),
                                 ("--goals", getattr(args, "goals", None)),
-                                ("--maps", getattr(args, "maps", None)),
                                 ("--heldout-maps", getattr(args, "heldout_maps", None)))
                 if on]
         if not args.eval_greedy_only:
