@@ -48411,3 +48411,17 @@ All runs are one seed, from scratch. "+2" is the best time by the first finish +
   * Credit was $33.53 at 01:08 UTC (fleet-wide).
   * No box of mine is up. Tunnels 8646 and 8647 are stopped. The operator's 60843051 is the only
     live instance.
+
+## 2026-11-16 03:23 UTC: abzl_1 (v14 on za_loop) plateaus at ~26-28%; the cut moves to 10B on the user's word; the missing-ingredient study starts
+
+* Grader best 28.0% at 3.47B; every eval from 3.32B to 7.32B reads 25.7-28.0% (median 24.7-27.5%).
+  The za_loop program at the same steps: 57.4% (1.09B), 64.7% (4.03B), 98.3% (11.1B), first finish
+  12.43B. Searches 5 (beam, 3.96B), 6 (Monte Carlo, 5.66B, 9,599 states) and 7 (beam, 7.47B) each
+  handed back a line 330-420 u past the greedy; the walk-backs reached the spawn without moving the
+  greedy. In the 4.30B eval 4/9 episodes ended ALIVE at t 69.8-70.0 s, cut by --eval-patience 30
+  while swinging below their record; the training stall share reads 28-64%.
+* The user (03:20 UTC): run to 10B; if it does not improve, find the ingredient the za_loop program
+  had and v14 lacks, test whether it hurts the other maps, and keep the goal of ONE recipe (za_loop
+  may be left out of the big pool if no generic ingredient works). So the cut is now 10B steps (the
+  flat rule would have stopped it at 9.47B after search 7's line). Box extended to 06:22 UTC.
+* The contact rule, one candidate, is already measured and rejected (99c98925).
