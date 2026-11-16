@@ -49525,3 +49525,68 @@ Sub-agent M, CPU only (scratchpad pbcache/route_walls.py, descent_walls.py).
   depth image and normal channel do not show. The field pays a straight line through it; the
   physics forces weaving. v14 learned to weave anyway; how much the wrong field cost it is not
   measured. Rebake pb's grids (and make the old caches miss) before any new pb run.
+
+## 2026-11-16 20:45 UTC: PRE-LAUNCH - multi-map pilot P1 (one v14 policy, three maps)
+
+
+Written before the launch. The first run of ONE policy trained with the whole v14 loop on several
+maps at once (step 3 of the paper plan: one agent on many maps); approved by the user 2026-11-16.
+
+### The question
+
+Recipe v14 finishes each of the seven development maps from scratch, one map per run (c1d4d88e).
+Does ONE policy trained with v14 unchanged on surf_petrus_lite, surf_edgeflow_blue200 and
+surf_src_celestial at once, from the true starts, champion-free, finish all three - and how many
+of its OWN steps does each map need, against the single-map v14 runs?
+
+### The run: `mmp1_1` (box owner mmp1)
+
+* Recipe v14 unchanged: the 160 tokens of wt/ab14p (md5 6e2a72ca over the 158 without --maxvel)
+  with `--envs 1023` (341 per map) and `--maxvel 4000,4000,4000` (each map's v14 value), then
+  v14's launch extra (`--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'`, config multimap.extra). From scratch, seed 0, no
+  warm start, no demo; every curriculum line is the loop's own search, per map.
+* Code: branch mm/s1 at dcbfc05a (worktree ~/ar_m2/wt/mmaudit; config 68baf1b7). It is fea35b06
+  plus the per-map port of v14 (S1 a-j: each map its own novelty gate and cap, energy band,
+  front and greedy rows, unstuck schedule, search loop and curriculum), the per-map grader
+  (S2) and the entity tag (only pb has more than 128 solid entities; none of these three).
+  A single-map v14 run on this code is byte-identical to fea35b06 (config, eval trajectories,
+  progress rows) and `--maps A` is `--map A` (tests/python/test_mm_identity.py).
+* The operator's decisions D1-D5: --envs split evenly; every per-map clock and eval counts the
+  map's OWN steps (fleet steps x 341/1023; each map evaluated every --record-every of its own
+  steps); one search at a time, FIFO, a quorum request ahead of a patience one, served as it
+  was made on the map's latest eval; the unstuck entropy weight exact per row; --maxvel per map.
+* Launch: `python3 autoresearch/box.py launch --agent mmp1 --run mmp1_1 --multimap --steps 6e9`
+  (run_arm.sh SCRATCH=1 MAPS=..., the record gate per map). Assets: mm_p1_maps.tar.gz (md5
+  60b0c77205649d151e6cc22d3938685a, 23 files: blue200cf + petrus_litec + celestialc +
+  celestial's faceid_32); petrus has no faceid_32, the trainer bakes it on the GPU at its first
+  start (time unverified).
+* Box: one RTX 5080 / 4080 SUPER / 4080, <= $0.45/h, verified, >= 32 threads, 60 GB, no CN;
+  fleet watchdog with the harvest spec and the pid file; dashboard tunnel.
+* Checked on the droplet's CPU before the launch: this exact command line (built by box.py from
+  the config, smoke sizes and `--obs-normal 0` appended) through run_arm.sh with DRY_RUN=0 -
+  the record gate passed (12 recordings: greedy, stochastic, drop-spawn and the POV render, per
+  map), per-map evals and the search queue ran; a 4-map forced-search smoke (11 searches, one
+  at a time; blue200, petrus and unitfarmer2 adopted lines, pb none at that scale); a 3-map
+  crash-resume through box.py --multimap --resume restores every map's state and every flag.
+
+### The references: v14 single-map, from scratch (ledger c1d4d88e)
+
+* First greedy finish: petrus 302.5M (best 30.10 s), celestial 680.0M (42.81 s), blue200 982.0M
+  (12.14 s); median 425k / 401k / 411k steps/s on this card tier. If sharing costs nothing they
+  are 0.91B / 2.04B / 2.95B fleet steps here.
+* One seed per map (CLAUDE.md: the 27% noise floor, the gate ladder): an own-step ratio within
+  about 2x reads as no evidence of interference, not as a measured cost or gain.
+
+### Reads, cut and budget (fixed now)
+
+* Reads: `autoresearch/score_maps.py runs/mmp1_1` (per map: first finish at the fleet step and
+  at its own step, best time, finishes per eval; finishes only from the grader); steps/s against
+  the single-map runs; the queue (searches per map, waits); VRAM; read in steps, not wall time.
+* Cut: `autoresearch/mm_cut.py runs/mmp1_1` - CUT at 6.0B fleet steps, or once every map has
+  finished and has 5 of its own evals after its first finish; STOP early below 150k steps/s
+  past 30 min of training, or if no map has finished by 3.0B fleet steps.
+* Budget: 6.0B at 1.0-1.5B fleet steps/h (multi-map throughput unmeasured) = about 4-6 h, about
+  $2-3 at <= $0.45/h; box deadline 6.5 h (box_hours_default). A crash resumes with box.py deploy
+  --ckpt <pulled ckpt_latest.pt> + launch --multimap --resume (the same tokens, --envs and
+  --maxvel from the checkpoint).
