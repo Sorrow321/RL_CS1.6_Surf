@@ -48803,3 +48803,19 @@ on each arm's own worktree and core build.
     start room is the slow-map risk.
   * zlB would show it first on princessburglar (54-98% of its training episodes are stall-killed
     in the start room).
+
+## 2026-11-16 05:12 UTC: FINAL abzl_1 - recipe v14 unchanged on surf_za_loop from scratch: NO FINISH, flat at 25-28% from 3.32B to 10.15B
+
+* Grader best 28.0% (3.47B); every eval from 3.32B to 10.12B reads 25.3-28.0%. Stopped by pid at
+  10,148,642,816 (05:10 UTC), the 10B cut set on the user's word (522040a7). 8 searches; lines 2-8
+  (Monte Carlo 2, 3, 6; beam 5, 7, 8) were adopted 300-420 u past the contact-banked greedy frontier,
+  walked back to the spawn, and none moved the greedy past its own 28% record (P's analysis,
+  33ea6c5d: they end at or behind it, and the energy stage never ran). The za_loop program at the same
+  steps: 64.7% at 4.03B, 98.3% at 11.1B, first finish 12.43B.
+* Verdict: the held-out test of v14 fails on za_loop. P's analysis (33ea6c5d) names the missing
+  piece: the program PAID for pumping (per-call energy, 19-51% of its return) and its stall clock
+  counted energy (--energy-stall 32); v14 pays neither inside za_loop's half-pipe. The three arms of
+  ca5f0883 test that (zlA energy-record pay, zlB --energy-stall 32, zlAB both), launched now.
+* BUNDLE OK (md5 = box): ~/ar_m2/runs/abzl/abzl_1 (evals gzipped after the check, pre-gzip md5s in
+  traj_md5_before_gzip.txt), ckpts_1 (11 checkpoints incl. ckpt_latest), auto_1. Box 60843051
+  destroyed 05:11 UTC; tunnel 8645 stopped. Cost about $2.8 (7.1 h at $0.387/h).
