@@ -212,3 +212,38 @@ def test_i_j_the_whole_v14_line_per_map_without_a_search():
         assert cfg["maps"] == [m.stem for m in V.MM_MAPS]
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_mm
+def test_i_a_crash_resume_restores_every_maps_state():
+    """a crash-resume of a two-map v14 run (the same line + --ckpt): every map's held spine,
+    failed-line state, novelty gate and cap, greedy pool and unstuck schedule come back by its
+    tag, and both maps go on training and evaluating"""
+    import torch
+    tags = map_tags([m.stem for m in V.MM_MAPS])
+    r, d = V.run_line(V.ROOT, "mms1_res1", MAPS_ARG, steps=8192)
+    d2 = None
+    try:
+        assert r.returncode == 0, (r.stdout + r.stderr)[-4000:]
+        ck = torch.load(d / "ckpt_latest.pt", map_location="cpu", weights_only=False)
+        for key in ("auto_spine_spines", "auto_spine_failed", "int_coef_progress",
+                    "int_share_max", "unstuck", "respawn_greedy"):
+            assert sorted(ck[key]) == sorted(tags), key
+        r2, d2 = V.run_line(V.ROOT, "mms1_res2", MAPS_ARG, steps=16384,
+                            extra=["--ckpt", str(d / "ckpt_latest.pt")])
+        out = r2.stdout + r2.stderr
+        assert r2.returncode == 0, out[-4000:]
+        for t in tags:
+            assert f"--auto-spine-scratch[{t}]: resumes on its held spine" in out, t
+            assert f"auto-spine[{t}]: failed-line state restored from the checkpoint" in out, t
+            assert f"--int-coef-progress[{t}]: restored the novelty coefficient" in out, t
+            assert f"--int-share-max[{t}]: restored the cap's multiplier" in out, t
+            assert f"restored --unstuck state [{t}]" in out, t
+            assert f"restored --respawn-greedy state[{t}]" in out, t
+            assert list(d2.glob(f"traj_*_{t}.jsonl")), t
+        ck2 = torch.load(d2 / "ckpt_latest.pt", map_location="cpu", weights_only=False)
+        assert ck2["auto_spine_spines"] == ck["auto_spine_spines"]   # no search: same lines
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+        if d2 is not None:
+            shutil.rmtree(d2, ignore_errors=True)
