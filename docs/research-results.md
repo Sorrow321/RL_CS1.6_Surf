@@ -49025,3 +49025,192 @@ five maps v14 finishes from scratch? Cannonball (the long one) and princessburgl
   * Fleet <= 5 boxes.
 * **Reads:** the first greedy finish step and the best time by the first finish + 2 evals
   (score.py in each run's worktree), against v14 and the contact rule's numbers where they exist.
+
+## 2026-11-16 16:05 UTC: FINAL (sub-agent P) - wave 19: three za_loop arms (energy-record pay, energy clock, both)
+
+The pre-launch text of this entry is at ca5f0883; what follows is the run record from the launch on, unchanged from P's body.
+
+### Launched (2026-11-16, after abzl_1's 10B read: no improvement, stopped at 10.149B)
+
+* **Bus post:** 20261116T051032Z_claude_4d57d8 (proposal). Every launch passed the record gate
+  (greedy, stoch and mixed recordings plus the POV render).
+
+| arm | run | box | card, $/h | gate passed | tunnel |
+|---|---|---|---|---|---|
+| zlA | abzla_1 | 60883032 | RTX 5080, 0.387 | 05:14 UTC | :8646 |
+| zlB | abzlb_1 | 60883092 | RTX 5080, 0.387 | 05:14 UTC | :8647 |
+| zlAB | abzlab_1 | 60883156 | RTX 4070S Ti, 0.184 | 05:16 UTC | :8648 |
+
+* **zlAB is on a different card class.**
+  * deploy_box's GPU health check passed (healthy). It runs at ~271k fps, against 374-385k on the
+    5080s.
+  * The cut is in steps, so it costs hours only.
+  * Cross-card greedy rollouts are not bit-comparable (CLAUDE.md, lidar march): the three arms
+    are compared on steps and on qualitative reads, not on any single eval.
+* **Deadlines (extended at 05:21 UTC):**
+  * zlA and zlB to 09:33 UTC (4.5B at ~08:30); zlAB to 10:51 UTC (4.5B at ~09:55).
+  * The watchdog was re-registered for each with the same harvest spec and pid file; the on-box
+    deadline equals the registry's.
+* **Null rule, automated (abl/w19/stop_null.sh, one per arm).**
+  * Once the trainer passes 4.5B and the 4,454.9M eval is graded, the trainer is stopped by its
+    pid file if no grader best is above 28.0%.
+  * An arm past 28% is left to the standing za_loop rule.
+
+### Operator decisions after the launch (2026-11-16 ~07:20 UTC)
+
+* **The operator's read at ~07:20 UTC:** every arm is past v14's 28.0%, and every arm is below
+  the program's 57-65% at the same steps.
+  * zlA 34.2% (3.02B), zlAB 33.9% (2.05B), zlB 30.7% (2.90B).
+  * The pre-registered null rule therefore stops none of them.
+* **zlB, the operator's budget decision (not a pre-registered rule).** At zlB's 4.5B read it is
+  stopped if its grader best by 4.5B is below zlA's best by 4.5B (step-matched).
+  * Automated by abl/w19/stop_vs.sh, which replaces zlB's stop_null.sh.
+  * Otherwise zlB continues under the za_loop rule.
+* **zlA and zlAB continue under the za_loop rule:** the first finish + 5 evals; or 2.0B without a
+  new best (>= 0.1 point), counted from the later of the last best and the last adopted line;
+  or 20B.
+  * zlA's box was extended at 07:20 UTC to 11:32 UTC (watchdog re-registered).
+  * zlAB's deadline is 10:51 UTC, to be extended before then.
+
+### The 4.5B reads
+
+* **zlA (the energy ratchet): best 37.0% by 4.5B, first reached at the 4.00B eval.**
+  * The 4.45B eval reads 35.3%, median 32.8%. Searches 2-4 adopted beam lines at 0.86B, 2.00B
+    and 3.13B (ends 24%, 29%, 33%).
+  * It continues under the za_loop rule. Its 2.0B-flat stop falls at ~6.0B unless it makes a
+    new best or adopts a new line. The box runs to 11:32 UTC.
+* **zlB (--energy-stall alone): best 32.0% by 4.5B, below zlA's 37.0%.**
+  * The operator's budget rule stopped it by pid at 4,524.1M (08:29 UTC).
+  * Bundle ~/ar_m2/runs/abzlb (abzlb_1, ckpts_1, auto_1; BUNDLE OK). Box 60883092 released
+    08:30 UTC, gone in vastai; tunnel stopped.
+  * It sat at the spawn until search 1's line at 554M: every training episode was stall-killed
+    at 15 s.
+* **zlAB (both): its 4.5B read comes at ~09:55 UTC (the slower card).**
+  * At 2.72B, one of 9 greedy episodes left the second trough northward (45.6%).
+  * The other 8 top out at ~35% at the trough's west end, pumped to E -100..-170. v14 topped out
+    at E -1,300..-1,500 in the same pipe.
+
+### zlAB stopped by the operator (2026-11-16 ~10:53 UTC; a budget decision, not pre-registered)
+
+* **Why.** The pair (ratchet + --energy-stall) was not ahead of the ratchet alone: zlAB 57.4%
+  against zlA 59.1%. Its question is answered for now, and its slot went to princessburglar's
+  w21 run.
+* **zlAB's climb.** 23.0% (529M), 28.8% (680M), 45.6% (2.72B, one episode out of the second
+  trough), then 52.2% (~4.76B), 53.9%, 55.5%, 56.9% and 57.4% (~5.42B).
+* **Housekeeping.** Stopped by pid at 5,628.2M. Bundle ~/ar_m2/runs/abzlab (abzlab_1, ckpts_1,
+  auto_1; BUNDLE OK). Box 60883156 released 10:56 UTC, gone in vastai; tunnel stopped.
+* **zlA continues under the za_loop rule.** Best 59.1% (7.52B) after 52.9% at 5.06B (search 5's
+  Monte Carlo line at 4.92B) and 58.8% at 6.42B. Its box runs to 13:17 UTC.
+
+### zlA hard-capped at 15.14B by the operator (2026-11-16 ~14:41 UTC, decided at ~13.2B)
+
+* **The decision.** zlA stops at 15.14B (~16:00 UTC). New search lines and new bests no longer
+  move the stop; only a greedy finish does, and then the first finish + 2 evals is the stop.
+  Automated by abl/w21/cut_stop.sh (cap 15,140,000,000), which replaces the za_loop flat stop.
+* **Reason 1: the lines are not progress.** Searches 8-11 adopted Monte Carlo lines at 8.16B,
+  9.96B, 11.35B and 13.14B. All end at d 2,666-2,852 (55-58%), behind the greedy's own 61.5-63.1%.
+  * They count as "deeper" only against the contact-banked frontier (d ~3,900 = 39%), the loop
+    defect from w18.
+  * Each adoption restarted the 2.0B flat clock without the greedy moving.
+* **Reason 2: the best barely moves.** It went up +1.6 points in 4.8B steps (61.5% at 8.31B,
+  63.1% at 11.25B).
+* **Reason 3: the budget.** Running to 20B (~$2.7) would breach the $13 credit floor once pb
+  (~$3.6 to 20.7B), sidistic (~$1.2), cannonball (~$1.0) and unitfarmer2 (~$0.4) are counted.
+* **Timing.** Decided at ~13.2B, before any read past it. The box stays extended to 17:17 UTC.
+
+### zlA FINAL: no finish by the 15.14B hard cap
+
+* **Run.** Box 60883032 (RTX 5080, $0.387/h), launched ~05:13 UTC.
+  * Stopped by pid at 15,145.1M (15:58:20 UTC). That is the hard cap; the stop waited
+    until the last eval at or below the cap (15,100.0M) was graded.
+  * The cut watcher was replaced at ~15:29 UTC (abl/w21/cut_stop2.sh, mode `extend`). The old one
+    compared eval steps as text, so past 10B "first finish + 2 evals" could not have fired.
+    Nothing had fired, and no finish had been seen.
+  * Bundle ~/ar_m2/runs/abzla (abzla_1, ckpts_1, auto_1; BUNDLE OK). Box released 16:03 UTC,
+    gone in vastai; tunnel stopped. Cost about $4.20.
+* **Greedy evals** (score.py in wt/abzla): 201 to 15,100.0M, 0 finishes.
+  * The best climbed 34.8% (2.72B), 37.0% (4.00B), 52.9% (5.06B), 58.8% (6.42B), 61.5% (8.31B)
+    and 63.1% (11.25B).
+  * After 11.25B, 51 evals read 52.6-62.4%; the 15,100.0M eval read 54.8%.
+* **Searches.**
+  * 1 (415M) was stale (its line did not beat the greedy by then).
+  * 2-4, 6 and 7 (0.86B-6.33B) handed back lines that passed: ends d 4,841 down to 2,876.
+  * 5 (4.92B) and 8-11 (8.16B-13.14B) were patience fallbacks (the cross-run paragraph below).
+    After 5 the best jumped 35.4% -> 52.9%. After 8 it went 59.1% -> 61.5% (8.31B), and after
+    9-11 it gained +1.6 more (63.1% at 11.25B).
+  * 12 (14.72B) found no line. 13 started at 15.02B and ended with the stop; it held two
+    fallbacks again (best d 2,808 against the held 2,708).
+* **Against v14 and the program.**
+  * v14 (abzl_1): flat at 25-28% to 10.15B, no finish.
+  * The za_loop program's lineage: 57% at 1.09B, by RL alone in the same pipe.
+  * zlA passed v14's plateau by 2.72B and reached 63.1%, but never finished. Paying for
+    energy-height records restores the climb out of the second trough, not a finish.
+
+### Cross-run: the line-adoption defect (the same paragraph is in the w21 body)
+
+* **It is the designed patience fallback, not a comparison bug.** Every instance below has the
+  same mechanism:
+  * The greedy never passed the held line's success line, so the trainer ran a PATIENCE search.
+  * No stage beat the held line's end by the gain (200 u of d) (`--auto-spine-current-ref`).
+  * auto_spine.py then handed back its fallback, the deepest line that beats only the greedy
+    frontier. Each search's log ends "no stage found a line past the current line's end: the
+    fallback is handed back".
+  * The trainer adopts a fallback exactly like a pass: it never reads the result's `fallback`
+    flag. The held line is replaced and "the curriculum restarts at its end".
+* **The bar can sit far behind the greedy.** "The greedy frontier" is the MEDIAN over the 9
+  episodes of each one's deepest contact-banked d, not the best episode.
+  * zlA: it sat at d ~3,900 (39%). At the same evals the grader read 57-60% for the median
+    episode and 61.5-63.1% for the best.
+  * pb at search 4 it was accurate: the greedy had fallen back to the spawn (the median at the
+    start d 57,149, the best episode 0.1%).
+* **The instances:**
+  * unitfarmer2 search 3 (2.71B), after line 2 "failed its curriculum" (2.11B): the failed-line
+    fallback (ab/ff), an archive line at d 29,378, 952 u behind line 2 (28,426).
+  * princessburglar search 4 (4.10B), after line 2 failed (2.34B): a Monte Carlo line at
+    d 56,913, 1,800 u behind line 2 (55,113).
+    * Line 2 reached the pit. Line 4 ends in the room at the crouch tunnel's mouth (0.4%):
+      ahead of the greedy then (0.1%), at the place its episodes had reached before 2.64B.
+  * za_loop zlA searches 8-11 (8.16B-13.14B): Monte Carlo lines at d 2,784, 2,852, 2,666 and
+    2,708.
+    * Each is within the gain of the line it replaced: 92 u past, 68 u behind, 186 u past and
+      42 u behind.
+    * All four are behind the best greedy episode.
+    * Each adoption restarted the curriculum, and the za_loop flat clock, at the same place.
+  * zlA search 5 (4.92B) was a fallback too: 81 u past line 4 and ~160 u behind the best greedy
+    episode (34.5% against 37.0%).
+    * The next eval jumped from 35.4% to 52.9% (median 34.5% -> 51.0%), zlA's largest step.
+* **Why it is generic.** No map enters it, and the same rule runs in v14: it is not the
+  ratchet's.
+* **Candidates (none built or tested):**
+  * a fallback that ends within the gain of the held line is not a new line: keep the held one
+    (zlA);
+  * a fallback must also beat the greedy's BEST episode by the gain, not only the median. That
+    would refuse zlA's 8-11 (55-58% against a best episode of 61.5-63.1%). For pb's search 4 and
+    uf2's search 3 it is not measured here.
+  * **Both would also have refused zlA's search 5**, the fallback that came right before zlA's
+    largest step. The d of a line's end does not say whether its path is new. A fix needs a test
+    arm, not only a rule.
+* **What it did not decide.** On unitfarmer2 and princessburglar the policy had not learned the
+  deeper held line either: it was marked failed before the swap, and there was no exit from the
+  pit or the room before or after. The fallbacks cost curriculum time; whether they cost a finish
+  is not shown.
+
+### Verdict of wave 19 (one seed per arm)
+
+* **Energy-record pay (zlA)** is the ingredient that moves v14 on za_loop: 25-28% -> 63.1%, no
+  finish in 15.14B steps.
+* **The energy clock alone (zlB)** stalled at the spawn until search 1 and reached 32.0% by 4.5B,
+  against zlA's 37.0% at the same step. Stopped there by the operator's budget rule.
+* **Both (zlAB): ahead of the pay alone at matched steps.**
+  * The operator's stop (10:53 UTC) compared the two at equal wall clock: zlAB 57.4% at 5.4B,
+    zlA 59.1% at 7.5B on a faster card.
+  * At the same step (74 matched evals to 5.51B), zlAB led in 47 and zlA in 25. 22 of zlA's
+    leads fell between 2.19B and 4.61B, where both sat mostly at 31-37%.
+  * zlAB first passed 50% at 4.76B (52.2%), zlA at 5.06B (52.9%). By 5.51B the best was 57.4%
+    against 53.8%.
+  * It also ran at half the price ($0.184/h against $0.387/h).
+  * One seed, stopped at 5.63B. Whether the energy clock adds to the pay is OPEN, not answered.
+* **Costs (box time):** about $6.53 in all.
+  * zlA $4.20 (RTX 5080, 05:12-16:03 UTC).
+  * zlB $1.28 (RTX 5080, 05:12-08:31 UTC).
+  * zlAB $1.05 (RTX 4070S Ti, 05:13-10:56 UTC).
