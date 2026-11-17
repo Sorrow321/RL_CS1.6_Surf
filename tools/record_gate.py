@@ -26,6 +26,10 @@ of this checkout):
 
     python tools/record_gate.py gbCELunstuck --pid 1234 --wait-secs 900
     python tools/record_gate.py jt3ANCHU --ckpt runs/jt3ANCHU/ckpt_final.pt
+
+RECORD_GPU=<spec> (mm/ddp, surfgym/gpupick.py: inherit | own | free | <n> | GPU-<uuid>): the
+card the recordings and the POV render run on - unset = inherit, what they always did.
+tools/run_arm.sh RANKS=N passes free (the training ranks' cards differ in what they hold).
 """
 from __future__ import annotations
 
@@ -40,6 +44,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
+
+
+def child_env():
+    """(env, note) for a recording / POV render: RECORD_GPU's card (surfgym/gpupick.py), or
+    (None, "inherit") when it is unset - the subprocess then inherits, as it always did."""
+    spec = os.environ.get("RECORD_GPU", "").strip()
+    if not spec:
+        return None, "inherit"
+    sys.path.insert(0, str(ROOT / "python"))
+    from surfgym import gpupick
+    return gpupick.child_env(spec)
 
 
 def find_bsp(stem: str) -> Path | None:
@@ -119,7 +134,7 @@ def record_once(ck: Path, out: Path, bsp: Path | None, extra: list[str], timeout
         cmd += ["--map", str(bsp)]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace", env=child_env()[0])
     except subprocess.TimeoutExpired:
         return False, f"timed out after {timeout:.0f}s: {' '.join(cmd)}"
     if r.returncode != 0 or not out.exists():
@@ -143,7 +158,7 @@ def render_pov_once(traj: Path, timeout: float) -> tuple[bool, str]:
     cmd = [sys.executable, str(script), str(traj), "--out", str(pov)] + list(vis)
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace", env=child_env()[0])
     except subprocess.TimeoutExpired:
         return False, f"timed out after {timeout:.0f}s: {' '.join(cmd)}"
     ok = r.returncode == 0 and pov.exists() and pov.stat().st_size > 0
@@ -173,6 +188,9 @@ def main() -> int:
                     help="skip the POV render of the greedy recording")
     a = ap.parse_args()
 
+    if os.environ.get("RECORD_GPU", "").strip():
+        print(f"== record gate: RECORD_GPU={os.environ['RECORD_GPU'].strip()} -> "
+              f"{child_env()[1]} (chosen again for every recording)", flush=True)
     run_dir = RUNS / a.run
     if a.ckpt:
         ck_src = Path(a.ckpt)

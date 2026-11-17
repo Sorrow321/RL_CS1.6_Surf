@@ -28,6 +28,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
+
+
+def _child_env():
+    """env for a record / POV button's subprocess: RECORD_GPU's card (surfgym/gpupick.py:
+    inherit | own | free | <n> | GPU-<uuid>, chosen at the click), or None when it is unset -
+    the button inherits the dashboard's environment, as it always did. On a multi-GPU box
+    start the dashboard with RECORD_GPU=free (or a card index) so a click does not land on a
+    training rank's full card."""
+    spec = os.environ.get("RECORD_GPU", "").strip()
+    if not spec:
+        return None
+    sys.path.insert(0, str(ROOT / "python"))
+    from surfgym import gpupick
+    return gpupick.child_env(spec)[0]
 # maps always come from the MAIN checkout: a worktree copy has different
 # mtimes and every prebaked cache keys on them (CLAUDE.md)
 _MAIN = Path("C:/RL_Surf/maps")
@@ -1270,7 +1284,7 @@ class Handler(SimpleHTTPRequestHandler):
             _RENDERS[str(p)] = subprocess.Popen(
                 [sys.executable, str(script),
                  str(p), "--out", str(pov)] + vis,
-                stdout=subprocess.DEVNULL, stderr=errf)
+                stdout=subprocess.DEVNULL, stderr=errf, env=_child_env())
             return self._json({"status": "started"})
         if url.path == "/api/record":
             # record fresh rollouts from a run's ckpt_latest.pt:
@@ -1381,7 +1395,7 @@ class Handler(SimpleHTTPRequestHandler):
                 cmd.append("--stochastic")
             errf = open(d / f"{fstem}.err", "wb")
             _RECORDS[key] = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=errf)
+                cmd, stdout=subprocess.DEVNULL, stderr=errf, env=_child_env())
             return self._json({"status": "started"})
         if url.path == "/api/metrics":
             q = urllib.parse.parse_qs(url.query)

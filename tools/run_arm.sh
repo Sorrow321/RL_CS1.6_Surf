@@ -373,23 +373,51 @@ fi
 # passes exactly the tokens it always did. The liveness window is the MULTIMAP
 # branch's 300 s: every map's iteration-1 eval runs before the first step line.
 # DRY_RUN=1 prints the trainer's command line and exits (the launcher's test).
+#
+# SCRATCH=1 MAPS=... RANKS=N (mm/ddp, 2026-11-17): the same line on N GPUs, MAP-SHARDED
+# (--ddp-maps shard): rank r trains maps r, r+N, r+2N, ... of the MAPS order, --envs stays the
+# GLOBAL fleet (envs/maps per map, as on one GPU), and tools/ddp_launch.sh warms every map's
+# caches once single-process, then runs torchrun x N with the per-rank thread sizing (it
+# passes --run-name itself). runs/<run>.pid is ddp_launch.sh's pid, which execs torchrun: its
+# death is the run's, and its SIGTERM stops every rank and the ranks' searches. RANKS unset or
+# 1 = exactly the single-process launch above.
 if [ "${SCRATCH:-0}" = "1" ]; then
   echo "== SCRATCH: training from nothing (no checkpoint, no md5 gate)"
   echo "   view: $VIEW - $VIEW_DESC"
   echo "   keys: $KEYS - $KEYS_DESC"
   echo "   pot:  $POT - $POT_DESC"
+  RANKS="${RANKS:-1}"
+  case "$RANKS" in
+    ''|*[!0-9]*|0) echo "!! RANKS must be a rank count >= 1 (got '$RANKS')"; exit 1 ;;
+  esac
   if [ -n "${MAPS:-}" ]; then
     MAP_ARGS=(--maps "$MAPS")
     LIVE_N=60
     echo "   maps: $MAPS (one shared policy; MAP is ignored)"
   else
+    if [ "$RANKS" != "1" ]; then
+      echo "!! RANKS=$RANKS shards the MAPS list over the ranks (--ddp-maps shard): give MAPS"
+      exit 1
+    fi
     MAP="${MAP:-maps/surf_src_cannonball.bsp}"
     MAP_ARGS=(--map "$MAP")
     LIVE_N=18
   fi
+  RUN_ARGS=(--run "$RUN")
+  if [ "$RANKS" != "1" ]; then
+    # ddp_launch.sh passes --run-name itself (torchrun prefix-matches --run); the warm-caches
+    # pass runs before torchrun, so the liveness window doubles
+    RUN_ARGS=(--ddp-maps shard)
+    LIVE_N=$((LIVE_N * 2))
+    _NM=$(awk -F, '{print NF}' <<<"$MAPS")
+    if [ "$_NM" -lt "$RANKS" ]; then
+      echo "!! RANKS=$RANKS ranks for $_NM maps: every rank needs a map"; exit 1
+    fi
+    echo "   ranks: $RANKS (map-sharded DDP: rank r trains maps r, r+$RANKS, ... of MAPS)"
+  fi
   mkdir -p runs
   LOG="runs/${RUN}_launch.txt"
-  ARGS=("${MAP_ARGS[@]}" --run "$RUN" --reward race --envs 2048 --spawn platform
+  ARGS=("${MAP_ARGS[@]}" "${RUN_ARGS[@]}" --reward race --envs 2048 --spawn platform
         --lidar-w 64 --lidar-h 32 --lidar-cell 32
         --lidar-range 11500 --lidar-near 2000
         --emb 512 --hidden 448
@@ -406,13 +434,23 @@ if [ "${SCRATCH:-0}" = "1" ]; then
         --eval-greedy-only ${VIEW_ARGS[@]+"${VIEW_ARGS[@]}"}
         ${KEYS_ARGS[@]+"${KEYS_ARGS[@]}"} ${POT_ARGS[@]+"${POT_ARGS[@]}"} "$@")
   echo "== launch"
-  echo "   $PY -u python/train_fast.py ${ARGS[*]}"
+  if [ "$RANKS" = "1" ]; then
+    echo "   $PY -u python/train_fast.py ${ARGS[*]}"
+  else
+    echo "   bash tools/ddp_launch.sh $RANKS $RUN ${ARGS[*]}"
+  fi
   echo "   budget $BUDGET steps from zero   log $LOG"
   if [ "${DRY_RUN:-0}" = "1" ]; then
+    if [ "$RANKS" != "1" ]; then echo "DRY_RUN_RANKS $RANKS"; fi
     printf 'DRY_RUN_ARG %s\n' "${ARGS[@]}"
     exit 0
   fi
-  nohup $PY -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+  if [ "$RANKS" = "1" ]; then
+    nohup $PY -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+  else
+    PYTHON="$PY" nohup bash tools/ddp_launch.sh "$RANKS" "$RUN" "${ARGS[@]}" \
+        > "$LOG" 2>&1 < /dev/null &
+  fi
   PID=$!
   disown "$PID" 2>/dev/null || true
   echo "$PID" > "runs/${RUN}.pid"
@@ -430,6 +468,9 @@ if [ "${SCRATCH:-0}" = "1" ]; then
   fi
   echo "== ALIVE pid $PID"
   echo "== record gate: this run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
+  # RANKS > 1: the gate's recordings go to the card with the most free memory (RECORD_GPU,
+  # surfgym/gpupick.py) - the ranks' cards hold different maps; set RECORD_GPU to override
+  if [ "$RANKS" != "1" ]; then export RECORD_GPU="${RECORD_GPU:-free}"; fi
   if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
     echo "!! record gate FAILED: the run is stopped and does not count as launched"
     exit 1
@@ -522,16 +563,36 @@ STOP=$((CKSTEP + BUDGET))
 
 mkdir -p runs
 LOG="runs/${RUN}_launch.txt"
-ARGS=(--ckpt "$CKPT" --run "$RUN" --steps "$STOP"
+# RANKS=N (mm/ddp): the resume of a --maps checkpoint on N GPUs, map-sharded (--ddp-maps shard,
+# tools/ddp_launch.sh as in the SCRATCH branch); every rank restores its own maps' state by
+# tag, so a one-GPU checkpoint moves to N GPUs and a sharded one back to one. RANKS unset or 1
+# = the single-process resume, token for token
+RANKS="${RANKS:-1}"
+case "$RANKS" in
+  ''|*[!0-9]*|0) echo "!! RANKS must be a rank count >= 1 (got '$RANKS')"; exit 1 ;;
+esac
+RUN_ARGS=(--run "$RUN")
+LIVE_R=12
+if [ "$RANKS" != "1" ]; then
+  RUN_ARGS=(--ddp-maps shard)
+  LIVE_R=72
+  echo "   ranks: $RANKS (map-sharded DDP over the checkpoint's --maps list)"
+fi
+ARGS=(--ckpt "$CKPT" "${RUN_ARGS[@]}" --steps "$STOP"
       --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS"
       --eval-greedy-only --ckpt-every 1e9 "$@")
 
 echo "== launch"
-echo "   $PY -u python/train_fast.py ${ARGS[*]}"
+if [ "$RANKS" = "1" ]; then
+  echo "   $PY -u python/train_fast.py ${ARGS[*]}"
+else
+  echo "   bash tools/ddp_launch.sh $RANKS $RUN ${ARGS[*]}"
+fi
 echo "   budget $BUDGET steps -> stop at $STOP   log $LOG"
 echo "   view: whatever $CKPT carries (view_continuous / view_absolute are restored from it; VIEW=$VIEW is ignored on a resume)"
 echo "   keys/pot: whatever $CKPT carries (keys_hold / obs_potential / obs_potential_curtain are restored from it; KEYS and POT are ignored on a resume - both change tensor shapes and a checkpoint's head and conv1 cannot be re-read)"
 if [ "${DRY_RUN:-0}" = "1" ]; then
+  if [ "$RANKS" != "1" ]; then echo "DRY_RUN_RANKS $RANKS"; fi
   printf 'DRY_RUN_ARG %s\n' "${ARGS[@]}"
   exit 0
 fi
@@ -539,14 +600,19 @@ fi
 # may or may not still exist a second later, and the liveness check below
 # would be testing the wrong pid. nohup alone already survives the ssh
 # session ending, which is the property that matters.
-nohup $PY -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+if [ "$RANKS" = "1" ]; then
+  nohup $PY -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+else
+  PYTHON="$PY" nohup bash tools/ddp_launch.sh "$RANKS" "$RUN" "${ARGS[@]}" \
+      > "$LOG" 2>&1 < /dev/null &
+fi
 PID=$!
 disown "$PID" 2>/dev/null || true
 echo "$PID" > "runs/${RUN}.pid"
 echo "   pid $PID"
 
-echo "== liveness (60s)"
-for _ in $(seq 12); do
+echo "== liveness ($((LIVE_R * 5))s)"
+for _ in $(seq "$LIVE_R"); do
   sleep 5
   if ! kill -0 "$PID" 2>/dev/null; then
     echo "!! trainer exited during startup. Log tail:"
@@ -562,6 +628,7 @@ if ! kill -0 "$PID" 2>/dev/null; then
 fi
 echo "== ALIVE pid $PID"
 echo "== record gate: this run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
+if [ "$RANKS" != "1" ]; then export RECORD_GPU="${RECORD_GPU:-free}"; fi
 if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
   echo "!! record gate FAILED: the run is stopped and does not count as launched"
   exit 1
