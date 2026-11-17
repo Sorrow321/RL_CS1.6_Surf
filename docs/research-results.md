@@ -49736,3 +49736,40 @@ Written before the launches; next to mmpc_1 (88e0e61f), on two more boxes.
 * Cut (fixed now): celestial's first finish + 5 own evals, or STOP at 1.5B own steps (4.5B fleet)
   with no celestial finish (~1.8-2.2x the single-map first finishes); a broken run (< 150k fleet
   steps/s after 30 min, dead trainer) stops at once. ~5 h, ~$2 per box.
+
+## 2026-11-17 08:09 UTC: RESULT - why celestial failed in the shared run: the pooled advantage scale (runs A, C; B running)
+
+Runs of 4bf7324d and 88e0e61f. Finishes from the grader (score.py, map_configs/<stem>.json).
+
+* C, mmadv_1 (P1 + `--adv-norm-per-map 1`, mm/advon f5d05c1a): ALL THREE MAPS FINISH. First
+  finishes in own steps: petrus 150.3M, blue200 600.8M, celestial 525.7M (1/9, then 8, 0, 5, 6, 6
+  of 9: 26/54 over the 6 evals from the first finish; best 46.07 s). Single-map v14: petrus 302.5M,
+  blue200 982.0M, celestial 680.0M / 831.0M. Cut at celestial's first finish + 5 evals (08:07:08).
+* B, mmrep_1 (P1 replicate, flag off, mm/rep f5d82143 - byte-identical training to dcbfc05a):
+  its first celestial search handed back a line to d 759 (98.8%, north branch) at 375.5M own,
+  as good as C's (d 1,304 at 367M, south branch); then the greedy REGRESSED: best 75% -> 31-43%
+  (450.6M-600.8M own), 0/9 past the line's success line in every eval, the walk-back at row ~4,764
+  of 6,399 with success 16-21% per update; no finish at 901.1M own. Running to its 1.5B-own STOP.
+* A, mmpc_1 (petrus + celestial, no blue200, flag off): celestial first finish 2/9 at 903.1M own
+  (then 3, 5, 0, 3, 3 of 9: 16/54; best 45.35 s); petrus 226.0M own. Cut 07:33:28.
+* The per-map logs (B, flag off): the critic is fine on celestial (explained variance 0.96-0.985,
+  as on the other maps). The policy signal is not: after the pooled standardisation, celestial's
+  advantage std fell to 0.29-0.47 from ~470M own (blue200's raw advantage std 4-5 against
+  celestial's 1.1-1.5; petrus's 3.5 led early, when celestial's was 0.78-0.82). With the flag (C),
+  each map's is 1.0.
+* Segment probe (GPU, 64 greedy + 64 stochastic rollouts per window, starts cut from the single-map
+  rerun's own finishing line, no demo): pass rates P1's final shared agent / the rerun / the
+  original single-map agent: pre-gate 73,77 / 98,86 / 91,95; drop 78,70 / 98,92 / 92,88; pre-bowl
+  91,80 / 98,97 / 98,98; bowl 12,34 / 100,98 / 78,81; after the bowl 0,0 / 98,84 / 25,16 (that
+  window is the rerun's own post-bowl route). P1's agent is less precise on every gate and never
+  learned the bowl. (The per-episode probe files were lost with A's box; the table stands.)
+* Ruled out: a bug (slot replay bit-identical per map, mm/bug 2066bd37); a turning habit from the
+  other maps (petrus 52% / blue200 50% left turns); the fork branch (C finished on the south branch,
+  B fails on the north one); a broken critic (EV above).
+* Verdict: in the shared run, one advantage standardisation over all maps' rows lets the map with
+  the largest advantages (blue200 late, petrus early) set the scale, and celestial's policy signal
+  drops to a third of its single-map strength during the phase where it must learn its line;
+  standardising per map restores it, and one policy then finishes all three maps at or below the
+  single-map steps. One seed per run; B is the replicate of the failure and is still running.
+* Bundles (BUNDLE OK, md5 = box): ~/ar_m2/runs/mmadv (4171896b), ~/ar_m2/runs/mmpc (14a8abd6);
+  boxes 61024497 and 61022193 released and verified gone.
