@@ -119,12 +119,18 @@ def policy_breach(inst):
     name = (inst.get("gpu_name") or "").strip().replace(" ", "_")
     n = int(inst.get("num_gpus") or 0)
     dph = float(inst.get("dph_total") or 0.0)
-    if n != 1:
-        return f"{n} GPUs (single-GPU boxes only)"
+    # max_gpus_per_box (absent = 1, the single-GPU rule): a box of n cards is capped at n x the
+    # card's cap (CLAUDE.md: the price cap is per BOX; user, 2026-11-17, a cheap 2-GPU box for DDP)
+    max_n = int(POLICY.get("max_gpus_per_box") or 1)
+    if not 1 <= n <= max_n:
+        return (f"{n} GPUs (single-GPU boxes only)" if max_n == 1
+                else f"{n} GPUs (boxes of 1 to {max_n} only)")
     if name not in caps:
         return f"{name or '?'} is not an allowed card"
-    if dph > float(caps[name]) + 0.005:
-        return f"{name} at {dph:.3f} $/h, above its {caps[name]:.2f} cap"
+    if dph > float(caps[name]) * n + 0.005:
+        if n == 1:
+            return f"{name} at {dph:.3f} $/h, above its {caps[name]:.2f} cap"
+        return f"{n}x {name} at {dph:.3f} $/h, above {n} x its {caps[name]:.2f} cap"
     return None
 
 # ------------------------------------------------------------- harvesting ---
