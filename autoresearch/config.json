@@ -272,7 +272,9 @@
     "envs": 1029,
     "extra": [
       "--auto-spine-mcts-args",
-      "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2"
+      "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2",
+      "--adv-norm-per-map",
+      "1"
     ]
   },
   "_multimap_doc": "mm7: --envs 1029 = 147 per map (7 x 147; v14 runs 1024); --maxvel 3500 on pb and unitfarmer2, 4000 on the rest (each map's v14 value). The ORDER is a choice and it is not only memory: it sets each map's env slice and per-slot seeds, and the FIFO order when requests tie - all seven maps pass the 3e8 own-step search delay at the same eval, and the last in the order waits ~6 searches (~1 h, ~0.13B own steps). pb (the question) goes first, then the maps by their v14-alone first finish, slowest first. Cannonball is not put first for memory: the steady state holds every map's grids whatever the order.",
