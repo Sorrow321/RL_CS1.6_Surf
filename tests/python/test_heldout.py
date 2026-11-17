@@ -347,9 +347,10 @@ def test_run_json_records_the_heldout_list_and_the_ckpt_restores_it():
     # the held-out block is appended LAST, after the PPO hygiene columns
     hyg = TRAIN_SRC.index('"race/crawl_frac", "train/ret_mean", "train/ret_std"]')
     assert TRAIN_SRC.index("CSV_COLS += heldout_columns(heldout)") > hyg
-    # and never enters the aggregate: the training table is rows :NMAPS
-    assert "ev = ev_all[:NMAPS]" in TRAIN_SRC
-    assert 'eval_aggregate(ev, [s.finish_kind for s in slots], n_rec)' \
+    # and never enters the aggregate: the training table is rows :NMAPS (mm/ddp: the run's
+    # map count NMAPS_ALL and its slot list SLOTS_ALL - the same numbers on one process)
+    assert "ev = ev_all[:NMAPS_ALL]" in TRAIN_SRC
+    assert 'eval_aggregate(ev, [s.finish_kind for s in SLOTS_ALL], n_rec)' \
         in TRAIN_SRC
 
 

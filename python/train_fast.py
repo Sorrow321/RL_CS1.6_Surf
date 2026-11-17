@@ -12350,6 +12350,13 @@ def main() -> None:
     # NMAPS/world_size. Sharding stays available as an optimisation if a
     # future pool makes that bite; nothing below assumes replication except
     # the fixed shapes, which degrade to a gather.
+    # --ddp-maps shard (mm/ddp, 2026-11-17) IS that sharding, for recipe v14's
+    # per-map loop, which replication refuses: rank r holds only maps r, r+W,
+    # ... (SG below), with envs/maps envs each, so the ranks' row counts differ
+    # and the gradient all-reduce is sample-weighted; each map's evals, search
+    # queue, curricula and tables live on its owner rank, and the eval table,
+    # the progress.csv blocks and the checkpoint are gathered in map order.
+    # Default replicate: everything above, unchanged.
     if args.maps:
         _names = [b.strip() for b in str(args.maps).split(",") if b.strip()]
         if not _names:

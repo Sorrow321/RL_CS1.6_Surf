@@ -155,8 +155,11 @@ def test_f_g_greedy_and_front_perturb_rows_per_map():
 
 def test_f_one_greedy_pool_per_map_seeded_like_the_reservoir():
     src = (V.ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
-    assert "GREEDY = _greedy_pool(int(args.seed) + 9191)" in src
-    assert "_greedy_pool(int(args.seed) + 9191 + 101 * _gi)" in src
+    # (mm/ddp: the seed keys on the map's GLOBAL index SG[i] - SG[i] == i on one process, so
+    # slot 0 is + 9191 + 0 and slot i + 9191 + 101 * i exactly as before)
+    assert "GREEDY = _greedy_pool(int(args.seed) + 9191 + 101 * SG[0])" in src
+    assert "_greedy_pool(int(args.seed) + 9191 + 101 * SG[_gi])" in src
+    assert "else list(range(NMAPS_ALL)))" in src
     assert "GREEDY_S[_s.tag].build(" in src and "GREEDY_S[_s.tag].hook(N_EVAL_PAR)" in src
 
 
@@ -186,7 +189,10 @@ def test_h_the_entropy_weight_is_per_row_only_under_maps():
     src = (V.ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
     assert "ENT_ROW = bool(MULTI and UNSTUCK_ENT)" in src
     assert "el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())" in src
-    assert "return global_step if not MULTI else (int(global_step) * slots[si].n) // N" in src
+    # (mm/ddp: the share is of the GLOBAL fleet - N_GLOBAL under --ddp-maps shard, this
+    # process's N, which IS the global fleet, everywhere else)
+    assert ("return global_step if not MULTI else (int(global_step) * slots[si].n) // (\n"
+            "            N_GLOBAL if DDP_SHARD else N)") in src
 
 
 @needs_mm
