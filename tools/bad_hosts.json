@@ -2977,6 +2977,24 @@
       "detail": "fx fxpb 2026-11-12: READY (ssh ok) 29 s after create, then actual_status exited / intended_status stopped within 40 s with no action of ours (ssh closed by remote host in deploy step 2, then connection refused; status_msg 'success, running .../ssh'); seen exited on three looks over 70 s. The same machine ran m7sib_cel for 2.9 h on 2026-11-11 without a fault",
       "run": "fxpb_t1 (never deployed)",
       "reason": "unreliable"
+    },
+    {
+      "ip": "81.27.69.177",
+      "machine_id": 45707,
+      "host_id": 1647,
+      "date": "2026-11-17",
+      "detail": "autoresearch mm7: not running after 330 s (status loading, docker_build() error writing dockerfile)",
+      "run": "mm7_1 (never deployed)",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "46.151.205.246",
+      "machine_id": 139149,
+      "host_id": 570699,
+      "date": "2026-11-17",
+      "detail": "RTX 4090 power limit 300 of 450 W set by the host; bf16 GEMM 134 TFLOPS; gpu_health --all UNHEALTHY (deploy refused, 2026-11-17 16:55 UTC, mm7)",
+      "run": "mm7_1 (never deployed)",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [
