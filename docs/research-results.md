@@ -49708,3 +49708,31 @@ value function. $25 topped up.
 * CPU smoke: the audit's replay run t5 (petrus + celestial, the v14 line at CPU scale on dcbfc05a,
   24 iterations; obs-normal off: petrus has no face-id grid on CPU) ran clean; the record gate on
   the box covers obs-normal. Budget ~4 h, ~$2; credit $39.88.
+
+## 2026-11-17 05:36 UTC: PRE-LAUNCH - P1 replicate (mmrep_1) and P1 + per-map advantage normalisation (mmadv_1)
+
+Written before the launches; next to mmpc_1 (88e0e61f), on two more boxes.
+
+* Code: branch mm/advmap f5d82143 (sub-agent, off dcbfc05a): `--adv-norm-per-map 1` (opt-in,
+  refused without 2+ maps) standardises the PPO advantages per map inside every minibatch - each
+  map's rows with their own mean and std, the estimator a single-map run applies to its minibatch
+  (a map with < 32 rows in a minibatch keeps the pooled moments). Every --maps run now logs per
+  map train/{adv_std, adv_std_norm, explained_var, vf_err, ret_std, vloss_share}.<tag>. Flag off:
+  a 2-map v14 run is byte-identical to dcbfc05a apart from those columns; the slot replay still
+  passes; the flag on runs the full P1 line clean on CPU (adv_std_norm 1.00 +- 0.02 on each map).
+  On the CPU smoke (untrained critic) blue200's advantages were the SMALLEST, so the imbalance
+  measured on the trained greedy (shaping std 0.358 vs 0.039 / 0.042) is not yet shown for the
+  update itself: these runs log it.
+* mmrep_1: a replicate of P1 - branch mm/rep = f5d82143 with P1's config (no difference), flag
+  off. It asks whether P1's celestial failure repeats (only the single-map side was repeated so
+  far) and logs the per-map critic and advantage numbers over training.
+* mmadv_1: P1 + `--adv-norm-per-map 1` - branch mm/advon f5d05c1a (P1's config + the flag in the
+  multimap extra). A generic mechanism, the same on every map, no constant from a map.
+* Both: v14 exact otherwise (160 tokens + the launch extra), petrus + blue200 + celestial, --envs
+  1023, --maxvel 4000 x3, seed 0, from scratch, one RTX 5080-class box each (<= $0.45/h), watchdog
+  with harvest spec + pid file, dashboard tunnel; milestone checkpoints kept.
+* Reads: celestial's first finish in own steps (single-map 680M / 831M; P1 none by 2.0B own), its
+  fork branch and deaths past the merge; petrus and blue200 first finishes; the per-map columns.
+* Cut (fixed now): celestial's first finish + 5 own evals, or STOP at 1.5B own steps (4.5B fleet)
+  with no celestial finish (~1.8-2.2x the single-map first finishes); a broken run (< 150k fleet
+  steps/s after 30 min, dead trainer) stops at once. ~5 h, ~$2 per box.
