@@ -31,7 +31,7 @@
     "RTX_5090": 0.6
   },
   "_max_dph_doc": "$/h for the WHOLE box, its disk_gb of storage included: box.py prices offers with --storage disk_gb, and the fleet watchdog checks the instance's dph_total against its own caps (this table is a subset of them). FAST cards first in this program, because a 26 h round is read in steps: measured on the recipe last round, RTX 5080 368k steps/s, RTX 4080 282k, RTX 3090 215k, RTX 5060 Ti 125-179k (the host CPU is half of it). So tier 0 is the 5080 class, then the 3090s, then two 16 GB fallbacks, then a 4090 or 5090 at its old cap; the 4070 / 3080 / 5060 class of 2026-10-25 is out (10B steps in 20 h would not reach the late walls). Caps sit just above the market of 2026-11-09 (5080 0.28-0.31, 4080S 0.41, 3090 0.29-0.36): a 5080 at 0.59 is double the going rate and is not rented (CLAUDE.md: never rent above the market price).",
-  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=32 cpu_ghz>=2.5 verified=true gpu_ram>=23 cpu_ram>=48000 geolocation notin [CN]",
+  "offer_query": "num_gpus=1 cuda_vers>=12.8 reliability>0.98 inet_down>300 rentable=true disk_space>60 cpu_cores_effective>=32 cpu_ghz>=2.5 verified=true gpu_ram>=23 cpu_ram>=48 geolocation notin [CN]",
   "cpu_exclude": [
     "Xeon.* E[57]-"
   ],
