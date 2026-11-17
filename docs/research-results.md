@@ -49960,3 +49960,34 @@ Written before the launch. The user, after the per-map scale result: "Let's star
   best 13.16 s, at 600.4M own steps; v14 alone 982.0M own (x0.61, the grader's read). Petrus's
   search 2 (8 s, from the 4.20B policy) returned a line to the finish (4,257 states, end d 0);
   its curriculum now starts at the finish end. Credit $33.71 at 20:46 UTC.
+
+## 2026-11-17 23:10 UTC: NOTE - mm7_1 at 6.9B: matched own-step read, pb's room, cannonball
+
+The user asked whether princessburglar should have left its start room by now. Own steps =
+fleet / 7; test k of mm7_1 and of each v14-alone bundle is at ~75M x k own steps.
+
+* celestial FINISHED at 4,727,933,952 fleet (675,419,136 own, 6/9); v14 alone 680,001,536 own
+  (x0.99, the grader's read). The next four tests 1/9 each (alone after its first: 4, 0, 0, 4).
+* Test 13 (976M own), mean % (finishes) mm7_1 vs alone at the same own step:
+  pb 0.01 vs 0.36 (both in the room; different grids); sid 22.71 vs 22.48; uf2 9.77 vs 9.74;
+  can 16.44 vs 53.41; b200 100 (9) vs 100 (9, its first finish); cel 40.08 (1) vs 67.24 (4);
+  pet 87.44 (6) (the alone bundle ends at 755M). Behind by own steps: cannonball only.
+* pb, alone (ab7c_b14): search 1 at 302M own, line (beam+ge, 3,905 states, end d 55,353)
+  adopted at 546M; the greedy stood at a pocket by the spawn (720, -3,112) until 1.208B, first
+  out at 1.284B (3/9; curriculum start ~1,169 of 3,905), 9/9 out at 1.510B. No earlier run
+  left this room in under 1.28B own steps (frozen 2.94B, fix-round try 3 1.36B, m2ge 6.12B).
+* pb, mm7_1: search 1 (300M own) returned a 233 u beam line (723 states) to that pocket,
+  (652, -3,082, 3,695), adopted at 314M own because the greedy frontier (57,192) was an east
+  flight (x 2,380) that gains nothing; held 361M own, thrown out by patience at 675M own.
+  Search 2 (beam+ge, 700 s): 4,221 states, end d 55,145, the alone run's exit (west end of the
+  room, back east, down to the lower level), adopted at 701M own (alone 546M). Curriculum start
+  4,220 -> 1,930 by 6.0B fleet (54% of the line), stuck at ~1,930 (the line's west turn) since.
+  Matched point for the room exit: 9.0B fleet by own steps, ~10.1B on the alone pace from
+  adoption (+740M own).
+* cannonball: line 1 (beam, 7,633 states, end d 52,400, 22k past a 74,828 frontier) adopted at
+  356M own; curriculum start back to ~2,700 by 4.0B fleet, stalled at 2,57x-2,86x since; the
+  greedy frontier fell 74,828 -> 163,611 (the regression). Patience called the line a dead end
+  at 6.83B fleet (976M own) and search 2 started. Alone: search 1 at 464M own found no line;
+  its first line came at 988M own (end d 80,482, 30k past a 110,832 frontier).
+* Wall clock at 316k fleet steps/s (163M own per map per hour): the alone first finishes are
+  can 16.9B, uf2 21.7B, sid 28.0B and pb 121B fleet (~9, 13, 19 and ~100 h after 6.9B).
