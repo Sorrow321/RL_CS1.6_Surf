@@ -49590,3 +49590,57 @@ of its OWN steps does each map need, against the single-map v14 runs?
   $2-3 at <= $0.45/h; box deadline 6.5 h (box_hours_default). A crash resumes with box.py deploy
   --ckpt <pulled ckpt_latest.pt> + launch --multimap --resume (the same tokens, --envs and
   --maxvel from the checkpoint).
+
+## 2026-11-17 03:50 UTC: FINAL - multi-map pilot P1; PRE-LAUNCH - celestial v14 rerun (mmp1_l14r)
+
+Two things in one entry. PROCESS SLIP, said here: the rerun's part was written after its launch
+(03:43:49 UTC); its cut and reads were fixed at 03:46, before its first eval.
+
+### P1 FINAL (mmp1_1): petrus and blue200 finish, celestial does not
+
+* Ran to its launch budget, 6,000,377,856 fleet steps (2.0B own per map) at 03:26 UTC (box
+  60972418, RTX 5080, 252,541 fleet steps/s). The cut watcher's cap was lifted at ~23:05 UTC, but
+  the trainer's own --steps 6e9 was not: the run ended there by itself (operator miss).
+* Grader per map (autoresearch/score.py, map_configs/<stem>.json), own = fleet/3:
+  * petrus: first finish 225.4M own (alone v14 302.5M); every later eval finishes (4-9/9), last
+    6/9, best 30.29 s.
+  * blue200: 9/9 first at 525.7M own (alone 982.0M); 8-9/9 in every later eval, best 13.03 s.
+  * celestial: 0 finishes in 27 evals to 1.95B own (alone: first finish 680.0M own). Best 29-35%
+    from 450M to 976M own, then 75-93% from 1.05B own (median 25-78%).
+* The user asked whether a bug causes it. No defect found in what was checked: (1) the search
+  replays the trainer's celestial greedy on 642/648 decisions (alone 639/650), so the shared
+  policy loads and observes celestial correctly; (2) the shared greedy flies the alone route,
+  except the other side of the fork at ~10-16 s (both sides rejoin by ~18 s); (3) the walk-back
+  per own step is as fast or faster (k01: 57% of the line left after 220M own; alone k01: 56%
+  after 420M own).
+* Where it stops: the bowl at ~79-85% of the course (~38-42 s). The route drops into a bowl and
+  climbs out north onto a ramp at x ~4,700-5,000, z ~-3,650; the bowl floor sits at d ~9,960 and
+  the ramp's start at ~9,400-10,500, so the field barely pays the exit. Every celestial search
+  stalled there: alone k01 at 82.86% for 330 of 1,232 waves, out at wave 1,060, 97.88% at wave
+  1,190 (the line the policy then finished on); P1 k01 at 79.10% from wave 620 to 1,409 (its line
+  ends at the bowl's edge at 173 u/s; alone 1,504 there); P1 k02 at 84.59% from wave 740 to 1,427
+  (its line climbs out to the west at x ~3,470, falls back and circles for 30 s).
+* v14 then held k01 for its maximum, 1e9 own steps (--auto-spine-patience-tau restarts the plain
+  patience on every new low of the walk-back, and the greedy reached the line's end in at most
+  4/9 evals, quorum 5): 3.18B fleet steps = 3.5 h at three maps (~41 min on one map).
+* Bundle ~/ar_m2/runs/mmp1/mmp1_1_bundle.tgz (unpacked in bundle/: run.json, progress.csv, 81
+  eval files, launch log, auto/ lines, ckpt_final.pt), BUNDLE OK (md5 64a0a670 = box). box.py
+  pull skips tagged evals (traj_<step>_<tag>.jsonl): bundle a --maps run by hand.
+* The timing runs mmp1_t / mmp1_tp were not run: the user stopped the pilot here.
+
+### PRE-LAUNCH: celestial v14 rerun from scratch (mmp1_l14r)
+
+* The user: the shared run sticks for hours where the single-map run needed ~0.7B steps; either
+  the single-map run was lucky or the multi-map path has a bug. Rerun celestial alone from
+  scratch: if it sticks too, the first run was lucky; if it does not, multi-map is suspect.
+* Identical to ab7c_l14: code ab/ab14l 8a3937a2 (clean; fea35b06 + the v14 config), the 160
+  tokens + the launch extra (--auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2'), --steps 60e9, seed 0, from scratch, no demo. Its
+  config dump differs from ab7c_l14's in demo_file's run path only. Same card model (RTX 5080):
+  the P1 box 60972418 redeployed (ab_reuse.sh), launched 03:43:49 UTC, record gate passed. A
+  replicate at the same seed: the trainer is not bit-reproducible on a GPU.
+* Cut (fixed 03:46): the first greedy finish + 5 evals (grader), or the first eval >= 2.0B steps
+  with no finish (abl/l14r/cut_watch.sh stops the trainer by its pid file).
+* Reads: the step of the first finish (ab7c_l14: 680.0M) and how each search ends at the bowl
+  (beam.log: where the best stalls and whether it gets out).
+* Watchdog to 05:45 UTC (harvest spec + pid file); tunnel http://localhost:8656/.
