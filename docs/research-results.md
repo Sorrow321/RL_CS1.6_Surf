@@ -49808,3 +49808,66 @@ Runs of 4bf7324d and 88e0e61f. Finishes from the grader (score.py, map_configs/<
   step each map got 3x the updates (64 per 43,648 own steps against 64 per 130,944), so the
   own-step speed-up is not separated from that update density; one map alone at --envs 341 would
   separate it. One seed per run.
+
+## 2026-11-17 13:59 UTC: PRE-LAUNCH - seven-map run mm7_1 (v14 + --adv-norm-per-map 1)
+
+Written before the launch. The user, after the per-map scale result: "Let's start the 7 map run."
+
+### The question
+
+* Does ONE policy trained on all seven development maps at once (v14 + the per-map advantage
+  scale) learn each map, above all princessburglar, in fewer of that map's OWN steps than v14
+  alone? v14 alone took 17.29B steps to pb's first finish.
+
+### The run: `mm7_1` (box owner mm7)
+
+* Recipe: v14's 160 tokens + `--adv-norm-per-map 1`, the one change from v14 (CLAUDE.md section
+  2; ledger 7151997d, 5da6efb2, 723cfed7); `--envs 1029` (147 per map); `--maxvel
+  3500,4000,3500,4000,4000,4000,4000` (each map's v14 value); v14's launch extra. From scratch,
+  seed 0, no warm start, no demo; every curriculum line is the loop's own search, per map.
+* Maps, in this order (a run setting, not a recipe constant: env slices, per-slot seeds, the FIFO
+  order of tied search requests; pb first so its searches see no queue, as alone):
+  princessburglar_b26, src_sidistic, unitfarmer2, src_cannonball, edgeflow_blue200,
+  src_celestial, petrus_lite.
+* Code: branch mm/s7a 55b2e3bb = mm/advmap 4630ca33 (mm/s1 dcbfc05a + the slot replay harness +
+  the flag + per-map logs) + mm/s7's config and watch (a4f1421a, 15a311e3, cherry-picked) + the
+  flag in the multimap extra. Nothing else differs from the prepared mm7 (the earlier draft).
+* Launch: `python3 autoresearch/box.py launch --agent mm7 --run mm7_1 --multimap --steps 2e11`
+  (run_arm.sh SCRATCH=1 MAPS=..., the record gate per map; --steps is a ceiling, not a cut).
+  Assets: mm7_maps.tar.gz (md5 276c740b1135e1d7f62ceb9d28714823, 54 files); petrus's and pb's
+  faceid_32 are baked on the GPU at the first start.
+* Box: one RTX 4090 <= $0.45/h or RTX 5090 <= $0.60/h (>= 24 GB), >= 48 GB host RAM, verified,
+  >= 32 threads, no CN; fleet watchdog with the harvest spec and the pid file; dashboard tunnel;
+  first deadline 24 h, extended while the credit floor holds.
+
+### Reads
+
+* Each map's first greedy finish (grader) in own steps (fleet x 147/1029 = fleet / 7) against
+  v14 alone: petrus 302.5M, celestial 680.0M, blue200 982.0M, cannonball 2,416.4M, unitfarmer2
+  3,095.9M, sidistic 4,001.9M, pb 17,289.4M; pb's milestones by the grader's best episode: room
+  exit (> 1%) 1.284B, the x -1,005 wall (> 7.5%) 9.287B, the shaft (> 56%) 14.194B, the finish
+  17.289B own. Caveat kept: pb's grids now carry the four walls (ed329d70) and v14 alone trained
+  without them, so pb is like for like only before ~17% of the course.
+* train/adv_std_norm.<map> at 1.0 on every map; each map's critic explained variance; the search
+  queue waits (mm_cut.py --log); fleet steps/s.
+* Context, the three-map shared runs (own = fleet / 3, one seed each): with the flag (C) petrus
+  150.3M, blue200 600.8M, celestial 525.7M; without it (B) 150.3M, 525.7M, 1,126.3M.
+
+### Stop rules and budget (fixed now)
+
+* STOP a broken run: below 120k fleet steps/s after 30 min, or a dead trainer (pid gone, or
+  progress.csv unwritten for 10 min): `autoresearch/mm_cut.py runs/mm7_1 --mm7`, polled from the
+  droplet.
+* STOP at the credit floor: the user set no cap, so the run stops when the credit reaches the
+  operator floor of $13 (the user's $10 reserve + the harvest), about $23.7 of the $36.71 at
+  launch. Then harvest (bundle, md5 = box) and release. The user can stop it at any time.
+* Time and cost at the three-map rates (C 307k, B 349k fleet steps/s on 5080s; seven maps may be
+  slower, the first hour measures it): pb's room exit by the rule (9.0B fleet) ~7-8 h, $3-5;
+  six maps at alone pace (28.0B fleet) ~22-25 h, $10-15; the floor buys ~40-53 h = ~44-66B fleet
+  = ~6-9B own per map: past pb's room exit, short of or near its x -1,005 wall at alone pace
+  (9.29B own). A pb finish at alone pace (121B fleet) is out of this budget.
+* Checked on the droplet's CPU before the launch: this exact command line (built by box.py from
+  the committed config, mm/s7a 55b2e3bb) with six maps (cannonball does not fit the droplet's
+  RAM), smoke sizes and `--obs-normal 0` appended, through run_arm.sh with DRY_RUN=0: the record
+  gate PASSED (24 recordings in 199 s), 40,320 steps, 3 evals per map, the flag's per-map line
+  printed, train/adv_std_norm 1.00 on all six maps; peak RSS 4.2 GB. The bus inbox was empty.
