@@ -287,3 +287,55 @@ def test_child_env_pins_the_card_and_drops_torchruns_variables():
     assert gpupick.child_env("inherit", base=base, inv=INV)[0] is None   # what it always did
     env, _ = gpupick.child_env("inherit", base=base, drop_torchrun=True, inv=INV)
     assert env["CUDA_VISIBLE_DEVICES"] == "0,1" and "RANK" not in env
+
+
+# ---------------------------------------------------------------- NCCL on two cards
+def _nccl_pair(rank, ws, init):
+    """the gradient / moments / objects checks above on NCCL, rank r on cuda:r (a 2-GPU box)"""
+    import torch.distributed as dist
+    from train_fast import adv_moments64, adv_norm_per_map
+    torch.cuda.set_device(rank)
+    dist.init_process_group("nccl", init_method=init, rank=rank, world_size=ws)
+    try:
+        D = distributed.Dist()
+        D.rank, D.world_size, D.local_rank, D.is_main, D.enabled = rank, ws, rank, rank == 0, True
+        D.device, D.backend = torch.device("cuda", rank), "nccl"
+        dev = D.device
+        x, y, a, m = [t.to(dev) for t in _rows(5)]
+        mine = (m == 1) if rank == 1 else (m != 1)
+        net, ref = _net().to(dev), _net().to(dev)
+        gs = distributed.FlatGradSync([list(net[2].parameters()), list(net[0].parameters())], D,
+                                      dev, weight=int(mine.sum()) / len(m))
+        gs.register_hooks()
+        opt = torch.optim.Adam(net.parameters(), lr=1e-2)
+        loc = torch.unique(m[mine], return_inverse=True)[1]
+        for step in range(12):
+            opt.zero_grad(set_to_none=True)
+            _loss(net, x[mine], y[mine],
+                  adv_norm_per_map(a[mine], loc, int(loc.max()) + 1)).backward()
+            gs.sync()
+            ref.load_state_dict(net.state_dict())
+            ref.zero_grad(set_to_none=True)
+            _loss(ref, x, y, adv_norm_per_map(a, m, 3)).backward()
+            for p, rp in zip(net.parameters(), ref.parameters()):
+                assert torch.allclose(p.grad, rp.grad, atol=1e-6, rtol=1e-5), step
+            opt.step()
+        D.assert_equal("nccl_params", torch.stack([sum(p.double().sum()
+                                                       for p in net.parameters())]))
+        ap = a[mine].double().view(1, -1)
+        st = torch.stack([ap.sum(1), ap.pow(2).sum(1)])
+        D.all_reduce_sum_(st)
+        mu, sd = adv_moments64(st, float(len(m)))
+        assert abs(float(mu[0]) - float(a.double().mean())) < 1e-6
+        assert abs(float(sd[0]) - float(a.double().std())) < 1e-5
+        got = D.all_gather_object({"rank": rank, "blob": b"x" * (1000 * (rank + 1))})
+        assert [g["rank"] for g in got] == [0, 1] and len(got[1]["blob"]) == 2000
+    finally:
+        dist.destroy_process_group()
+
+
+@pytest.mark.skipif(not (torch.cuda.is_available() and torch.cuda.device_count() >= 2
+                         and torch.distributed.is_nccl_available()),
+                    reason="needs two CUDA cards and NCCL (a 2-GPU box)")
+def test_nccl_pair_on_two_cards():
+    _spawn(_nccl_pair)
