@@ -49674,3 +49674,37 @@ Two things in one entry. PROCESS SLIP, said here: the rerun's part was written a
 * Next: a CPU audit of the multi-map training path with 2+ maps loaded (each env's rewards,
   observations, exploration temperatures and spawn sources against its own map alone); the
   single-map identity tests never loaded two maps. No rental; the seven-map run waits for it.
+
+## 2026-11-17 05:16 UTC: PRE-LAUNCH - multi-map pilot without blue200 (mmpc_1: petrus + celestial)
+
+Written before the launch. The user (after the rerun): find out why celestial does not learn in the
+shared run - a bug, a habit carried over from the other maps, the searches, or a broken policy or
+value function. $25 topped up.
+
+* What is known: (1) code audit (sub-agent, branch mm/bug 2066bd37, tests/python/mm_slot_replay.py):
+  with 2-3 maps loaded, every slot's training data (observations, rewards incl. novelty with its
+  own count table, dones, stall kills, temperatures and entropy weights, spawn pools, per-map
+  state) is bit-identical to its map run alone on the single-map path; an injected leak is
+  caught. (2) The one shared mechanism is the update: advantages are standardised per minibatch
+  over all maps' rows (train_fast.py ~19978 at dcbfc05a) and one value loss covers all maps. The
+  per-decision shaping std is 0.358 on blue200, 0.039 on petrus and 0.042 on celestial, so pooled,
+  celestial's policy signal is about 5x weaker than alone. (3) P1's celestial greedy took the
+  mirrored (south) branch at the fork ~10 s in (88/99 evals' episodes late; single-map 1/153 and
+  0/153); both branches merge ~20 s in at the same speed, height and time. Past the merge it died
+  at ~21-25 s (29 of 88) and ~33-38 s (38 of 88) and never finished; single-map past the merge:
+  32 of 51 and 20 of 45 finished (0.7-2.1B own steps).
+* This run removes blue200, whose shaping scale is 9x celestial's; petrus's is celestial's.
+  v14 exact (160 tokens + the launch extra), code mm/pc d5c3936d = dcbfc05a + config (maps petrus,
+  celestial; --envs 1024 = 512 per map; --maxvel 4000,4000), seed 0, from scratch, one RTX 5080
+  class box (<= $0.45/h), watchdog with harvest spec + pid file, dashboard tunnel.
+* Reads: celestial's first finish in own steps (single-map 680M and 831M; P1 none by 2.0B own),
+  its fork branch share and deaths past the merge; petrus's first finish (alone 302.5M, P1 225.4M).
+* Prediction: if the pooled normalisation with blue200 is the cause, celestial first-finishes by
+  ~1.0B own steps here; if not, the cause is not (only) blue200's scale. A run with per-map
+  advantage normalisation on all three maps (being built, opt-in flag) follows.
+* Cut (fixed now): celestial's first finish + 5 own evals; or STOP at 2.0B own steps (4.0B fleet)
+  with no celestial finish; a broken run (< 150k fleet steps/s after 30 min, dead trainer) stops at
+  once. Milestone checkpoints are kept this time (for the policy and value probes).
+* CPU smoke: the audit's replay run t5 (petrus + celestial, the v14 line at CPU scale on dcbfc05a,
+  24 iterations; obs-normal off: petrus has no face-id grid on CPU) ran clean; the record gate on
+  the box covers obs-normal. Budget ~4 h, ~$2; credit $39.88.
