@@ -49871,3 +49871,27 @@ Written before the launch. The user, after the per-map scale result: "Let's star
   RAM), smoke sizes and `--obs-normal 0` appended, through run_arm.sh with DRY_RUN=0: the record
   gate PASSED (24 recordings in 199 s), 40,320 steps, 3 evals per map, the flag's per-map line
   printed, train/adv_std_norm 1.00 on all six maps; peak RSS 4.2 GB. The bus inbox was empty.
+
+## 2026-11-17 17:10 UTC: LAUNCH - seven-map run mm7_1 (v14 + --adv-norm-per-map 1)
+
+* Trainer started 17:00 UTC; the record gate PASSED at 17:03 (28 recordings in 115 s, all seven
+  maps). Box 61099797: one RTX 5090 32 GB, $0.659/h (Romania, machine 55697; AMD Ryzen 9 9950X3D,
+  32 threads, 123 GB RAM). Deploy head mm/s7a 1491b161 = the pre-launch code 55b2e3bb + three
+  config/blocklist commits (67b72c0b offer filter cpu_ram in GB, be44b091 the 5090 cap, 1491b161
+  two blocked hosts). The trainer, the flags and the maps are as in the pre-launch entry.
+* PRICE, changed from the pre-launch (5090 <= $0.60): after an hour with no offer under the caps,
+  the user approved a 5090 at $0.683/h ("Let's get 0.683 5090"). The 5090 cap is 0.69 for this
+  rental in mm/s7a and in the fleet policy file; both go back to 0.60 after the release. That box
+  (61088111, machine 45707, Ireland) never came up (docker_build error): destroyed and blocked. A
+  4090 at $0.411 (61098713, machine 139149) failed the deploy's GPU health check (power limit 300
+  of 450 W, bf16 GEMM 134 TFLOPS): blocked and released after 7 min. Then this 5090.
+* Watchdog: fleet registry until 2026-11-18 16:57 UTC with the harvest spec and the pid file; the
+  watcher extends it only inside the $13 credit floor. Dashboard tunnel http://localhost:8660/.
+* First reads (59.0M fleet steps, 17:08 UTC): 222.6k fleet steps/s = 31.8k own steps/s per map;
+  train/adv_std_norm.<map> 1.0 on all seven; critic explained variance 0.84-0.98 per map, pb -0.14
+  (still in its start room); VRAM 10.0 of 32.6 GB, GPU 62% busy, 260 W of a 400 W limit.
+* Budget at this rate: the floor leaves ~$23.6 = ~36 h = ~29B fleet = ~4.1B own steps per map.
+  The other six maps' v14-alone first finishes (0.30-4.00B own) fit; pb's room exit by the rule
+  (1.284B own) comes at ~11 h; pb's x -1,005 wall (9.29B own) does not fit.
+* The pre-launch bus message was written to the worktree's bus by mistake; it is re-sent to the
+  main bus with this entry.
