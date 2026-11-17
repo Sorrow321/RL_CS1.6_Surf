@@ -866,6 +866,11 @@ class MapFleet:
         the main rank writes the CSV, so the columns describe that rank's
         own envs; the level is what matters, not the last percent.
         """
+        return dip_summary(merge_dip_raw(self.pop_dip_raw()))
+
+    def pop_dip_raw(self) -> list:
+        """Every slot's raw dip arrays since the last call (the parts :meth:`pop_dip_stats`
+        pools) - a map-sharded DDP rank gathers these so the dip/* columns pool EVERY map."""
         parts = []
         for s in self.slots:
             fn = getattr(s.reward_fn, "pop_dip_raw", None)
@@ -874,7 +879,7 @@ class MapFleet:
             raw = fn()
             if raw is not None:
                 parts.append(raw)
-        return dip_summary(merge_dip_raw(parts))
+        return parts
 
     def reservoir_size(self) -> int:
         return sum(s.respawn.size for s in self.slots if s.respawn is not None)

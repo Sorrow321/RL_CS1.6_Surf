@@ -470,8 +470,12 @@ if [ "${SCRATCH:-0}" = "1" ]; then
   echo "== record gate: this run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
   # RANKS > 1: the gate's recordings go to the card with the most free memory (RECORD_GPU,
   # surfgym/gpupick.py) - the ranks' cards hold different maps; set RECORD_GPU to override
-  if [ "$RANKS" != "1" ]; then export RECORD_GPU="${RECORD_GPU:-free}"; fi
-  if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
+  GATE_WAIT=900
+  if [ "$RANKS" != "1" ]; then
+    export RECORD_GPU="${RECORD_GPU:-free}"
+    GATE_WAIT=1800     # the warm-caches pass and every rank's compile come first
+  fi
+  if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs "$GATE_WAIT"; then
     echo "!! record gate FAILED: the run is stopped and does not count as launched"
     exit 1
   fi
@@ -628,8 +632,12 @@ if ! kill -0 "$PID" 2>/dev/null; then
 fi
 echo "== ALIVE pid $PID"
 echo "== record gate: this run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
-if [ "$RANKS" != "1" ]; then export RECORD_GPU="${RECORD_GPU:-free}"; fi
-if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
+GATE_WAIT=900
+if [ "$RANKS" != "1" ]; then
+  export RECORD_GPU="${RECORD_GPU:-free}"
+  GATE_WAIT=1800       # the warm-caches pass and every rank's compile come first
+fi
+if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs "$GATE_WAIT"; then
   echo "!! record gate FAILED: the run is stopped and does not count as launched"
   exit 1
 fi

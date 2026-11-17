@@ -23498,7 +23498,15 @@ def main() -> None:
         # dip meter returns nine NaNs and the columns come out blank. No
         # collective: under DDP this is the main rank's own envs (a p90 is
         # not a sum, and only the main rank writes the CSV anyway).
-        dip_stats = fleet.pop_dip_stats()
+        if DDP_SHARD:
+            # --ddp-maps shard: the main rank holds only its own maps, so the raw per-dip
+            # arrays of every rank's maps are gathered and pooled once - the same
+            # concatenation one process makes over its slots
+            from surfgym.dipmeter import dip_summary, merge_dip_raw
+            dip_stats = dip_summary(merge_dip_raw(
+                [_p for _r in D.all_gather_object(fleet.pop_dip_raw()) for _p in _r]))
+        else:
+            dip_stats = fleet.pop_dip_stats()
         # ---- --unstuck: the plateau detector, once per iteration --------
         # Reads the two progress measures, advances the schedule and arms
         # the NEXT rollout (temperature tensor, intrinsic coefficient) and,
