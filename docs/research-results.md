@@ -49644,3 +49644,33 @@ Two things in one entry. PROCESS SLIP, said here: the rerun's part was written a
 * Reads: the step of the first finish (ab7c_l14: 680.0M) and how each search ends at the bowl
   (beam.log: where the best stalls and whether it gets out).
 * Watchdog to 05:45 UTC (harvest spec + pid file); tunnel http://localhost:8656/.
+
+## 2026-11-17 04:55 UTC: FINAL - celestial v14 rerun (mmp1_l14r): finishes at 831M; not luck
+
+* Stopped by pid at its cut (the first finish + 5 evals) at 04:50:33 UTC, ~1.28B steps. Grader:
+  first greedy finish 2/9 at 830,996,480 (best 52.4 s); then 0/9 (906.5M, best 91.8%), 0/9
+  (982.0M, 99.2%), 8/9 (1,057.5M, 47.09 s), 2/9 (1,133.0M, 46.23 s), 8/9 (1,208.5M, 47.42 s):
+  20 of 54 greedy episodes over the 6 evals from the first finish. ab7c_l14 (same code, config,
+  seed and card model): first finish 4/9 at 680.0M.
+* Its loop: search 1 (302.5M) - the MCTS stalled at 30.5% (its greedy died at 16.1 s), the Monte
+  Carlo stage handed back a line to d 12,027 (it enters the bowl from the west and ends climbing
+  the far wall at ~39 s). The greedy reached that line's end in 1/9 (453.5M), 4/9 (529.0M), 0/9
+  (604.5M) and 6/9 (755.5M; median 93%) evals: the quorum started search 2, whose Monte Carlo
+  line reaches d 250 (adopted at 872.4M); the first finish came at the next eval.
+* The user's test (03:00 UTC): if the rerun sticks like the shared run, the first single-map run
+  was lucky; if not, the multi-map path is suspect. It did not stick: two single-map runs finish
+  celestial at 680M and 831M; the three-map run had none in 2.0B own steps.
+* CORRECTION to the P1 entry above (d02f5311): P1's greedy did pass the bowl, in 1-2 of 9
+  episodes at 3.38B, 4.05B and from 4.96B fleet steps (to ~90% of the course, near the
+  single-map line's rows 5,770-5,890). The bowl is not what separates the runs. What does is the
+  greedy's reliability on its held line: the rerun reached its line's end in 6/9 evals 341M own
+  steps after the line's adoption; P1 never had more than 4/9 at k01's end in 1.0B own steps
+  (its greedy died at ~30% of the course, ~20 s in, in most evals), so the quorum never came and
+  the patience max held k01 to 4.28B fleet steps.
+* Bundle ~/ar_m2/runs/mmp1/mmp1_l14r_bundle.tgz (unpacked in bundle_l14r/: 17 evals, run.json,
+  progress.csv, launch log, auto/ k01-k02 with mc logs, ckpt_latest.pt), BUNDLE OK (md5 42a2a02c
+  = box). Box 60972418 released 04:51:49 UTC (vastai shows no instance; registry empty); credit
+  $14.88.
+* Next: a CPU audit of the multi-map training path with 2+ maps loaded (each env's rewards,
+  observations, exploration temperatures and spawn sources against its own map alone); the
+  single-map identity tests never loaded two maps. No rental; the seven-map run waits for it.
