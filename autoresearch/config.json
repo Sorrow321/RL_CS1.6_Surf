@@ -256,23 +256,7 @@
   "_budget_doc": "No budget_rate_usd_h: box.py's pacer. The reserve is held by extend's burn x hours check and by the box deadlines.",
   "time_cap_s": 300.0,
   "_time_cap_s_doc": "score.py's time term is 10 * (1 - best_finish_s / time_cap_s): 300 s, the episode cap.",
-  "multimap": {
-    "maps": [
-      "maps/surf_petrus_lite.bsp",
-      "maps/surf_edgeflow_blue200.bsp",
-      "maps/surf_src_celestial.bsp"
-    ],
-    "maxvel": [
-      4000,
-      4000,
-      4000
-    ],
-    "envs": 1023,
-    "extra": [
-      "--auto-spine-mcts-args",
-      "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2"
-    ]
-  },
+  "multimap": {"maps": ["maps/surf_petrus_lite.bsp", "maps/surf_edgeflow_blue200.bsp", "maps/surf_src_celestial.bsp"], "maxvel": [4000, 4000, 4000], "envs": 1023, "extra": ["--auto-spine-mcts-args", "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2", "--adv-norm-per-map", "1"]},
   "_multimap_doc": "P1: --envs 1023 = 341 per map (the trainer refuses a count the maps do not divide); --maxvel 4000 on all three (each map's v14 run's value); every clock of the search loop and every eval count each map's OWN steps (fleet steps x 341/1023), each map evaluated every --record-every of its own steps; one search at a time, FIFO, a quorum request first (mm/s1 D2, D3). Grade with autoresearch/score_maps.py runs/<run> (autoresearch/map_configs/<stem>.json).",
   "_box_hours_default_doc": "P1: the cut is 6.0B fleet steps at ~1.0-1.5B/h (multi-map throughput unmeasured): ~4-6 h, plus deploy and harvest."
 }
