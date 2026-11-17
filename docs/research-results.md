@@ -49923,3 +49923,40 @@ Written before the launch. The user, after the per-map scale result: "Let's star
   the CPU thread count (W=1 vs W=2 differ by 1.6e-8 relative); that is not DDP.
 * Refused by the deploy's GPU health check (host power caps) and blocked: machine 139149 (4090,
   300 of 450 W) and 43533 (2x 4080, 225 of 320 W).
+
+## 2026-11-17 20:55 UTC: NOTE - mm7_1 dip at 2.6-3.7B fleet steps, and blue200's first finish
+
+* Asked by the user (the dashboard curves turned down). Run mm7_1 (seven maps, v14 +
+  --adv-norm-per-map 1, one RTX 5090). Tests every 525M fleet steps = 75M own steps per map.
+* map_pct by test (fleet 2.10B / 2.63B / 3.15B / 3.68B / 4.20B): cannonball 54.6 / 43.1 / 28.9 /
+  19.2 / 26.2; celestial 55.7 / 56.9 / 54.6 / 35.5 / 42.5; petrus 100 (9/9) / 95.6 (7/9) /
+  95.3 (7/9) / 48.2 (1/9) / 70.7 (2/9); sidistic 26.0 / 27.5 / 27.5 / 25.0 / 27.4; blue200
+  64.8 / 63.6 / 62.4 / 60.3 / 93.5 (8/9); unitfarmer2 ~9.1-9.9 and pb ~0 throughout.
+* Mechanics normal: approx_kl 0.02-0.03, per-map explained variance 0.96-0.99 (pb 0.66-0.80),
+  entropy and novelty coefficients per map as designed, no errors in the trainer log.
+* Cause 1, cannonball and celestial: the search delay (3e8 own steps) ran out for the six
+  unfinished maps at the same test (2.10B fleet); the queue ran the six searches one after
+  another and each map adopted its first line between 2.20B and 2.71B. Adoption restarts the
+  map's curriculum at the line's end, and the recent-snapshot reservoir follows: cannonball's
+  reservoir median d 145,303 -> 73,919 within 19M own steps of adoption, celestial's 39,428 ->
+  16,812. The start of the map gets less practice and the greedy from the true start loses it
+  (cannonball test runs end at 9-26 s at 3.68B; 56-63 s at 2.10B). The single-map v14 runs dip
+  the same way after an adoption (ab8n_v14 cannonball 80.9% -> 25.1% after line 3, back to 66.4%
+  next test; ab7c_l14 celestial 72.4% -> 49.3% after line 1, then its first finish); here six
+  maps did it within 600M fleet steps, so the whole board dipped together.
+* Cause 2, petrus: no change in its own spawns before the drop. The greedy runs follow the old
+  path for 12 s and reach the next ramp at 360-430 u/s instead of 1,180-1,480, then die. Petrus
+  alone lost its finishes at the same own-step age (ab7c_p14: 46.1% at 529M own; here 48.2% at
+  525M own) and had 8/9 finishes again at the next test.
+* Design flaw found (generic, not fixed): a search takes ~6 minutes, which is 120-160M own
+  steps in a single-map run (ab7c_p14 search 1: 529M -> 651M; ab8n_v14 search 1: 302M -> 464M)
+  but only 13-14M own steps here. The single-map discard rules therefore rarely fire: alone,
+  petrus's search after its slump was discarded because the next test finished the map, and
+  cannonball's first line was discarded as stale; here petrus's search from the slumped policy
+  (3.68B) returned before the next test and its half-map line (end d 19,459) was adopted.
+  Candidate rule for a later run (needs the user): adopt a map's new line only after that
+  map's next test confirms it.
+* 4.20B test: every dipped map came back part way (above). blue200 FINISHED: 8/9, mean 14.09 s,
+  best 13.16 s, at 600.4M own steps; v14 alone 982.0M own (x0.61, the grader's read). Petrus's
+  search 2 (8 s, from the 4.20B policy) returned a line to the finish (4,257 states, end d 0);
+  its curriculum now starts at the finish end. Credit $33.71 at 20:46 UTC.
