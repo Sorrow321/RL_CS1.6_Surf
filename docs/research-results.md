@@ -49895,3 +49895,31 @@ Written before the launch. The user, after the per-map scale result: "Let's star
   (1.284B own) comes at ~11 h; pb's x -1,005 wall (9.29B own) does not fit.
 * The pre-launch bus message was written to the worktree's bus by mistake; it is re-sent to the
   main bus with this entry.
+
+## 2026-11-17 18:30 UTC: NOTE - map-sharded multi-GPU training (mm/ddp) validated on 2x RTX 4090
+
+* Why: the user asked to build DDP while the seven-map run waited for a GPU, and for any cheap
+  2-GPU box (weaker cards fine, not the expensive ones). Not part of mm7_1 (one RTX 5090).
+* Code: origin/mm/ddp (799af1cf trainer --ddp-maps shard, e30ab1c3 launch path RANKS=N and box.py
+  --num-gpus / --ranks, 41cc03bc, 66472b76, bd1f849d NCCL test; operator commits for the
+  blocklist, the config caps and the watchdog). Rank r trains maps r, r+W, ... of --maps (a run
+  setting); envs per map, n_steps, minibatches and epochs as v14; the gradient all-reduce is
+  weighted by rows (= the union's gradient); per-map advantage moments stay on the map's rank;
+  a checkpoint holds every map's state and resumes at any world size. W=1 is byte-identical to
+  mm/s7a (config, trajectories, progress rows; three cases on the droplet's CPU).
+* Watchdog: the fleet policy allows boxes of up to 2 cards at 2 x the card cap
+  (max_gpus_per_box; mm/ddp f4d401ae, the daemon's copy patched the same way, restarted 17:48).
+* GPU check on box 61106545 (2x RTX 4090, Ryzen 9 7950X, $0.851/h, 23 min, released 18:26):
+  NCCL gradient = one process to 2.6e-8 over 12 Adam steps; W=1 and W=2 start states equal (map
+  origins hash, d0, envs, minibatch 8,232 = 4,704 + 3,528); steady throughput 456.5k fleet
+  steps/s at W=2 vs 331.6k at W=1 on the same box (1.38x; no evals, no searches); VRAM rank 0
+  3.3 GiB, rank 1 7.4 GiB; host RAM peak 32.9 of 62 GB; SIGTERM on the pid file stops all ranks.
+* Read: the 2-GPU box cost 1.29x the 5090 box per hour and ran 1.38x one of its cards, so the
+  price per step is about the same: DDP buys wall-clock, not steps. The seven-map run is CPU
+  bound: mm7_1's 5090 is ~14% busy, and at W=1 per-map reward (366 ms) and observation build
+  (326 ms) take most of a 1,589 ms iteration. Rank 0 (four maps) sets the pace at W=2.
+* Before a long 2-GPU run: --search-gpu 1 on 24 GB pairs (both searches on rank 0's card cost
+  +43% per iteration); threads per rank in proportion to its envs. The initial weights depend on
+  the CPU thread count (W=1 vs W=2 differ by 1.6e-8 relative); that is not DDP.
+* Refused by the deploy's GPU health check (host power caps) and blocked: machine 139149 (4090,
+  300 of 450 W) and 43533 (2x 4080, 225 of 320 W).
