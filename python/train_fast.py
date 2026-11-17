@@ -2519,6 +2519,37 @@ def cc_bucket_normalize(a, bkt, n_buckets: int, eps: float = 1e-8):
     return (a - mean[bkt]) / (std[bkt] + eps)
 
 
+# --adv-norm-per-map: the fewest rows a map needs in a minibatch for its OWN moments. At v14's
+# --envs 1023 / --minibatches 16 a map has ~T*N/16/maps = 2,728 rows (seven maps: ~1,170), so
+# the floor only bites a CPU smoke or a pathological split; there an unbiased std from fewer
+# rows is noise (relative error ~1/sqrt(2(n-1)): 13% at 32 rows), so those rows keep the
+# minibatch's pooled moments - exactly what they get without the flag.
+ADV_MAP_MIN_ROWS = 32
+
+
+def adv_norm_per_map(a, slot, n_maps: int, min_rows: int = ADV_MAP_MIN_ROWS,
+                     eps: float = 1e-8):
+    """--adv-norm-per-map: ``(a - mean_k) / (std_k + eps)`` with map k's moments taken over
+    ITS rows of this minibatch (``slot`` = each row's map index) - torch.std's unbiased
+    estimator per map, the one the pooled line applies to the whole minibatch, so every map's
+    rows reach the policy gradient at unit scale whatever the other maps' reward scales are.
+    A map with fewer than ``min_rows`` rows here keeps the pooled minibatch moments for them
+    (see ADV_MAP_MIN_ROWS); a map with no row here is never indexed. The moments are summed
+    in float64 (a one-hot sum over thousands of rows) and the result comes back in a's dtype.
+    Static shapes (an (mb, n_maps) one-hot), so it compiles into mb_step like
+    cc_bucket_normalize."""
+    a64 = a.double()
+    oh = F.one_hot(slot, n_maps).to(a64.dtype)
+    cnt = oh.sum(0)
+    mean = (oh * a64.unsqueeze(1)).sum(0) / cnt.clamp_min(1.0)
+    dev = a64.unsqueeze(1) - mean.unsqueeze(0)
+    std = ((oh * dev * dev).sum(0) / (cnt - 1.0).clamp_min(1.0)).sqrt()
+    own = cnt >= float(min_rows)
+    mean = torch.where(own, mean, a64.mean())
+    std = torch.where(own, std, a64.std())
+    return ((a64 - mean[slot]) / (std[slot] + eps)).to(a.dtype)
+
+
 # --------------------------------------------------------------------------
 # opt-in action masks: the "air keys" (--mask-forward-air, --jump-cooldown,
 # --duck-air-mask). All three default OFF and the off path touches nothing.
@@ -3962,6 +3993,62 @@ def explained_var_from_sums(n, sum_y, sum_yy, sum_e, sum_ee) -> float:
         return float("nan")
     ev = 1.0 - var_e / var_y
     return ev if math.isfinite(ev) else float("nan")
+
+
+# train/<name>.<tag>: the per-map advantage / critic read-out every --maps run logs (LAST in
+# progress.csv, one block of these per map). Logging only.
+ADVMAP_COLS = ("adv_std", "adv_std_norm", "explained_var", "vf_err", "ret_std", "vloss_share")
+
+
+def advmap_diag(adv, ret, val, ranges, n_envs: int, per: int, f_adv=None, mb_idx=None,
+                per_map: bool = False) -> list:
+    """Per map (``ranges`` = each slot's env range [lo, hi)), over its rows of the rollout
+    buffer ((T, N) tensors; ``adv`` the advantages the update standardises, ``ret`` the value
+    target, ``val`` the value the rollout predicted, both in reward units):
+
+    * adv_std       std of the advantages BEFORE the update's standardisation
+    * adv_std_norm  std of the map's rows AFTER the estimator the update applied (pooled, or
+                    per map under --adv-norm-per-map), on the update's last minibatch
+                    (``mb_idx`` into ``f_adv``; None -> blank): the scale at which this map
+                    reaches the policy gradient - 1 alone
+    * explained_var 1 - Var(G - V) / Var(G) on the map's rows (population, as the pooled one)
+    * vf_err        mean |G - V| / std(G): the critic's error in units of the map's returns
+    * ret_std       std(G): the scale the map brings into the shared value loss
+    * vloss_share   the map's share of sum (G - V)^2 over all maps: who drives the critic
+
+    -> one flat list, ADVMAP_COLS per map in slot order (NaN where undefined)."""
+    nan = float("nan")
+    a = adv.detach().double()
+    g = ret.detach().double()
+    e = g - val.detach().double()
+    m = len(ranges)
+    # one host read for the buffer statistics, one for the minibatch's
+    st = torch.stack([torch.stack([
+        a[:, lo:hi].std(), g[:, lo:hi].sum(), (g[:, lo:hi] * g[:, lo:hi]).sum(),
+        e[:, lo:hi].sum(), (e[:, lo:hi] * e[:, lo:hi]).sum(), e[:, lo:hi].abs().mean(),
+        g[:, lo:hi].std(unbiased=False), torch.tensor(float(g[:, lo:hi].numel()),
+                                                      dtype=torch.float64, device=g.device)])
+        for lo, hi in ranges]).tolist()
+    norm_sd = [nan] * m
+    if f_adv is not None and mb_idx is not None:
+        am = f_adv.detach()[mb_idx]
+        sl = (mb_idx % n_envs) // per
+        an = (adv_norm_per_map(am, sl, m) if per_map
+              else (am - am.mean()) / (am.std() + 1e-8)).double()
+        oh = F.one_hot(sl, m).double()
+        cnt = oh.sum(0)
+        mu = (oh * an.unsqueeze(1)).sum(0) / cnt.clamp_min(1.0)
+        dv = an.unsqueeze(1) - mu.unsqueeze(0)
+        sd = ((oh * dv * dv).sum(0) / (cnt - 1.0).clamp_min(1.0)).sqrt()
+        norm_sd = [v if c > 1 else nan for v, c in zip(sd.tolist(), cnt.tolist())]
+    tot_e2 = sum(r[4] for r in st)
+    out = []
+    for k, (asd, sg, sgg, se, see, eabs, gsd, n) in enumerate(st):
+        ev = explained_var_from_sums(n, sg, sgg, se, see)
+        out += [asd if n > 1 else nan, norm_sd[k], ev,
+                (eabs / gsd) if gsd > 0.0 else nan, gsd,
+                (see / tot_e2) if tot_e2 > 0.0 else nan]
+    return out
 
 
 # 300 u/s. Below this an episode did not fly: it slid, it walked, or it
@@ -7607,6 +7694,16 @@ def main() -> None:
                          "bootstrap - is de-normalized back into reward "
                          "units. Advantage normalization is unchanged. "
                          "ckpt restores")
+    ap.add_argument("--adv-norm-per-map", type=int, default=None, choices=(0, 1),
+                    help="--maps only (refused with one map): 1 = standardise the PPO "
+                         "advantages PER MAP inside every minibatch - each map's rows by "
+                         "their own mean and std (the estimator a single-map run applies "
+                         "to its whole minibatch) - instead of over the pooled minibatch, "
+                         "where the map with the largest advantages sets the scale every "
+                         "other map's rows are divided by. A map with fewer than "
+                         "ADV_MAP_MIN_ROWS rows in a minibatch keeps the pooled moments for "
+                         "them. 0 / absent = the pooled estimator, op for op. Training "
+                         "only; ckpt restores (pass 0 to switch it off on a resume)")
     ap.add_argument("--respawn-frac", type=float, default=None,   # 0 = off
                     help="race: fraction of episodes respawned from recent "
                          "mid-run snapshots (Go-Explore style reset-to-state; "
@@ -8732,6 +8829,11 @@ def main() -> None:
             # setting that a checkpoint cannot be reinterpreted without.
             args.ret_norm = int(ck_cfg["ret_norm"])
             restored.append(f"ret_norm={args.ret_norm:d}")
+        if args.adv_norm_per_map is None and ck_cfg.get("adv_norm_per_map") is not None:
+            # --adv-norm-per-map: which advantage estimator the run trained with; a resume
+            # keeps it (the key is in the config only when it was on)
+            args.adv_norm_per_map = int(ck_cfg["adv_norm_per_map"])
+            restored.append(f"adv_norm_per_map={args.adv_norm_per_map:d}")
         if args.race_dist is None and ck_cfg.get("race_dist"):
             args.race_dist = ck_cfg["race_dist"]
             restored.append(f"race_dist={args.race_dist}")
@@ -10238,6 +10340,8 @@ def main() -> None:
         args.max_step = 100.0                 # RaceReward's own default
     if args.ret_norm is None:
         args.ret_norm = 0
+    if args.adv_norm_per_map is None:
+        args.adv_norm_per_map = 0
     if args.int_coef is None:
         args.int_coef = 0.0
     if args.race_ground is None:
@@ -12265,6 +12369,21 @@ def main() -> None:
                 f"{D.world_size * NMAPS} - silently truncating would leave "
                 "one map with fewer envs than its logs claim")
     PER = N // NMAPS
+    # --adv-norm-per-map: a Python constant, so mb_step's graph is the shipped one without it
+    ADV_MAP = bool(args.adv_norm_per_map)
+    if ADV_MAP:
+        if not MULTI:
+            raise SystemExit("--adv-norm-per-map standardises each MAP's advantages: it needs "
+                             "--maps with two or more maps (one map is the pooled estimator)")
+        for _f, _on in (("DDP", D.enabled), ("--rnn", RNN), ("--cc-buckets", CC_BKT)):
+            if _on:
+                raise SystemExit(f"--adv-norm-per-map is not implemented with {_f}: that path "
+                                 "has its own advantage estimator (fleet-wide moments / the "
+                                 "sequence loss / the T buckets)")
+        _mb_rows = (T * N) // max(1, int(args.minibatches))
+        print(f"--adv-norm-per-map: every minibatch standardises each map's advantages by its "
+              f"own mean and std (~{_mb_rows // NMAPS:,} rows per map of {_mb_rows:,}; a map "
+              f"under {ADV_MAP_MIN_ROWS} rows in a minibatch keeps the pooled moments)")
     # --heldout-maps: parsed and guarded HERE, before any core, field or SDF
     # is loaded, so a bad combination fails in a second rather than after a
     # multi-minute cache pass. The slots themselves are built after the
@@ -15711,6 +15830,9 @@ def main() -> None:
                        # not comparable to it, and nothing else records that.
                        "eval_stall": int(args.eval_stall or 0),
                        "ret_norm": int(args.ret_norm or 0),
+                       # --adv-norm-per-map: only when on, so every other run's dump is the
+                       # pre-flag one (record_ckpt lists it TRAIN_ONLY)
+                       **({"adv_norm_per_map": 1} if ADV_MAP else {}),
                        "fail_pen": (args.fail_pen
                                     if args.reward == "race" else None),
                        "race_ng": (args.race_ng
@@ -17187,6 +17309,11 @@ def main() -> None:
         for _s in slots:
             _sfx = f".{_s.tag}" if MULTI else ""
             CSV_COLS += [f"fpert/ended{_sfx}", f"fpert/finished{_sfx}", f"fpert/best_prog{_sfx}"]
+    if MULTI:
+        # train/<name>.<tag>: every --maps run, TRULY LAST (a single-map header is the pre-flag
+        # one; an older --maps file migrates by padding) - advmap_diag says what each column is
+        for _s in slots:
+            CSV_COLS += [f"train/{_c}.{_s.tag}" for _c in ADVMAP_COLS]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -19972,6 +20099,11 @@ def main() -> None:
             # --cc-buckets: the moments per T bucket of this minibatch
             # (cc_bucket_normalize says why the families do not share one)
             a = cc_bucket_normalize(a, f_bkt[idx], CC_B)
+        elif ADV_MAP:
+            # --adv-norm-per-map: each map's rows by their own moments. Row idx is
+            # t * N + env (time-major buffers) and slot k owns envs [k*PER, (k+1)*PER), so
+            # (idx % N) // PER is the row's map; N, PER, NMAPS are Python constants
+            a = adv_norm_per_map(a, (idx % N) // PER, NMAPS)
         elif adv_mean is None:
             # world_size==1 keeps the LITERAL estimator so the single-GPU
             # path stays bit-identical — do not "unify" the two branches
@@ -22873,6 +23005,24 @@ def main() -> None:
                                     vl.detach(), pg.detach(), el.detach()])
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
+        advmap_row = []
+        if MULTI:
+            # train/<name>.<tag> (logging only): per map, the advantages' spread before and after
+            # the update's estimator and the shared critic's fit on that map's rows. Rank-local
+            # under DDP (the main rank writes the CSV); adv_std_norm is blank under DDP and
+            # --cc-buckets, whose estimators are not the one re-applied here
+            with torch.no_grad():
+                advmap_row = advmap_diag(
+                    adv, ret, b_val, [(_s.lo, _s.hi) for _s in slots], N, PER, f_adv,
+                    (None if (last_diag is None or D.enabled or CC_BKT) else last_diag[0]),
+                    ADV_MAP)
+            if D.is_main and it_no % 50 == 1:
+                _w = len(ADVMAP_COLS)
+                print("adv/critic per map: " + "; ".join(
+                    f"{_s.tag} adv_std {advmap_row[_k * _w]:.3g} -> {advmap_row[_k * _w + 1]:.3g}"
+                    f" ev {advmap_row[_k * _w + 2]:.3f} vf_err {advmap_row[_k * _w + 3]:.3f}"
+                    f" vloss {advmap_row[_k * _w + 5]:.0%}" for _k, _s in enumerate(slots)),
+                    flush=True)
         if AUG_ON and aug_n:
             # --aug-*: the update's MEAN DrAC terms (every minibatch, not the last)
             aug_kl_v, aug_vm_v = (aug_sum / aug_n).tolist()
@@ -24125,7 +24275,10 @@ def main() -> None:
                            # novel/*, after those (only under --respawn-novel)
                            + (novel_row if novel_row is not None else [])
                            # fpert/*, after those (only under --respawn-front-perturb)
-                           + (fpert_row if fpert_row is not None else []))
+                           + (fpert_row if fpert_row is not None else [])
+                           # train/<name>.<tag>, --maps only, TRULY LAST
+                           + ([(float(f"{_v:.6g}") if _v == _v else "")
+                               for _v in advmap_row] if MULTI else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:

@@ -82,6 +82,9 @@ class _RouteProbe:
 TRAIN_ONLY = frozenset({
     # --target-kl: PPO's early stop inside the update; a recording runs no update
     "target_kl",
+    # --adv-norm-per-map: how the PPO update standardises a --maps run's advantages (per map
+    # instead of pooled); a recording runs no update
+    "adv_norm_per_map",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings
