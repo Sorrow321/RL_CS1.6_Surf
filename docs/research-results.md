@@ -49773,3 +49773,16 @@ Runs of 4bf7324d and 88e0e61f. Finishes from the grader (score.py, map_configs/<
   single-map steps. One seed per run; B is the replicate of the failure and is still running.
 * Bundles (BUNDLE OK, md5 = box): ~/ar_m2/runs/mmadv (4171896b), ~/ar_m2/runs/mmpc (14a8abd6);
   boxes 61024497 and 61022193 released and verified gone.
+
+## 2026-11-17 09:18 UTC: FINAL - B, the P1 replicate (mmrep_1): celestial finishes late and rarely
+
+* Cut at celestial's first finish + 5 evals (09:16:43). Celestial: first finish 1/9 at 1,126.3M
+  own steps (best 56.05 s), then 0, 0, 0, 1, 1 of 9: 3 of 54 greedy episodes over the 6 evals
+  from the first finish (C with the flag: 26/54; A without blue200: 16/54; the single-map rerun
+  20/54). Petrus 150.3M own, blue200 525.7M own.
+* So the failure of 7151997d repeats in degree, not in kind: with the pooled scale celestial's
+  first finish came 2.1x later than with the per-map scale (C 525.7M) and 1.4-1.7x later than
+  single-map (680.0M / 831.0M), and it finished rarely; P1 (same config) had none in 2.0B own.
+* Bundle ~/ar_m2/runs/mmrep/mmrep_1_bundle.tgz (63 evals, milestone and search checkpoints),
+  BUNDLE OK (md5 56e83e61 = box). Box 61024396 released 09:18:18 UTC; no box is up; credit
+  $36.73.
