@@ -234,7 +234,7 @@ def _tiny_net(seed=0):
 def _pair_worker(rank, ws, tmpfile):
     import torch.distributed as dist
     dist.init_process_group(
-        "gloo", init_method=f"file:///{Path(tmpfile).as_posix()}",
+        "gloo", init_method=Path(tmpfile).as_uri(),     # file:///tmp/... (Linux too)
         rank=rank, world_size=ws)
     try:
         D = _mk_facade(rank, ws)

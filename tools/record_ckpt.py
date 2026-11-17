@@ -82,6 +82,11 @@ class _RouteProbe:
 TRAIN_ONLY = frozenset({
     # --target-kl: PPO's early stop inside the update; a recording runs no update
     "target_kl",
+    # --ddp-maps shard: which training rank owned which map (and the switch itself); a
+    # recording is one map in one process
+    "ddp_maps", "map_shard",
+    # --search-gpu: which card the run's searches ran on
+    "search_gpu",
     # --adv-norm-per-map: how the PPO update standardises a --maps run's advantages (per map
     # instead of pooled); a recording runs no update
     "adv_norm_per_map",

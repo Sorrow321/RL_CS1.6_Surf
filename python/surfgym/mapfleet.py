@@ -264,6 +264,9 @@ class MapFleet:
     def __init__(self, slots, heldout=()):
         self._mind: dict = {}
         self._mind_age = self.MIND_EVERY      # first call always samples
+        # --ddp-maps shard: slot i's map is the run's map seed_ids[i] (its GLOBAL --maps
+        # index), and reset() seeds it as one process would have; None = slot i is map i
+        self.seed_ids = None
         self.slots = list(slots)
         if not self.slots:
             raise ValueError("MapFleet needs at least one slot")
@@ -350,11 +353,16 @@ class MapFleet:
     def reset(self, seed: int = 0):
         """Reset every core; returns (N, obs_dim). Slot i is seeded
         ``seed + 1013*i`` so two maps do not draw a correlated spawn
-        sequence; slot 0 keeps the caller's seed exactly."""
+        sequence; slot 0 keeps the caller's seed exactly. With ``seed_ids`` (a map-sharded
+        rank's slots) slot i is seeded ``seed + 1013*seed_ids[i]``: each map draws the stream
+        it draws when every map is in one process."""
+        ids = self.seed_ids
         if self.single:
-            return self.slots[0].core.reset(seed)
+            return self.slots[0].core.reset(seed if ids is None
+                                            else int(seed) + 1013 * int(ids[0]))
         for i, s in enumerate(self.slots):
-            self._obs[s.sl] = s.core.reset(int(seed) + 1013 * i)
+            self._obs[s.sl] = s.core.reset(int(seed) + 1013 * (i if ids is None
+                                                                else int(ids[i])))
         return self._obs
 
     def step(self, actions, view=None):
