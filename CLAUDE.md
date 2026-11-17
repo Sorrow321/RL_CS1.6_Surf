@@ -391,6 +391,37 @@ run, velocity as part of the state) and the design discussion live in
   doing and where it is stuck. A run nobody watched produced no evidence.
 * **Stationary for more than 10 minutes = the experiment failed.** Stop it,
   destroy the box, write down what happened.
+* **Every `--maps` run passes `--adv-norm-per-map 1` (found 2026-11-17; the
+  user asked for it to be written down).** PPO standardises the advantages
+  of every minibatch, `A <- (A - mean(A)) / std(A)` (`train_fast.py`, the
+  "per-minibatch, like SB3" line). That step is NOT in the PPO paper: it
+  comes from OpenAI baselines' code, and the common libraries have it on by
+  default. On one map it only sets the units. Under `--maps` a minibatch
+  mixes every map's rows, so ONE std is taken over all of them and the map
+  with the largest raw advantages sets it for every map. Each map's
+  progress reward totals ~100 over its spawn's d0, and blue200's d0 is
+  2,672 u against celestial's 61,069 u, so its shaping reward per decision
+  swings ~9x more (std 0.358 vs 0.042 on the greedy). In the P1 replicate
+  `mmrep_1` (flag off) celestial's standardised advantage std fell to
+  0.29-0.47 from ~470M own steps - a third to a half of its single-map
+  policy signal - while its critic stayed fine (explained variance
+  0.96-0.985; the critic fits raw returns under `--ret-norm 0`). Which map
+  is starved changes over training: early it was blue200 (0.26-0.28) while
+  petrus led. Celestial first-finished at 1,126M own steps and 3 of 54
+  greedy episodes after it (P1, same config: none in 2.0B), against
+  **525.7M and 26 of 54 with the flag** (`mmadv_1`; alone 680.0M / 831.0M,
+  20 of 54); petrus and blue200 moved by at most one eval (75M own steps).
+  The flag takes each map's mean and std over ITS rows of every minibatch:
+  computed from the data, no per-map constant, the same on every map. Its
+  one constant, `ADV_MAP_MIN_ROWS` = 32, is the fewest rows a map needs in
+  a minibatch for its own moments (v14: ~2,728 rows per map at three maps,
+  ~1,170 at seven, ~80 at 100). It is refused without two or more maps and
+  with DDP, `--rnn` or `--cc-buckets` (their own estimators still pool).
+  Every `--maps` run logs `train/adv_std_norm.<map>`: 1.0 per map with the
+  flag; a map far below 1 is being starved. A `--maps` run without the flag
+  is a control and says so in the ledger. Same problem as PopArt's (Hessel
+  et al. 2019, one agent on 57 Atari games). Ledger 2026-11-17 08:09 and
+  09:18 UTC.
 
 ## 3. The single metric
 

@@ -49786,3 +49786,25 @@ Runs of 4bf7324d and 88e0e61f. Finishes from the grader (score.py, map_configs/<
 * Bundle ~/ar_m2/runs/mmrep/mmrep_1_bundle.tgz (63 evals, milestone and search checkpoints),
   BUNDLE OK (md5 56e83e61 = box). Box 61024396 released 09:18:18 UTC; no box is up; credit
   $36.73.
+
+## 2026-11-17 13:48 UTC: NOTE - --adv-norm-per-map 1 on every --maps run (now in CLAUDE.md); per-map speed of the shared runs
+
+* The user asked for the finding of 08:09 / 09:18 UTC to be written down. CLAUDE.md section 2 now
+  carries it as a rule: every --maps run passes --adv-norm-per-map 1, and a --maps run without it
+  is a control and says so here (same text on ab/main and mm/advmap).
+* Each map's first greedy finish in its own steps (finishes in the 6 evals from it; grader):
+
+  | map | alone (v14) | B, shared, flag off | C, shared, flag on |
+  |---|---|---|---|
+  | petrus | 302.5M (36/54) | 150.3M (31/54) | 150.3M (41/54) |
+  | blue200 | 982.0M (53/54) | 525.7M (52/54) | 600.8M (45/45, 5 evals to the cut) |
+  | celestial | 680.0M / 831.0M (20/54 each) | 1,126.3M (3/54) | 525.7M (26/54) |
+
+  P1 (flag off): petrus 225.4M, blue200 525.7M, celestial none in 2.0B. Evals are 75M own steps
+  apart, so the flag moved petrus and blue200 by at most one eval: its gain is celestial's.
+* Not shown yet: a gain in total work or in hours. C had all three maps finishing by 1.80B fleet
+  steps (three single-map runs: 1.96-2.12B); the --maps runs stepped at 307k (C) and 349k (B)
+  fleet steps/s against 401-425k for the single-map runs, so in hours about even. And per own
+  step each map got 3x the updates (64 per 43,648 own steps against 64 per 130,944), so the
+  own-step speed-up is not separated from that update density; one map alone at --envs 341 would
+  separate it. One seed per run.
