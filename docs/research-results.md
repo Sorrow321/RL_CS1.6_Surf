@@ -50347,3 +50347,28 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Then the from-scratch seven-map run on the same box (~01:00 UTC), recipe from these readings.
   Driver: scratchpad abl/mmfix/q.sh (a queue; an empty queue releases the box; a $23.5 credit
   floor stops, pulls and releases).
+
+## 2026-11-18 22:05 UTC: RESULT - A on the 5090 (same card as R): celestial still 3 of 6 low
+
+* Run mmg_A on box mmg (RTX 5090): the resume of mm7_1 at 14,203,295,232 for 3.2e9 steps,
+  v14 + --adv-norm-per-map 1 + A (--unstuck-finish 1). Control mmg_R (same card, no A).
+* Celestial finishes of 9, tests 1-6 after the start: A 7 3 7 2 8 3; R 8 7 7 1 0 3. 3 of 6
+  tests at 3/9 or less in both. Petrus A 7 9 9 9 8 8, R 7 5 8 9 8 9; blue200 9/9 in 11 of 12
+  (one 8/9 each). Open maps, tests 10+ points under the best so far: A pb 1, uf2 1, can 1;
+  R can 4.
+* Finish times over those tests (s, median / best): celestial A 44.28 / 43.27 (30 finishes)
+  vs R 45.11 / 44.47 (26); petrus 30.57 / 30.12 vs 31.15 / 30.76; blue200 13.41 / 12.86 vs
+  13.59 / 12.74.
+* Cross-card check on the same 5090 (record_ckpt, celestial, greedy, 8 deg yaw jitter, seeds
+  1-4 x 9 = 36 runs each, same spawns): mmf_A final (trained on the 4090) 26 of 36; mmg_A
+  final (5090) 2 of 36; mmg_R final (5090) 20 of 36. 31 of mmg_A's 34 misses end in one place:
+  a drop to the floor (z ~540) at 16 s, after a descent that arrives ~200 u lower than the
+  finishing runs at the same x, y. The 4090 policy's misses are scattered later falls.
+* Reading: A does not hold celestial on the 5090. The test is not harsher on the 5090 (the
+  4090-trained weights fly as well there as at home: 26/36 vs 7/9 in their last test); the
+  weights trained on the 5090 are the ones that swing. Why training on this box swings more is
+  open (configs equal; one box per card). A stays in the recipe: it cools T on finished maps by
+  rule and cost nothing here (cannonball 1 fall vs R's 4, times a little faster).
+* 4090 box mmf: its host went offline at 20:51 UTC; mmf_D (A + D) died after 2 tests
+  (celestial 7 9, petrus 6 8, blue200 9 9; cannonball 84 74%, uf2 40 45%) and was released.
+  D's reading now rests on mmg_D (A + D + E on the 5090, running since 21:48 UTC).
