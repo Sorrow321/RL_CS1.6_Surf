@@ -50241,3 +50241,20 @@ from the LAST eval's deaths only, so a spot the last test passed stops being pra
   the session (the brackets guard only the pattern's own text); rerun at OMP_NUM_THREADS=2,
   5 at a time, nice 19. Third box mmh: no offer passed in 30 tries (15:46-16:45), so A runs on
   mmg's 5090 after C (mmg_A; driver restarted 16:58 with B, C, A).
+
+## 2026-11-18 17:40 UTC: RESULT - B (--lr 1.134e-4) vs R, same 5090: no retention gain
+
+* B = mmg_B (RTX 5090, the same box as R): the resume of mm7_1 at 14,203,295,232 for 3.2e9
+  steps, v14 + --adv-norm-per-map 1 + --lr 1.134e-4. Tests 1-6 (14.73B-17.36B):
+  B: celestial 7 4 6 0 9 2 (mean 4.7), petrus 7 8 9 9 8 8 (8.2), blue200 9 9 9 9 9 9.
+  R: celestial 8 7 7 1 0 3 (4.3),      petrus 7 5 8 9 8 9 (7.7), blue200 8 9 9 9 9 9.
+  Celestial tests at 3/9 or less: B 2 of 6, R 3 of 6. B still swings 0/9 -> 9/9 -> 2/9.
+* Open maps: cannonball B 58 58 42 91 90 33% vs R 77 66 25 58 58 91%; uf2 B 20 20 44 45 45 45%
+  vs R 19 38 44 44 61 65%; pb B 20-25% then 14% at the last test, R 20-25%; sidistic 26% both.
+* Finish times (median of every greedy finish in tests 1-6, best): celestial B 43.97 s (43.36)
+  vs R 45.11 (44.47); petrus B 30.44 (29.81) vs R 31.15 (30.76); blue200 B 13.26 (12.60) vs R
+  13.59 (12.74). B is faster on all three finished maps, as A was (one run each).
+* approx_kl mean B 0.0227 vs R 0.0240 (B back at R's level after ~1B fleet steps, 15:50 entry).
+* Verdict: B does not fix the regressions. C (--respawn-greedy-memory 4, mm/s7c 6f4e9275) runs on
+  the same box from 17:30 (flag confirmed in the launch log and run.json; lr 3e-4, no A), then A
+  on the same box (the same-card check of A against R).
