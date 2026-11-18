@@ -49991,3 +49991,33 @@ fleet / 7; test k of mm7_1 and of each v14-alone bundle is at ~75M x k own steps
   its first line came at 988M own (end d 80,482, 30k past a 110,832 frontier).
 * Wall clock at 316k fleet steps/s (163M own per map per hour): the alone first finishes are
   can 16.9B, uf2 21.7B, sid 28.0B and pb 121B fleet (~9, 13, 19 and ~100 h after 6.9B).
+
+## 2026-11-18 00:40 UTC: NOTE - mm7_1 dashboard review at 8.1B fleet steps (1.16B own)
+
+The user asked for abnormal behaviour on any dashboard chart. All 168 progress.csv series were
+redrawn (scratchpad abl/mm7/diag/pages.py) and read against the v14-alone bundles.
+
+* Nothing is broken: no NaN, no dead series, KL 0.023-0.028 all run, per-map advantage scale 1.
+* Throughput: 270k steps/s while a search runs beside the training, 338k otherwise (13
+  searches; running for 29% of the run's steps, 44% of the last 2B). A sidistic patience
+  search runs now; unitfarmer2 and celestial are queued behind it.
+* Value-loss spikes (2.9B: 3.9 mean, 7.37-7.70B: 3.5, against ~1.1) follow line adoptions on
+  maps with large returns (blue200 at 2.61B, cannonball at 7.37B: its share of the pooled
+  value loss 0.03 -> 0.68). approx_kl is unchanged (0.0265 vs 0.0275; 0.0246 vs 0.0244;
+  corr(value loss, kl) over 155 blocks -0.18): the global clip does not visibly shrink the
+  other maps' policy steps.
+* unstuck/T sits at its cap (0.5) on all seven maps, finished ones included, and stuck_steps
+  grows without bound; the same in the v14-alone runs (blue200 alone: T 0.5 from 126M own
+  to the end, through its finish). The adaptive temperature is a constant in v14.
+* Value-loss share, last 1B fleet: cannonball 0.35, blue200 0.29, petrus 0.20, celestial
+  0.15, sidistic 0.011, princessburglar 0.003, unitfarmer2 0.001 (ret_std 0.8 to 32).
+  Explained variance against alone at 0.7-1.2B own: pb 0.80 vs 0.83, uf2 0.99 vs 0.98,
+  sid 0.94 vs 0.99.
+* Behind v14 alone at 1.13B own: cannonball 11.7% vs 76.7%; celestial 1/9 (39.9%) vs 9/9 (alone
+  0/9 for four tests after its first finish, then 8/9 at 1.057B, 9/9 at 1.133B); sidistic's
+  last test 15.6% vs 31.1% (the one before 26.9 vs 28.4). On par: unitfarmer2 (alone left
+  its 10% plateau at 1.74B own = 12.2B fleet here), blue200, petrus; pb in the room
+  (alone out at 1.284B own = test 17 = 8.93B fleet here).
+* Celestial's success line (d <= 1,403) is deeper than where its finishers enter the finish
+  (median deepest d 2,750-3,550 in the FINISH lines, alone and here), so a 1/9 finish counts
+  as 0/9 past the line and the patience rule queued a search at 7.88B.
