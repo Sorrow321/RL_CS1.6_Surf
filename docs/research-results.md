@@ -50277,3 +50277,22 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   33 35%), uf2 still rising. Ends ~00:30 UTC.
 * Queue: mmg (5090) C until ~21:00, then A (the same-card check of A against R) until ~00:30.
   Credit $40.52 at 17:42 UTC; floors $23 (user reserve + operator floor).
+
+## 2026-11-18 18:45 UTC: RESULT - A+B vs A, same 4090: same retention, faster finish times
+
+* A+B = mmf_AB (RTX 4090, the box of A): the resume of mm7_1 at 14,203,295,232 for 3.2e9 steps,
+  v14 + --adv-norm-per-map 1 + --unstuck-finish 1 + --lr 1.134e-4. Tests 1-6 (14.73B-17.36B):
+  A+B: celestial 8 9 8 8 6 6 (mean 7.5), petrus 6 9 8 9 9 9 (8.3), blue200 9 8 9 9 9 9.
+  A:   celestial 7 8 9 9 5 7 (7.5),      petrus 9 6 7 9 8 9 (8.0), blue200 8 9 9 9 9 9.
+  No test at 3/9 or less in either arm (R on the 5090: 3 of 6 on celestial).
+* Open maps (greedy frontier %): cannonball A+B 36 18 77 33 33 36 vs A 34 24 36 84 33 35 (10+
+  points below the best so far in 5 of 6 tests in both); uf2 A+B 20 20 38 44 49 61 vs A 20 38
+  44 44 65 40; pb 17-25% vs 14-25%; sidistic 26-31% vs 26%.
+* Finish times (median of every greedy finish in tests 1-6, best): celestial A+B 43.16 s (42.60)
+  vs A 43.77 (43.12); petrus 30.09 (29.69) vs 30.77 (29.88); blue200 13.33 (12.83) vs 13.44
+  (12.71). The lower lr is faster on this card too (5090: B vs R, 17:40 entry).
+* approx_kl mean A+B 0.0234 vs A 0.0238. T on the finished maps 0.00 in both (A's hold).
+* Verdict: B buys speed on the finished maps (0.6-0.7 s on celestial and petrus, on two cards),
+  not retention, and does not steady cannonball. It stays out of the retention recipe; a late
+  lr drop is a candidate for the final polish. D (A + --practice-share 0.25 --practice-temp
+  0.5) launched on the same box at 18:40.
