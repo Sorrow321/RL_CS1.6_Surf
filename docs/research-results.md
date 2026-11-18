@@ -50182,3 +50182,32 @@ from the LAST eval's deaths only, so a spot the last test passed stops being pra
   trajectories"), and the fleet watchdog's harvest keeps only the last eval of two maps, so
   scratchpad abl/mmfix/seq.sh now mirrors every eval file before it releases a box (mmf: A+B
   then release; mmg: R, B, C then release). Arm A's evals were mirrored by hand at 13:05.
+
+## 2026-11-18 15:50 UTC: RESULT - R (plain resume) vs A (--unstuck-finish 1); B does not cut KL
+
+* R = mmg_R (RTX 5090): the same resume of mm7_1 at 14,203,295,232 for 3.2e9 steps, v14 +
+  --adv-norm-per-map 1, nothing changed. Tests 1-6 after the start test (14.73B-17.36B):
+  R:     celestial 8 7 7 1 0 3 (mean 4.3), petrus 7 5 8 9 8 9 (7.7), blue200 8 9 9 9 9 9.
+  A:     celestial 7 8 9 9 5 7 (7.5),      petrus 9 6 7 9 8 9 (8.0), blue200 8 9 9 9 9 9.
+  mm7_1: celestial 9 1 8 3 5 1 (4.5),      petrus 7 9 9 7 9 8 (8.2) at the same steps (5090).
+* Celestial tests at 3/9 or less: A 0 of 6, R 3 of 6, mm7_1 3 of 6 (rough one-sided Fisher, A
+  against R and mm7_1 pooled: p = 0.05; against R alone 0.09). The resume itself does not
+  explain A's gain: R fell at tests 4-6 as mm7_1 did (celestial frontier 26-40%).
+* Finish times, median of every greedy finish in tests 1-6 (best): celestial A 43.77 s (43.12),
+  R 45.11 (44.47), mm7_1 44.64 (43.59); petrus A 30.77 (29.88), R 31.15 (30.76), mm7_1 31.23
+  (30.71); blue200 A 13.44, R 13.59, mm7_1 13.50.
+* Mechanism: T (2nd half) on blue200 / celestial / petrus: A 0.00 0.00 0.00, R 0.50 0.50 0.50;
+  the four open maps 0.45-0.50 in both. approx_kl mean A 0.0238, R 0.0240.
+* The open maps do not change, as designed: pb 14-25%, sidistic 26%, uf2 rising to 40-65%,
+  cannonball 24-84% (A), 25-91% (R), 9-84% (mm7_1).
+* Caveat: one run each on different cards (A 4090, R 5090; the lidar march differs by card, so
+  the greedy paths differ as with another seed). Third box mmh (scratchpad abl/mmfix/arm4.sh):
+  on a 5090 it runs A, on a 4090 it runs R, so A meets R on one card type. Renting since 15:46
+  (no offer passed the filters on the first try).
+* B does not do what it was built for. approx_kl (last minibatch of each update), by 0.5B fleet
+  steps from 14.0B: R 0.0251 0.0261 0.0236 0.0237 0.0231 0.0230 0.0235; A 0.0239 0.0235 0.0245
+  0.0236 0.0237 0.0241 0.0228; B (5090) 0.0170 0.0218 0.0226 0.0231; A+B (4090) 0.0163 0.0215
+  0.0245 0.0245. lr / sqrt(7) cuts the move per update for about 1B fleet steps, then it is
+  back at the old level, so "KL grows with lr^2" does not hold here (the PPO clip probably sets
+  the move). The B arms keep running; so far B: celestial 7 4, petrus 7 8; A+B: celestial 8 9,
+  petrus 6 9.
