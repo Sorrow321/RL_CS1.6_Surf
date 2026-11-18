@@ -50296,3 +50296,19 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   not retention, and does not steady cannonball. It stays out of the retention recipe; a late
   lr drop is a candidate for the final polish. D (A + --practice-share 0.25 --practice-temp
   0.5) launched on the same box at 18:40.
+
+## 2026-11-18 18:55 UTC: CUT - C (--respawn-greedy-memory 4) after 3 of 6 tests: cannot win
+
+* C = mmg_C (RTX 5090, the box of R and B): the resume of mm7_1 at 14,203,295,232, v14 +
+  --adv-norm-per-map 1 + --respawn-greedy-memory 4 (mm/s7c 6f4e9275). Tests 1-3 (14.73B-15.78B):
+  C: celestial 0 0 5 of 9 (frontier 7%, 26%, 94%), petrus 9 6 6, blue200 9 9 9.
+  R: celestial 8 7 7,                               petrus 7 5 8, blue200 8 9 9.
+  Open maps: cannonball C 68 18 53% vs R 77 66 25%; uf2 C 20 45 45% vs R 19 38 44%; pb and
+  sidistic level in both (20-24%, 26-27%).
+* Why cut at 15.85B: 2 celestial tests at 3/9 or less already, so the best C can end with is 2
+  of 6, which is B's score (17:40 entry: no gain). No result of tests 4-6 makes C a clear win.
+  Trainer stopped by pid on the box (kill 29702); the driver pulls it and starts A on the same
+  card ~2 h earlier than queued.
+* Why A on this card is now the priority: every 5090 arm swings on celestial (mm7_1's last 6
+  tests 3 of 6 low, R 3 of 6, B 2 of 6, C 2 of 3) and both 4090 arms with A hold (A 0 of 6, A+B 0
+  of 6). Card and treatment are confounded until A runs on the 5090.
