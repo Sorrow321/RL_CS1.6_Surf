@@ -50021,3 +50021,37 @@ redrawn (scratchpad abl/mm7/diag/pages.py) and read against the v14-alone bundle
 * Celestial's success line (d <= 1,403) is deeper than where its finishers enter the finish
   (median deepest d 2,750-3,550 in the FINISH lines, alone and here), so a 1/9 finish counts
   as 0/9 past the line and the patience rule queued a search at 7.88B.
+
+## 2026-11-18 02:40 UTC: NOTE - mm7_1 outside review checked; pb leaves the room at 10.5B
+
+An outside reviewer (an OpenAI model, read-only; report /home/steam/review_ext/report.md, bus
+20261118T020226Z_codex_9df4d1) read the run at 9.46B fleet. Checked here against the code
+(mm/s7a 1491b161), run.json, the mirror and the box's auto/*/k*/spine.json:
+
+* BUG, confirmed: --auto-spine-banked reads a greedy episode's depth at contact ticks only
+  (banked_min_d), so a finisher that flies into the finish keeps the d of its last contact.
+  Celestial's 4 finishers at 8.405B and 3 at 10.505B counted 0/9 past the success line. This
+  CORRECTS the 00:40 note: the line is not too deep, an airborne finish is not counted. The
+  same rule ran alone; at >= 5 finishers --auto-spine-finish-stop hides it.
+* Confirmed: the dashboard's race/eval_finishes.<map> differs from the done footers (blue200 7
+  vs 9 at 4.728B, petrus 6 vs 7 at 8.405B). Verdicts here come from the grader.
+* Confirmed: the energy GE stage roots at 1.0 and 1.04 x velocity (--energy-boost default
+  1.0,1.04; --ge-boost 1.0;E1.0 does not set it). Cannonball k02 (energy gain 273.5, bar 150)
+  and unitfarmer2 k03 (154.4) came from a 1.04 root: 222 u and 29 u of energy height at the
+  join. explore_phase1 and ge_replay run at round(7.667) = 8 ms; beam and MCTS at [8,8,7].
+  The v14-alone runs used the same settings.
+* Reviewer's count, not re-checked here: 12 of 17 adoptions came before a fresh test of the map.
+* CORRECTS the start mix: 10% true start; of the other 90%, 25% frontier perturbation and 25%
+  greedy-death starts, the rest the line curriculum (10 / 45 / 22.5 / 22.5% when both fill).
+* unstuck/T at its cap, share of rows to 1.45B own, shared vs alone: pb 92/93%, sid 81/56%,
+  uf2 91/86%, can 74/62%, b200 95/94%, cel 83/72%, pet 88/70%: capped most of the time alone
+  too, less often.
+* Budget (the reviewer's point, agreed): $29.84 at 02:33 UTC over the $13 floor is ~25 h at
+  $0.659, ~5.5B own steps per map in all. pb alone finished at 17.29B own: out of reach.
+
+The 10.505B test (1.501B own), finishes and median deepest d:
+* pb LEFT THE ROOM: 9/9 past d 55,245, median 55,184 (3.5%); the grader's room exit at
+  1.501B own vs 1.284B alone (x1.17). A pb quorum search follows.
+* celestial 3/9 (0/9, 1/9 at the two before); petrus 2/9 (8, 7, 5/9 at the three before);
+  blue200 9/9; cannonball 0/9, median 163,674 (82,920 at 9.98B; line 3 to d 57,788 adopted
+  at 10.076B); sidistic 74,035 and unitfarmer2 28,609, unchanged.
