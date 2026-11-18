@@ -50077,3 +50077,40 @@ The user asked why maps improve and then regress, finished ones included. Read a
   13.13B); petrus fails mostly at 30-34 s (its last section).
 * The +50 finish bonus is worth ~11% at the start of a 43 s map (gamma 0.9995 per 10 ms).
 * pb: past the x -1,005 wall (best > 7.5%) at 1.726B own vs 9.287B alone (x0.19).
+
+## 2026-11-18 07:05 UTC: PRE-LAUNCH - retention arms A, R, B, A+B on one extra box, in sequence
+
+The user, 05:40 UTC, after the 05:25 note: "let's test both (A, B, A+B)... If the problem isn't
+fixed, keep researching. Keep the current box running until 20B or until all maps finish"; then
+"run ablations in parallel in other box. Sequentially is fine".
+
+* Question: do finished maps keep their finishes when (A) a map that finishes is not stuck, (B)
+  the shared update moves at the solo pace per own step, or both? R is the control: the same
+  resume with nothing changed.
+* Start (all four): mm7_1's checkpoint at 14,203,295,232 fleet steps (2,029M own per map; md5
+  83ed68d6e4db74f1d5486894ca398cc9), copied box to box with its held lines (pb k05, sid k05,
+  uf2 k04, can k04, b200 k01, cel k02, pet k02). A resume restarts every curriculum at the end
+  of its line and the search clocks (auto_spine_delay 3e8 own): R measures that.
+* A = --unstuck-finish 1 (new, mm/s7b 70b5f32c): a map whose latest greedy eval finished at least
+  one episode holds its stuck clock at 0, so its T cools (halved per 2e7 own steps) instead of
+  sitting at the 0.5 cap (keys at temperature 1.5, entropy and novelty x1.5). K = 1, not 5:
+  the patience (2e7 own) is shorter than the test gap (7.5e7 own), so a 5-of-9 rule heats T
+  again after every weaker test, and celestial (1-5/9) would stay untreated.
+* B = --lr 1.134e-4 (3e-4 / sqrt 7): approx_kl per update goes ~ lr^2, so 7 updates per own
+  step at KL / 7 each give the solo run's KL per own step (mm7_1: 0.025 per update and 7x the
+  updates per own step; v14 alone 0.017-0.028).
+* Each arm: 3.2e9 fleet steps (the eval at the start + 6 tests), v14 + --adv-norm-per-map 1,
+  all seven maps; the flag off is mm/s7a (CPU check: config and progress rows identical).
+* Read: finishes per test on petrus, celestial and blue200 against R; the four unfinished maps'
+  frontier against R (does A or B cost the hard maps?); T per map; approx_kl per update.
+* CPU checks (blue200 + unitfarmer2 at smoke scale): flag off, mm/s7b = mm/s7a (config but the
+  run's own spine path, progress rows, eval files and weights identical); flag on reads every
+  eval per map and rides in the config and the checkpoint; a bare resume restores it; a flag-off
+  checkpoint resumes with it (the A case). A first try on pb + unitfarmer2 timed out: pb's caches
+  in RL_Surf_m2/maps predate the 512-entity core and the trainer rebuilt occ, slabocc and goal.
+* Box 61199469, RTX 4090 $0.444/h (NL; 5090s were over the 0.60 cap with storage). Before it:
+  61198293 (RTX 4090, power limit 250 of 450 W, 109 TFLOPS) failed gpu_health in deploy: blocked
+  (mm/s7b fa3e08f8) and destroyed; a 5090 offer at $0.55 never left 'loading' in 330 s.
+* Watchdog from the rent, re-registered per arm with its harvest spec and pid file; dashboard
+  tunnel :8662; scratchpad abl/mmfix/chain.sh runs A, R, B, A+B, pulls each run to
+  ~/ar_m2/runs/mmf and releases the box after the last (~19 h, ~$9).
