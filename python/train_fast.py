@@ -7565,6 +7565,14 @@ def main() -> None:
                     help="--practice-share: the practice envs' temperature on every head (< 1 "
                          "sharpens the categorical heads and narrows the view sigma); default "
                          "0.5. Restored from the checkpoint")
+    ap.add_argument("--practice-finish-share", type=float, default=None,   # 0 = off
+                    help="mm/s7f: on a map whose latest greedy eval finished (the "
+                         "--unstuck-finish signal), this share of its envs practises at "
+                         "--practice-temp instead of --practice-share's; back to that share "
+                         "when an eval stops finishing. The greedy line is the deliverable on a "
+                         "finished map, and a policy tuned for its own sampling noise flies "
+                         "that line too hot without it. 0 = off (default; the config dump and "
+                         "the run are unchanged). Restored from the checkpoint")
     ap.add_argument("--eval-ema", type=str, default=None,               # e.g. 1e8,5e8
                     help="mm/s7e, an OBSERVER: H1[,H2..] keeps one exponential moving average "
                          "of the policy weights per half-life H (in environment steps of the "
@@ -9363,6 +9371,9 @@ def main() -> None:
         if args.practice_temp is None and ck_cfg.get("practice_temp") is not None:
             args.practice_temp = float(ck_cfg["practice_temp"])
             restored.append(f"practice_temp={args.practice_temp:g}")
+        if args.practice_finish_share is None and ck_cfg.get("practice_finish_share") is not None:
+            args.practice_finish_share = float(ck_cfg["practice_finish_share"])
+            restored.append(f"practice_finish_share={args.practice_finish_share:g}")
         # --eval-ema (mm/s7e): an observer, restored so that a crash-resume keeps measuring
         if args.eval_ema is None and ck_cfg.get("eval_ema") is not None:
             args.eval_ema = ",".join(f"{float(h):g}" for h in ck_cfg["eval_ema"])
@@ -11984,6 +11995,13 @@ def main() -> None:
     UNSTUCK_INT = UNSTUCK and bool(args.unstuck_int)
     # --unstuck-finish: K (0 = off) - a map whose latest greedy eval finished >= K is not stuck
     UNSTUCK_FIN = int(args.unstuck_finish) if UNSTUCK else 0
+    # --practice-finish-share (mm/s7f): the practice share of a map whose latest eval finished
+    PRACTICE_FIN = float(args.practice_finish_share or 0.0)
+    if not 0.0 <= PRACTICE_FIN < 1.0:
+        raise SystemExit("--practice-finish-share is a share of each map's envs in [0, 1)")
+    if PRACTICE_FIN > 0.0 and not UNSTUCK_FIN:
+        raise SystemExit("--practice-finish-share reads the --unstuck-finish signal: give "
+                         "--unstuck-finish K")
     UNSTUCK_HEADS = str(args.unstuck_temp_heads) if UNSTUCK else "all"
     if UNSTUCK_TEMP and UNSTUCK_HEADS in ("view", "yaw") and not VIEWC:
         raise SystemExit(f"--unstuck-temp-heads {UNSTUCK_HEADS} tempers the "
@@ -16706,9 +16724,11 @@ def main() -> None:
         if GREEDY.memory > 1:
             meta["config"]["respawn_greedy_memory"] = int(GREEDY.memory)
     # --practice-share: written ONLY when on (a control run's dump is unchanged)
-    if PRACTICE > 0.0:
+    if PRACTICE > 0.0 or PRACTICE_FIN > 0.0:
         meta["config"]["practice_share"] = PRACTICE
         meta["config"]["practice_temp"] = PRACTICE_T
+    if PRACTICE_FIN > 0.0:
+        meta["config"]["practice_finish_share"] = PRACTICE_FIN
     # --eval-ema: written ONLY when on, like the practice share above
     if EMA_HALF:
         meta["config"]["eval_ema"] = list(EMA_HALF)
@@ -18613,18 +18633,29 @@ def main() -> None:
     # (--maps + --unstuck: each map's T is a per-env temperature, so the per-env slots are on)
     FRONT = FRONT_RES or DFT or GTEMP or (MULTI and UNSTUCK_TEMP)
     PRACT = None                         # --practice-share: the practice envs (fixed)
-    if PRACTICE > 0.0:
+    PRACT_SL = [_s.sl for _s in slots] if MULTI else [slice(0, N)]
+    if PRACTICE > 0.0 or PRACTICE_FIN > 0.0:
         if not FRONT:
             raise SystemExit("--practice-share rides the per-env temperature slots, which are "
                              "on with --maps + --unstuck, --front-temp, --demo-front-temp or "
                              "--respawn-greedy-temp: none is on")
         PRACT = np.zeros(N, bool)
-        for _ps in ([_s.sl for _s in slots] if MULTI else [slice(0, N)]):
+        for _ps in PRACT_SL:
             PRACT[_ps] = practice_mask(_ps.stop - _ps.start, PRACTICE)
         print(f"--practice-share {PRACTICE:g}: {int(PRACT.sum())} of {N} envs (each map's own "
               f"share, spread by index, fixed) always act at temperature {PRACTICE_T:g} on every "
               f"head, whatever their map's --unstuck T or temperature band; the update scores "
               f"each row at the temperature it was drawn at")
+        if PRACTICE_FIN > 0.0:
+            print(f"--practice-finish-share {PRACTICE_FIN:g}: on a map whose latest greedy eval "
+                  f"finished >= {UNSTUCK_FIN}, that share of its envs practises at "
+                  f"{PRACTICE_T:g} instead (back to {PRACTICE:g} when an eval stops finishing)")
+
+    def _practice_set(k, fin):
+        """--practice-finish-share: map slot ``k``'s practice envs for its finish state ``fin``"""
+        _ps = PRACT_SL[k]
+        PRACT[_ps] = practice_mask(_ps.stop - _ps.start, PRACTICE_FIN if fin else PRACTICE)
+        return int(PRACT[_ps].sum())
     greedy_sp = np.zeros(N, bool)        # --respawn-greedy-temp: env spawned on a greedy row
     gt_share = float("nan")
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
@@ -19682,6 +19713,11 @@ def main() -> None:
         UFIN = [bool(ck["unstuck_finish"].get(_s.tag, False)) for _s in slots]
         print("restored --unstuck-finish: " + ", ".join(
             f"{_s.tag} {'finishes' if _u else 'not finishing'}" for _s, _u in zip(slots, UFIN)))
+    if PRACTICE_FIN > 0.0 and any(UFIN):
+        # --practice-finish-share: a resumed map that finishes practises at its share at once
+        print("--practice-finish-share: " + ", ".join(
+            f"{slots[_k].tag} {_practice_set(_k, True)} envs practise"
+            for _k in range(len(UFIN)) if UFIN[_k]))
 
     def _unstuck_T_of(si=0):
         """the --unstuck temperature slot ``si``'s rollout runs at"""
@@ -24301,11 +24337,18 @@ def main() -> None:
             except Exception as _ex:         # a failed reading keeps the last state
                 print(f"!! --unstuck-finish: {type(_ex).__name__}: {_ex}", flush=True)
                 continue
-            UFIN[_k] = _nfu >= UNSTUCK_FIN
+            _ufin_was, UFIN[_k] = UFIN[_k], _nfu >= UNSTUCK_FIN
             print(f"[{global_step:>13,d}] --unstuck-finish"
                   + (f"[{slots[_k].tag}]" if MULTI else "")
                   + f": {_nfu} greedy finish(es) -> "
                   + ("not stuck, T cools" if UFIN[_k] else "the stuck clock runs"), flush=True)
+            if PRACTICE_FIN > 0.0 and UFIN[_k] != _ufin_was:
+                # --practice-finish-share: the map's practice share follows its finish state
+                print(f"[{global_step:>13,d}] --practice-finish-share"
+                      + (f"[{slots[_k].tag}]" if MULTI else "")
+                      + f": {'finishes' if UFIN[_k] else 'stopped finishing'} -> "
+                      + f"{_practice_set(_k, UFIN[_k])} of its envs practise at {PRACTICE_T:g}",
+                      flush=True)
         if YEP is not None and YEP_ST["eval"] is not None:
             # --yaw-entropy-progress: the greedy eval just written sets the yaw entropy share
             _ypp, YEP_ST["eval"] = YEP_ST["eval"], None

@@ -257,6 +257,8 @@ TRAIN_ONLY = frozenset({
     "unstuck_finish",
     # --practice-share / --practice-temp (mm/s7d): which training envs act cooler - rollout-side
     "practice_share", "practice_temp",
+    # --practice-finish-share (mm/s7f): the practice share of a map that finishes - rollout-side
+    "practice_finish_share",
     # --eval-ema (mm/s7e): the trainer's observed weight averages - pick one with --ema I
     "eval_ema",
     # --int-mode / --int-rare / --archive-*: the novelty key, the rare-transition
