@@ -255,6 +255,8 @@ TRAIN_ONLY = frozenset({
     "unstuck_reset", "unstuck_temp", "unstuck_temp_heads",
     "unstuck_reach", "unstuck_hold", "unstuck_reach_spawn_d", "unstuck_reach_start_only",
     "unstuck_finish",
+    # --practice-share / --practice-temp (mm/s7d): which training envs act cooler - rollout-side
+    "practice_share", "practice_temp",
     # --int-mode / --int-rare / --archive-*: the novelty key, the rare-transition
     # signal and the predecessor archive are TRAINING-side (spawn pool + reward)
     "int_mode", "int_edge_bits", "int_rare", "int_rare_speed", "archive_frac", "archive_window",

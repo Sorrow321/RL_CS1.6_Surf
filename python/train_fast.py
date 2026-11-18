@@ -4376,6 +4376,13 @@ def band_yaw_mult(sigma_abs: float, log_std_yaw) -> np.ndarray:
     return (float(sigma_abs) / np.exp(np.asarray(log_std_yaw, np.float64))).astype(np.float32)
 
 
+def practice_mask(n: int, share: float) -> np.ndarray:
+    """--practice-share (mm/s7d): which of a map's ``n`` envs practise - floor(n x share) of them,
+    spread evenly by index (env i practises when floor((i + 1) x share) > floor(i x share))."""
+    i = np.arange(int(n), dtype=np.float64)
+    return np.floor((i + 1.0) * float(share)) > np.floor(i * float(share))
+
+
 def int_coef_at(progress, hi: float, lo: float, p: float) -> float:
     """--int-coef-progress: the novelty coefficient at frontier ``progress`` (a fraction of the
     spawn's d): HI at 0 or less (and with no reading yet, NaN), falling linearly to LO at ``p``,
@@ -7546,6 +7553,18 @@ def main() -> None:
                          "reservoir reach alone holds it at --unstuck-max for good). 0 = off "
                          "(default; the config dump and the run are unchanged). Restored "
                          "from the checkpoint")
+    ap.add_argument("--practice-share", type=float, default=None,      # 0 = off
+                    help="mm/s7d: a fixed share of each map's envs (spread evenly by index) "
+                         "always acts at --practice-temp on every head, keys and view, "
+                         "whatever its map's --unstuck T or temperature band: rollouts close to "
+                         "the greedy path the evals fly, so that path is trained too (Ape-X's "
+                         "per-actor spread of exploration, at two levels). The update scores "
+                         "each row at the temperature it was drawn at. 0 = off (default; the "
+                         "config dump and the run are unchanged). Restored from the checkpoint")
+    ap.add_argument("--practice-temp", type=float, default=None,       # 0.5
+                    help="--practice-share: the practice envs' temperature on every head (< 1 "
+                         "sharpens the categorical heads and narrows the view sigma); default "
+                         "0.5. Restored from the checkpoint")
     ap.add_argument("--unstuck-count-decay", type=float, default=None,  # 0.5
                     help="--unstuck: while T > 0, multiply the novelty "
                          "visit counts by this every --unstuck-period "
@@ -9326,6 +9345,13 @@ def main() -> None:
         if args.int_real_only is None and ck_cfg.get("int_real_only") is not None:
             args.int_real_only = int(ck_cfg["int_real_only"])
             restored.append(f"int_real_only={args.int_real_only}")
+        # --practice-share / --practice-temp (mm/s7d): part of the rollout, restored
+        if args.practice_share is None and ck_cfg.get("practice_share") is not None:
+            args.practice_share = float(ck_cfg["practice_share"])
+            restored.append(f"practice_share={args.practice_share:g}")
+        if args.practice_temp is None and ck_cfg.get("practice_temp") is not None:
+            args.practice_temp = float(ck_cfg["practice_temp"])
+            restored.append(f"practice_temp={args.practice_temp:g}")
         # --respawn-greedy: a spawn DISTRIBUTION, restored like the novel rows
         if args.respawn_greedy is None and ck_cfg.get("respawn_greedy") is not None:
             args.respawn_greedy = float(ck_cfg["respawn_greedy"])
@@ -11923,6 +11949,13 @@ def main() -> None:
     elif int(args.unstuck_finish or 0) > 0:
         raise SystemExit("--unstuck-finish holds the --unstuck schedule: give --unstuck")
     UNSTUCK_TEMP = UNSTUCK and bool(args.unstuck_temp)
+    # --practice-share (mm/s7d): the share of each map's envs that always acts at PRACTICE_T
+    PRACTICE = float(args.practice_share or 0.0)
+    PRACTICE_T = 0.5 if args.practice_temp is None else float(args.practice_temp)
+    if not 0.0 <= PRACTICE < 1.0:
+        raise SystemExit("--practice-share is a share of each map's envs in [0, 1)")
+    if PRACTICE_T <= 0.0:
+        raise SystemExit("--practice-temp must be > 0")
     UNSTUCK_ENT = UNSTUCK and bool(args.unstuck_ent)
     UNSTUCK_INT = UNSTUCK and bool(args.unstuck_int)
     # --unstuck-finish: K (0 = off) - a map whose latest greedy eval finished >= K is not stuck
@@ -16648,6 +16681,10 @@ def main() -> None:
             meta["config"]["respawn_greedy_speed"] = [float(v) for v in GREEDY.speed]
         if GREEDY.memory > 1:
             meta["config"]["respawn_greedy_memory"] = int(GREEDY.memory)
+    # --practice-share: written ONLY when on (a control run's dump is unchanged)
+    if PRACTICE > 0.0:
+        meta["config"]["practice_share"] = PRACTICE
+        meta["config"]["practice_temp"] = PRACTICE_T
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
@@ -18548,6 +18585,19 @@ def main() -> None:
     FRONT_RES = float(args.front_temp or 0.0) > 0.0
     # (--maps + --unstuck: each map's T is a per-env temperature, so the per-env slots are on)
     FRONT = FRONT_RES or DFT or GTEMP or (MULTI and UNSTUCK_TEMP)
+    PRACT = None                         # --practice-share: the practice envs (fixed)
+    if PRACTICE > 0.0:
+        if not FRONT:
+            raise SystemExit("--practice-share rides the per-env temperature slots, which are "
+                             "on with --maps + --unstuck, --front-temp, --demo-front-temp or "
+                             "--respawn-greedy-temp: none is on")
+        PRACT = np.zeros(N, bool)
+        for _ps in ([_s.sl for _s in slots] if MULTI else [slice(0, N)]):
+            PRACT[_ps] = practice_mask(_ps.stop - _ps.start, PRACTICE)
+        print(f"--practice-share {PRACTICE:g}: {int(PRACT.sum())} of {N} envs (each map's own "
+              f"share, spread by index, fixed) always act at temperature {PRACTICE_T:g} on every "
+              f"head, whatever their map's --unstuck T or temperature band; the update scores "
+              f"each row at the temperature it was drawn at")
     greedy_sp = np.zeros(N, bool)        # --respawn-greedy-temp: env spawned on a greedy row
     gt_share = float("nan")
     FRONT_BASE = [0.0]                   # the global T (set_unstuck_temp writes it)
@@ -18660,6 +18710,10 @@ def main() -> None:
             ftk_np[hotg] = _gt_k
             ftv_np[np.flatnonzero(hotg)[:, None], np.arange(NZ - 1)[None, :]] = _gt_v
             gt_share = float(hotg.mean())
+        if PRACT is not None:
+            # --practice-share: the practice envs act at the practice temperature on every head
+            ftk_np[PRACT] = PRACTICE_T
+            ftv_np[PRACT] = PRACTICE_T
         temp_t.copy_(ftk_pin.view(N, 1, 1), non_blocking=True)
         tempv_t.copy_(ftv_pin, non_blocking=True)
         front_share = float(band.mean())
