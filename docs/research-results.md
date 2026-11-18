@@ -50385,3 +50385,25 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   noise the greedy line carries ~10% more speed into the 12-14.5 s section and overshoots.
   This is the greedy-vs-sampled gap D (--practice-share) was built for: part of the training
   runs at low noise, so the mean has to fly the line without the noise's speed tax.
+
+## 2026-11-18 23:40 UTC: PRE-LAUNCH (queued) - mmg_S1: the seven maps from scratch, A + D + E
+
+* Why: in mmg_D (A + D + E, the 14.2B resume on the 5090) the raw greedy still swings on
+  celestial (3 7 0 8 of 9 in tests 1-4) but the weight average with half-life 3e8 (ema0) holds
+  every finished map: celestial 6 9 9 9, blue200 9 9 9 9, petrus 9 9 9 8; its open maps climb
+  (uf2 7 20 49 65%, cannonball 42 68 94 74%). Full result after test 6 (~00:40 UTC).
+* Run mmg_S1 on box mmg (61239822, RTX 5090, $0.59/h) after mmg_D's pull (~00:55 UTC):
+  box.py launch --multimap FROM SCRATCH, 8e9 fleet steps (~7.5 h), mm/s7e (afb4e740) = the code
+  mmg_D runs; v14 + --adv-norm-per-map 1 (config multimap) + --unstuck-finish 1
+  --practice-share 0.25 --practice-temp 0.5 --eval-ema 3e8,1e9. No checkpoint and no spawn
+  file: every state it trains on is its own.
+* Pre-registered reads. Criterion 3: the raw greedy's first finish per map against mm7_1 in own
+  steps (fleet / 7): petrus 0.30B, blue200 0.60B, celestial 0.68B own. Criteria 1-2 read the
+  ema0 weights (the deliverable): no test at 3/9 or less on a finished map after its first
+  finish; on open maps at most ~1 test in 6 that is 10+ points under the best so far. Raw is
+  reported beside it.
+* Safety: driver scratchpad abl/mmfix/q.sh registers the run with a harvest spec, extends the
+  box to 9 h, and stops, pulls and releases below a $23.5 credit floor ($36.15 at 22:44 UTC).
+  If ema0 shows 2+ low tests on a finished map in tests 5-6, the line is replaced by an F arm
+  (mm/s7f 2e5c615a, --practice-finish-share 0.75: maps that finish practise 75% of their envs
+  at temperature 0.5) before the launch.
