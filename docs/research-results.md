@@ -50142,3 +50142,24 @@ matched steps. First try named the runs mmf_*; box.py refuses a run name without
 prefix (one box released, ~$0.02). arm A's first four tests after the start: celestial 7 8 9 9
 (mm7_1 at the same steps 9 1 8 3), petrus 9 6 7 9 (7 9 9 7), blue200 8 9 9 9; T 0 on the three
 finished maps (--unstuck-finish), at the cap on the other four. R is the comparison that counts.
+
+## 2026-11-18 13:35 UTC: NOTE - why finished maps swing: tests are near one sample; the death pool has one test of memory
+
+* One test is close to one sample. mm7_1 celestial at 19.44B: all 9 greedy episodes start at the
+  same point with yaw 339-345 deg; 7 of 9 follow the same path (within ~30 u at 400 ticks) and
+  die at ticks 2193-2289 (16.8-17.6 s) at one spot. A test's count flips between 0-2 and 7-9.
+  The same weights (mm7_1 at 14.2B) scored 7/9 in mm7_1's test and 2/9 (A) and 1/9 (R) at the
+  arms' start test.
+* The death pool remembers one test. --respawn-greedy builds each map's pool from the LAST
+  eval's failed episodes (2..0.25 s before each death; 25% of the non-start pool). Celestial in
+  mm7_1, deaths per test: 17.33B 8 (7 at 16.4-16.8 s) -> 17.86B 3 (one at 16 s) -> 18.38B 6 ->
+  18.91B 1 (25.8 s only: the 17 s spot leaves the pool) -> 19.44B 7, all at 16.8-17.6 s ->
+  19.96B 9 at 25-31 s. Its finishes alternate high/low in 14 of the last 17 tests (1 4 2 5 3 4 7
+  9 1 8 3 5 1 6 3 8 2 0): practice moves to where the last test died and leaves where it passed.
+* Arms so far: A (4090), tests 1-6 after the start: celestial 7 8 9 9 5 7 (mean 7.5), petrus 9 6
+  7 9 8 9 (8.0), blue200 8-9; mm7_1 at the same steps: celestial 9 1 8 3 5 1 (4.5), petrus 7 9 9
+  7 9 8 (8.2). R (5090, no change), tests 1-3: celestial 8 7 7, petrus 7 5 8. A resume pauses the
+  searches for 3e8 own steps (4 tests): A's one low test (5/9 at 16.83B) came after the first
+  adoptions on pb and uf2 (16.36-16.89B). The A vs R reading waits for R's tests 4-6.
+* Correction (11:45 entry): B did not come up as a 5090; B and A+B found no box under the caps
+  in 45 min of tries, so A+B runs after A on box mmf (4090) and B after R on box mmg (5090).
