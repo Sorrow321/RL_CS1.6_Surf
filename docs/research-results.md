@@ -50114,3 +50114,31 @@ fixed, keep researching. Keep the current box running until 20B or until all map
 * Watchdog from the rent, re-registered per arm with its harvest spec and pid file; dashboard
   tunnel :8662; scratchpad abl/mmfix/chain.sh runs A, R, B, A+B, pulls each run to
   ~/ar_m2/runs/mmf and releases the box after the last (~19 h, ~$9).
+
+## 2026-11-18 11:45 UTC: ENDED - mm7_1 stopped at 20.0B fleet steps (the user's cut), box released
+
+mm7_1 ran 2026-11-17 17:00 to 2026-11-18 10:54 UTC: 20,009,687,040 fleet steps (2.86B own per map),
+~18 h on box 61099797 (RTX 5090, $0.659/h, ~$12); scratchpad abl/mm7/cut20.sh stopped the trainer
+at >= 20B (the user, 05:40 UTC), watch.sh harvested and released the box at 11:13 UTC.
+* First finishes (own steps, grader) vs v14 alone: petrus 300M (x0.99), blue200 600M (x0.61),
+  celestial 675M (x0.99). No finish by 2.86B own: cannonball (alone 2.42B; median deepest d
+  9-94% of the course over the last 12 tests), unitfarmer2 (alone 3.10B; 7% -> 55-65% after
+  15.2B fleet), sidistic (alone 4.00B; 26% from ~1.2B own on), pb (alone 17.29B; out of the room
+  at 1.501B own, x1.17; past the x -1,005 wall at 1.726B own, x0.19; 25% at the end).
+* Retention over the last 12 tests (14.18-19.96B): celestial 7 9 1 8 3 5 1 6 3 8 2 0 (mean 4.4
+  of 9), petrus 8 7 9 9 7 9 8 7 9 8 8 6 (7.9), blue200 8-9 (8.8).
+* Harvest: ~/ar_m2/runs/mm7/mm7_1_bundle.tgz (7.1 GB, md5 = box ac8a52a1) + mirror_mm7_1 (evals,
+  progress.csv, run.json, launch.txt) + the watchdog's ckpt_20009687040.pt in
+  ~/RL_Surf/runs/research/mm7_1. INCIDENT: harvest_release.sh unpacked the bundle on the droplet
+  and filled its disk (0 MB free, ~11:08-11:25 UTC); the partial unpack (11.3 GB) was deleted,
+  the archive kept (md5 checked). Stage a bundle on a box, never unpack it on the droplet.
+
+Retention arms, changed at 11:25 UTC: arm A (box mmf, RTX 4090, Threadripper 3990X) trains at
+~100-135k steps/s, a third of mm7_1's box, so the user chose "Four 4090s in parallel": R, B and
+A+B each get their own box (agents mmg, mmh, mmi; runs mmg_R, mmh_B, mmi_AB; seeded from box mmf
+with the same checkpoint and lines), at the standing caps (4090 0.45, 5090 0.60): R and B came
+up as 5090s at $0.59 when no 4090 passed, so the arms do not share one card type; compare at
+matched steps. First try named the runs mmf_*; box.py refuses a run name without its agent's
+prefix (one box released, ~$0.02). arm A's first four tests after the start: celestial 7 8 9 9
+(mm7_1 at the same steps 9 1 8 3), petrus 9 6 7 9 (7 9 9 7), blue200 8 9 9 9; T 0 on the three
+finished maps (--unstuck-finish), at the cap on the other four. R is the comparison that counts.
