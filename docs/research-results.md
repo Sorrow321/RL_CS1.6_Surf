@@ -50163,3 +50163,22 @@ finished maps (--unstuck-finish), at the cap on the other four. R is the compari
   adoptions on pb and uf2 (16.36-16.89B). The A vs R reading waits for R's tests 4-6.
 * Correction (11:45 entry): B did not come up as a 5090; B and A+B found no box under the caps
   in 45 min of tries, so A+B runs after A on box mmf (4090) and B after R on box mmg (5090).
+
+## 2026-11-18 13:20 UTC: PRE-LAUNCH (queued) - arm C, a death pool that remembers 4 tests
+
+The user, 05:40 UTC: "If the problem isn't fixed, keep researching". From the 13:35-dated note
+above: mm7_1's celestial alternated high / low because --respawn-greedy rebuilds each map's pool
+from the LAST eval's deaths only, so a spot the last test passed stops being practised.
+* C = --respawn-greedy-memory 4 (new, mm/s7c 6f4e9275): the pool holds the failures of the last 4
+  greedy evals (a clean eval adds nothing and ages the oldest out), so a spot stays in practice
+  until 4 clean tests in a row. 1 = off: mm/s7c = mm/s7b on the two-map CPU smoke (config but
+  the run's spine path, progress rows, eval bytes and weights identical); on, the pool grows
+  across evals (blue200 291 -> 714 states, 2 evals held) and the held evals ride in the ckpt.
+* Run mmg_C on box mmg (RTX 5090, the same card as R and B), after B: the same resume of mm7_1
+  at 14,203,295,232 for 3.2e9 steps, v14 + --adv-norm-per-map 1 + C alone (no A, no B). The box
+  switches to mm/s7c by git (python-only change). Read against R: finishes per test on the
+  finished maps, the alternation, the hard maps' frontier.
+* Drivers: box.py pull skips the multi-map evals (traj_<step>_<map>.jsonl: "0 eval
+  trajectories"), and the fleet watchdog's harvest keeps only the last eval of two maps, so
+  scratchpad abl/mmfix/seq.sh now mirrors every eval file before it releases a box (mmf: A+B
+  then release; mmg: R, B, C then release). Arm A's evals were mirrored by hand at 13:05.
