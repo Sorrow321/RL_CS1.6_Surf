@@ -50258,3 +50258,22 @@ from the LAST eval's deaths only, so a spot the last test passed stops being pra
 * Verdict: B does not fix the regressions. C (--respawn-greedy-memory 4, mm/s7c 6f4e9275) runs on
   the same box from 17:30 (flag confirmed in the launch log and run.json; lr 3e-4, no A), then A
   on the same box (the same-card check of A against R).
+
+## 2026-11-18 17:50 UTC: PRE-LAUNCH (queued) - arm D, practise the greedy path on every map
+
+The user, 17:45 UTC: "decide by yourself, work autonomously until victory". From the 17:05 note:
+the greedy path swings while the sampled policy holds, so the path the tests fly is not trained.
+* D = --practice-share 0.25 --practice-temp 0.5 (new, mm/s7d e75a511d): a fixed 25% of each map's
+  envs (spread by index) always act at temperature 0.5 on every head, keys and view, whatever
+  their map's --unstuck T or temperature band; the rest explore as before (Ape-X's per-actor
+  spread of exploration, at two levels). It rides the existing per-env temperature slots, so
+  the update scores each row at the temperature it was drawn at. Off = mm/s7c row for row on the
+  two-map CPU smoke (progress rows and eval bytes identical); on: 16 of 64 envs practise, the
+  config keys are written, a bare resume restores both. tests/python/test_practice_share.py.
+* Run mmf_D on box mmf (RTX 4090, the card of A and A+B), after A+B (~18:40 UTC): the same
+  resume of mm7_1 at 14,203,295,232 for 3.2e9 steps, v14 + --adv-norm-per-map 1 + A
+  (--unstuck-finish 1) + D. No B, no C. Read against mmf_A (same card): retention on the finished
+  maps at least A's, fewer greedy-frontier falls on the open maps (A's cannonball: 34 24 36 84
+  33 35%), uf2 still rising. Ends ~00:30 UTC.
+* Queue: mmg (5090) C until ~21:00, then A (the same-card check of A against R) until ~00:30.
+  Credit $40.52 at 17:42 UTC; floors $23 (user reserve + operator floor).
