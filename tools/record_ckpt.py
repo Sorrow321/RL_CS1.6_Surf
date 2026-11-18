@@ -257,6 +257,8 @@ TRAIN_ONLY = frozenset({
     "unstuck_finish",
     # --practice-share / --practice-temp (mm/s7d): which training envs act cooler - rollout-side
     "practice_share", "practice_temp",
+    # --eval-ema (mm/s7e): the trainer's observed weight averages - pick one with --ema I
+    "eval_ema",
     # --int-mode / --int-rare / --archive-*: the novelty key, the rare-transition
     # signal and the predecessor archive are TRAINING-side (spawn pool + reward)
     "int_mode", "int_edge_bits", "int_rare", "int_rare_speed", "archive_frac", "archive_window",
@@ -759,6 +761,10 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--stochastic", action="store_true",
                     help="sample actions instead of argmax — what "
                          "rollout/ep_rew_mean actually measures")
+    ap.add_argument("--ema", type=int, default=None,
+                    help="fly the trainer's weight average I (--eval-ema, mm/s7e: "
+                         "ck['policy_ema'][I]) instead of the raw weights; the header says "
+                         "which (ema_half)")
     ap.add_argument("--mirror", action="store_true",
                     help="fly the LEFT-RIGHT MIRROR IMAGE of the map (surfgym/mirror.py): "
                          "the policy reads the reflected observation and its yaw / side "
@@ -2334,6 +2340,14 @@ def main(argv=None, build_only: bool = False, device=None):
     if args.cold_policy is not None:
         print(f"!! --cold-policy {int(args.cold_policy)}: the policy is the checkpoint's "
               f"architecture at INITIALISATION - its trained weights are NOT loaded")
+    elif args.ema is not None:
+        _emas = ck.get("policy_ema") or []
+        if not 0 <= int(args.ema) < len(_emas):
+            raise SystemExit(f"--ema {args.ema}: this checkpoint carries {len(_emas)} weight "
+                             "average(s) (--eval-ema)")
+        policy.load_state_dict(_emas[int(args.ema)]["policy"])
+        print(f"--ema {args.ema}: flying the weight average with half-life "
+              f"{float(_emas[int(args.ema)]['half']):,.0f} steps, not the raw weights")
     else:
         policy.load_state_dict(ck["policy"])
     policy.eval()
@@ -2694,6 +2708,9 @@ def main(argv=None, build_only: bool = False, device=None):
               f"{TICK.ticks_to_secs(_stall_ticks):g}s "
               f"without a {_stall_eps:g}u improvement (checked every "
               f"{_stall_every} tick(s)) - training's rule, on the recording")
+    if args.ema is not None and args.cold_policy is None:
+        # --ema: the recording flew a weight average, not the raw weights - its file says so
+        header_extra["eval_ema"] = float(ck["policy_ema"][int(args.ema)]["half"])
     if args.maxvel is not None:
         # a recording made under a different speed cap must SAY SO in its own
         # file: every downstream honesty tool reads the traj, not this log

@@ -7565,6 +7565,17 @@ def main() -> None:
                     help="--practice-share: the practice envs' temperature on every head (< 1 "
                          "sharpens the categorical heads and narrows the view sigma); default "
                          "0.5. Restored from the checkpoint")
+    ap.add_argument("--eval-ema", type=str, default=None,               # e.g. 1e8,5e8
+                    help="mm/s7e, an OBSERVER: H1[,H2..] keeps one exponential moving average "
+                         "of the policy weights per half-life H (in environment steps of the "
+                         "whole run), updated after every PPO update, and at every greedy eval "
+                         "flies each average through the SAME eval (same seed, same patience "
+                         "rule) into traj_<step>[_<map>]_ema<i>.jsonl. Nothing of those runs "
+                         "reaches training (no greedy pool, no novelty, no --unstuck-finish, no "
+                         "search): it measures whether averaged weights fly a steadier greedy "
+                         "path (Nikishin et al. 2018, weight averaging in RL). Off by default "
+                         "(the config dump and the run are unchanged). The averages ride in the "
+                         "checkpoint; the flag is restored from it")
     ap.add_argument("--unstuck-count-decay", type=float, default=None,  # 0.5
                     help="--unstuck: while T > 0, multiply the novelty "
                          "visit counts by this every --unstuck-period "
@@ -9352,6 +9363,10 @@ def main() -> None:
         if args.practice_temp is None and ck_cfg.get("practice_temp") is not None:
             args.practice_temp = float(ck_cfg["practice_temp"])
             restored.append(f"practice_temp={args.practice_temp:g}")
+        # --eval-ema (mm/s7e): an observer, restored so that a crash-resume keeps measuring
+        if args.eval_ema is None and ck_cfg.get("eval_ema") is not None:
+            args.eval_ema = ",".join(f"{float(h):g}" for h in ck_cfg["eval_ema"])
+            restored.append(f"eval_ema={args.eval_ema}")
         # --respawn-greedy: a spawn DISTRIBUTION, restored like the novel rows
         if args.respawn_greedy is None and ck_cfg.get("respawn_greedy") is not None:
             args.respawn_greedy = float(ck_cfg["respawn_greedy"])
@@ -11956,6 +11971,15 @@ def main() -> None:
         raise SystemExit("--practice-share is a share of each map's envs in [0, 1)")
     if PRACTICE_T <= 0.0:
         raise SystemExit("--practice-temp must be > 0")
+    # --eval-ema (mm/s7e): the half-lives (environment steps) of the observed weight averages
+    EMA_HALF = ([float(h) for h in str(args.eval_ema).split(",") if h.strip()]
+                if args.eval_ema else [])
+    if any(not h > 0.0 for h in EMA_HALF):
+        raise SystemExit("--eval-ema takes half-lives > 0 in environment steps, e.g. 1e8,5e8")
+    if EMA_HALF and (args.goal_planner or D.enabled):
+        raise SystemExit("--eval-ema flies the plain greedy eval of a single-GPU run: not with "
+                         "--goal-planner (its eval hooks) or DDP")
+    EMA = []                  # (half-life, frozen policy copy), built before the first iteration
     UNSTUCK_ENT = UNSTUCK and bool(args.unstuck_ent)
     UNSTUCK_INT = UNSTUCK and bool(args.unstuck_int)
     # --unstuck-finish: K (0 = off) - a map whose latest greedy eval finished >= K is not stuck
@@ -16685,6 +16709,9 @@ def main() -> None:
     if PRACTICE > 0.0:
         meta["config"]["practice_share"] = PRACTICE
         meta["config"]["practice_temp"] = PRACTICE_T
+    # --eval-ema: written ONLY when on, like the practice share above
+    if EMA_HALF:
+        meta["config"]["eval_ema"] = list(EMA_HALF)
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)
@@ -19908,6 +19935,10 @@ def main() -> None:
         state = {"policy": policy.state_dict(),
                  "optimizer": contiguous_optimizer_state(opt.state_dict()),
                  "global_step": global_step, "config": meta["config"]}
+        if EMA:
+            # --eval-ema: the observed weight averages (a resume continues them)
+            state["policy_ema"] = [{"half": float(_h), "policy": _m.state_dict()}
+                                   for _h, _m in EMA]
         if isinstance(reward_fn, RaceReward):
             # novelty counts are cross-episode reward state: without them a
             # resume re-pays "first visit" for the whole beaten path. A
@@ -21061,6 +21092,25 @@ def main() -> None:
               f"{len(warm_frozen)} actor/trunk tensors take no gradient and "
               f"no Adam step - they are bit-identical when it ends")
 
+    # --eval-ema (mm/s7e): the observed weight averages, one frozen copy of the policy per
+    # half-life; a resume restores each average whose half-life the checkpoint carries, the
+    # others start at the current weights. They never act in a rollout and never take a gradient
+    EMA = []
+    if EMA_HALF:
+        import copy as _copy
+        _ck_ema = {float(_e["half"]): _e["policy"]
+                   for _e in ((ck.get("policy_ema") or []) if args.ckpt else [])}
+        for _h in EMA_HALF:
+            _m = _copy.deepcopy(policy)
+            _m.requires_grad_(False)
+            if _h in _ck_ema:
+                _m.load_state_dict(_ck_ema[_h])
+            EMA.append((_h, _m))
+            print(f"--eval-ema: average {len(EMA) - 1}, half-life {_h:,.0f} steps, starts from "
+                  + ("the checkpoint's average" if _h in _ck_ema else "the current weights")
+                  + f"; every greedy eval also flies it -> traj_<step>[_<map>]_ema{len(EMA) - 1}"
+                  ".jsonl (an observer: nothing it flies reaches training)")
+    ema_step = global_step
     int_sync = args.int_sync_every if D.enabled else 0
     int_row = []              # --int-split: this iteration's int/* values
     it_no = 0
@@ -23081,6 +23131,17 @@ def main() -> None:
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 last_diag = (idx, logp, vl, pg, el)
+        if EMA:
+            # --eval-ema: each average moves toward the updated weights by its half-life over
+            # the steps this update consumed (buffers are copied, not averaged)
+            with torch.no_grad():
+                for _h, _m in EMA:
+                    _w = 1.0 - 0.5 ** ((global_step - ema_step) / _h)
+                    for _pe, _p in zip(_m.parameters(), policy.parameters()):
+                        _pe.lerp_(_p.detach(), _w)
+                    for _be, _b in zip(_m.buffers(), policy.buffers()):
+                        _be.copy_(_b)
+            ema_step = global_step
         if TKL > 0.0:
             # --target-kl: one line per 25 updates with how often and where the update stopped
             tkl_acc[0] += 1
@@ -23948,6 +24009,52 @@ def main() -> None:
                         save_ckpt("beststage")
                         print(f"--save-best: new best mean eval stage {_sm:.2f} at step "
                               f"{global_step:,} -> ckpt_beststage.pt")
+                if EMA and not _s.heldout:
+                    # --eval-ema: the SAME greedy eval (same seed, fresh cut-rule hooks) flown by
+                    # each weight average. Its file is all it leaves: the greedy pool, the
+                    # novelty coefficient, --unstuck-finish and the searches read the eval above
+                    for _j, (_h, _m) in enumerate(EMA):
+                        epath = out / f"traj_{global_step:010d}{sfx}_ema{_j}.jsonl"
+                        _e_tick = None
+                        if _ev_stall is not None:
+                            _e_tick = make_eval_stall_hook(
+                                _s.eval_core, _s.reward_fn.field, _s.reward_fn.stall_ticks,
+                                _s.reward_fn.stall_eps, _s.reward_fn.every)
+                        if _ev_pat is not None:
+                            _e_tick = chain_ticks(_e_tick, (
+                                make_eval_patience_hook_par(
+                                    _s.eval_core, _s.goal_field, EVAL_PATIENCE, N_EVAL_PAR,
+                                    energy_eps=float(args.energy_stall))
+                                if N_EVAL_PAR else
+                                make_eval_patience_hook(_s.eval_core, _s.goal_field,
+                                                        EVAL_PATIENCE,
+                                                        energy_eps=float(args.energy_stall))))
+                        (_rec_par if N_EVAL_PAR else record_rollout)(
+                            _s.eval_core,
+                            EVAL_GREEDY(_m, packer, device, _s.lidar, _s.eval_core, K, STACK,
+                                        extra_slot=(REWARD_SLOT if args.obs_reward else -1),
+                                        extra_fn=_s.eval_reward_feed, route=route,
+                                        latch_fn=_s.eval_latch_feed,
+                                        pitch_fixed=args.pitch_fixed,
+                                        aux=_s.eval_aux, masks=MASKS,
+                                        priv_fn=_s.eval_priv_feed, cc_fn=_s.eval_cc_feed,
+                                        ratchet_fn=_s.eval_ratchet_feed,
+                                        keys_hold=args.keys_hold,
+                                        pass_fn=((lambda _c, n: np.zeros(n, np.float32))
+                                                 if N_PASS else None),
+                                        vec_fn=((lambda _c, n: np.zeros((n, 4), np.float32))
+                                                if N_RVEC else None),
+                                        surf_fn=eval_surf_feed(_s.eval_core),
+                                        prate_fn=eval_prate_feed(_s)),
+                            epath, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
+                            seed=global_step & 0x7FFFFFFF, on_tick=_e_tick, episode_meta=None,
+                            header_extra={**_ghdr, "eval_ema": float(_h)})
+                        _e_fin, _ = _eval_finishes(epath)
+                        print(f"[{global_step:>13,d}] ema{_j}"
+                              f"{f'[{_s.tag}]' if MULTI else ''}: {_e_fin}/{n_rec} finished, "
+                              f"greedy frontier "
+                              f"{100.0 * _greedy_eval_progress(epath, _i):.1f}% of the spawn's d"
+                              f" (half-life {_h:,.0f} steps) -> {epath.name}")
                 if not args.eval_greedy_only:
                     spath = out / f"traj_{global_step:010d}{sfx}_stoch.jsonl"
                     _sv_stall = (None if _ev_stall is None

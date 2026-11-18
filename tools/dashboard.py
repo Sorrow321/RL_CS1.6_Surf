@@ -890,6 +890,9 @@ def _run_info(d: Path):
         mode = "stoch" if p.stem.endswith("_stoch") else "greedy"
         if p.stem.endswith("_mirror"):          # --eval-mirror: the mirror-image map
             mode = "MIRROR-image map " + mode
+        _em = re.search(r"_ema(\d+)$", p.stem)
+        if _em:                                 # --eval-ema: a weight average flew this eval
+            mode = f"weight-average {_em.group(1)} " + mode
         for tag in ("reservoir", "mixed", "ramp", "platform"):
             if f"_{tag}" in p.stem:                  # spawn-override records
                 mode = f"{tag}-spawns · {mode}"
