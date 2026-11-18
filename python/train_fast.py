@@ -3704,6 +3704,17 @@ class UnstuckSchedule:
         self.last_step = int(step)
         self.stuck_steps = 0
 
+    def hold(self, step: int) -> None:
+        """--unstuck-finish: the map's latest greedy eval finished, so the run is not stuck
+        (a finished map cannot go deeper, and its reservoir reach alone would keep T at the
+        cap for good): the patience window restarts at ``step`` as after a new best (the
+        bests are kept), so the next ``observe`` cools T - halved per period, or 0 under
+        ``reset``."""
+        self.best_step = max(int(self.best_step), int(step))
+        self.stuck_steps = 0
+        if self.reset:
+            self.T = 0.0
+
     def state_dict(self) -> dict:
         return {k: getattr(self, k) for k in self.KEYS}
 
@@ -7527,6 +7538,14 @@ def main() -> None:
     ap.add_argument("--unstuck-reset", action="store_true",
                     help="--unstuck: on a new best reset T to 0 instead of "
                          "halving it every --unstuck-period steps")
+    ap.add_argument("--unstuck-finish", type=int, default=None,      # 0 = off
+                    help="--unstuck: K >= 1 = a map whose latest greedy eval finished at "
+                         "least K of its episodes is not stuck - its patience window "
+                         "restarts every iteration until an eval finishes fewer, so T cools "
+                         "as after a new best (a finished map cannot go deeper, so the "
+                         "reservoir reach alone holds it at --unstuck-max for good). 0 = off "
+                         "(default; the config dump and the run are unchanged). Restored "
+                         "from the checkpoint")
     ap.add_argument("--unstuck-count-decay", type=float, default=None,  # 0.5
                     help="--unstuck: while T > 0, multiply the novelty "
                          "visit counts by this every --unstuck-period "
@@ -9903,7 +9922,8 @@ def main() -> None:
                               ("unstuck_int", int),
                               ("unstuck_temp_heads", str),
                               ("unstuck_reach", str), ("unstuck_hold", float),
-                              ("unstuck_reach_spawn_d", float)):
+                              ("unstuck_reach_spawn_d", float),
+                              ("unstuck_finish", int)):
                 if (getattr(args, _k) is None
                         and ck_cfg.get(_k) is not None):
                     setattr(args, _k, _cast(ck_cfg[_k]))
@@ -11861,11 +11881,14 @@ def main() -> None:
                        ("unstuck_period", 1e8), ("unstuck_temp", 1),
                        ("unstuck_ent", 1), ("unstuck_int", 1),
                        ("unstuck_temp_heads", "all"),
-                       ("unstuck_reach", "res"), ("unstuck_hold", 3.0)):
+                       ("unstuck_reach", "res"), ("unstuck_hold", 3.0),
+                       ("unstuck_finish", 0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _v)
         if args.unstuck_hold <= 0.0:
             raise SystemExit("--unstuck-hold must be > 0")
+        if int(args.unstuck_finish) < 0:
+            raise SystemExit("--unstuck-finish is a finish count K >= 1 (0 = off)")
         if args.reward != "race":
             raise SystemExit("--unstuck reads the race reward's progress "
                              "measures (reservoir depth, arc reach): it "
@@ -11891,9 +11914,13 @@ def main() -> None:
                     "silently run untempered or desynchronise")
         if not 0.0 <= float(args.unstuck_count_decay) <= 1.0:
             raise SystemExit("--unstuck-count-decay must be in [0, 1]")
+    elif int(args.unstuck_finish or 0) > 0:
+        raise SystemExit("--unstuck-finish holds the --unstuck schedule: give --unstuck")
     UNSTUCK_TEMP = UNSTUCK and bool(args.unstuck_temp)
     UNSTUCK_ENT = UNSTUCK and bool(args.unstuck_ent)
     UNSTUCK_INT = UNSTUCK and bool(args.unstuck_int)
+    # --unstuck-finish: K (0 = off) - a map whose latest greedy eval finished >= K is not stuck
+    UNSTUCK_FIN = int(args.unstuck_finish) if UNSTUCK else 0
     UNSTUCK_HEADS = str(args.unstuck_temp_heads) if UNSTUCK else "all"
     if UNSTUCK_TEMP and UNSTUCK_HEADS in ("view", "yaw") and not VIEWC:
         raise SystemExit(f"--unstuck-temp-heads {UNSTUCK_HEADS} tempers the "
@@ -16681,6 +16708,11 @@ def main() -> None:
             "unstuck_hold": float(args.unstuck_hold),
             "unstuck_reach_spawn_d": (None if args.unstuck_reach_spawn_d is None
                                       else float(args.unstuck_reach_spawn_d))})
+        if UNSTUCK_FIN:
+            # --unstuck-finish: written ONLY when on (a control run's dump is unchanged)
+            meta["config"]["unstuck_finish"] = UNSTUCK_FIN
+            print(f"--unstuck-finish: a map whose latest greedy eval finishes >= {UNSTUCK_FIN} "
+                  f"of its episodes is not stuck (its T cools as after a new best)")
         print(f"--unstuck: T rises {args.unstuck_rate:g} per "
               f"{args.unstuck_period:,.0f} steps after {args.unstuck_patience:,.0f} "
               f"steps without a {args.unstuck_eps:g}u improvement, cap "
@@ -19549,6 +19581,13 @@ def main() -> None:
     unstuck_sched, unstuck_T, INT_BASE, UR = None, 0.0, None, None
 
     UNSTUCK_SL, UT_SL = [], [0.0] * len(slots)   # --maps: one schedule and one T per map
+    # --unstuck-finish: per map, whether its latest greedy eval finished >= K, and the eval
+    # written this iteration (read after the eval block)
+    UFIN, UFIN_EV = [False] * len(slots), [None] * len(slots)
+    if UNSTUCK_FIN and args.ckpt and ck is not None and ck.get("unstuck_finish") is not None:
+        UFIN = [bool(ck["unstuck_finish"].get(_s.tag, False)) for _s in slots]
+        print("restored --unstuck-finish: " + ", ".join(
+            f"{_s.tag} {'finishes' if _u else 'not finishing'}" for _s, _u in zip(slots, UFIN)))
 
     def _unstuck_T_of(si=0):
         """the --unstuck temperature slot ``si``'s rollout runs at"""
@@ -19817,6 +19856,9 @@ def main() -> None:
             # granting the run a fresh patience window
             state["unstuck"] = ({_s.tag: _u.state_dict() for _s, _u in zip(slots, UNSTUCK_SL)}
                                 if MULTI else unstuck_sched.state_dict())
+        if UNSTUCK_FIN:
+            # --unstuck-finish: whether each map's latest eval finished (a resume keeps it)
+            state["unstuck_finish"] = {_s.tag: bool(UFIN[_k]) for _k, _s in enumerate(slots)}
         if ARCH is not None:
             state["archive"] = ARCH.state_dict()
         if AUTO_SPINE and args.auto_spine_archive_bar:
@@ -23221,6 +23263,8 @@ def main() -> None:
                 _Tu = UT_SL[_k]
                 _rpk = (float(_s.rf_d0) * (1.0 - float(_mfk))
                         if (_mfk == _mfk and _s.rf_d0) else float("nan"))
+                if UFIN[_k]:
+                    UNSTUCK_SL[_k].hold(_own_step(_k))      # --unstuck-finish: it finishes
                 _Tn, _ddk = UNSTUCK_SL[_k].observe(_own_step(_k), _rpk, float("nan"))
                 if _ddk and UNSTUCK_INT and args.unstuck_count_decay < 1.0:
                     _nzk = _s.reward_fn.decay_counts(args.unstuck_count_decay)
@@ -23269,6 +23313,8 @@ def main() -> None:
                 # (eval watches the greedy line ALONE: the training arc reach
                 # is a rollout measure like the reservoir's)
                 _arc_prog = float(rs.get("arc_reach", float("nan")))
+            if UFIN[0]:
+                unstuck_sched.hold(global_step)              # --unstuck-finish: it finishes
             _T_next, _decay_due = unstuck_sched.observe(
                 global_step, _res_prog, _arc_prog)
             if _decay_due and UNSTUCK_INT and args.unstuck_count_decay < 1.0:
@@ -23759,6 +23805,8 @@ def main() -> None:
                 if INTP is not None and not _s.heldout:
                     # --int-coef-progress: read after the eval block (every map its own)
                     INTP_SL[_i]["eval"] = path
+                if UNSTUCK_FIN and not _s.heldout:
+                    UFIN_EV[_i] = path      # --unstuck-finish: read after the eval block
                 if YEP is not None and _i == 0 and not _s.heldout:
                     YEP_ST["eval"] = path   # --yaw-entropy-progress: likewise
                 if args.auto_finish and _i == 0 and not _s.heldout:
@@ -24069,6 +24117,21 @@ def main() -> None:
                 _int_progress_after_eval(_ipp, _ipk)
             except Exception as _ex:         # a failed reading keeps the coefficient
                 print(f"!! --int-coef-progress: {type(_ex).__name__}: {_ex}", flush=True)
+        for _k in (range(len(slots)) if UNSTUCK_FIN else ()):
+            if UFIN_EV[_k] is None:
+                continue
+            # --unstuck-finish: the greedy eval just written says whether the map finishes
+            _ufp, UFIN_EV[_k] = UFIN_EV[_k], None
+            try:
+                _nfu = int(_eval_finishes(_ufp)[0])
+            except Exception as _ex:         # a failed reading keeps the last state
+                print(f"!! --unstuck-finish: {type(_ex).__name__}: {_ex}", flush=True)
+                continue
+            UFIN[_k] = _nfu >= UNSTUCK_FIN
+            print(f"[{global_step:>13,d}] --unstuck-finish"
+                  + (f"[{slots[_k].tag}]" if MULTI else "")
+                  + f": {_nfu} greedy finish(es) -> "
+                  + ("not stuck, T cools" if UFIN[_k] else "the stuck clock runs"), flush=True)
         if YEP is not None and YEP_ST["eval"] is not None:
             # --yaw-entropy-progress: the greedy eval just written sets the yaw entropy share
             _ypp, YEP_ST["eval"] = YEP_ST["eval"], None

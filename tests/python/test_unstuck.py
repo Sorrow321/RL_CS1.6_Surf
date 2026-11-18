@@ -318,6 +318,33 @@ def test_schedule_improvement_needs_eps_and_reset_mode_resets():
     assert s2.T == 0.0 and s2.decay_acc == 0.0
 
 
+def test_hold_cools_a_capped_schedule_and_lets_it_heat_again():
+    # --unstuck-finish: a finished map cannot go deeper, so its reading never beats the best;
+    # hold() restarts the patience window every iteration and T halves per period from the cap
+    s = UnstuckSchedule(eps=500, patience=1000, rate=1.0, tmax=4.0, period=1000, step=0)
+    for st in range(0, 6001, 1000):
+        s.observe(st, res_prog=1000.0)
+    assert s.T == 4.0 and s.stuck_steps == 6000
+    n_imp = s.n_improve
+    for st in range(7000, 10001, 1000):
+        s.hold(st)
+        s.observe(st, res_prog=1000.0)
+    assert s.stuck_steps == 0 and abs(s.T - 4.0 * 0.5 ** 4) < 1e-9
+    assert s.n_improve == n_imp and s.best == 1000.0       # a hold is not a new best
+    # the holds end (an eval finishes fewer): patience, then T rises from where it cooled
+    s.observe(11000, res_prog=1000.0)
+    assert abs(s.T - 4.0 * 0.5 ** 5) < 1e-9 and s.stuck_steps == 1000
+    s.observe(12000, res_prog=1000.0)
+    assert abs(s.T - (4.0 * 0.5 ** 5 + 1.0)) < 1e-9
+    # reset mode: a hold sets T straight to 0
+    r = UnstuckSchedule(patience=0, rate=1.0, tmax=2.0, period=100, reset=True, step=0)
+    r.observe(0, res_prog=1.0)
+    r.observe(300)
+    assert r.T == 2.0
+    r.hold(300)
+    assert r.T == 0.0 and r.stuck_steps == 0
+
+
 def test_schedule_state_round_trips():
     s = UnstuckSchedule(patience=0, rate=0.5, tmax=4.0, period=1000, step=0)
     s.observe(0, res_prog=10.0)
