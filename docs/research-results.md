@@ -50372,3 +50372,16 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * 4090 box mmf: its host went offline at 20:51 UTC; mmf_D (A + D) died after 2 tests
   (celestial 7 9, petrus 6 8, blue200 9 9; cannonball 84 74%, uf2 40 45%) and was released.
   D's reading now rests on mmg_D (A + D + E on the 5090, running since 21:48 UTC).
+
+## 2026-11-18 22:10 UTC: NOTE - the 5090 celestial misses: the greedy line flies too hot
+
+* Analysis only (box mmg, record_ckpt, celestial, 8 deg yaw jitter, same seeds). mmg_A's final
+  weights: greedy 2 of 36 (seeds 1-4), SAMPLED 16 of 18 (seeds 1-2). Same weights.
+* Medians at the end of each window, greedy (fails) / sampled / mmf_A greedy (finishes 26/36):
+  speed at 14.5 s 1,785 / 1,616 / 1,711 u/s; height at 16.0 s 545 (the floor) / 1,351 / 988.
+  Paired traces: the failing greedy runs are ~250 u further along at 15 s and arrive ~200 u
+  low at the landing ramp. Head shares (jump, duck, keys) differ by no single clear head.
+* Reading: the policy is tuned for its own sampling noise (noise costs speed), so without the
+  noise the greedy line carries ~10% more speed into the 12-14.5 s section and overshoots.
+  This is the greedy-vs-sampled gap D (--practice-share) was built for: part of the training
+  runs at low noise, so the mean has to fly the line without the noise's speed tax.
