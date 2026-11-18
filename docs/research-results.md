@@ -50211,3 +50211,33 @@ from the LAST eval's deaths only, so a spot the last test passed stops being pra
   back at the old level, so "KL grows with lr^2" does not hold here (the PPO clip probably sets
   the move). The B arms keep running; so far B: celestial 7 4, petrus 7 8; A+B: celestial 8 9,
   petrus 6 9.
+
+## 2026-11-18 17:05 UTC: NOTE - open maps swing alone too; the greedy path swings, sampled skill holds
+
+* The user, 16:05: do maps that have not finished regress in single-map training too? Yes. v14
+  alone, greedy frontier (median deepest d) per test before each map's first finish: cannonball
+  alone (first finish 2,416M own): 47% of tests 10+ points below its best so far, worst 81 points
+  (91% 24% 62% 85% 10% 68% in a row); sidistic alone (4,002M): 62%, worst 56 (70% at 1.89B, then
+  mostly 14-30% for 2B steps; at its first finish 1/9 finished and the median run died at 14%).
+  mm7_1 cannonball: 72%, worst 67. Maps held by one wall do not swing in either setting (pb alone
+  in its room, uf2 before the pit, sidistic at 26% in mm7_1). The levels are walls (cannonball
+  alone: 41.7%, 74.0%, 90.5% recur). Of cannonball alone's 6 falls of 10+ points between tests,
+  1 came right after a line adoption. Scripts: scratchpad abl/swing/swings.py and series.py.
+* Re-test of R's checkpoints (box mmg, analysis only, record_ckpt, 32 episodes, --seed 1 for
+  every checkpoint): g8 = greedy, 8 deg yaw jitter (the test's own); g30 = greedy, 30 deg;
+  st = --stochastic, 8 deg. At 14.20 / 15.20 / 16.20 / 17.20B (rounded):
+  celestial finishes of 32: g8 5 15 24 13; g30 2 12 19 13; st 24 30 23 26.
+  cannonball median deepest %: g8 41 28 54 88; g30 28 26 47 68; st 63 81 41 81 (st 75th pct
+  94 96 94 92); no finish.
+  unitfarmer2 median: g8 10 44 49 68; g30 10 44 49 68; st 10 44 49 60: up at every checkpoint.
+* Reading: the greedy policy itself swings (32-run greedy finish rates 16% 47% 75% 41%; the
+  14.20B weights score 5/32 here and 1-3/9 in the four arms' start tests, so the 9-run test reads
+  the greedy rate fairly). With sampled actions the same weights finish celestial 72-94% of the
+  time and reach cannonball's 92% wall in a quarter or more of runs at every checkpoint. What
+  regresses is the greedy path (the policy's mean action), not the skill under sampling. A's
+  gain fits this: a cooled finished map trains on rollouts close to the greedy path.
+* Ops: the first batch ran without a thread cap (load 74-80 on 32 threads for ~3 min, B slowed),
+  and a pkill -f '[f]z\.sh' over ssh matched "fz.sh" later in its own command line and killed
+  the session (the brackets guard only the pattern's own text); rerun at OMP_NUM_THREADS=2,
+  5 at a time, nice 19. Third box mmh: no offer passed in 30 tries (15:46-16:45), so A runs on
+  mmg's 5090 after C (mmg_A; driver restarted 16:58 with B, C, A).
