@@ -8264,6 +8264,12 @@ def main() -> None:
                          "bit-identical; not restored")
     ap.add_argument("--respawn-greedy-energy-secs", type=float, default=None,   # 12
                     help="--respawn-greedy-energy: the window before the stop searched, seconds")
+    ap.add_argument("--respawn-greedy-memory", type=int, default=None,   # 1 = off
+                    help="--respawn-greedy: K >= 2 = the pool holds the failures of the last K "
+                         "greedy evals, not only the last one (a clean eval adds nothing and "
+                         "ages the oldest out), so a spot stays practised K evals after its "
+                         "last failure instead of leaving the pool the first time a test passes "
+                         "it. 1 = off (default), bit-identical; not restored")
     ap.add_argument("--respawn-greedy-temp", type=float, default=None,   # None = off
                     help="--respawn-greedy: T > 0 = an env whose episode STARTED on a greedy-line "
                          "row samples the keys at 1 + T and the yaw sigma x --respawn-greedy-"
@@ -13615,7 +13621,8 @@ def main() -> None:
                                   speed=args.respawn_greedy_speed,
                                   contact=bool(args.respawn_greedy_contact),
                                   energy=int(args.respawn_greedy_energy or 0),
-                                  energy_secs=float(args.respawn_greedy_energy_secs or 12.0))
+                                  energy_secs=float(args.respawn_greedy_energy_secs or 12.0),
+                                  memory=int(args.respawn_greedy_memory or 1))
         try:
             GREEDY = _greedy_pool(int(args.seed) + 9191)
             # slot 0's pool IS GREEDY; slot i's is seeded + 101 * i (the reservoir's pattern)
@@ -13637,7 +13644,11 @@ def main() -> None:
                  "(--respawn-greedy-contact)" if GREEDY.contact else "")
               + (f"; + the {GREEDY.energy} largest energy-height losses of each episode's last "
                  f"{GREEDY.energy_secs:g} s before its stop (--respawn-greedy-energy)"
-                 if GREEDY.energy else ""))
+                 if GREEDY.energy else "")
+              + (f"; the failures of the last {GREEDY.memory} evals are held "
+                 f"(--respawn-greedy-memory)" if GREEDY.memory > 1 else ""))
+    elif args.respawn_greedy_memory and int(args.respawn_greedy_memory) > 1:
+        raise SystemExit("--respawn-greedy-memory holds the --respawn-greedy rows")
     elif args.respawn_greedy_contact:
         raise SystemExit("--respawn-greedy-contact anchors the --respawn-greedy rows")
     elif args.respawn_greedy_energy:
@@ -16635,6 +16646,8 @@ def main() -> None:
             meta["config"]["respawn_greedy_turn"] = float(GREEDY.turn)
         if GREEDY.speed is not None:
             meta["config"]["respawn_greedy_speed"] = [float(v) for v in GREEDY.speed]
+        if GREEDY.memory > 1:
+            meta["config"]["respawn_greedy_memory"] = int(GREEDY.memory)
     # --eval-patience: written ONLY when on, like the greedy pool above
     if EVAL_PATIENCE:
         meta["config"]["eval_patience"] = float(args.eval_patience)

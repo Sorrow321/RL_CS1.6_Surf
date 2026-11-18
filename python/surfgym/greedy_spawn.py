@@ -32,6 +32,8 @@ from the map start.
 """
 from __future__ import annotations
 
+from collections import deque
+
 import numpy as np
 
 from .core import STATE_DTYPE
@@ -105,7 +107,7 @@ def energy_losses(ep, stop: int, per_s: float, secs: float, n: int, win: float =
 class GreedyLinePool:
     def __init__(self, frac: float, window=(0.5, 5.0), seed: int = 0, stuck: int = 0,
                  turn: float = 0.0, speed=None, contact: bool = False, energy: int = 0,
-                 energy_secs: float = 12.0):
+                 energy_secs: float = 12.0, memory: int = 1):
         frac = float(frac)
         if not 0.0 < frac < 1.0:
             raise ValueError(f"--respawn-greedy F needs 0 < F < 1, got {frac!r}")
@@ -149,6 +151,16 @@ class GreedyLinePool:
             raise ValueError(f"--respawn-greedy-energy-secs S needs S > 0, got {energy_secs!r}")
         self.energy = int(energy)
         self.energy_secs = float(energy_secs)
+        # --respawn-greedy-memory K (mm/s7c, 2026-11-18): the pool holds the failures of the
+        # last K evals, not only the last one. With K = 1 (today) a spot the last eval passed
+        # leaves the pool at once, and a policy on a knife edge there fails it again at the next
+        # eval (mm7_1 celestial alternated high / low in 14 of 17 tests). A clean eval adds
+        # nothing and ages the oldest out, so a spot stays practised K evals after its last
+        # failure. 1 = off: the pool is the last eval's, as before
+        if int(memory) < 1:
+            raise ValueError(f"--respawn-greedy-memory K needs K >= 1, got {memory!r}")
+        self.memory = int(memory)
+        self._hist = deque(maxlen=self.memory)
         self._prng = np.random.default_rng(int(seed) + 7717)
         self.rng = np.random.default_rng(int(seed))
         self.rows = np.zeros(0, STATE_DTYPE)
@@ -266,8 +278,17 @@ class GreedyLinePool:
             rows["stuck_ticks"] = 0
         else:
             rows = np.zeros(0, STATE_DTYPE)
+        n_new = len(rows)
+        if self.memory > 1:
+            # --respawn-greedy-memory: this eval's failures joined with the last K - 1 evals'
+            self._hist.append(rows)
+            kept = [r for r in self._hist if len(r)]
+            rows = np.concatenate(kept) if kept else np.zeros(0, STATE_DTYPE)
         self.rows = rows
         self.info = {"eps": len(eps), "fail": n_used, "deaths_s": deaths, "stops_s": stops}
+        if self.memory > 1:
+            self.info["new_rows"] = int(n_new)
+            self.info["evals_held"] = int(sum(1 for r in self._hist if len(r)))
         if self.contact:
             self.info["launches_s"] = launches
         if self.energy:
@@ -333,11 +354,18 @@ class GreedyLinePool:
                    .format(", ".join(f"{v:.1f}" for v in la) if la else "none"))
                 + ("" if not self.energy else "; energy losses anchored ({})".format(
                     ", ".join(f"{du:,} u at {s:.1f} s" for s, du in self.info.get(
-                        "energy_losses", [])) or "none")))
+                        "energy_losses", [])) or "none"))
+                + ("" if self.memory <= 1 else
+                   "; memory {} evals: {:,} new states, failures of {} eval(s) held".format(
+                       self.memory, self.info.get("new_rows", self.size),
+                       self.info.get("evals_held", 1))))
 
     # -- persistence ---------------------------------------------------------
     def state_dict(self) -> dict:
-        return {"rows": self.rows.copy(), "info": dict(self.info)}
+        st = {"rows": self.rows.copy(), "info": dict(self.info)}
+        if self.memory > 1:
+            st["hist"] = [r.copy() for r in self._hist]     # --respawn-greedy-memory
+        return st
 
     def load_state_dict(self, st) -> bool:
         rows = st.get("rows") if isinstance(st, dict) else None
@@ -345,4 +373,11 @@ class GreedyLinePool:
             return False
         self.rows = np.array(rows, dtype=STATE_DTYPE, copy=True)
         self.info = dict(st.get("info") or self.info)
+        if self.memory > 1:
+            # --respawn-greedy-memory: the held evals (a checkpoint without them: its pool is one)
+            hist = st.get("hist")
+            self._hist.clear()
+            for r in (hist if isinstance(hist, list) else [self.rows]):
+                if getattr(r, "dtype", None) == STATE_DTYPE:
+                    self._hist.append(np.array(r, dtype=STATE_DTYPE, copy=True))
         return True

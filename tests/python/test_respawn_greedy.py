@@ -381,3 +381,42 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_the_change():
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k
     for dd in (a, b):
         shutil.rmtree(dd, ignore_errors=True)
+
+
+# ==========================================================================
+# --respawn-greedy-memory K (mm/s7c, 2026-11-18)
+# ==========================================================================
+def test_memory_holds_the_last_k_evals_failures_and_ages_them_out():
+    def ev(p, eps, ends):
+        _feed(p, eps)
+        return p.build([{"end": e} for e in ends], tick_ms=10.0)
+    a, b = _ep(900, 1), _ep(900, 2)
+    # K = 1 is today's pool: a clean eval empties it
+    p1 = GreedyLinePool(0.2, window=(0.5, 5.0), memory=1)
+    ev(p1, [a], ["fail"])
+    assert p1.size == 450
+    ev(p1, [b], ["done"])
+    assert p1.size == 0 and "memory" not in p1.line()
+    # K = 3: eval 1 fails at a, eval 2 fails at b, eval 3 is clean -> a and b held
+    p = GreedyLinePool(0.2, window=(0.5, 5.0), memory=3)
+    ev(p, [a], ["fail"])
+    ev(p, [b], ["fail"])
+    st = ev(p, [a], ["done"])
+    assert p.size == 900 and st["new_rows"] == 0 and st["evals_held"] == 2
+    want = np.concatenate([a[400:850], b[400:850]])
+    assert np.array_equal(p.rows["origin"], want["origin"])
+    assert "memory 3 evals: 0 new states, failures of 2 eval(s) held" in p.line()
+    # two more clean evals: a ages out first, then b
+    ev(p, [b], ["done"])
+    assert p.size == 450 and np.array_equal(p.rows["origin"], b[400:850]["origin"])
+    ev(p, [b], ["done"])
+    assert p.size == 0
+    # the held evals ride in the checkpoint
+    ev(p, [a], ["fail"])
+    ev(p, [b], ["fail"])
+    q = GreedyLinePool(0.2, window=(0.5, 5.0), memory=3)
+    assert q.load_state_dict(p.state_dict())
+    ev(q, [a], ["done"])
+    assert q.size == 900
+    with pytest.raises(ValueError):
+        GreedyLinePool(0.2, memory=0)
