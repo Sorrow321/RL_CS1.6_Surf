@@ -50055,3 +50055,25 @@ The 10.505B test (1.501B own), finishes and median deepest d:
 * celestial 3/9 (0/9, 1/9 at the two before); petrus 2/9 (8, 7, 5/9 at the three before);
   blue200 9/9; cannonball 0/9, median 163,674 (82,920 at 9.98B; line 3 to d 57,788 adopted
   at 10.076B); sidistic 74,035 and unitfarmer2 28,609, unchanged.
+
+## 2026-11-18 05:25 UTC: NOTE - mm7_1 retention: finished maps go up and down; v14 alone did too
+
+The user asked why maps improve and then regress, finished ones included. Read at 13.13B fleet:
+* Finishes per test after the first finish (of 9). Alone (v14, each run cut soon after):
+  petrus 7 8 5 2 8 6 5; celestial 4 4 0 0 4 8 9 7; cannonball 3 0 3 3 7 5; pb 3 2 5 4 1 5;
+  sidistic 1 0 0 1; blue200 8-9; unitfarmer2 1 4 1 then 8-9. Shared: petrus 9 7 7 1 2 9 6 2 8
+  6 8 5 7 8 7 5 2 8 4 7 7 8 (the same range); celestial 6 1 1 1 1 1 1 4 2 0 1 3 1 4 2 5 3
+  (worse than alone); blue200 8-9. The pre-ablation recipe held its finishes: petrus 141/144
+  after its first 9/9 (m5sib, first finish at 3.25B, a later stage), celestial 83% (m7sib).
+* v14 vs that recipe: unstuck_max 0.5 vs 0.2, int_coef_progress 2.5:0.25:0.1 vs int_coef 0.25
+  (the same 0.25 once a map is past 10%), respawn_greedy and front_perturb 0.25 each,
+  demo_success_bonus 50. The stuck detector reads reservoir depth only, so a finished map sits
+  at its cap: keys at temperature 1 + T, entropy and novelty x (1 + T), counts halved per period.
+* Shared: 1029 envs over 7 maps vs 1024 on one map, the same lr, epochs and minibatches, KL per
+  update 0.025 vs 0.017-0.028 alone: 7x the updates per own step (~1,000 vs ~143 per test gap).
+* The critic is not the gap: explained variance cel 0.96 vs 0.97 alone, pet 0.96 vs 0.93,
+  can 0.98 vs 0.98, b200 0.95 vs 0.97 (at 1.0-1.8B own).
+* Celestial's failures move between tests (16.7 s in at 12.08B, 27 s at 12.61B, 8.7-11 s at
+  13.13B); petrus fails mostly at 30-34 s (its last section).
+* The +50 finish bonus is worth ~11% at the start of a 43 s map (gamma 0.9995 per 10 ms).
+* pb: past the x -1,005 wall (best > 7.5%) at 1.726B own vs 9.287B alone (x0.19).
