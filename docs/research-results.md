@@ -50312,3 +50312,38 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Why A on this card is now the priority: every 5090 arm swings on celestial (mm7_1's last 6
   tests 3 of 6 low, R 3 of 6, B 2 of 6, C 2 of 3) and both 4090 arms with A hold (A 0 of 6, A+B 0
   of 6). Card and treatment are confounded until A runs on the 5090.
+
+## 2026-11-18 19:35 UTC: NOTE - weight averages of saved checkpoints fly a steadier greedy path
+
+* Analysis only (box mmg, record_ckpt, 32 greedy runs, 8 deg yaw jitter, --seed 1: the 17:05
+  re-test's g8 mode). R's saved checkpoints at 14.20 / 15.20 / 16.20 / 17.20B and plain averages
+  of their policy weights (every tensor; scratchpad abl/swing/avg_ckpt.py, fz2.sh): avg2 =
+  mean(16.20, 17.20), avg3 = mean(15.20 .. 17.20), avg4 = mean(14.20 .. 17.20). The tensors move
+  23-38% (relative norm) across those snapshots, so an average is a different policy.
+* Celestial finishes of 32: snapshots 5 15 24 13; avg2 20, avg3 26, avg4 22.
+  Cannonball median deepest %: snapshots 41 28 54 88; avg2 61, avg3 41, avg4 41 (75th pct 98).
+  Unitfarmer2 median %: snapshots 10 44 49 68; avg2 51, avg3 49, avg4 49.
+* Reading: an average is a working policy, not a blur. On the finished map the three-snapshot
+  average beats every snapshot in it (26 vs 13-24 of 32), as in Nikishin et al. 2018 (weight
+  averaging in RL). On the maps still moving, a long average lags the newest weights (uf2 49-51
+  vs 68). A running average with a shorter memory is the next test, built as an observer.
+
+## 2026-11-18 19:40 UTC: PRE-LAUNCH (queued) - E: --eval-ema 3e8,1e9 (an observer) rides with D
+
+* E = --eval-ema H1,H2 (new, mm/s7e afb4e740): one exponential moving average of the policy
+  weights per half-life (environment steps), moved after every PPO update, saved in the
+  checkpoint, restored on a resume. Every greedy eval is flown again by each average (same seed,
+  same cut rules) into traj_<step>_<map>_ema<i>.jsonl; nothing those runs do reaches training.
+  CPU smoke, two maps: off = mm/s7d row for row and eval byte for byte; ON leaves the raw evals
+  and every progress row identical to OFF (a pure observer); a bare resume restores both
+  averages; record_ckpt --ema I flies one (its header says which).
+* Run mmg_D on box mmg (RTX 5090) after mmg_A (~21:55 UTC): the resume of mm7_1 at
+  14,203,295,232 for 3.2e9 steps, v14 + --adv-norm-per-map 1 + A (--unstuck-finish 1) + D
+  (--practice-share 0.25 --practice-temp 0.5) + E (--eval-ema 3e8,1e9). Two readings: D vs
+  mmg_A on the same card (D's second card, after mmf_D on the 4090), and raw vs averaged weights
+  inside one run (E). Half-lives either side of the snapshot averages above: an average's mean
+  age is H / ln 2 = 0.43B and 1.44B steps (avg2 0.5B, avg3 1B). Cost ~2% (a test of all seven
+  maps takes ~15-20 s on the 5090).
+* Then the from-scratch seven-map run on the same box (~01:00 UTC), recipe from these readings.
+  Driver: scratchpad abl/mmfix/q.sh (a queue; an empty queue releases the box; a $23.5 credit
+  floor stops, pulls and releases).
