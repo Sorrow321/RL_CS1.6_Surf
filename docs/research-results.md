@@ -50407,3 +50407,30 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   If ema0 shows 2+ low tests on a finished map in tests 5-6, the line is replaced by an F arm
   (mm/s7f 2e5c615a, --practice-finish-share 0.75: maps that finish practise 75% of their envs
   at temperature 0.5) before the launch.
+
+## 2026-11-19 00:35 UTC: RESULT - E: the weight average holds every finished map on the 5090
+
+* Run mmg_D on box mmg (RTX 5090): the resume of mm7_1 at 14,203,295,232 for 3.2e9 steps, v14
+  + --adv-norm-per-map 1 + A (--unstuck-finish 1) + D (--practice-share 0.25 --practice-temp
+  0.5) + E (--eval-ema 3e8,1e9). Every test is flown by the raw weights and by two exponential
+  weight averages (half-life 3e8 = ema0, 1e9 = ema1); the averages never act in training.
+* Finishes of 9, tests 1-6 after the start (14.73 .. 17.36B):
+  celestial  raw 3 7 0 8 5 8 (2 low)   ema0 6 9 9 9 7 9 (0 low)   ema1 4 7 8 9 9 8 (0 low)
+  blue200    raw 9 6 9 9 9 9           ema0 9 9 9 9 9 9           ema1 9 9 9 9 9 9
+  petrus     raw 9 9 9 8 8 9           ema0 9 9 9 8 9 8           ema1 9 9 9 9 8 9
+  Same card, A alone (mmg_A): celestial 7 3 7 2 8 3 (3 low).
+* Open maps, greedy frontier % (falls = tests 10+ under the best so far):
+  cannonball raw 90 24 94 85 91 95 (1)   ema0 42 68 94 74 95 95 (1)   ema1 47 95 91 42 94 42 (2)
+  uf2        raw 20 44 61 65 61 65 (0)   ema0  7 20 49 65 65 65 (0)   ema1  7  7 20 38 38 64 (0)
+  pb 20-26% and sidistic 26-30% in all three, no falls.
+* Finish times over the six tests (s, median / best): ema0 celestial 43.47 / 42.90 (49
+  finishes) vs raw 44.07 / 43.49 (31); petrus 30.12 / 29.65 vs 30.31 / 29.86; blue200 13.18 /
+  12.50 vs 13.23 / 12.65.
+* Reading: the ema0 weights meet criteria 1 and 2 of the victory definition on the 5090 in
+  this resume: no finished-map test at 3/9 or less in six (raw: 2), open maps at most one fall
+  in six with uf2 and cannonball still climbing. The average lags the newest weights by its
+  mean age (H / ln 2 = 0.43B steps): uf2 7 vs 20% after 0.5B, level from 1.6B on. D alone
+  does not hold celestial (raw 2 low in 6, A alone 3), so the hold comes from the average
+  (Polyak averaging; Nikishin et al. 2018 for RL). ema1 holds too but lags more on open maps.
+* Next: mmg_S1, the seven maps from scratch with the same flags (PRE-LAUNCH fe37575f), budget
+  raised to 1e10 fleet steps for slack before launch; reads unchanged.
