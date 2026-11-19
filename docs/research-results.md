@@ -50465,3 +50465,40 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Tests: ~100 s per test per 7 maps per GPU on these cores; the two weight averages are ~60% of
   it. Searches never started in these short rungs (300M-step delay); mm7_1 measured ~20% slower
   training while one runs. Fewer CPU threads (24 vs default) was 5% faster (past the knee).
+
+## 2026-11-19 07:10 UTC: RESULT - mmg_S1: the seven maps from scratch with A + D + E; victory met
+
+* Run mmg_S1 on box mmg (RTX 5090 + Ryzen 9950X3D, $0.59/h): FROM SCRATCH, mm/s7e (afb4e740),
+  v14 + --adv-norm-per-map 1 + --unstuck-finish 1 --practice-share 0.25 --practice-temp 0.5
+  --eval-ema 3e8,1e9 (PRE-LAUNCH fe37575f). Launched 00:34 UTC; stopped by the operator at
+  7.51B fleet steps (06:59 UTC) once the pre-registered reads were complete (test 14, 7.35B).
+  No checkpoint and no spawn file: every state it trained on is its own.
+* First greedy finish (fleet steps; own = fleet / 7) against mm7_1 (same recipe without A, D
+  and E; RTX 4090), raw weights:
+  petrus    1.05B (0.15B own) vs 2.10B   x2.0 earlier
+  blue200   3.15B (0.45B own) vs 4.20B   x1.33
+  celestial 4.20B (0.60B own) vs 4.73B   x1.13
+  pb, sidistic, uf2, cannonball: no finish in either run by 7.35B.
+  ema0 (half-life 3e8, the deliverable): petrus 1.58B, blue200 3.68B, celestial 4.20B.
+* Finishes of 9 in every test after the first finish, to test 14 (7.35B):
+  celestial ema0 9 9 9 9 9 8 (0 low)              raw 7 9 8 7 9 8 (0 low)
+  blue200   ema0 9 9 8 9 9 9 9 (0 low)            raw 9 9 9 9 9 9 9 9 (0 low)
+  petrus    ema0 8 8 9 9 9 8 9 9 9 8 9 (0 low)    raw 6 8 8 9 9 9 8 9 9 8 8 9 (0 low)
+  (low = 3/9 or less.) mm7_1 at the same steps: celestial 5 of 5 tests low (mean 1.0/9),
+  petrus 3 of 10 low, blue200 0 of 6. ema1 (half-life 1e9): celestial 9 9 9 3 (1 low).
+* Open maps, greedy frontier % at tests 1-14:
+  cannonball ema0 2 25 58 42 68 74 74 71 74 74 68 93 95 68 (2 falls 10+ under the best so far)
+             raw 13 27 47 66 42 25 68 68 90 24 90 25 68 28 (6 falls); mm7_1 best 62, 10 falls
+  sidistic 24-26% (mm7_1 26-27%), uf2 1-2% (mm7_1 7%), pb 0% (mm7_1 0%).
+* Reading: criterion 3 of the victory definition (scratchpad abl/mmfix/plan_victory.md) is
+  met: every map mm7_1 finished is finished earlier, and no finished map has a low test after
+  its first finish in raw or ema0 (6 to 12 tests each), where mm7_1 lost celestial and swung on
+  petrus. Criteria 1 and 2 were met by the same flags on the same card in mmg_D (aa0b2a8b). So
+  the program's goal is reached: one shared agent trained from scratch on the seven maps
+  finishes and holds the three maps it finishes. One seed; mm7_1 ran on a 4090, and the
+  cross-card check (aebf46b7) found the 5090 the harsher card for celestial.
+* Not reached and not claimed: the other four maps. cannonball ema0 reached 95% (mm7_1 62% at
+  the same steps) with no finish; uf2 is behind mm7_1 (2 vs 7%); pb and sidistic level.
+* Harvest: ~/ar_m2/runs/mmg/mmg_S1: ckpt_latest.pt (7.51B, md5 635376d7..., carries policy_ema:
+  ema0 and ema1), run.json, progress.csv, launch log, auto_lines.tgz (held search lines,
+  md5 942f31c7...); every eval in the scratchpad mirror (abl/mmfix/mirror/mmg_S1, 318 files).
