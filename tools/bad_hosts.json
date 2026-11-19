@@ -3013,6 +3013,24 @@
       "detail": "2x RTX 4080, power limit 225 of 320 W on both cards (host); bf16 GEMM 100/101 TFLOPS at 83-108 W; gpu_health --all UNHEALTHY (deploy refused 2026-11-17 17:55 UTC, mmv)",
       "run": "mmv (DDP validation, never deployed)",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "179.253.224.210",
+      "machine_id": 152086,
+      "host_id": 572018,
+      "date": null,
+      "detail": "autoresearch mmp: not running after 330 s (status loading, [ERROR] 防官方回源配置尚未生效，请在无租客空窗完成 Docker 配置加载\n)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "203.75.167.56",
+      "machine_id": 54522,
+      "host_id": 387478,
+      "date": "2026-11-19",
+      "detail": "4x RTX 5090 (instance 61357585, Genuine Intel ES 0000, 92-core quota, mmp scaling bench): gpu_health healthy at deploy and single-GPU runs fine, but every multi-GPU run (2 and 4 ranks, NCCL) died at its first collective with 'CUDA error: an illegal memory access' in the NCCL watchdog; then the container lost every GPU ('Failed to initialize NVML: Unknown Error', torch sees 0 cards) while vast reported it running",
+      "run": "mmp_bench (scaling bench, released)",
+      "reason": "gpu_lost"
     }
   ],
   "known_good": [
