@@ -25,6 +25,18 @@ shift 2
 # bundled). Do NOT default it on; export it yourself only after the C1
 # invariants pass with it on your box.
 
+# NCCL_P2P_DISABLE=1 on GeForce cards (2026-11-19, the 4x RTX 5090 scaling bench): consumer
+# cards have no NVLink and their PCIe peer access is unreliable on rented hosts - on one 4x5090
+# box every NCCL run died at its first collective with "an illegal memory access" (then the
+# container lost its GPUs), on another the plain 4-rank all-reduce never answered; with P2P off
+# NCCL goes through host memory and every rung ran (the all-reduce cost 6-22% of an iteration).
+# Exported only when unset, so an operator can still try P2P on a box that has it.
+if [ -z "${NCCL_P2P_DISABLE:-}" ] && nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null \
+    | grep -qi 'geforce'; then
+  export NCCL_P2P_DISABLE=1
+  echo "== NCCL_P2P_DISABLE=1 (GeForce cards: no NVLink, PCIe peer access unreliable on rentals)"
+fi
+
 # torchrun force-exports OMP_NUM_THREADS=1 to workers unless it is already
 # set - which would silently cripple the C env step (the whole reason
 # _default_omp_threads exists). Compute the per-rank team here instead.

@@ -62,7 +62,10 @@ def _default_omp_threads() -> str:
     if quota:
         total = min(total, quota)
     div = 2 if n * lws <= total else 2 * lws
-    return str(max(4, min(32, n // div)))
+    # capped at 24 (was 32): one process on a 92-CPU-quota box ran 5% faster at 24 than at the old
+    # default 32 (2026-11-19 scaling bench, r7w1q vs r7w1n) - the per-call pools of the per-map
+    # reward pay their synchronisation per thread; boxes of <= 48 usable CPUs are unchanged
+    return str(max(4, min(24, n // div)))
 
 
 def _cgroup_cpu_quota():
@@ -8694,6 +8697,14 @@ def main() -> None:
                          "per iteration) — the perf harness, see "
                          "docs/perf-implementation-plan.md")
     ap.add_argument("--no-graphs", action="store_true")
+    ap.add_argument("--render-graph", action="store_true",
+                    help="mm/s7h: the training render of every map (one lidar march per map per "
+                         "decision, launched from Python) captured once as ONE CUDA graph and "
+                         "replayed per decision - the same kernels on the same inputs, so the "
+                         "frames are the same bits; what goes is the per-map launch overhead "
+                         "that made the render ~1 ms per map per decision of CPU time "
+                         "(2026-11-19 scaling bench). CUDA only; evals and the truncation "
+                         "bootstrap render as before. Off = the run is unchanged")
     ap.add_argument("--no-eval-at-start", action="store_true",
                     help="skip the eval on the FIRST iteration. next_record "
                          "starts at global_step, so an eval always fires "
@@ -14006,6 +14017,10 @@ def main() -> None:
 
     _raw_lidar = {}
     _target_masks = {}           # --goal-planner ramps: the target channel's masks, per map
+    # device memory each map's buffers take (its lidar SDF / occupancy / face grids, its potential
+    # channel): the number that says how many maps fit on one card (printed after the loop)
+    _map_mem = []
+    _mem0 = torch.cuda.memory_allocated(device) if device.type == "cuda" else 0
     for slot in slots:
         with D.rank0_first_unless(DDP_SHARD):        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
@@ -14111,6 +14126,25 @@ def main() -> None:
         # shared centre would put it thousands of units off the map it
         # belongs to and render the wrong depth image for V(s_T)
         slot.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
+        if device.type == "cuda":
+            _mem1 = torch.cuda.memory_allocated(device)
+            _map_mem.append(_mem1 - _mem0)
+            _mem0 = _mem1
+        if args.warm_caches:
+            # --warm-caches: this map's artifacts are on disk now, and a pass that exits after
+            # the last map needs none of its device buffers. Holding every map's at once put
+            # NMAPS x ~0.8 GB on ONE card (28 maps: 21.7 GB; 100 maps cannot start), so they go
+            # before the next map is built
+            slot.lidar = None
+            _raw_lidar.pop(slot.name, None)
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
+                _mem0 = torch.cuda.memory_allocated(device)
+    if _map_mem:
+        print(f"map buffers on {device}: {sum(_map_mem) / 2**30:.2f} GiB for {len(_map_mem)} "
+              f"map(s), {max(_map_mem) / 2**30:.2f} GiB the largest ("
+              + ", ".join(f"{_s.tag} {_m / 2**30:.2f}" for _s, _m in zip(slots, _map_mem))
+              + ")" + (" - released after each map (--warm-caches)" if args.warm_caches else ""))
 
     # ---- --heldout-maps: EVAL-ONLY slots ----------------------------------
     # A held-out map is evaluated at every eval and never trained on. It is
@@ -14224,6 +14258,11 @@ def main() -> None:
                   + (f"route {_rp.name} -> corridor MAX logged"
                      if hs.route is not None
                      else "no route file -> field metric only"))
+            if args.warm_caches:
+                # (as for the training maps above: its artifacts are on disk, its buffers go)
+                hs.lidar = None
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
             heldout.append(hs)
     NHELD = len(heldout)
     if args.warm_caches:
@@ -16932,6 +16971,9 @@ def main() -> None:
         meta["config"]["practice_temp"] = PRACTICE_T
     if PRACTICE_FIN > 0.0:
         meta["config"]["practice_finish_share"] = PRACTICE_FIN
+    # --render-graph (mm/s7h): how the training render was launched - written only when on
+    if args.render_graph:
+        meta["config"]["render_graph"] = 1
     # --eval-ema: written ONLY when on, like the practice share above
     if EMA_HALF:
         meta["config"]["eval_ema"] = list(EMA_HALF)
@@ -19045,6 +19087,43 @@ def main() -> None:
     # allocated on the single-map path, where render() returns the
     # renderer's own tensor exactly as it always did.
     img_stage = (torch.zeros((N, FRAME), device=device) if MULTI else None)
+
+    class _RenderGraph:
+        """--render-graph (mm/s7h): fleet.render(vis_gpu, img_stage) as one CUDA graph. The first
+        call renders eagerly twice on a side stream (Triton's compile and autotune, every scratch
+        buffer's first allocation), then captures the third; every later call replays it on the
+        current stream, after the pose upload that call's own stream order puts ahead of it.
+        Every tensor a lidar held at capture is kept here, so an eval render at another batch
+        size that swaps a cached buffer (e.g. the potential kernel's zero eye row) cannot free
+        memory the graph still reads."""
+
+        def __init__(self):
+            self.g, self.res, self.keep = None, None, []
+
+        def render(self):
+            if self.g is None:
+                side = torch.cuda.Stream(device=device)
+                side.wait_stream(torch.cuda.current_stream(device))
+                with torch.cuda.stream(side):
+                    for _ in range(2):
+                        fleet.render(vis_gpu, img_stage)
+                torch.cuda.current_stream(device).wait_stream(side)
+                self.g = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(self.g):
+                    self.res = fleet.render(vis_gpu, img_stage)
+                for _s in list(fleet.slots):
+                    for _o in (_s.lidar, getattr(_s.lidar, "potential", None),
+                               getattr(_s.lidar, "texmap", None)):
+                        if _o is not None:
+                            self.keep += [_v for _v in vars(_o).values()
+                                          if isinstance(_v, torch.Tensor)]
+                print(f"--render-graph: the render of {len(fleet.slots)} map(s) captured as one "
+                      f"CUDA graph ({len(self.keep)} renderer tensors held)", flush=True)
+            self.g.replay()
+            return self.res
+    RGRAPH = (_RenderGraph() if (args.render_graph and device.type == "cuda") else None)
+    if args.render_graph and RGRAPH is None:
+        print("--render-graph: not on a CUDA device - the render stays eager")
     # (x, y, z, yaw, pitch, ducked) [+ (vx, vy, vz) under --obs-ttc]
     _VIS_W = 9 if (args.obs_ttc or args.obs_reach) else 6
     vis_pin = torch.zeros((N, _VIS_W), pin_memory=(device.type == "cuda"))
@@ -19255,7 +19334,8 @@ def main() -> None:
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
         # channel fastest, which is what Policy.forward_split restrides.
         # --maps: each slot marches ITS map's SDF into its own env block.
-        img = fleet.render(vis_gpu, img_stage)
+        # (--render-graph: the same render, replayed as one captured CUDA graph)
+        img = RGRAPH.render() if RGRAPH is not None else fleet.render(vis_gpu, img_stage)
         if ring is None:
             dst[:, SCAL:].copy_(img)
         else:

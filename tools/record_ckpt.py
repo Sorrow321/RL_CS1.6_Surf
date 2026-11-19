@@ -264,6 +264,8 @@ TRAIN_ONLY = frozenset({
     "practice_share", "practice_temp",
     # --practice-finish-share (mm/s7f): the practice share of a map that finishes - rollout-side
     "practice_finish_share",
+    # --render-graph (mm/s7h): how the training render was launched (a CUDA graph) - trainer-side
+    "render_graph",
     # --eval-ema (mm/s7e): the trainer's observed weight averages - pick one with --ema I
     "eval_ema",
     # --int-mode / --int-rare / --archive-*: the novelty key, the rare-transition

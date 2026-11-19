@@ -83,8 +83,7 @@ def _build_fast_sample():
     except Exception:
         return None
 
-    @njit(cache=True, fastmath=False, parallel=True)
-    def _f(pos, grid, mins, cell, valid_max, sentinel):
+    def _body(pos, grid, mins, cell, valid_max, sentinel):
         n = pos.shape[0]
         nz, ny, nx = grid.shape
         out = np.empty(n, np.float32)
@@ -124,7 +123,22 @@ def _build_fast_sample():
             else:
                 out[i] = sentinel
         return out
+
+    _par = njit(cache=True, fastmath=False, parallel=True)(_body)
+    # the same body run serially (prange is range there): a parallel region pays its thread-pool
+    # synchronisation on every call, and at the per-map batch the multi-map trainer samples
+    # (~150 points per map per decision, one call per map) that was most of the call (2026-11-19
+    # profile). Element-wise, so it is the same bits as the parallel pass (and the reference)
+    _ser = njit(cache=False, fastmath=False, parallel=False)(_body)
+
+    def _f(pos, grid, mins, cell, valid_max, sentinel):
+        return (_ser if pos.shape[0] < _SERIAL_BELOW else _par)(
+            pos, grid, mins, cell, valid_max, sentinel)
     return _f
+
+
+# GoalField.sample's batch size below which the fused pass runs serially (see _build_fast_sample)
+_SERIAL_BELOW = 1024
 
 
 # SURFGYM_NO_NUMBA=1 forces the numpy reference. The fast path is asserted
