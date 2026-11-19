@@ -1125,18 +1125,29 @@ class Policy(nn.Module):
             return torch.clamp(ls, min=lo, max=self.view_std.log_std_hi)
         return torch.clamp(ls, max=self.view_std.log_std_hi)
 
-    def project_log_std(self) -> int:
+    def project_log_std(self, count: bool = True) -> int:
         """--view-absolute: pull the RAW log sigma of every head back under
         its ceiling (after an optimizer step, and once on resume). A raw
         parameter parked above a clamp has a zero gradient through it, so
         PPO could never shrink the pitch sigma again once the entropy bonus
         (or a checkpoint from before the cap) had pushed it past log 0.5.
-        -> the number of heads that were moved. No-op in delta mode."""
+        -> the number of heads that were moved. No-op in delta mode.
+
+        count=False (the update loop, after every optimizer step): the same clamp without the
+        count - torch.minimum / maximum return a value already inside the bounds bit for bit, so
+        the weights are identical, and there is no host read of a GPU tensor, which made the CPU
+        wait for every minibatch's step before it could queue the next (-> returns 0)."""
         if self.view_absolute is None:
             return 0
         with torch.no_grad():
             p = self.view_std.log_std
             hi = self.view_std.log_std_hi
+            if not count:
+                p.copy_(torch.minimum(p, hi))
+                lo = getattr(self.view_std, "log_std_lo", None)
+                if lo is not None:
+                    p.copy_(torch.maximum(p, lo))
+                return 0
             moved = int((p > hi).sum())
             if moved:
                 p.copy_(torch.minimum(p, hi))
@@ -23567,8 +23578,9 @@ def main() -> None:
                     # keep the raw pitch log sigma under its cap so its
                     # gradient stays alive (Policy.project_log_std). Skipped
                     # during the warmup: log_std is an ACTOR parameter and
-                    # frozen means frozen, projection included.
-                    policy.project_log_std()
+                    # frozen means frozen, projection included. (count=False: no host read,
+                    # so the CPU queues the next minibatch while the GPU runs this step)
+                    policy.project_log_std(count=False)
                 tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
                 # update measures how much of the update is GPU vs host gaps
                 if rnd is not None:
