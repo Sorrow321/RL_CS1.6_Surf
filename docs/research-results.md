@@ -50502,3 +50502,38 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Harvest: ~/ar_m2/runs/mmg/mmg_S1: ckpt_latest.pt (7.51B, md5 635376d7..., carries policy_ema:
   ema0 and ema1), run.json, progress.csv, launch log, auto_lines.tgz (held search lines,
   md5 942f31c7...); every eval in the scratchpad mirror (abl/mmfix/mirror/mmg_S1, 318 files).
+
+## 2026-11-19 07:35 UTC: NOTE - the scaling fixes on a 5090: x1.10 per iteration, all bit-identical
+
+* Code: mm/s7h (d4a034fb, 23a14068) = mm/s7g + --render-graph (every map's training render
+  captured as one CUDA graph; at capture it checks replay == eager bit for bit or stops), the
+  serial goal-field pass below 1024 points, --warm-caches freeing each map's GPU buffers, a
+  24-thread default cap, NCCL P2P off on GeForce. mm/s7i (5b1e44e4) = mm/s7h + the log-sigma
+  clamp after each optimizer step without its host read (it stalled the CPU once per
+  minibatch). CPU smokes: each branch row for row and eval byte for byte against the one
+  before it, plain v14 and A + D + E.
+* Bench on box mmg (RTX 5090 + Ryzen 9950X3D) after mmg_S1: mm7_1's checkpoint at 14.2B, 7
+  maps, 1029 envs, one GPU, searches held off, median of 69 steady iterations (scratchpad
+  abl/bench: val_h.sh, val_i.sh, res3/):
+  mm/s7g                       1,289 ms/iter   409k steps/s
+  mm/s7h                       1,274           414k   x1.01
+  + --render-graph             1,236           426k   x1.03
+  + --no-dip-diag              1,193           442k   x1.04
+  mm/s7i, same flags           1,167           451k   x1.02    all four: x1.10
+  A replicate of the 1,193 line ran 1,198 (run-to-run ~0.5%).
+* Where the 1,167 ms go: PPO update 415 (36%, on the GPU), reward 249 (21%), the wait for the
+  GPU's render + forward before the actions are read 171 (15%), observation build 152 (13%),
+  lidar 81, physics 76, policy 74, respawn 64. GPU busy 39%, all cores 35%. The render graph
+  moved launch time into that wait (observation build -95 ms, wait +56 ms); the render's GPU
+  work is unchanged.
+* py-spy (a 40-iteration rung under py-spy; a vast container cannot attach to a running
+  process): of the training part, 22% sat in the clamp's host read (fixed in mm/s7i) and 10%
+  in the action read's sync (the wait above).
+* Reading: on this desktop CPU the per-map Python loops are much smaller than on the 4x EPYC
+  box (reward 249 vs 902 ms per iteration), so the fixes give 10% here; the EPYC box, where
+  the observation build was 32% and the reward 30%, should gain more (not measured: no 4-GPU
+  box under the caps this morning). Batching the reward across maps is not built: at most
+  ~x1.25 on this CPU (reward 21%), more on slow cores.
+* For the big run's recipe: --render-graph, --no-dip-diag, --eval-ema 3e8 (one average),
+  mm/s7i, ddp_launch.sh's NCCL default. The ema0 deliverable of mmg_S1 is exported as its own
+  checkpoint (ckpt_ema0_7504949760.pt, md5 b4560a28..., record gate passed on all 7 maps).
