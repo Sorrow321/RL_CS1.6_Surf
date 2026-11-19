@@ -50537,3 +50537,31 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * For the big run's recipe: --render-graph, --no-dip-diag, --eval-ema 3e8 (one average),
   mm/s7i, ddp_launch.sh's NCCL default. The ema0 deliverable of mmg_S1 is exported as its own
   checkpoint (ckpt_ema0_7504949760.pt, md5 b4560a28..., record gate passed on all 7 maps).
+
+## 2026-11-19 14:50 UTC: PLAN - mmg_S1c: the from-scratch seven-map run continued to all seven
+
+* The user (2026-11-19): next milestone = train until all seven maps finish (cannonball,
+  princessburglar, unitfarmer2 and sidistic too), on one GPU; a 5090 at up to $0.66/h approved.
+* Why one GPU with a fast CPU (measured; scratchpad abl/bench res2 + res3, 7 maps, 1029 envs, no
+  tests): 1x 5090 + Ryzen 9 9950X3D 409k steps/s ($0.40 per 1B steps at $0.59/h); 1/2/4x 5090 +
+  EPYC 7663 176k/281k/368k (x1.59, x2.09; $0.95/$1.19/$1.82 per 1B at $2.41/h for four). Every CPU
+  phase ran 2.6-3.7x slower on the EPYC with 83-88% of its cores idle (one Python main thread per
+  GPU sets the pace); the update does not shrink with more ranks. 16 GB cards are out (~20 GiB
+  peak with a cannonball search and the recorder beside the trainer).
+* Rent filter: mm/s7i 0bff12b3 (config only: 5090 only, cap 0.66, cpu_exclude EPYC, Xeon, Zen 1-3,
+  Intel <= 11th gen, >= 32 threads, >= 48 GB RAM); the watchdog policy RTX_5090 0.60 -> 0.66
+  (RL_Surf_pb autoresearch/config.json; daemon restarted 14:36 UTC, one daemon).
+* Run: resume mmg_S1's ckpt_latest.pt (7,504,949,760 fleet steps, md5 635376d7, holds the ema0 and
+  ema1 averages) with its held lines (auto_lines.tgz md5 942f31c7: the policy's own search lines,
+  no human demo) on mm/s7i, the same recipe tokens, A+D+E (--unstuck-finish 1 --practice-share
+  0.25 --practice-temp 0.5 --eval-ema 3e8,1e9) and the bit-identical speed fixes (--render-graph,
+  --no-dip-diag, no host read per minibatch; ledger b8297d07). Budget 150e9 steps (never reached).
+* Cut (fixed now): each of the four open maps finishes in a test of this run (raw or ema0, the
+  done footers; each first finish re-checked with score.py for the record), then 6 more complete
+  tests; or the credit floor $13 (the user's $10 reserve under it). Watcher: scratchpad
+  abl/s1c/watch.sh (floor, deadline extensions, cut, harvest of held lines + evals + checkpoint).
+* Expected (estimates): ~1.2B fleet steps per hour with tests and searches; princessburglar sets
+  the length (alone 17.29B own = ~121B fleet; mm7_1 passed its x -1,005 wall 5x sooner than alone).
+  Credit $25.52 now, +~$25 from the user: ~57 h above the floor, ~70B more fleet steps.
+* Market at 14:36 UTC: no 5090 passed the filter (the Norway TR PRO 9975WX at $0.645 had gone);
+  launch.sh polls box.py rent every 2 min for up to 8 h.
