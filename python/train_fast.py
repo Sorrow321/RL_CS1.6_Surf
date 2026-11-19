@@ -19117,8 +19117,18 @@ def main() -> None:
                         if _o is not None:
                             self.keep += [_v for _v in vars(_o).values()
                                           if isinstance(_v, torch.Tensor)]
+                # the self-check, once: the replay and an eager render of the same poses must
+                # be the same bits, or the graph is not the render and the run stops here
+                self.g.replay()
+                _gr = self.res.clone()
+                _ea = fleet.render(vis_gpu, img_stage).clone()
+                _same = bool(torch.equal(_gr, _ea))
                 print(f"--render-graph: the render of {len(fleet.slots)} map(s) captured as one "
-                      f"CUDA graph ({len(self.keep)} renderer tensors held)", flush=True)
+                      f"CUDA graph ({len(self.keep)} renderer tensors held); replay == eager "
+                      f"render: {_same}", flush=True)
+                if not _same:
+                    raise SystemExit("--render-graph: the replayed render differs from the eager "
+                                     "one - run without the flag")
             self.g.replay()
             return self.res
     RGRAPH = (_RenderGraph() if (args.render_graph and device.type == "cuda") else None)
