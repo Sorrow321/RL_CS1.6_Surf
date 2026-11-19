@@ -90,6 +90,7 @@ import hashlib
 import json
 import math
 import time
+_T_PROC0 = time.perf_counter()          # --timing's TIMING_RUN: the process's own start
 from collections import deque
 from pathlib import Path
 
@@ -105,6 +106,7 @@ import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
 from surfgym import distributed
+from surfgym import gpupick
 from surfgym.core import STATE_DTYPE
 from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
@@ -1923,6 +1925,19 @@ class PhaseTimer:
         self._pool: dict[str, list] = {}      # name -> [(start_ev, end_ev), ..]
         self._used: dict[str, int] = {}       # name -> pairs recorded this iter
         self._t0 = 0.0
+        # the whole run's account (TIMING_RUN): process start -> first iteration (startup),
+        # the iterations' own totals, and whatever ran between them (gaps); the three must
+        # add up to the wall clock since the process started
+        self._loop0 = None
+        self._iters_ms = 0.0
+        self._n = 0
+        self._last_end = None
+        self._gaps_ms = 0.0
+
+    # -- per-iteration facts that are not times (e.g. a search running beside it) ----------
+    def mark(self, name: str, value: float) -> None:
+        if self.on:
+            self.acc[name] = float(value)
 
     # -- CPU brackets --------------------------------------------------------
     def now(self) -> float:
@@ -1961,6 +1976,10 @@ class PhaseTimer:
             # pairs including a compile
             self._used.clear()
             self._t0 = time.perf_counter()
+            if self._loop0 is None:
+                self._loop0 = self._t0
+            elif self._last_end is not None:
+                self._gaps_ms += (self._t0 - self._last_end) * 1e3
 
     def flush(self, iter_no: int) -> None:
         """Sync once, fold the event pairs in, print the TIMING line."""
@@ -1981,6 +2000,24 @@ class PhaseTimer:
         keys += sorted(k for k in self.acc if k not in self.FIELDS)
         print(f"TIMING iter={iter_no} "
               + " ".join(f"{k}={self.acc[k]:.1f}" for k in keys), flush=True)
+        self._iters_ms += total
+        self._n += 1
+        self._last_end = time.perf_counter()
+        if self._n % 25 == 0:
+            self.run_line(iter_no)
+
+    def run_line(self, iter_no: int) -> None:
+        """TIMING_RUN: wall since the process started = startup + iterations + gaps (s)."""
+        if not self.on or self._loop0 is None:
+            return
+        _now = time.perf_counter()
+        wall = _now - _T_PROC0
+        startup = self._loop0 - _T_PROC0
+        tail = (_now - self._last_end) if self._last_end is not None else 0.0
+        print(f"TIMING_RUN iter={iter_no} wall={wall:.1f} startup={startup:.1f} "
+              f"iters={self._iters_ms / 1e3:.1f} gaps={(self._gaps_ms / 1e3) + tail:.1f} "
+              f"unaccounted={wall - startup - self._iters_ms / 1e3 - self._gaps_ms / 1e3 - tail:.2f}",
+              flush=True)
 
 
 class HeadPacker:
@@ -2528,7 +2565,7 @@ ADV_MAP_MIN_ROWS = 32
 
 
 def adv_norm_per_map(a, slot, n_maps: int, min_rows: int = ADV_MAP_MIN_ROWS,
-                     eps: float = 1e-8):
+                     eps: float = 1e-8, pooled=None):
     """--adv-norm-per-map: ``(a - mean_k) / (std_k + eps)`` with map k's moments taken over
     ITS rows of this minibatch (``slot`` = each row's map index) - torch.std's unbiased
     estimator per map, the one the pooled line applies to the whole minibatch, so every map's
@@ -2537,7 +2574,10 @@ def adv_norm_per_map(a, slot, n_maps: int, min_rows: int = ADV_MAP_MIN_ROWS,
     (see ADV_MAP_MIN_ROWS); a map with no row here is never indexed. The moments are summed
     in float64 (a one-hot sum over thousands of rows) and the result comes back in a's dtype.
     Static shapes (an (mb, n_maps) one-hot), so it compiles into mb_step like
-    cc_bucket_normalize."""
+    cc_bucket_normalize. ``pooled`` = (mean, std) of the WHOLE minibatch when this process
+    holds only part of it (--ddp-maps shard: the union of the ranks' rows, all-reduced); the
+    fallback rows then get the union's moments, as one process would give them. None (every
+    other run) = this minibatch's own a.mean() / a.std(), op for op."""
     a64 = a.double()
     oh = F.one_hot(slot, n_maps).to(a64.dtype)
     cnt = oh.sum(0)
@@ -2545,8 +2585,12 @@ def adv_norm_per_map(a, slot, n_maps: int, min_rows: int = ADV_MAP_MIN_ROWS,
     dev = a64.unsqueeze(1) - mean.unsqueeze(0)
     std = ((oh * dev * dev).sum(0) / (cnt - 1.0).clamp_min(1.0)).sqrt()
     own = cnt >= float(min_rows)
-    mean = torch.where(own, mean, a64.mean())
-    std = torch.where(own, std, a64.std())
+    if pooled is None:
+        mean = torch.where(own, mean, a64.mean())
+        std = torch.where(own, std, a64.std())
+    else:
+        mean = torch.where(own, mean, pooled[0].to(a64.dtype))
+        std = torch.where(own, std, pooled[1].to(a64.dtype))
     return ((a64 - mean[slot]) / (std[slot] + eps)).to(a.dtype)
 
 
@@ -4012,7 +4056,7 @@ ADVMAP_COLS = ("adv_std", "adv_std_norm", "explained_var", "vf_err", "ret_std", 
 
 
 def advmap_diag(adv, ret, val, ranges, n_envs: int, per: int, f_adv=None, mb_idx=None,
-                per_map: bool = False) -> list:
+                per_map: bool = False, pooled=None) -> list:
     """Per map (``ranges`` = each slot's env range [lo, hi)), over its rows of the rollout
     buffer ((T, N) tensors; ``adv`` the advantages the update standardises, ``ret`` the value
     target, ``val`` the value the rollout predicted, both in reward units):
@@ -4026,6 +4070,9 @@ def advmap_diag(adv, ret, val, ranges, n_envs: int, per: int, f_adv=None, mb_idx
     * vf_err        mean |G - V| / std(G): the critic's error in units of the map's returns
     * ret_std       std(G): the scale the map brings into the shared value loss
     * vloss_share   the map's share of sum (G - V)^2 over all maps: who drives the critic
+
+    ``pooled`` = the (mean, std) the update's pooled estimator used on that minibatch when
+    this process holds part of it (--ddp-maps shard); None = this minibatch's own.
 
     -> one flat list, ADVMAP_COLS per map in slot order (NaN where undefined)."""
     nan = float("nan")
@@ -4044,8 +4091,12 @@ def advmap_diag(adv, ret, val, ranges, n_envs: int, per: int, f_adv=None, mb_idx
     if f_adv is not None and mb_idx is not None:
         am = f_adv.detach()[mb_idx]
         sl = (mb_idx % n_envs) // per
-        an = (adv_norm_per_map(am, sl, m) if per_map
-              else (am - am.mean()) / (am.std() + 1e-8)).double()
+        if pooled is None:
+            an = (adv_norm_per_map(am, sl, m) if per_map
+                  else (am - am.mean()) / (am.std() + 1e-8)).double()
+        else:
+            an = (adv_norm_per_map(am, sl, m, pooled=pooled) if per_map
+                  else (am - pooled[0]) / (pooled[1] + 1e-8)).double()
         oh = F.one_hot(sl, m).double()
         cnt = oh.sum(0)
         mu = (oh * an.unsqueeze(1)).sum(0) / cnt.clamp_min(1.0)
@@ -8608,6 +8659,23 @@ def main() -> None:
                     help="DDP: decisions between novelty-count syncs "
                          "(0 = once per iteration). Tighten only if an A/B "
                          "on int/ep shows the frontier over-payment matters")
+    ap.add_argument("--ddp-maps", default="replicate", choices=("replicate", "shard"),
+                    help="DDP with --maps (ignored at world size 1): replicate = every rank "
+                         "holds every map, the 2026-08 design (recipe v14's per-map loop is "
+                         "refused there); shard = rank r trains only maps r, r+W, r+2W, ... "
+                         "(round-robin over the --maps order; --envs stays the GLOBAL fleet, "
+                         "envs/maps per map): each map's state, evals and searches live on its "
+                         "owner rank, the gradient all-reduce is sample-weighted over the "
+                         "ranks' minibatch rows, rank 0 writes progress.csv and the union of "
+                         "the per-map checkpoint state (tools/run_arm.sh RANKS=N passes it)")
+    ap.add_argument("--search-gpu", default=None, metavar="SPEC",
+                    help="the card a --auto-spine search runs on (surfgym/gpupick.py): inherit "
+                         "(the trainer's environment, what a search always did), own (this "
+                         "rank's card), free (the card with the most free memory when the "
+                         "search starts, nvidia-smi), <n> (nvidia-smi's card n) or GPU-<uuid>. "
+                         "Default: free under --ddp-maps shard (a heavy rank's card is skipped "
+                         "by itself), inherit otherwise; at world size 1 on a 2-GPU box, 1 or "
+                         "free puts every search on the card the trainer does not use")
     ap.add_argument("--ddp-overlap", type=int, default=1, choices=(0, 1),
                     help="DDP: overlap the gradient all-reduce with backward "
                          "via per-bucket post-accumulate-grad hooks (plan "
@@ -8668,7 +8736,29 @@ def main() -> None:
     # BEFORE any cuda-touching line. At world_size==1 (all of Windows dev,
     # every single-GPU launch) it is a literal no-op object.
     D = distributed.init()
-    if not D.is_main and not os.environ.get("DDP_DEBUG_STDOUT"):
+    # --ddp-maps shard (map-sharded DDP): rank r trains only its own maps. DDP_REP is the
+    # replicated design, where recipe v14's per-map families stay refused; at world size 1
+    # both are False and nothing below changes
+    DDP_SHARD = bool(D.enabled and args.ddp_maps == "shard")
+    DDP_REP = bool(D.enabled and not DDP_SHARD)
+    # --search-gpu (surfgym/gpupick.py): the card an --auto-spine search runs on, resolved at
+    # each search's launch. Default free under --ddp-maps shard (the card with the most free
+    # memory then: a rank holding the big maps is not handed their searches too), inherit
+    # everywhere else (exactly what a search always did)
+    SEARCH_GPU = (str(args.search_gpu) if args.search_gpu is not None
+                  else ("free" if DDP_SHARD else "inherit"))
+    if not (SEARCH_GPU in ("inherit", "own", "free") or SEARCH_GPU.isdigit()
+            or SEARCH_GPU.startswith(("GPU-", "MIG-"))):
+        raise SystemExit(f"--search-gpu {SEARCH_GPU!r}: inherit, own, free, an nvidia-smi card "
+                         "index or GPU-<uuid>")
+    SEARCH_OWN_UUID = gpupick.torch_uuid(D.local_rank) if SEARCH_GPU == "own" else None
+    if DDP_SHARD:
+        # every rank's maps are its own (evals, searches, curricula): a non-main rank's lines
+        # go to the shared launch log prefixed with the rank, rather than to /dev/null, and
+        # every rank (rank 0 unprefixed: "^step " parsers still read its lines) writes WHOLE
+        # lines, so two ranks' output interleaves by line and never tears
+        sys.stdout = distributed.RankPrefix(sys.stdout, "" if D.is_main else f"[r{D.rank}] ")
+    elif not D.is_main and not os.environ.get("DDP_DEBUG_STDOUT"):
         # rank 0 owns every artifact and every log line; interleaved output
         # from four ranks corrupts the TIMING protocol and every parse.
         # stderr stays live so rank tracebacks are never swallowed.
@@ -10237,7 +10327,8 @@ def main() -> None:
                                  bool(args.maps) and bool(args.front_contact)),
                                 ("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
-                                ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
+                                # (--ddp-maps shard: each map's band on its owner rank)
+                                ("DDP without --ddp-maps shard", DDP_REP),
                                 ("--sil-coef with --sil-tempered",
                                  float(args.sil_coef or 0.0) > 0.0
                                  and bool(int(args.sil_tempered or 0))),
@@ -10260,7 +10351,8 @@ def main() -> None:
         # map's rows against its own curriculum's band since mm/s1)
         _bad = [f for f, on in (("--rnn", args.rnn not in (None, "none")),
                                 ("--chunk", args.chunk),
-                                ("DDP", int(os.environ.get("WORLD_SIZE", "1")) > 1),
+                                # (--ddp-maps shard: each map's band on its owner rank)
+                                ("DDP without --ddp-maps shard", DDP_REP),
                                 ("--sil-coef with --sil-tempered",
                                  float(args.sil_coef or 0.0) > 0.0
                                  and bool(int(args.sil_tempered or 0))),
@@ -11712,10 +11804,11 @@ def main() -> None:
         if IMATCH:
             raise SystemExit("--int-coef-progress and --int-match both set the novelty "
                              "coefficient - pick one")
-        if D.enabled:
-            # (--maps is per map since mm/s1: each map's own eval sets its own coefficient)
+        if DDP_REP:
+            # (--maps is per map since mm/s1: each map's own eval sets its own coefficient;
+            # --ddp-maps shard: on the map's owner rank, which evaluates it)
             raise SystemExit("--int-coef-progress reads each map's greedy frontier on the main "
-                             "rank: not implemented with --ddp")
+                             "rank: not implemented with --ddp (without --ddp-maps shard)")
         if isinstance(INTP, ProgressPoints):
             print(f"--int-coef-progress {INTP.text()}: the novelty coefficient (not --int-coef "
                   f"{float(args.int_coef):g}) is piecewise linear in the frontier progress through "
@@ -11961,7 +12054,8 @@ def main() -> None:
                            (f"--maps and --unstuck-reach {args.unstuck_reach}",
                             bool(args.maps) and args.unstuck_reach != "res"),
                            ("--spawn-burst", bool(args.spawn_burst)),
-                           ("--ddp", D.enabled)):
+                           # (--ddp-maps shard: each map's schedule on its owner rank)
+                           ("--ddp without --ddp-maps shard", DDP_REP)):
             if _on:
                 raise SystemExit(
                     f"--unstuck is not implemented with {_flag}: the "
@@ -11987,9 +12081,11 @@ def main() -> None:
                 if args.eval_ema else [])
     if any(not h > 0.0 for h in EMA_HALF):
         raise SystemExit("--eval-ema takes half-lives > 0 in environment steps, e.g. 1e8,5e8")
-    if EMA_HALF and (args.goal_planner or D.enabled):
-        raise SystemExit("--eval-ema flies the plain greedy eval of a single-GPU run: not with "
-                         "--goal-planner (its eval hooks) or DDP")
+    if EMA_HALF and (args.goal_planner or DDP_REP):
+        # (--ddp-maps shard: every rank keeps the same averages of the same all-reduced weights
+        # and flies them on its own maps' evals; rank 0's copies go into the checkpoint)
+        raise SystemExit("--eval-ema flies the plain greedy eval of a single-GPU or map-sharded "
+                         "run: not with --goal-planner (its eval hooks) or replicated DDP")
     EMA = []                  # (half-life, frozen policy copy), built before the first iteration
     UNSTUCK_ENT = UNSTUCK and bool(args.unstuck_ent)
     UNSTUCK_INT = UNSTUCK and bool(args.unstuck_int)
@@ -12308,8 +12404,11 @@ def main() -> None:
     torch.backends.cudnn.benchmark = True
     # rank 0 owns the one TIMING line per iteration tools/perf_report.py
     # parses; interleaved lines from four ranks would silently corrupt
-    # every measurement the frozen benchmark protocol depends on
-    tm = PhaseTimer(args.timing and D.is_main, device.type == "cuda")
+    # every measurement the frozen benchmark protocol depends on.
+    # --ddp-maps shard: every rank times itself (its maps are its own work, and the slowest
+    # rank sets the pace); the others' lines arrive whole and prefixed "[rN] " (RankPrefix),
+    # so a parser of lines that START with "TIMING " still reads rank 0 alone
+    tm = PhaseTimer(args.timing and (D.is_main or DDP_SHARD), device.type == "cuda")
     use_graphs = device.type == "cuda" and not args.no_graphs
     use_compile = device.type == "cuda" and not args.no_compile
     use_bf16 = device.type == "cuda" and not args.fp32
@@ -12318,10 +12417,28 @@ def main() -> None:
     # ablation measures that as rew-20 at 98M steps vs 52M, a sample-
     # efficiency regression that presents as a throughput win (plan §6.4).
     N_GLOBAL, T = args.envs, args.n_steps
-    if N_GLOBAL % D.world_size:
-        raise SystemExit(f"--envs {N_GLOBAL} (GLOBAL fleet) is not "
-                         f"divisible by world_size {D.world_size}")
-    N = N_GLOBAL // D.world_size
+    if DDP_SHARD:
+        # --ddp-maps shard: --envs is still the GLOBAL fleet and every map keeps envs/maps of
+        # it; this rank simulates only ITS maps' envs (round-robin over the --maps order, so
+        # the ranks may hold different counts: 7 maps on 2 ranks = 4 + 3). The map list is
+        # resolved below; its length is all N needs here
+        if not args.maps:
+            raise SystemExit("--ddp-maps shard shards the --maps list over the ranks: it "
+                             "needs --maps")
+        _nm_all = len([b for b in str(args.maps).split(",") if b.strip()])
+        if _nm_all < D.world_size:
+            raise SystemExit(f"--ddp-maps shard: {_nm_all} map(s) over {D.world_size} "
+                             "ranks leaves a rank with no map to train")
+        if N_GLOBAL % _nm_all:
+            raise SystemExit(f"--envs {N_GLOBAL} (GLOBAL fleet) does not divide evenly over "
+                             f"{_nm_all} maps: pick a multiple of {_nm_all}")
+        N = (N_GLOBAL // _nm_all) * len(distributed.shard_maps(_nm_all, D.world_size,
+                                                               D.rank))
+    else:
+        if N_GLOBAL % D.world_size:
+            raise SystemExit(f"--envs {N_GLOBAL} (GLOBAL fleet) is not "
+                             f"divisible by world_size {D.world_size}")
+        N = N_GLOBAL // D.world_size
     if (T * N) % args.minibatches:
         raise SystemExit(f"per-rank rollout T*N = {T}*{N} = {T * N} is not "
                          f"divisible by --minibatches {args.minibatches}")
@@ -12382,6 +12499,13 @@ def main() -> None:
     # NMAPS/world_size. Sharding stays available as an optimisation if a
     # future pool makes that bite; nothing below assumes replication except
     # the fixed shapes, which degrade to a gather.
+    # --ddp-maps shard (mm/ddp, 2026-11-17) IS that sharding, for recipe v14's
+    # per-map loop, which replication refuses: rank r holds only maps r, r+W,
+    # ... (SG below), with envs/maps envs each, so the ranks' row counts differ
+    # and the gradient all-reduce is sample-weighted; each map's evals, search
+    # queue, curricula and tables live on its owner rank, and the eval table,
+    # the progress.csv blocks and the checkpoint are gathered in map order.
+    # Default replicate: everything above, unchanged.
     if args.maps:
         _names = [b.strip() for b in str(args.maps).split(",") if b.strip()]
         if not _names:
@@ -12419,12 +12543,42 @@ def main() -> None:
             raise SystemExit(f"--maps: no such BSP for {name!r} (tried {p})")
         return p
 
-    BSPS = [_resolve_bsp(b) for b in _names]
+    BSPS_ALL = [_resolve_bsp(b) for b in _names]
+    STEMS_ALL = [p.stem for p in BSPS_ALL]
+    if len(set(STEMS_ALL)) != len(STEMS_ALL):
+        raise SystemExit(f"--maps lists the same map twice: {STEMS_ALL}")
+    NMAPS_ALL = len(BSPS_ALL)
+    # --ddp-maps shard: SG[i] is the GLOBAL --maps index of this rank's slot i (round-robin,
+    # distributed.shard_maps); every other run holds every map and SG is 0..NMAPS-1, so
+    # BSPS/STEMS/NMAPS below are the whole list exactly as before. *_ALL is the run's list
+    # (config, progress.csv, the eval table, the checkpoint); the unsuffixed names are THIS
+    # process's slots
+    SG = (distributed.shard_maps(NMAPS_ALL, D.world_size, D.rank) if DDP_SHARD
+          else list(range(NMAPS_ALL)))
+    BSPS = [BSPS_ALL[_g] for _g in SG]
     STEMS = [p.stem for p in BSPS]
-    if len(set(STEMS)) != len(STEMS):
-        raise SystemExit(f"--maps lists the same map twice: {STEMS}")
     NMAPS = len(BSPS)
-    MULTI = NMAPS > 1
+    MULTI = NMAPS_ALL > 1
+    if DDP_SHARD:
+        # families with their own cross-rank sync over REPLICATED slots, or eval-only slots
+        # with no owner rule here: not ported to the sharded design
+        for _f, _on in (("--heldout-maps", bool(args.heldout_maps)),
+                        ("--respawn-frontier", bool(args.respawn_frontier)),
+                        ("--goals", bool(args.goals)),
+                        ("--rnn", RNN),
+                        ("--auto-finish", bool(args.auto_finish))):
+            if _on:
+                raise SystemExit(f"--ddp-maps shard is not implemented with {_f} (its state "
+                                 "or its sync assumes every rank holds every map)")
+        if args.auto_spine and not args.auto_spine_async:
+            raise SystemExit("--ddp-maps shard: a map's search is started by its owner rank "
+                             "beside the training, so it needs --auto-spine-async (a "
+                             "synchronous search would hold every rank at the next collective)")
+        _own = {STEMS_ALL[_g]: _g % D.world_size for _g in range(NMAPS_ALL)}
+        print(f"--ddp-maps shard: {NMAPS_ALL} maps over {D.world_size} ranks, round-robin "
+              "over the --maps order: " + ", ".join(
+                  f"r{_r} {'+'.join(_m for _m, _o in _own.items() if _o == _r)}"
+                  for _r in range(D.world_size)) + f"; this rank: {NMAPS} map(s), {N} envs")
     if MULTI:
         # Every one of these is a single-map artifact whose meaning does not
         # survive a second map. Refusing loudly beats training an arm whose
@@ -12483,7 +12637,9 @@ def main() -> None:
         if not MULTI:
             raise SystemExit("--adv-norm-per-map standardises each MAP's advantages: it needs "
                              "--maps with two or more maps (one map is the pooled estimator)")
-        for _f, _on in (("DDP", D.enabled), ("--rnn", RNN), ("--cc-buckets", CC_BKT)):
+        # (--ddp-maps shard: each map's rows live on ONE rank, so its moments are that rank's)
+        for _f, _on in (("DDP without --ddp-maps shard", DDP_REP), ("--rnn", RNN),
+                        ("--cc-buckets", CC_BKT)):
             if _on:
                 raise SystemExit(f"--adv-norm-per-map is not implemented with {_f}: that path "
                                  "has its own advantage estimator (fleet-wide moments / the "
@@ -12560,7 +12716,7 @@ def main() -> None:
     # the 89 that are fine, or silently ships a nonsense field for the 21
     # that are not.
     if args.goal_cell in (None, ""):
-        GOAL_CELLS = [None] * NMAPS
+        GOAL_CELLS = [None] * NMAPS_ALL
     else:
         _gc = [p.strip() for p in str(args.goal_cell).split(",") if p.strip()]
         try:
@@ -12569,14 +12725,15 @@ def main() -> None:
             raise SystemExit(f"--goal-cell {args.goal_cell!r} is not a "
                              "number or a comma-separated list of numbers")
         if len(_gc) == 1:
-            GOAL_CELLS = _gc * NMAPS
-        elif len(_gc) == NMAPS:
+            GOAL_CELLS = _gc * NMAPS_ALL
+        elif len(_gc) == NMAPS_ALL:
             GOAL_CELLS = _gc
         else:
             raise SystemExit(
-                f"--goal-cell lists {len(_gc)} cells for {NMAPS} maps; pass "
+                f"--goal-cell lists {len(_gc)} cells for {NMAPS_ALL} maps; pass "
                 "one value for the whole fleet or exactly one per map, in "
                 "--maps order")
+    GOAL_CELLS = [GOAL_CELLS[_g] for _g in SG]       # this process's slots (all of them unsharded)
     # --maxvel per map (each map server's sv_maxvelocity): SLOT_MAXVEL[i] is training slot i's,
     # HELD_MAXVEL[j] held-out map j's. One value (the default) fills both with args.maxvel, so a
     # run without a list builds every core exactly as before; MAXVEL_MAPS becomes {tag: value}
@@ -12584,7 +12741,7 @@ def main() -> None:
     SLOT_MAXVEL = [float(args.maxvel)] * NMAPS
     HELD_MAXVEL = [float(args.maxvel)] * len(HBSPS)
     if MAXVEL_MAPS is not None:
-        _mv_tags = map_tags(STEMS + HSTEMS)
+        _mv_tags = map_tags(STEMS_ALL + HSTEMS)
         if isinstance(MAXVEL_MAPS, dict):
             # a resumed per-map checkpoint: its {tag: value}
             _miss = [t for t in _mv_tags if t not in MAXVEL_MAPS]
@@ -12596,12 +12753,14 @@ def main() -> None:
             _mv = list(MAXVEL_MAPS)
             if len(_mv) != len(_mv_tags):
                 raise SystemExit(
-                    f"--maxvel lists {len(_mv)} values for {NMAPS} training map(s)"
+                    f"--maxvel lists {len(_mv)} values for {NMAPS_ALL} training map(s)"
                     + (f" and {len(HBSPS)} held-out map(s)" if HBSPS else "")
                     + "; pass one value for every map or exactly one per map, in --maps "
                     "order" + (" then --heldout-maps order" if HBSPS else ""))
-        SLOT_MAXVEL, HELD_MAXVEL = _mv[:NMAPS], _mv[NMAPS:]
-        args.maxvel = SLOT_MAXVEL[0]
+        # (--ddp-maps shard: this rank's slots' values; args.maxvel and the config's dict stay
+        # the run's - the first map's and every map's)
+        SLOT_MAXVEL, HELD_MAXVEL = [_mv[_g] for _g in SG], _mv[NMAPS_ALL:]
+        args.maxvel = _mv[0]
         MAXVEL_MAPS = dict(zip(_mv_tags, _mv))
         print("--maxvel per map: " + ", ".join(f"{t} {v:g}" for t, v in MAXVEL_MAPS.items()))
     out = ROOT / "runs" / args.run
@@ -12717,7 +12876,7 @@ def main() -> None:
         race_d0 = None
         rf_d0 = None
         if args.reward == "race":
-            with D.rank0_first():   # zones.json may be auto-extracted+written
+            with D.rank0_first_unless(DDP_SHARD):   # zones.json may be auto-extracted+written
                 zones = load_zones(str(_bsp))
             if not zones.get("end"):
                 raise SystemExit(
@@ -12781,7 +12940,7 @@ def main() -> None:
                 # OOM, and racing npz writes tear the file (plan 6.13).
                 # tools/ddp_launch.sh runs --warm-caches once out of band
                 # so this is the fallback, not the plan.
-                with D.rank0_first():
+                with D.rank0_first_unless(DDP_SHARD):
                     if args.race_ground:
                         # --race-ground: the walkable floors' field (goalfield.py)
                         from surfgym.goalfield import build_ground_field
@@ -12791,7 +12950,7 @@ def main() -> None:
                                                       cell=slot.goal_cell,
                                                       device=device)
                 if args.race_kill_aware and not args.race_no_corner_cut:
-                    with D.rank0_first():
+                    with D.rank0_first_unless(DDP_SHARD):
                         reward_field = build_goal_field(core, goal_box,
                                                         cell=slot.goal_cell,
                                                         device=device,
@@ -12799,7 +12958,7 @@ def main() -> None:
                 if args.race_no_corner_cut:
                     # --race-no-corner-cut: the shaping field without corner cutting
                     # (combined with the kill mask when both are on)
-                    with D.rank0_first():
+                    with D.rank0_first_unless(DDP_SHARD):
                         reward_field = build_goal_field(
                             core, goal_box, cell=slot.goal_cell, device=device,
                             mask_kill=bool(args.race_kill_aware), no_corner_cut=True)
@@ -12932,7 +13091,7 @@ def main() -> None:
         slot.pool = pool
         slot.plat_pool = plat_pool
         if MULTI:
-            print(f"  slot {_i}: {_bsp.stem} envs [{slot.lo}, {slot.hi}) "
+            print(f"  slot {SG[_i]}: {_bsp.stem} envs [{slot.lo}, {slot.hi}) "
                   f"pool({args.spawn}) {len(pool)} cell {slot.cell:g}")
         slots.append(slot)
 
@@ -12964,7 +13123,7 @@ def main() -> None:
                 slot.core, _fld,
                 start_frac=args.respawn_random_start_frac,
                 speed_range=tuple(args.respawn_random_speed),
-                seed=31 + 101 * _i)
+                seed=31 + 101 * SG[_i])
         print(f"respawn RANDOM: "
               f"{args.respawn_random_start_frac:.0%} of episodes at the map "
               f"start spawn (what the evals use), the rest at uniform "
@@ -13033,7 +13192,7 @@ def main() -> None:
                 # --respawn-frontier-uniform: finishes harvested like deaths
                 success_margin=bool(args.respawn_frontier_uniform
                                     or args.respawn_backward),
-                seed=23 + 101 * _i)
+                seed=23 + 101 * SG[_i])
         respawn = slots[0].respawn
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
               f"snapshots, harvested >= {args.respawn_margin:g}s before "
@@ -13050,8 +13209,9 @@ def main() -> None:
         # to the run; a crash-resume finds it restored as demo_file and keeps it
         if not args.auto_spine:
             raise SystemExit("--auto-spine-scratch is the first spine of --auto-spine: give it")
-        if D.enabled:
-            raise SystemExit("--auto-spine-scratch is single-GPU (--auto-spine)")
+        if DDP_REP:
+            raise SystemExit("--auto-spine-scratch is single-GPU (--auto-spine) or "
+                             "--ddp-maps shard")
         if MULTI:
             # --maps (mm/s1): every map's own first spine (its spawn, two copies) in its own
             # auto/<tag>/; a resume restores each map's held spine from the checkpoint
@@ -13218,9 +13378,10 @@ def main() -> None:
         if args.auto_spine:
             if args.demo_success_d is None:
                 raise SystemExit("--auto-spine moves the --demo-success-d line: give it")
-            if D.enabled:
-                # (--maps: one loop per map, one search at a time - mm/s1)
-                raise SystemExit("--auto-spine is single-GPU")
+            if DDP_REP:
+                # (--maps: one loop per map, one search at a time - mm/s1; --ddp-maps shard:
+                # one loop per map on its owner rank, one search at a time per rank)
+                raise SystemExit("--auto-spine is single-GPU or --ddp-maps shard")
             if int(args.auto_spine_quorum) < 1:
                 raise SystemExit("--auto-spine-quorum must be >= 1")
             print(f"--auto-spine: a greedy eval with >= {int(args.auto_spine_quorum)} episodes "
@@ -13488,7 +13649,7 @@ def main() -> None:
                 shell_width=args.respawn_frontier_shell_width,
                 floor=args.respawn_frontier_floor,
                 maxvel=float(SLOT_MAXVEL[_i]),
-                seed=71 + 101 * _i,
+                seed=71 + 101 * SG[_i],
                 uniform=bool(args.respawn_frontier_uniform))
         # the plateau half reuses --unstuck's schedule verbatim: T rises by
         # `rate` per `period` once `patience` env steps pass with no P_max
@@ -13569,7 +13730,7 @@ def main() -> None:
                 shell_width=float(args.respawn_novel_shell_width),
                 tries=int(args.respawn_novel_tries),
                 d0=float(slot.rf_d0 or 0.0),
-                window=float(args.respawn_novel_window), seed=73 + 101 * _i,
+                window=float(args.respawn_novel_window), seed=73 + 101 * SG[_i],
                 turn=float(args.respawn_novel_turn),
                 band=float(args.respawn_novel_band))
             # a novel spawn's episode is DISCARDED at its end, never harvested
@@ -13617,7 +13778,7 @@ def main() -> None:
                 shell_frac=args.respawn_backward_shell,
                 shell_width=args.respawn_backward_shell_width,
                 elev_range=BACK_ELEV,
-                maxvel=float(SLOT_MAXVEL[_i]), seed=83 + 101 * _i)
+                maxvel=float(SLOT_MAXVEL[_i]), seed=83 + 101 * SG[_i])
         _bm_over = (float(args.respawn_novel_frac) + BMIX
                     + max(0.0, float(args.respawn_greedy or 0.0)))
         print(f"respawn BACKWARD-MIX: {BMIX:.0%} of the non-start pool = goal-anchored rows "
@@ -13644,7 +13805,7 @@ def main() -> None:
         # --demo-file is wired (pbr2b3, 2026-10-24): the rows replace demo rows of the pool's
         # uniform part, never the frontier band's or the map-start share
         # (--maps: FPERT_S holds one sampler per map tag since mm/s1)
-        for _bad, _why in ((D.enabled, "DDP"),
+        for _bad, _why in ((DDP_REP, "DDP without --ddp-maps shard"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_frontier, "--respawn-frontier"),
                            (args.respawn_backward, "--respawn-backward"),
@@ -13660,7 +13821,7 @@ def main() -> None:
                 FPERT_S[slot.tag] = FrontierPerturbRows(
                     _fld, float(slot.rf_d0), band=float(args.respawn_front_perturb_band),
                     turn=float(args.respawn_front_perturb_turn),
-                    speed=args.respawn_front_perturb_speed, seed=int(args.seed) + 4141 + _i)
+                    speed=args.respawn_front_perturb_speed, seed=int(args.seed) + 4141 + SG[_i])
             except ValueError as _e:
                 raise SystemExit(str(_e))
         print(f"respawn FRONT-PERTURB: {FPERT:.0%} of the non-start pool = own reservoir states "
@@ -13681,7 +13842,8 @@ def main() -> None:
         # --demo-file is wired (pbr2b3, 2026-10-24): the tail of the demo rows, as of the
         # reservoir rows without it
         # (--maps: one pool per map since mm/s1, each built from its own map's greedy eval)
-        for _bad, _why in ((D.enabled, "DDP (rank 0 alone runs the eval)"),
+        for _bad, _why in ((DDP_REP, "DDP without --ddp-maps shard (rank 0 alone runs the "
+                                     "eval; shard: each map's owner rank does)"),
                            (args.respawn_random, "--respawn-random"),
                            (args.respawn_backward, "--respawn-backward"),
                            (bool(args.goals), "--goals")):
@@ -13699,11 +13861,13 @@ def main() -> None:
                                   energy_secs=float(args.respawn_greedy_energy_secs or 12.0),
                                   memory=int(args.respawn_greedy_memory or 1))
         try:
-            GREEDY = _greedy_pool(int(args.seed) + 9191)
+            # (--ddp-maps shard: every per-map seed keys on the map's GLOBAL index SG[i], so
+            # a map draws the stream it draws on one process; SG[i] == i otherwise)
+            GREEDY = _greedy_pool(int(args.seed) + 9191 + 101 * SG[0])
             # slot 0's pool IS GREEDY; slot i's is seeded + 101 * i (the reservoir's pattern)
             GREEDY_S = {slots[0].tag: GREEDY}
             for _gi, _gs in enumerate(slots[1:], start=1):
-                GREEDY_S[_gs.tag] = _greedy_pool(int(args.seed) + 9191 + 101 * _gi)
+                GREEDY_S[_gs.tag] = _greedy_pool(int(args.seed) + 9191 + 101 * SG[_gi])
         except ValueError as _e:
             raise SystemExit(str(_e))
         print(f"respawn GREEDY: {GREEDY.frac:.0%} of the non-start pool = the policy's own "
@@ -13751,7 +13915,7 @@ def main() -> None:
                 shell_frac=args.respawn_backward_shell,
                 shell_width=args.respawn_backward_shell_width,
                 elev_range=BACK_ELEV,
-                maxvel=float(SLOT_MAXVEL[_i]), seed=79 + 101 * _i)
+                maxvel=float(SLOT_MAXVEL[_i]), seed=79 + 101 * SG[_i])
         print(f"respawn BACKWARD: the map run backward - band = distance to "
               f"the goal in [{args.respawn_backward_floor:g}u, W], W from "
               f"{args.respawn_backward_start:.0%} of d0 (d0 = "
@@ -13792,6 +13956,8 @@ def main() -> None:
         slot.eval_rank = _i % D.world_size
         if not D.enabled:
             slot.eval_rank = 0
+        elif DDP_SHARD:
+            slot.eval_rank = D.rank          # --ddp-maps shard: a map's owner evaluates it
         # --warm-caches builds artifacts and exits; an eval core loads the
         # BSP a second time and evaluates nothing. One extra load is noise
         # at one map and 107 of them is not.
@@ -13841,7 +14007,7 @@ def main() -> None:
     _raw_lidar = {}
     _target_masks = {}           # --goal-planner ramps: the target channel's masks, per map
     for slot in slots:
-        with D.rank0_first():        # vision SDF npz build/write
+        with D.rank0_first_unless(DDP_SHARD):        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
                                   ttc=bool(args.obs_ttc),
                                   edges=bool(args.obs_edges),
@@ -13973,7 +14139,7 @@ def main() -> None:
             hs = HeldoutSlot(_bsp.stem, str(_bsp), ec, N)
             hs.cell = args.lidar_cell or pick_cell(ec)
             hs.goal_cell = HELD_CELLS[_j] or hs.cell
-            with D.rank0_first():   # zones.json may be auto-extracted+written
+            with D.rank0_first_unless(DDP_SHARD):   # zones.json may be auto-extracted+written
                 zones = load_zones(str(_bsp))
             if not zones.get("end"):
                 raise SystemExit(
@@ -13992,7 +14158,7 @@ def main() -> None:
             else:
                 # seeded from the ARMED box, like every training slot (see
                 # the long note above); rank 0 bakes, the rest read the cache
-                with D.rank0_first():
+                with D.rank0_first_unless(DDP_SHARD):
                     if args.race_ground:
                         from surfgym.goalfield import build_ground_field
                         gf = build_ground_field(ec, hs.goal_box)
@@ -14021,7 +14187,7 @@ def main() -> None:
             hs.eval_rank = ((NMAPS + _j) % D.world_size) if D.enabled else 0
             hs.eval_core = (ec if (hs.eval_rank == D.rank
                                    and not args.warm_caches) else None)
-            with D.rank0_first():        # vision SDF npz build/write
+            with D.rank0_first_unless(DDP_SHARD):        # vision SDF npz build/write
                 hs.lidar = GpuLidar(ec, args.lidar_w, args.lidar_h,
                                     ttc=bool(args.obs_ttc),
                                     edges=bool(args.obs_edges),
@@ -14070,6 +14236,29 @@ def main() -> None:
         return
     fleet = MapFleet(slots, heldout=heldout)
     fleet.retag()
+    # SLOTS_ALL: every map of the run in --maps order, for what is written about the RUN (the
+    # config, progress.csv's per-map columns, the eval table, the checkpoint's key order).
+    # Unsharded it IS slots. --ddp-maps shard: this rank's slots carry the run's tags (a
+    # subset could resolve a tag collision differently), its cores seed as one process seeds
+    # them, and every rank's slot metadata is gathered ONCE here
+    if DDP_SHARD:
+        from types import SimpleNamespace as _NS
+        TAGS_ALL = map_tags(STEMS_ALL)
+        for _i, _s in enumerate(slots):
+            _s.tag = TAGS_ALL[SG[_i]]
+        fleet.seed_ids = list(SG)
+        _sm = [dict(g=int(SG[_i]), name=_s.name, tag=_s.tag, bsp=str(_s.bsp), cell=_s.cell,
+                    goal_cell=_s.goal_cell, d0=_s.d0, rf_d0=_s.rf_d0,
+                    finish_kind=_s.finish_kind, n=int(_s.n), rank=int(D.rank))
+               for _i, _s in enumerate(slots)]
+        _sm = sorted((m for _p in D.all_gather_object(_sm) for m in _p), key=lambda m: m["g"])
+        if ([m["g"] for m in _sm] != list(range(NMAPS_ALL))
+                or [m["name"] for m in _sm] != list(STEMS_ALL)):
+            raise RuntimeError(f"[ddp] --ddp-maps shard: the ranks' maps {[(m['g'], m['name'], m['rank']) for m in _sm]} "
+                               f"are not every map of {STEMS_ALL} exactly once")
+        SLOTS_ALL = [_NS(**m) for m in _sm]
+    else:
+        SLOTS_ALL = slots
     lidar = slots[0].lidar     # FRAME/channels only: every slot renders the
                                # same shape, and the per-slot renderers are
                                # reached through the fleet
@@ -15768,9 +15957,9 @@ def main() -> None:
             # dashboard, record_ckpt, the honesty tools) keeps working; a
             # single-map run therefore writes exactly the config it always
             # did, "maps" included as None
-            "config": {"trainer": "fast2", "map": STEMS[0],
-                       "maps": (list(STEMS) if MULTI else None),
-                       "map_cells": ({s.tag: s.cell for s in slots}
+            "config": {"trainer": "fast2", "map": STEMS_ALL[0],
+                       "maps": (list(STEMS_ALL) if MULTI else None),
+                       "map_cells": ({s.tag: s.cell for s in SLOTS_ALL}
                                      if MULTI else None),
                        # --heldout-maps: evaluated, never trained. None on
                        # every run without the flag, exactly like "maps"
@@ -15783,8 +15972,13 @@ def main() -> None:
                        "heldout_map_cells": ({s.tag: s.cell for s in heldout}
                                              if NHELD else None),
                        "envs": N_GLOBAL,          # the GLOBAL fleet
-                       "envs_per_rank": N, "world_size": D.world_size,
-                       "envs_per_slot": PER, "n_maps": NMAPS,
+                       # (--ddp-maps shard: one count per rank, its maps x envs/maps)
+                       "envs_per_rank": (N if not DDP_SHARD else
+                                         [PER * len(distributed.shard_maps(
+                                             NMAPS_ALL, D.world_size, _r))
+                                          for _r in range(D.world_size)]),
+                       "world_size": D.world_size,
+                       "envs_per_slot": PER, "n_maps": NMAPS_ALL,
                        "ddp": D.enabled, "seed": args.seed,
                        "steps": int(args.steps), "spawn": args.spawn,
                        "reward": args.reward, "lr": args.lr,
@@ -16128,7 +16322,7 @@ def main() -> None:
                        # has no record of what it ran - found while checking a
                        # control was really the control (2026-08-23)
                        "goal_cell": args.goal_cell,
-                       "goal_cells": ({s.tag: s.goal_cell for s in slots}
+                       "goal_cells": ({s.tag: s.goal_cell for s in SLOTS_ALL}
                                       if MULTI else None),
                        "n_steps": args.n_steps,
                        "minibatches": args.minibatches,
@@ -16139,6 +16333,15 @@ def main() -> None:
                        "eval_greedy_only": args.eval_greedy_only,
                        "graphs": use_graphs, "compile": use_compile,
                        "bf16": use_bf16}}
+    if DDP_SHARD:
+        # --ddp-maps shard: written ONLY when on, so every other run's config dump is the one
+        # it always was (record_ckpt.py: TRAIN_ONLY - a recording is one map in one process).
+        # map_shard = {tag: the rank that trains, evaluates and searches that map}
+        meta["config"]["ddp_maps"] = "shard"
+        meta["config"]["map_shard"] = {m.tag: int(m.rank) for m in SLOTS_ALL}
+    if args.search_gpu is not None:
+        # --search-gpu: written ONLY when given (TRAIN_ONLY: where a search ran, not what it is)
+        meta["config"]["search_gpu"] = SEARCH_GPU
     # --goal-planner / --goal-fan-offsets: keys written ONLY when set, so a
     # control's run.json and every checkpoint config stay byte-identical to
     # the pre-flag trainer's. record_ckpt.py mirrors goal_planner (a
@@ -16455,7 +16658,7 @@ def main() -> None:
     if args.obs_potential:
         meta["config"]["obs_potential"] = str(args.obs_potential)
         meta["config"]["obs_potential_d0"] = {
-            s.tag: float(s.rf_d0) for s in slots + heldout}
+            s.tag: float(s.rf_d0) for s in list(SLOTS_ALL) + list(heldout)}
         # --obs-potential-curtain: written ONLY when set, so an arm without
         # it dumps the config the pre-flag trainer did. A resume restores
         # it; the eval tools rebuild the box from the map's own zones
@@ -16909,7 +17112,7 @@ def main() -> None:
     EVAL_COLS = ("race/eval_progress", "race/eval_finish_s",
                  "race/eval_finishes", "race/map_pct")
     if MULTI:
-        for _s in slots:
+        for _s in SLOTS_ALL:            # every map of the run (--ddp-maps shard: all ranks')
             CSV_COLS += [f"{c}.{_s.tag}" for c in EVAL_COLS]
     # PPO hygiene, appended LAST - after the per-map block, not before it -
     # because the header migration above only pads a header that is a strict
@@ -17046,7 +17249,7 @@ def main() -> None:
         # or the arc reach where there is no reservoir reading)
         if MULTI:
             # --maps: one triple per map (each map's own schedule)
-            for _s in slots:
+            for _s in SLOTS_ALL:
                 CSV_COLS += [f"unstuck/T.{_s.tag}", f"unstuck/stuck_steps.{_s.tag}",
                              f"unstuck/best.{_s.tag}"]
         else:
@@ -17435,13 +17638,13 @@ def main() -> None:
     if FPERT > 0.0:
         # --respawn-front-perturb: the episodes from its rows that ENDED this iteration, how
         # many finished, and the deepest progress any of them reached (map units)
-        for _s in slots:
+        for _s in SLOTS_ALL:
             _sfx = f".{_s.tag}" if MULTI else ""
             CSV_COLS += [f"fpert/ended{_sfx}", f"fpert/finished{_sfx}", f"fpert/best_prog{_sfx}"]
     if MULTI:
         # train/<name>.<tag>: every --maps run, TRULY LAST (a single-map header is the pre-flag
         # one; an older --maps file migrates by padding) - advmap_diag says what each column is
-        for _s in slots:
+        for _s in SLOTS_ALL:
             CSV_COLS += [f"train/{_c}.{_s.tag}" for _c in ADVMAP_COLS]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -17641,8 +17844,11 @@ def main() -> None:
 
     def _own_step(si=0):
         """slot ``si``'s OWN env steps: the fleet's global_step on a single-map run; under
-        --maps its share (D2: every per-map clock counts the map's own experience)"""
-        return global_step if not MULTI else (int(global_step) * slots[si].n) // N
+        --maps its share (D2: every per-map clock counts the map's own experience). The share
+        is of the GLOBAL fleet: --ddp-maps shard holds a map's envs on one rank, so it divides by
+        N_GLOBAL, not by this rank's N (one process: N == N_GLOBAL, the same number)"""
+        return global_step if not MULTI else (int(global_step) * slots[si].n) // (
+            N_GLOBAL if DDP_SHARD else N)
     fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
     fin_paced = np.zeros(N, bool)         # --finish-line-pace: this tick's paced finishes
     DEMO_END_D = None                     # --demo-success-d: the spine end's d + margin
@@ -17862,6 +18068,15 @@ def main() -> None:
         DEMO_KEYS, AUTO, PACE = _b["keys"], _b["auto"], _b["pace"]
         DSI[0] = k
 
+    def _search_env():
+        """(env for the search's Popen, a note): the card it runs on, chosen by --search-gpu
+        AT LAUNCH (surfgym/gpupick.py; "free" reads nvidia-smi then). Its tools take bare
+        "cuda" - device 0 of what they see - and inherit the trainer's environment; under DDP
+        a search is not a rank, so torchrun's variables are dropped. env None = inherit, what
+        every search did before (the default off --ddp-maps shard)."""
+        return gpupick.child_env(SEARCH_GPU, own_uuid=SEARCH_OWN_UUID,
+                                 drop_torchrun=bool(D.enabled))
+
     def _auto_spine_after_eval(ev_path, start=True, force=None):
         """Read the greedy eval; on the quorum (or the patience) run tools/auto_spine.py on
         ckpt_latest and swap a spine that beats the greedy frontier into the curriculum.
@@ -18000,7 +18215,10 @@ def main() -> None:
             np.savez(AUTO["field"], grid=np.asarray(_f.grid, np.float32),
                      quant=np.float64(1.0), mins=np.asarray(_f.mins, np.float64),
                      cell=np.float64(_f.cell), reach_max=np.float64(_f.reach_max))
-        save_ckpt("latest")
+        if not DDP_SHARD:
+            # (--ddp-maps shard: the save is a collective - every rank made it together this
+            # iteration, right before the queue served this request; see _shard_latest)
+            save_ckpt("latest")
         AUTO["k"] += 1
         AUTO["t_hold"] = int(_ost)   # --auto-spine-patience-max: a search started
         kdir = adir / f"k{AUTO['k']:02d}"
@@ -18106,7 +18324,11 @@ def main() -> None:
         if args.auto_spine_async:
             try:
                 fh = open(kdir / "auto_spine.log", "w", encoding="utf-8", errors="replace")
-                proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT)
+                _senv, _snote = _search_env()
+                if _senv is not None:
+                    print(f"[{global_step:>13,d}] auto-spine{_tg} search {AUTO['k']}: GPU "
+                          f"{_snote}", flush=True)
+                proc = _sp.Popen(cmd, stdout=fh, stderr=_sp.STDOUT, env=_senv)
             except OSError as ex:
                 AUTO["retry_at"] = int(_ost + float(args.auto_spine_retry))
                 AUTO["last"] = int(_ost)
@@ -18120,7 +18342,8 @@ def main() -> None:
         res = None
         try:
             r = _sp.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                        errors="replace", timeout=float(args.auto_spine_timeout) + 900)
+                        errors="replace", timeout=float(args.auto_spine_timeout) + 900,
+                        env=_search_env()[0])
             (kdir / "auto_spine.log").write_text(r.stdout + r.stderr, encoding="utf-8")
             for ln in r.stdout.splitlines()[::-1]:
                 if ln.startswith("AUTO_SPINE "):
@@ -19177,7 +19400,7 @@ def main() -> None:
     # never-read duplicate otherwise), and arming it later would leave the
     # first sync without a base. Per SLOT - the novelty table is keyed by
     # that map's cells and slot 0's is not the fleet's.
-    if D.enabled:
+    if DDP_REP:       # (--ddp-maps shard: no counts sync, so no delta base to keep)
         for _s in slots:
             if (isinstance(_s.reward_fn, RaceReward)
                     and _s.reward_fn.int_coef > 0.0):
@@ -19472,7 +19695,8 @@ def main() -> None:
         print(goalsys.describe())
         if goalsys.fixed:
             print(goalsys.describe_fixed())
-    obs_np = fleet.reset(args.seed + D.rank * N).copy()
+    # (--ddp-maps shard: fleet.seed_ids carries each map's own offset, so no rank offset)
+    obs_np = fleet.reset(args.seed if DDP_SHARD else args.seed + D.rank * N).copy()
     fleet.on_reset()
     if goalsys is not None:
         goalsys.assign(np.arange(N))
@@ -19512,7 +19736,52 @@ def main() -> None:
     origin_bytes = b"".join(
         np.ascontiguousarray(s.core.states_view["origin"]).tobytes()
         for s in slots)
-    if D.enabled or args.dump_invariants:
+    if DDP_SHARD:
+        # --ddp-maps shard: the ranks hold DIFFERENT maps, so the per-map invariants are
+        # gathered into the run's map order - each map's spawn pool, goal grid and the origins
+        # its cores reset to, the bytes one process holds for that map (MapFleet.seed_ids) -
+        # and the rank-identical vector is built from that table and the run's numbers
+        _pm = D.all_gather_object([
+            (int(SG[_i]), h64(np.ascontiguousarray(_s.pool).tobytes()),
+             h64(np.ascontiguousarray(getattr(_s.goal_field, "grid", np.zeros(1))).tobytes()),
+             np.ascontiguousarray(_s.core.states_view["origin"]).tobytes())
+            for _i, _s in enumerate(slots)])
+        _pm = sorted((_t for _p in _pm for _t in _p), key=lambda _t: _t[0])
+        # (demo_file: each rank's own first map's spine path under --auto-spine-scratch)
+        _cfg_eq = {_k: _v for _k, _v in meta["config"].items() if _k != "demo_file"}
+        inv_i64 = torch.tensor(
+            [h64("|".join(f"{_t[0]}:{_t[1]}:{_t[2]}" for _t in _pm).encode()),
+             h64(json.dumps(_cfg_eq, sort_keys=True, default=str).encode()),
+             obs_dim, N_GLOBAL, D.world_size, args.minibatches, args.epochs, T,
+             NMAPS_ALL, PER, h64("|".join(STEMS_ALL).encode())],
+            dtype=torch.int64, device=device)
+        inv_f64 = torch.cat([param_checksum(),
+                             torch.tensor([(m.d0 if m.d0 is not None else 0.0)
+                                           for m in SLOTS_ALL],
+                                          dtype=torch.float64, device=device)])
+        D.assert_equal("startup_invariants_i64", inv_i64)
+        D.assert_equal("startup_invariants_f64", inv_f64)
+        D.assert_distinct("spawn_origins", h64(origin_bytes))
+        if args.dump_invariants:
+            print(json.dumps({
+                # the SAME bytes, in the same order, as one process's fleet of these maps
+                "fleet_origins_hash": h64(b"".join(_t[3] for _t in _pm)),
+                "map_origins_hash": {SLOTS_ALL[_t[0]].tag: h64(_t[3]) for _t in _pm},
+                "map_pool_hash": {SLOTS_ALL[_t[0]].tag: _t[1] for _t in _pm},
+                "map_grid_hash": {SLOTS_ALL[_t[0]].tag: _t[2] for _t in _pm},
+                "maps": list(STEMS_ALL), "n_maps": NMAPS_ALL, "envs_per_slot": PER,
+                "map_d0": {m.tag: m.d0 for m in SLOTS_ALL},
+                "map_shard": {m.tag: int(m.rank) for m in SLOTS_ALL},
+                "train_envs": int(N_GLOBAL),
+                "param_checksum": float(param_checksum()[0]),
+                "obs_dim": obs_dim, "envs_per_rank": N, "rank": D.rank,
+                "world_size": D.world_size, "mb": T * N // args.minibatches,
+                "mb_all": T * N_GLOBAL // args.minibatches,
+                "grad_steps_per_iter": args.epochs * args.minibatches,
+                "seed": args.seed}, sort_keys=True), flush=True)
+            D.finalize()
+            return
+    elif D.enabled or args.dump_invariants:
         cfg_json = json.dumps(meta["config"], sort_keys=True, default=str)
         inv_i64 = torch.tensor(
             [h64(b"".join(np.ascontiguousarray(s.pool).tobytes()
@@ -19541,7 +19810,7 @@ def main() -> None:
         # reset seed, a stray global manual_seed, and any future
         # "reproducibility fix" that collapses the fleet into R copies
         D.assert_distinct("spawn_origins", h64(origin_bytes))
-    if args.dump_invariants:
+    if args.dump_invariants and not DDP_SHARD:
         fleet_origins = b"".join(D.all_gather_var_bytes(origin_bytes))
         print(json.dumps({
             "fleet_origins_hash": h64(fleet_origins),
@@ -19589,11 +19858,22 @@ def main() -> None:
 
     # --maps (D2): every map is evaluated at v14's rate in its OWN steps - with the envs split
     # evenly that is --record-every x the map count of fleet steps; one map: --record-every
-    REC_EVERY_G = int(args.record_every) * (NMAPS if MULTI else 1)
+    REC_EVERY_G = int(args.record_every) * (NMAPS_ALL if MULTI else 1)
     next_record = (global_step + REC_EVERY_G
                    if args.no_eval_at_start else global_step)
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
+
+    def _shard_latest(may_start):
+        """--ddp-maps shard: ckpt_latest.pt holds every rank's maps, so it is written by a
+        collective (save_ckpt). Once per iteration the ranks agree with ONE scalar whether it
+        is due - a minute on rank 0's clock (the cadence one process keeps), or a search about
+        to start on any rank (it copies the file) - and save together if so."""
+        nonlocal last_latest_save
+        _due = D.is_main and time.perf_counter() - last_latest_save >= 60.0
+        if D.all_reduce_max_scalar(1.0 if (_due or may_start) else 0.0) > 0.0:
+            save_ckpt("latest")
+            last_latest_save = time.perf_counter()
     # --unstuck: the schedule, its restored run state, and the base values
     # the temperature scales (docs/unstuck.md). unstuck_T is the T the
     # CURRENT iteration's rollout runs at; the observe() call at the end of
@@ -19955,19 +20235,66 @@ def main() -> None:
     agg_pct_trig = agg_fin_trig = float("nan")
     # --maps: (eval_progress, eval_finish_s, box finishes, % covered) per map
     # tag, carried between evals exactly like the aggregates above
-    eval_per_map = {s.tag: (float("nan"),) * 4 for s in slots + heldout}
+    eval_per_map = {s.tag: (float("nan"),) * 4 for s in list(SLOTS_ALL) + list(heldout)}
     # --heldout-maps: the order-only corridor MAX per held-out map that has
     # a route file, carried between evals like the rest
     held_corr = {s.tag: float("nan") for s in heldout if s.route is not None}
     t_start, step_start = time.perf_counter(), global_step
+
+    # the checkpoint's PER-MAP entries: under --maps each is a dict keyed by map tag or stem,
+    # which is what lets --ddp-maps shard write the union of the ranks' maps and lets any
+    # world size resume any other's checkpoint (every restore reads its own slots' keys)
+    CKPT_PER_MAP = ("int_counts", "unstuck", "auto_spine_failed", "auto_spine_spines",
+                    "int_coef_progress", "int_share_max", "respawn_frontier",
+                    "respawn_backward", "respawn_novel", "respawn_greedy", "respawn",
+                    "unstuck_finish")
 
     def save_ckpt(tag):
         # rank 0 only, and the branch is collective-free BY CONSTRUCTION:
         # the shared tables (counts, respawn) are replicated on every rank,
         # so rank 0's copy IS the fleet's and no gather is needed. Never
         # add a collective anywhere under this function (plan §6.7).
+        # --ddp-maps shard is the exception, and the reason is the same rule read the other
+        # way round: there each map's tables live on its OWNER rank alone, so the save is a
+        # COLLECTIVE on every rank (_save_ckpt_shard) and is only ever called at points every
+        # rank reaches together (the step checkpoints, the agreed ckpt_latest, the final)
+        if DDP_SHARD:
+            _save_ckpt_shard(tag)
+            return
         if not D.is_main:
             return
+        torch.save(_ckpt_state(), out / f"ckpt_{tag}.pt")
+
+    def _save_ckpt_shard(tag):
+        """--ddp-maps shard: every rank builds its own maps' per-map entries, rank 0 merges the
+        others' into its state (in the run's map order) and writes the one file; the barrier
+        keeps every rank from reading the file (a search copies ckpt_latest.pt) before it is
+        whole."""
+        state = _ckpt_state()
+        parts = D.all_gather_object(None if D.is_main else
+                                    {_k: state[_k] for _k in CKPT_PER_MAP if _k in state})
+        if D.is_main:
+            _pos = {}
+            for _m in SLOTS_ALL:
+                _pos[_m.tag] = _pos[_m.name] = int(_m.g)
+            for _r, _p in enumerate(parts[1:], start=1):
+                for _k, _v in (_p or {}).items():
+                    if not isinstance(_v, dict) or not isinstance(state.get(_k, {}), dict):
+                        raise RuntimeError(f"[ddp] checkpoint entry {_k!r} of rank {_r} is not "
+                                           "a per-map dict: cannot merge the ranks' maps")
+                    _dup = sorted(set(_v) & set(state.get(_k) or {}))
+                    if _dup:
+                        raise RuntimeError(f"[ddp] checkpoint entry {_k!r}: maps {_dup} come "
+                                           f"from two ranks (rank {_r} and an earlier one)")
+                    state.setdefault(_k, {}).update(_v)
+            for _k in CKPT_PER_MAP:
+                if isinstance(state.get(_k), dict):
+                    state[_k] = dict(sorted(state[_k].items(),
+                                            key=lambda kv: _pos.get(kv[0], len(_pos))))
+            torch.save(state, out / f"ckpt_{tag}.pt")
+        D.barrier()
+
+    def _ckpt_state():
         state = {"policy": policy.state_dict(),
                  "optimizer": contiguous_optimizer_state(opt.state_dict()),
                  "global_step": global_step, "config": meta["config"]}
@@ -20083,7 +20410,7 @@ def main() -> None:
             # --goal-planner jump: its knobs and the fleet's visit counts; primlearn: the
             # planner network, its Adam and the end-cell counts
             state["planner"] = goalsys.learned.state_dict_all()
-        torch.save(state, out / f"ckpt_{tag}.pt")
+        return state
 
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                          enabled=use_bf16)
@@ -20278,8 +20605,13 @@ def main() -> None:
         elif ADV_MAP:
             # --adv-norm-per-map: each map's rows by their own moments. Row idx is
             # t * N + env (time-major buffers) and slot k owns envs [k*PER, (k+1)*PER), so
-            # (idx % N) // PER is the row's map; N, PER, NMAPS are Python constants
-            a = adv_norm_per_map(a, (idx % N) // PER, NMAPS)
+            # (idx % N) // PER is the row's map; N, PER, NMAPS are Python constants.
+            # --ddp-maps shard: a map's rows are all on its owner rank, so its moments are
+            # these; only the under-ADV_MAP_MIN_ROWS fallback needs the union's (adv_mean /
+            # adv_std, all-reduced), which is None - the shipped call - on one process
+            a = adv_norm_per_map(a, (idx % N) // PER, NMAPS,
+                                 pooled=(None if (adv_mean is None or not DDP_SHARD)
+                                         else (adv_mean, adv_std)))
         elif adv_mean is None:
             # world_size==1 keeps the LITERAL estimator so the single-GPU
             # path stays bit-identical — do not "unify" the two branches
@@ -20398,6 +20730,9 @@ def main() -> None:
                         f_z, f_temp, f_tempv)
 
     MB = T * N // args.minibatches            # constant: the compiled shape
+    # --ddp-maps shard: the GLOBAL minibatch is the union of every rank's MB rows (the ranks'
+    # MB differ when their map counts do); unsharded it is MB x world_size
+    MB_ALL = (T * N_GLOBAL // args.minibatches) if DDP_SHARD else MB * D.world_size
     if args.train_stride > 1 and (T // args.train_stride) * N < MB:
         raise SystemExit(f"--train-stride {args.train_stride} leaves fewer "
                          f"than one {MB}-sample minibatch of the {T}x{N} "
@@ -20830,7 +21165,10 @@ def main() -> None:
     # warm-up backward must not issue collectives (a rank whose inductor
     # failed never reaches its backward, and the fleet would deadlock).
     if D.enabled:
-        _inv_ws = 1.0 / D.world_size
+        # --ddp-maps shard: SAMPLE-weighted. Each rank's loss is the mean over ITS MB rows and
+        # the ranks' MB differ (4 maps vs 3), so the step equal to one process's gradient over
+        # the union of the rows is sum_r (MB_r / MB_ALL) g_r: scale before the SUM, never 1/W
+        _w_rank = float(MB) / float(MB_ALL) if DDP_SHARD else None
         if args.ddp_overlap:
             # readiness-ordered buckets (plan step 15): heads+towers finish
             # backward first, the conv Linear next, the three convs last —
@@ -20848,50 +21186,15 @@ def main() -> None:
                     _buckets[2].append(p)
         else:
             _buckets = [list(policy.parameters())]
-        _b_flat, _b_views = [], []
-        for b in _buckets:
-            fl = torch.zeros(sum(p.numel() for p in b), device=device)
-            vs, off = [], 0
-            for p in b:
-                vs.append(torch.as_strided(fl, p.shape, p.stride(), off))
-                off += p.numel()
-            _b_flat.append(fl)
-            _b_views.append(vs)
-        _arrived = [0] * len(_buckets)
-        _handles: list = [None] * len(_buckets)
-
-        def _launch(bi):
-            # RE-READ p.grad at launch: zero_grad(set_to_none=True) rebinds
-            # every grad each minibatch — a cached list would sync stale
-            # storage while opt.step() uses fresh tensors: divergent nets,
-            # no error, caught only by the checksum
-            torch._foreach_copy_(_b_views[bi],
-                                 [p.grad for p in _buckets[bi]])
-            _handles[bi] = D.all_reduce_async(_b_flat[bi])
-
+        # (surfgym/distributed.FlatGradSync: the bucket views, the hooks, the scale and the
+        # copy-back, module-level so tests/python/test_ddp_shard.py runs the shipped code)
+        _gsync = distributed.FlatGradSync(_buckets, D, device, weight=_w_rank)
         if args.ddp_overlap:
-            def _mk_hook(bi):
-                def _hook(_p):
-                    _arrived[bi] += 1
-                    if _arrived[bi] == len(_buckets[bi]):
-                        _launch(bi)
-                return _hook
-            for bi, b in enumerate(_buckets):
-                for p in b:
-                    p.register_post_accumulate_grad_hook(_mk_hook(bi))
+            _gsync.register_hooks()
 
         def sync_grads():
             ev = tm.gpu_start("allreduce")
-            for bi in range(len(_buckets)):
-                if _handles[bi] is None:      # no hooks, or a starved one
-                    _launch(bi)
-                _handles[bi].wait()           # a stream dependency, not a
-                # host block: the scale and copy-back queue behind the wire
-                _b_flat[bi].mul_(_inv_ws)
-                torch._foreach_copy_([p.grad for p in _buckets[bi]],
-                                     _b_views[bi])
-                _handles[bi] = None
-                _arrived[bi] = 0
+            _gsync.sync()
             tm.gpu_end(ev)
     else:
         def sync_grads():
@@ -20938,6 +21241,10 @@ def main() -> None:
         if not MULTI:
             return (e + D.rank * N).astype(np.int32)
         i, j = np.divmod(e, PER)
+        if DDP_SHARD:
+            # --ddp-maps shard: local slot i IS the run's map SG[i], whose PER envs one
+            # process lays out as the block [SG[i]*PER, (SG[i]+1)*PER)
+            return (np.asarray(SG, np.int64)[i] * PER + j).astype(np.int32)
         return (i * (PER * D.world_size) + D.rank * PER + j).astype(np.int32)
 
     def sync_counts():
@@ -20954,8 +21261,9 @@ def main() -> None:
         class of bug this integration exists to avoid, since slot 0 syncing
         alone would look perfectly healthy in every logged number while the
         other maps' ranks silently explored past each other. Batched into
-        one gather so the collective count does not grow with the maps."""
-        if not D.enabled:
+        one gather so the collective count does not grow with the maps.
+        --ddp-maps shard: a no-op - each map's table lives on its owner rank alone."""
+        if not DDP_REP:
             return
         loc = fleet.counts_delta_sparse(CNT_DT)
         parts = D.all_gather_var_bytes(loc.tobytes())
@@ -21147,7 +21455,8 @@ def main() -> None:
                   + f"; every greedy eval also flies it -> traj_<step>[_<map>]_ema{len(EMA) - 1}"
                   ".jsonl (an observer: nothing it flies reaches training)")
     ema_step = global_step
-    int_sync = args.int_sync_every if D.enabled else 0
+    # (--ddp-maps shard: a map's count table lives on its owner rank alone - nothing to sync)
+    int_sync = args.int_sync_every if DDP_REP else 0
     int_row = []              # --int-split: this iteration's int/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
@@ -22876,7 +23185,9 @@ def main() -> None:
                     if _lg0 is not None:
                         _res._last_goals = (_lg0[0][_km], _lg0[1][_km],
                                             _lg0[2][_km])
-            if D.enabled:
+            if DDP_REP:
+                # (--ddp-maps shard: the map's reservoir lives on its owner rank alone, so
+                # its harvest is the local one below, as on one process)
                 loc = np.empty(len(h_rows), HARVEST_DT)
                 loc["tick"] = h_ticks
                 loc["env"] = h_envs.astype(np.int32) + D.rank * _s.n
@@ -23019,6 +23330,7 @@ def main() -> None:
             sub_pool = (on_policy if sub_pool is None
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
+        last_pooled = None             # --ddp-maps shard: the last minibatch's union moments
         aug_sum, aug_n = None, 0       # --aug-*: DrAC's (G_pi, G_V) over this update
         env_np = None
         # --critic-warmup: is THIS update a critic-only one? Counted in
@@ -23074,7 +23386,8 @@ def main() -> None:
                 ap = f_adv[perm[:n_mb * mb]].view(n_mb, mb).double()
                 st_m = torch.stack([ap.sum(1), ap.pow(2).sum(1)])
                 D.all_reduce_sum_(st_m)
-                a_mean, a_std = adv_moments64(st_m, float(mb * D.world_size))
+                # (MB_ALL: every rank's rows of the minibatch - unequal under --ddp-maps shard)
+                a_mean, a_std = adv_moments64(st_m, float(MB_ALL))
             for k_mb in range(n_mb):
                 idx = perm[k_mb * mb:(k_mb + 1) * mb]
                 ev_mb = tm.gpu_start("mb_gpu")
@@ -23137,7 +23450,11 @@ def main() -> None:
                     # (before its step); over the threshold, nothing more of this update runs
                     with torch.no_grad():
                         _klm = (f_logp[idx] - logp.detach()).mean().reshape(1)
-                        if D.enabled:
+                        if DDP_SHARD:
+                            # the union's mean (ranks hold unequal rows); every rank stops together
+                            _klm.mul_(float(mb) / float(MB_ALL))
+                            D.all_reduce_sum_(_klm)
+                        elif D.enabled:
                             D.all_reduce_mean_(_klm)       # every rank stops together
                     _klv = float(_klm.item())
                     if _klv > 1.5 * TKL:
@@ -23167,6 +23484,8 @@ def main() -> None:
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 last_diag = (idx, logp, vl, pg, el)
+                if a_mean is not None:
+                    last_pooled = (a_mean[k_mb], a_std[k_mb])
         if EMA:
             # --eval-ema: each average moves toward the updated weights by its half-life over
             # the steps this update consumed (buffers are copied, not averaged)
@@ -23209,20 +23528,30 @@ def main() -> None:
             with torch.no_grad():
                 diag = torch.stack([(f_logp[idx] - logp).mean(),
                                     vl.detach(), pg.detach(), el.detach()])
-                D.all_reduce_mean_(diag)
+                if DDP_SHARD:
+                    diag.mul_(float(mb) / float(MB_ALL))   # the union's means (unequal rows)
+                    D.all_reduce_sum_(diag)
+                else:
+                    D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
         advmap_row = []
+        advmap_e2 = []                 # --ddp-maps shard: each local map's sum (G - V)^2
         if MULTI:
             # train/<name>.<tag> (logging only): per map, the advantages' spread before and after
             # the update's estimator and the shared critic's fit on that map's rows. Rank-local
-            # under DDP (the main rank writes the CSV); adv_std_norm is blank under DDP and
-            # --cc-buckets, whose estimators are not the one re-applied here
+            # under replicated DDP (the main rank writes the CSV); adv_std_norm is blank there
+            # and under --cc-buckets, whose estimators are not the one re-applied here.
+            # --ddp-maps shard: every map's rows are on its owner rank, so the row IS the map's
+            # (gathered for the CSV, vloss_share renormalised over every map there)
             with torch.no_grad():
                 advmap_row = advmap_diag(
                     adv, ret, b_val, [(_s.lo, _s.hi) for _s in slots], N, PER, f_adv,
-                    (None if (last_diag is None or D.enabled or CC_BKT) else last_diag[0]),
-                    ADV_MAP)
-            if D.is_main and it_no % 50 == 1:
+                    (None if (last_diag is None or DDP_REP or CC_BKT) else last_diag[0]),
+                    ADV_MAP, pooled=(last_pooled if DDP_SHARD else None))
+                if DDP_SHARD:
+                    _e2 = (ret - b_val).double()
+                    advmap_e2 = [float((_e2[:, _s.lo:_s.hi] ** 2).sum()) for _s in slots]
+            if (D.is_main or DDP_SHARD) and it_no % 50 == 1:
                 _w = len(ADVMAP_COLS)
                 print("adv/critic per map: " + "; ".join(
                     f"{_s.tag} adv_std {advmap_row[_k * _w]:.3g} -> {advmap_row[_k * _w + 1]:.3g}"
@@ -23342,9 +23671,20 @@ def main() -> None:
                 # collective.
                 sv = torch.from_numpy(fleet.stats_vector()).to(device)
                 D.all_reduce_sum_(sv)
-                fleet.clear_stats()
-                rs = RaceReward.stats_from_vector(sv.cpu().numpy(),
-                                                  tick_ms=TICK.ms)
+                if DDP_SHARD:
+                    # --ddp-maps shard: pop_stats drains like clear_stats AND keeps every
+                    # local map's own numbers (fleet.last_slot_stats: --int-share-max per
+                    # map); its pass-through diagnostics (en_*, rc_*) are this rank's maps'
+                    _loc = fleet.pop_stats()
+                    rs = {**{_k: _v for _k, _v in _loc.items()
+                             if _k not in ("success_rate", "finish_s", "episodes",
+                                           "int_per_ep")},
+                          **RaceReward.stats_from_vector(sv.cpu().numpy(),
+                                                         tick_ms=TICK.ms)}
+                else:
+                    fleet.clear_stats()
+                    rs = RaceReward.stats_from_vector(sv.cpu().numpy(),
+                                                      tick_ms=TICK.ms)
             else:
                 rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
@@ -23413,7 +23753,15 @@ def main() -> None:
         # dip meter returns nine NaNs and the columns come out blank. No
         # collective: under DDP this is the main rank's own envs (a p90 is
         # not a sum, and only the main rank writes the CSV anyway).
-        dip_stats = fleet.pop_dip_stats()
+        if DDP_SHARD:
+            # --ddp-maps shard: the main rank holds only its own maps, so the raw per-dip
+            # arrays of every rank's maps are gathered and pooled once - the same
+            # concatenation one process makes over its slots
+            from surfgym.dipmeter import dip_summary, merge_dip_raw
+            dip_stats = dip_summary(merge_dip_raw(
+                [_p for _r in D.all_gather_object(fleet.pop_dip_raw()) for _p in _r]))
+        else:
+            dip_stats = fleet.pop_dip_stats()
         # ---- --unstuck: the plateau detector, once per iteration --------
         # Reads the two progress measures, advances the schedule and arms
         # the NEXT rollout (temperature tensor, intrinsic coefficient) and,
@@ -23827,7 +24175,9 @@ def main() -> None:
             #   9 evaluated(1/0)
             if DROP_GEN is not None:
                 policy.dropout_clear()        # evals run the full network
-            ev_tab = torch.zeros((NMAPS + NHELD, EVAL_K), dtype=torch.float64,
+            # (rows in the RUN's --maps order: --ddp-maps shard fills its own maps' rows, so
+            # the table has every map's row on every rank after the SUM)
+            ev_tab = torch.zeros((NMAPS_ALL + NHELD, EVAL_K), dtype=torch.float64,
                                  device=device)
             # --heldout-maps: rows NMAPS.. of ev_tab are the held-out maps
             # (never in an aggregate), and hc_tab carries their order-only
@@ -23840,6 +24190,8 @@ def main() -> None:
             for _i, _s in enumerate(slots + heldout):
                 if _s.eval_core is None:
                     continue                  # another rank owns this map
+                # the slot's row in the run's table: its global map index (== _i unsharded)
+                _row = SG[_i] if _i < NMAPS else NMAPS_ALL + (_i - NMAPS)
                 sfx = f"_{_s.tag}" if (MULTI or _s.heldout) else ""
                 path = out / f"traj_{global_step:010d}{sfx}.jsonl"
                 _ev_meta = _ev_tick = None
@@ -23979,10 +24331,10 @@ def main() -> None:
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0
                 _v = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
-                ev_tab[_i, 6] = _f
-                ev_tab[_i, 7] = _p
-                ev_tab[_i, 8] = _v
-                ev_tab[_i, 9] = 1.0
+                ev_tab[_row, 6] = _f
+                ev_tab[_row, 7] = _p
+                ev_tab[_row, 8] = _v
+                ev_tab[_row, 9] = 1.0
                 prog_note = ""
                 p_prog = p_fin = float("nan")
                 p_nfin = 0
@@ -23992,12 +24344,12 @@ def main() -> None:
                                                                 _s.goal_field)
                     pct_sum, n_ep, n_box = race_coverage(
                         path, _s.goal_field, _s.goal_box)
-                    ev_tab[_i, 0] = 0.0 if p_prog != p_prog else p_prog * n_rec
-                    ev_tab[_i, 1] = 0.0 if not p_nfin else p_fin * p_nfin
-                    ev_tab[_i, 2] = float(p_nfin)
-                    ev_tab[_i, 3] = pct_sum
-                    ev_tab[_i, 4] = float(n_ep)
-                    ev_tab[_i, 5] = float(n_box)
+                    ev_tab[_row, 0] = 0.0 if p_prog != p_prog else p_prog * n_rec
+                    ev_tab[_row, 1] = 0.0 if not p_nfin else p_fin * p_nfin
+                    ev_tab[_row, 2] = float(p_nfin)
+                    ev_tab[_row, 3] = pct_sum
+                    ev_tab[_row, 4] = float(n_ep)
+                    ev_tab[_row, 5] = float(n_box)
                     if p_nfin:
                         prog_note = (f"  fin {p_nfin}/{n_rec} mean "
                                      f"{p_fin:.2f}s best {fin_best:.2f}s")
@@ -24050,6 +24402,7 @@ def main() -> None:
                     # each weight average. Its file is all it leaves: the greedy pool, the
                     # novelty coefficient, --unstuck-finish and the searches read the eval above
                     for _j, (_h, _m) in enumerate(EMA):
+                        t_rema = tm.now()        # --timing: rec_ema, a slice of `record`
                         epath = out / f"traj_{global_step:010d}{sfx}_ema{_j}.jsonl"
                         _e_tick = None
                         if _ev_stall is not None:
@@ -24091,6 +24444,7 @@ def main() -> None:
                               f"greedy frontier "
                               f"{100.0 * _greedy_eval_progress(epath, _i):.1f}% of the spawn's d"
                               f" (half-life {_h:,.0f} steps) -> {epath.name}")
+                        tm.add("rec_ema", t_rema)
                 if not args.eval_greedy_only:
                     spath = out / f"traj_{global_step:010d}{sfx}_stoch.jsonl"
                     _sv_stall = (None if _ev_stall is None
@@ -24194,16 +24548,16 @@ def main() -> None:
             ev_all = ev_tab.cpu().numpy()
             # the TRAINING table: rows 0..NMAPS-1. Held-out rows never enter
             # an aggregate - they are the other side of the comparison.
-            ev = ev_all[:NMAPS]
-            AGG = eval_aggregate(ev, [s.finish_kind for s in slots], n_rec)
+            ev = ev_all[:NMAPS_ALL]
+            AGG = eval_aggregate(ev, [s.finish_kind for s in SLOTS_ALL], n_rec)
             if not AGG["evaluated"].all():
                 raise RuntimeError(
-                    f"[eval] {int((~AGG['evaluated']).sum())} of {NMAPS} "
+                    f"[eval] {int((~AGG['evaluated']).sum())} of {NMAPS_ALL} "
                     "maps produced no eval row - a rank skipped its shard, "
                     "and every aggregate below would silently be a mean "
                     "over the rest")
             pct, n_ep, nbox = AGG["pct"], AGG["n_eps"], AGG["n_box"]
-            for _i, _s in enumerate(slots):
+            for _i, _s in enumerate(SLOTS_ALL):
                 eval_per_map[_s.tag] = (
                     ev[_i, 0] / n_rec if n_rec else float("nan"),
                     ev[_i, 1] / ev[_i, 2] if ev[_i, 2] else float("nan"),
@@ -24219,7 +24573,7 @@ def main() -> None:
             agg_pct_trig = AGG["map_pct_trigger"]
             agg_fin_trig = AGG["maps_finished_trigger"]
             if NHELD:
-                hev = ev_all[NMAPS:]
+                hev = ev_all[NMAPS_ALL:]
                 if not (hev[:, 9] > 0).all():
                     raise RuntimeError(
                         f"[eval] {int((hev[:, 9] <= 0).sum())} of {NHELD} "
@@ -24268,7 +24622,7 @@ def main() -> None:
                       f"(cover % of own route | box finishes / eps)")
                 order = np.argsort(-np.nan_to_num(pct, nan=-1.0))
                 for _i in order:
-                    _s = slots[int(_i)]
+                    _s = SLOTS_ALL[int(_i)]
                     print(f"    {_s.finish_kind[:4]:<4} {_s.tag:<28} "
                           f"{pct[_i]:6.2f}%  fin {int(nbox[_i]):>2}/"
                           f"{int(n_ep[_i]):<2}  prog {ev[_i, 0] / max(n_rec, 1):>9,.0f}u"
@@ -24388,6 +24742,12 @@ def main() -> None:
                     print(f"[{global_step:>13,d}] auto-spine[{_s.tag}]: {_what} (queue: "
                           f"{', '.join(slots[_qk].tag + ':' + _qt for _qk, _qt in AQ['q'])})",
                           flush=True)
+            if DDP_SHARD:
+                # --ddp-maps shard: each rank serves its OWN maps' queue (one search at a time
+                # per rank, on the card --search-gpu picks at its launch), and a search starts
+                # from a copy of ckpt_latest.pt - a collective write - so every rank agrees
+                # here, once per iteration, whether any of them may start one
+                _shard_latest(AQ["run"] is None and bool(AQ["q"]))
             while AQ["run"] is None and AQ["q"]:
                 # the card is free: the first quorum request, else the oldest request
                 _qq = [_j for _j, (_, _qt) in enumerate(AQ["q"]) if _qt == "quorum"]
@@ -24423,7 +24783,12 @@ def main() -> None:
         # (each process's own clock) and no collective may ever be added
         # inside it — replication of the shared tables is what makes the
         # rank-0 save fleet-complete without a gather.
-        if D.is_main and time.perf_counter() - last_latest_save >= 60.0:
+        if DDP_SHARD:
+            # (--ddp-maps shard: the agreed collective save; with --auto-spine it ran before
+            # the search queue above)
+            if not AUTO_SPINE:
+                _shard_latest(False)
+        elif D.is_main and time.perf_counter() - last_latest_save >= 60.0:
             save_ckpt("latest")
             last_latest_save = time.perf_counter()
         tm.add("ckpt", t_ck)
@@ -24444,6 +24809,30 @@ def main() -> None:
             aug_row += [round(eval_mir[0], 1) if eval_mir[0] == eval_mir[0] else "",
                         int(eval_mir[1]) if eval_mir[1] == eval_mir[1] else "",
                         round(eval_mir[2], 3) if eval_mir[2] == eval_mir[2] else ""]
+        if DDP_SHARD:
+            # --ddp-maps shard: this row's per-map blocks (unstuck/*, fpert/*, train/*.<tag>)
+            # come from every map's owner rank - one small gather per iteration, laid out in
+            # the run's map order. vloss_share is each map's share of sum (G - V)^2 over ALL
+            # maps, so it is renormalised here from the raw sums
+            _wa = len(ADVMAP_COLS)
+            _ivs = ADVMAP_COLS.index("vloss_share")
+            _mine = [(int(SG[_k]),
+                      None if unstuck_row is None else unstuck_row[3 * _k:3 * _k + 3],
+                      None if fpert_row is None else fpert_row[3 * _k:3 * _k + 3],
+                      advmap_row[_wa * _k:_wa * (_k + 1)], advmap_e2[_k])
+                     for _k in range(NMAPS)]
+            _pm_rows = sorted((_t for _p in D.all_gather_object(_mine) for _t in _p),
+                              key=lambda _t: _t[0])
+            if unstuck_row is not None:
+                unstuck_row = [_v for _t in _pm_rows for _v in _t[1]]
+            if fpert_row is not None:
+                fpert_row = [_v for _t in _pm_rows for _v in _t[2]]
+            _e2_tot = sum(_t[4] for _t in _pm_rows)
+            advmap_row = []
+            for _t in _pm_rows:
+                _r = list(_t[3])
+                _r[_ivs] = (_t[4] / _e2_tot) if _e2_tot > 0.0 else float("nan")
+                advmap_row += _r
         if D.is_main:
             csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1),
                             round(fps),
@@ -24464,7 +24853,7 @@ def main() -> None:
                             if agg_pct_trig == agg_pct_trig else "",
                             round(agg_fin_trig, 4)
                             if agg_fin_trig == agg_fin_trig else ""]
-                           + ([v for s in slots
+                           + ([v for s in SLOTS_ALL
                                for v in (round(eval_per_map[s.tag][0], 1)
                                          if eval_per_map[s.tag][0]
                                          == eval_per_map[s.tag][0] else "",
@@ -24676,6 +25065,10 @@ def main() -> None:
                   "  greedy " + ",".join(f"{GREEDY_S[_gs.tag].size:,}x{GREEDY_S[_gs.tag].mixed}"
                                          for _gs in slots))
                  if GREEDY is not None else ""))
+        # --timing: whether a search process ran beside this iteration (it shares this rank's
+        # card and cores), so the report can split the iterations with and without one
+        tm.mark("search_on", 1.0 if (AUTO.get("proc") is not None
+                                     or AFIN.get("proc") is not None) else 0.0)
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,
@@ -24685,14 +25078,18 @@ def main() -> None:
             if (args.ddp_assert_every > 0
                     and it_no % args.ddp_assert_every == 0):
                 chk = [global_step, len(ret_hist)]
-                if isinstance(reward_fn, RaceReward) \
+                if DDP_SHARD:
+                    # --ddp-maps shard: the counts tables and reservoirs are each map's on its
+                    # owner rank - rank-DISTINCT by design; only the fleet-wide state is checked
+                    pass
+                elif isinstance(reward_fn, RaceReward) \
                         and reward_fn._counts is not None:
                     # cheap probe every assert (sum + strided sample); the
                     # full 256MB-table hash only on the slow cadence
                     chk.extend(reward_fn.counts_check())
                     if it_no % 100 == 0:
                         chk.append(h64(reward_fn._counts))
-                if respawn is not None:
+                if respawn is not None and not DDP_SHARD:
                     chk += [respawn.size, respawn._head,
                             h64(respawn._store[:respawn.size]),
                             h64(json.dumps(respawn.rng.bit_generator.state,
@@ -24701,6 +25098,7 @@ def main() -> None:
                 D.assert_equal(f"ddp_state@it{it_no}", torch.tensor(
                     chk, dtype=torch.int64, device=device))
 
+    tm.run_line(it_no)                   # --timing: the whole run's account, once more at the end
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     meta["duration_s"] = round(time.perf_counter() - t_start, 1)
     meta["total_steps"] = global_step

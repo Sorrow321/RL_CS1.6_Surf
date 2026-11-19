@@ -61,6 +61,20 @@ def test_the_policy_reads_card_count_and_price():
         fw.POLICY = fw_policy
 
 
+
+def test_two_gpu_boxes_when_the_policy_allows_them_at_twice_the_card_cap():
+    fw_policy = fw.POLICY
+    try:
+        fw.POLICY = dict(POLICY, max_gpus_per_box=2)
+        assert fw.policy_breach(_inst(1, "RTX 4090", 0.558, n=2)) is None
+        assert fw.policy_breach(_inst(2, "RTX 4090", 0.40)) is None, "one card: unchanged"
+        assert "above 2 x its 0.45 cap" in fw.policy_breach(_inst(3, "RTX 4090", 0.95, n=2))
+        assert "above its 0.45 cap" in fw.policy_breach(_inst(4, "RTX 4090", 0.50))
+        assert "3 GPUs" in fw.policy_breach(_inst(5, "RTX 4090", 0.60, n=3))
+        assert "not an allowed card" in fw.policy_breach(_inst(6, "H100 SXM", 0.50, n=2))
+    finally:
+        fw.POLICY = fw_policy
+
 def test_a_breach_dies_on_the_second_sighting_not_the_first(sim):
     sim["live"] = [_inst(1, "RTX 3090", 0.25), _inst(2, "A100 SXM4", 0.80)]
     _reg(sim, 1, 2)

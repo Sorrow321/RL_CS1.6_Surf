@@ -264,9 +264,44 @@ def blocked_keys():
     return mids, hids, ips
 
 
-def offers(exclude_machines=()) -> list:
+# CLAUDE.md section 1: >= 8 PHYSICAL cores per GPU, and vast's cpu_cores_effective counts
+# THREADS - so 16 threads per GPU (ddp_launch.sh sizes each rank at cores / (2 x ranks))
+THREADS_PER_GPU = 16
+
+
+def offer_query(num_gpus: int = 1) -> str:
+    """config.offer_query for a box of ``num_gpus`` cards: one card = the query verbatim (today's
+    rentals); N cards = its num_gpus term set to N, its cpu_cores_effective floor raised to
+    THREADS_PER_GPU x N where lower, and verified=true required (deverified multi-GPU hosts did
+    not come up, 12 of 12, CLAUDE.md section 1)."""
+    q = CFG["offer_query"]
+    n = int(num_gpus)
+    if n == 1:
+        return q
+    if n < 1:
+        die(f"--num-gpus {n}: a box has at least one card")
+    q = re.sub(r"\bnum_gpus\s*=\s*\d+", f"num_gpus={n}", q)
+    if not re.search(r"\bnum_gpus\s*=", q):
+        q += f" num_gpus={n}"
+    floor = THREADS_PER_GPU * n
+    m = re.search(r"\bcpu_cores_effective\s*>=\s*(\d+)", q)
+    if m and int(m.group(1)) < floor:
+        q = q[:m.start()] + f"cpu_cores_effective>={floor}" + q[m.end():]
+    elif not m:
+        q += f" cpu_cores_effective>={floor}"
+    q = re.sub(r"\bverified\s*=\s*\w+", "verified=true", q)
+    if not re.search(r"\bverified\s*=", q):
+        q += " verified=true"
+    return q
+
+
+def offers(exclude_machines=(), num_gpus: int = 1) -> list:
     """Every acceptable offer, best first: (tier, $/h). Nothing outside the whitelist, the
     caps, the blocklist or config.cpu_exclude is ever returned.
+
+    ``num_gpus`` N > 1 (rent --num-gpus): boxes of exactly N cards, the cap per BOX = the
+    card's cap x N (max_dph is per card; vast's dph_total is the box's), and >= THREADS_PER_GPU
+    x N threads (8 physical cores per GPU: CLAUDE.md section 1). N = 1 is today's filter.
 
     ONE search, filtered here by card name: fifteen whitelisted cards searched one at a time
     were fifteen vast calls under the fleet lock on every retry (2026-10-25). Priced with the
@@ -276,7 +311,7 @@ def offers(exclude_machines=()) -> list:
     mids, hids, ips = blocked_keys()
     cpu_bad = [re.compile(p) for p in CFG.get("cpu_exclude", [])]
     try:
-        got = vast("search", "offers", CFG["offer_query"], "-o", "dph+", "--limit", "5000",
+        got = vast("search", "offers", offer_query(num_gpus), "-o", "dph+", "--limit", "5000",
                    "--storage", str(CFG["disk_gb"]))
     except RuntimeError as e:
         log(f"offer search failed: {e}")
@@ -287,10 +322,15 @@ def offers(exclude_machines=()) -> list:
         tier, cap = gpu_tier(name), gpu_cap(name)
         if tier is None or cap is None:
             continue
-        if int(o.get("num_gpus") or 0) != 1:
+        if int(o.get("num_gpus") or 0) != int(num_gpus):
             continue
         dph = float(o.get("dph_total") or 99.0)
-        if dph > cap:
+        if dph > cap * int(num_gpus):
+            continue
+        if (int(num_gpus) > 1
+                and float(o.get("cpu_cores_effective") or 0) < THREADS_PER_GPU * int(num_gpus)):
+            continue
+        if int(num_gpus) > 1 and o.get("verification") not in (None, "verified"):
             continue
         if (o.get("machine_id") in mids or o.get("host_id") in hids
                 or o.get("public_ipaddr") in ips
@@ -300,6 +340,7 @@ def offers(exclude_machines=()) -> list:
         if any(p.search(cpu) for p in cpu_bad):
             continue
         out.append({"tier": tier, "gpu": name, "dph": dph, "id": o["id"],
+                    "num_gpus": int(o.get("num_gpus") or 0),
                     "machine_id": o.get("machine_id"), "host_id": o.get("host_id"),
                     "cores": o.get("cpu_cores_effective"), "ram_gb": round((o.get("cpu_ram") or 0) / 1024),
                     "inet_down": o.get("inet_down"), "where": o.get("geolocation", ""),
@@ -343,8 +384,8 @@ def cmd_budget(a):
 
 
 def cmd_offers(a):
-    for o in offers()[:a.n]:
-        print(f"tier {o['tier']}  {o['gpu']:12s} {o['dph']:.3f} $/h  offer {o['id']}  "
+    for o in offers(num_gpus=int(getattr(a, "num_gpus", 1) or 1))[:a.n]:
+        print(f"tier {o['tier']}  {o['num_gpus']}x {o['gpu']:12s} {o['dph']:.3f} $/h  offer {o['id']}  "
               f"machine {o['machine_id']}  {o['cores']} thr {o['cpu']}  {o['ram_gb']}G  "
               f"{o['inet_down']:.0f} Mb/s  {o['where']}")
 
@@ -382,8 +423,9 @@ def cmd_rent(a):
         if b["credit"] <= b["reserve"]:
             die(f"credit ${b['credit']} is at the reserve ${b['reserve']}: no new boxes")
         tried = set()
+        ngpu = int(getattr(a, "num_gpus", 1) or 1)
         for attempt in range(3):
-            cands = offers(exclude_machines=tried)
+            cands = offers(exclude_machines=tried, num_gpus=ngpu)
             cands = [o for o in cands if b["burn_per_h"] + o["dph"] <= b["limit_per_h"] + 1e-9]
             if not cands:
                 die(f"no offer passes (whitelist, caps, blocklist) within the budget pace: "
@@ -392,9 +434,12 @@ def cmd_rent(a):
             o = cands[0]
             tried.add(o["machine_id"])
             if a.dry_run:
-                print(json.dumps({"would_rent": o, "budget": b}, indent=1))
+                print(json.dumps({"would_rent": o, "budget": b, "num_gpus": ngpu,
+                                  "query": offer_query(ngpu),
+                                  "cap_per_box": round(gpu_cap(o["gpu"]) * ngpu, 4)},
+                                 indent=1))
                 return
-            log(f"{agent}: renting offer {o['id']} {o['gpu']} {o['dph']:.3f} $/h "
+            log(f"{agent}: renting offer {o['id']} {ngpu}x {o['gpu']} {o['dph']:.3f} $/h "
                 f"(machine {o['machine_id']}, {o['where']})")
             try:
                 res = vast("create", "instance", str(o["id"]), "--image", CFG["image"],
@@ -417,6 +462,8 @@ def cmd_rent(a):
             rec = {"agent": agent, "id": iid, "gpu": o["gpu"], "dph": o["dph"],
                    "machine_id": o["machine_id"], "created": time.time(),
                    "deadline_h": hours, "host": None, "port": None}
+            if ngpu > 1:
+                rec["num_gpus"] = ngpu       # (a one-card record stays the record it was)
             save_rec(agent, rec)
             ok, why = wait_ready(rec)
             if ok:
@@ -459,6 +506,13 @@ def wait_ready(rec: dict):
                     timeout=40)
             if r.returncode == 0 and "ok" in r.stdout:
                 rec["nvidia"] = r.stdout.strip().splitlines()[-1]
+                ng = int(rec.get("num_gpus") or 1)
+                if ng > 1:
+                    # a multi-GPU box must show every card it was rented with
+                    cards = [ln for ln in r.stdout.strip().splitlines() if ln.strip() != "ok"]
+                    rec["nvidia_all"] = cards
+                    if len(cards) != ng:
+                        return False, f"rented {ng} GPUs, nvidia-smi shows {len(cards)}"
                 return True, ""
         time.sleep(8)
     return False, f"running but no ssh within {CFG['ready_ssh_s']} s"
@@ -599,6 +653,30 @@ def cmd_launch(a):
             die("--self-states takes the file's provenance: how it was built from the "
                 "policy's own states (no demo), in a sentence")
         env += "SELF_STATES=1 "
+    # RANKS (mm/ddp): a --multimap run on a multi-GPU box is map-sharded over its cards
+    # (run_arm.sh RANKS=N -> tools/ddp_launch.sh, --ddp-maps shard); --ranks overrides the
+    # box's GPU count. One rank = no RANKS token at all: exactly the single-process launch
+    ranks = int(a.ranks) if getattr(a, "ranks", None) else int(rec.get("num_gpus") or 1)
+    if ranks < 1:
+        die(f"--ranks {ranks}: at least one")
+    if ranks > 1:
+        if not maps:
+            die(f"{ranks} ranks need --multimap: map-sharded DDP splits the multimap maps "
+                "over the ranks")
+        if ranks > len(maps):
+            die(f"{ranks} ranks for {len(maps)} maps: every rank needs a map")
+        if ranks > int(rec.get("num_gpus") or 1):
+            die(f"{ranks} ranks on a box rented with {int(rec.get('num_gpus') or 1)} GPU(s)")
+        env += f"RANKS={ranks} "
+    # RECORD_GPU (surfgym/gpupick.py): the card the record gate's recordings run on. A box with
+    # more than one GPU defaults to free (the card with the most free memory: never a training
+    # rank's full card); --record-gpu overrides; one card = unset, what it always was. The
+    # trainer's searches take --search-gpu (free by default under RANKS > 1; at one rank on a
+    # multi-GPU box pass "-- --search-gpu free" to keep them off the training card)
+    rgpu = a.record_gpu if getattr(a, "record_gpu", None) else (
+        "free" if int(rec.get("num_gpus") or 1) > 1 else None)
+    if rgpu:
+        env += f"RECORD_GPU={shlex.quote(str(rgpu))} "
     if a.resume:
         env += "CKPT=runs_ckpt.pt ARM_RESUME=1 "
         # a resume restores every shape-changing flag from the checkpoint and REFUSES a
@@ -620,6 +698,10 @@ def cmd_launch(a):
         run["self_states"] = a.self_states
     if maps:
         run["maps"] = maps
+    if ranks > 1:
+        run["ranks"] = ranks
+    if rgpu:
+        run["record_gpu"] = str(rgpu)
     rec.setdefault("runs", []).append(run)
     save_rec(a.agent, rec)
 
@@ -813,11 +895,17 @@ def main(argv=None):
     sub.add_parser("budget").set_defaults(fn=cmd_budget)
     p = sub.add_parser("offers")
     p.add_argument("-n", type=int, default=12)
+    p.add_argument("--num-gpus", type=int, default=1, help="boxes of exactly N cards (see rent)")
     p.set_defaults(fn=cmd_offers)
     p = sub.add_parser("rent")
     p.add_argument("--agent", required=True)
     p.add_argument("--hours", type=float, default=None)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--num-gpus", type=int, default=1,
+                   help="a box of exactly N cards (default 1 = today's rentals): cap per BOX = "
+                        "the card's max_dph x N, >= 16 x N threads (8 physical cores per GPU), "
+                        "verified only, the same blocklist and cpu_exclude; the record keeps "
+                        "num_gpus, and launch --multimap then shards the maps over the cards")
     p.set_defaults(fn=cmd_rent)
     p = sub.add_parser("deploy")
     p.add_argument("--agent", required=True)
@@ -848,6 +936,14 @@ def main(argv=None):
                         "config section, then its extra tokens; deploy the maps' combined "
                         "tarball (tools/mm_assets.py). With --resume: the same tokens, --envs "
                         "and --maxvel from the checkpoint deploy --ckpt pushed (ARM_RESUME)")
+    p.add_argument("--ranks", type=int, default=None,
+                   help="--multimap only: train on this many of the box's GPUs, map-sharded "
+                        "(run_arm.sh RANKS=N, --ddp-maps shard); default = the box's rented "
+                        "GPU count (1 = the single-process launch)")
+    p.add_argument("--record-gpu", default=None, metavar="SPEC",
+                   help="the record gate's card (RECORD_GPU, surfgym/gpupick.py: inherit | own "
+                        "| free | <n> | GPU-<uuid>); default free on a multi-GPU box, unset "
+                        "on one card")
     p.add_argument("extra", nargs=argparse.REMAINDER)
     p.set_defaults(fn=cmd_launch)
     p = sub.add_parser("pull")

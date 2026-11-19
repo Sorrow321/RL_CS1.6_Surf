@@ -81,11 +81,33 @@ echo "== NUMBA_NUM_THREADS=$NUMBA_NUM_THREADS per rank"
 
 cd "$(dirname "$0")/.."
 
+# PYTHON=<interpreter> (tools/run_arm.sh passes its own): the warm pass and torchrun run under
+# the SAME python (torch.distributed.run is torchrun's own module); unset = python3 + torchrun
+PY="${PYTHON:-python3}"
+
 echo "== warm caches (single process)"
-python3 -u python/train_fast.py --warm-caches --run "${RUN}_warm" "$@"
+# in the background with a TERM/INT trap: this script's pid is the run's pid file (it execs
+# torchrun below), and a SIGTERM while bash waits on a FOREGROUND child kills bash and orphans
+# the child - here it stops the warm pass and exits
+"$PY" -u python/train_fast.py --warm-caches --run "${RUN}_warm" "$@" &
+WPID=$!
+trap 'kill -TERM "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; exit 143' TERM INT
+WRC=0
+wait "$WPID" || WRC=$?
+trap - TERM INT
+if [ "$WRC" -ne 0 ]; then
+  echo "!! warm-caches pass failed (exit $WRC): not starting torchrun"
+  exit "$WRC"
+fi
 
 echo "== torchrun x$NPROC : $RUN"
 # --run-name, not --run: torchrun prefix-matches --run against its own
-# --run-path even inside script args and dies on the ambiguity
+# --run-path even inside script args and dies on the ambiguity.
+# exec: this pid BECOMES torchrun, whose SIGTERM is forwarded to every rank's
+# process group (the ranks' searches included) and which exits when any rank dies
+if [ -n "${PYTHON:-}" ]; then
+  exec "$PY" -m torch.distributed.run --standalone --nproc-per-node="$NPROC" \
+      python/train_fast.py --run-name "$RUN" "$@"
+fi
 exec torchrun --standalone --nproc-per-node="$NPROC" \
     python/train_fast.py --run-name "$RUN" "$@"

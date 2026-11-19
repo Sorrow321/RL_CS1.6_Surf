@@ -3004,6 +3004,15 @@
       "detail": "gpu_health --all UNHEALTHY in deploy (mmf, 2026-11-18 06:46 UTC, instance 61198293): RTX 4090 power limit 250 of 450 W (56%), bf16 GEMM 109 TFLOPS, sm 1695 MHz under load",
       "run": "mmf (never deployed)",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "70.78.140.110",
+      "machine_id": 43533,
+      "host_id": 110914,
+      "date": "2026-11-17",
+      "detail": "2x RTX 4080, power limit 225 of 320 W on both cards (host); bf16 GEMM 100/101 TFLOPS at 83-108 W; gpu_health --all UNHEALTHY (deploy refused 2026-11-17 17:55 UTC, mmv)",
+      "run": "mmv (DDP validation, never deployed)",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [

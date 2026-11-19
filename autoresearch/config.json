@@ -21,12 +21,18 @@
   "_budget_end_hours_doc": "Hours from this program's start (state.json started) over which box.py spreads the credit above the reserve: ~$11.5 above the $10 reserve at the start = two fast boxes for about 14 h. No top-ups by the operator.",
   "gpu_tiers": [
     [
+      "RTX_4080",
+      "RTX_4080S",
+      "RTX_5080",
       "RTX_4090",
       "RTX_5090"
     ]
   ],
-  "_gpu_tiers_doc": "mm7: >= 24 GB cards (the seven maps' grids: cannonball alone holds ~2.6 GB of SDF + face-id grid on the GPU); one tier, cheapest offer first.",
+  "_gpu_tiers_doc": "mm/ddp (2026-11-17): the sharded 2-GPU runs may use 16 GB cards (the builder's VRAM estimate: rank 0 ~3.5-4 GiB, rank 1 ~7.5-8.5 GiB, searches and recordings on the card with the most free memory). One tier, cheapest box first. A 16 GB card is NOT enough for the seven maps at --num-gpus 1 (searches and recordings on the training card): rent 1-GPU seven-map boxes from mm/s7a (gpu_ram>=23), not from this branch.",
   "max_dph": {
+    "RTX_4080": 0.25,
+    "RTX_4080S": 0.25,
+    "RTX_5080": 0.35,
     "RTX_4090": 0.45,
     "RTX_5090": 0.6
   },
