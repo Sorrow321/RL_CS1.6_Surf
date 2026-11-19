@@ -3019,7 +3019,7 @@
       "machine_id": 152086,
       "host_id": 572018,
       "date": null,
-      "detail": "autoresearch mmp: not running after 330 s (status loading, [ERROR] 防官方回源配置尚未生效，请在无租客空窗完成 Docker 配置加载\n)",
+      "detail": "autoresearch mmp: not running after 330 s (status loading, [ERROR] \u9632\u5b98\u65b9\u56de\u6e90\u914d\u7f6e\u5c1a\u672a\u751f\u6548\uff0c\u8bf7\u5728\u65e0\u79df\u5ba2\u7a7a\u7a97\u5b8c\u6210 Docker \u914d\u7f6e\u52a0\u8f7d\n)",
       "run": "",
       "reason": "unreliable"
     },
@@ -3031,6 +3031,15 @@
       "detail": "4x RTX 5090 (instance 61357585, Genuine Intel ES 0000, 92-core quota, mmp scaling bench): gpu_health healthy at deploy and single-GPU runs fine, but every multi-GPU run (2 and 4 ranks, NCCL) died at its first collective with 'CUDA error: an illegal memory access' in the NCCL watchdog; then the container lost every GPU ('Failed to initialize NVML: Unknown Error', torch sees 0 cards) while vast reported it running",
       "run": "mmp_bench (scaling bench, released)",
       "reason": "gpu_lost"
+    },
+    {
+      "ip": "179.255.112.77",
+      "machine_id": 156998,
+      "host_id": 530380,
+      "date": null,
+      "detail": "autoresearch mmp: not running after 330 s (status loading, 45e1402c720b: Verifying Checksum\n45e1402c720b: Download complete\n)",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
