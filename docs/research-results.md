@@ -50434,3 +50434,34 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   (Polyak averaging; Nikishin et al. 2018 for RL). ema1 holds too but lags more on open maps.
 * Next: mmg_S1, the seven maps from scratch with the same flags (PRE-LAUNCH fe37575f), budget
   raised to 1e10 fleet steps for slack before launch; reads unchanged.
+
+## 2026-11-19 04:30 UTC: NOTE - multi-map scaling bench: 1 / 2 / 4 GPUs, 7 and 28 maps
+
+* Why: the user plans one agent on 100+ maps over up to 4 GPUs for a week and asked where the
+  time goes, how close to linear the scaling is, and which fixes are worth it (>= 10% or trivial).
+* Code: mm/s7g (d52e47ee) = mm/s7f + map-sharded DDP (mm/ddp) + --timing on every rank (search_on,
+  rec_ema, TIMING_RUN = startup + iterations + gaps; unaccounted <= 0.03 s in every run). Bench =
+  run_arm.sh's own trainer line for mmg_S1's recipe (DRY_RUN), measurement-only changes (--timing,
+  short budget, searches held off); scratchpad abl/bench (bench_one.sh, perf_mm.py).
+* Boxes: 4x RTX 5090 + Intel ES (61357585, $2.26/h): single-GPU rungs fine; every NCCL rung died
+  ('illegal memory access'), then the container lost all GPUs -> blocked, released. 4x RTX 5090 +
+  2x EPYC 7663 (61369005, $2.41/h, user approved a $2.60 cap for this test): NCCL_P2P_DISABLE=1,
+  all rungs ran. Resume = mm7_1 at 14.2B; 147 envs per map; medians of steady iterations.
+* Box 2, 7 maps, 1029 envs in all (strong scaling): 1 GPU 2,989 ms/iter = 176k steps/s; 2 GPUs
+  1,874 ms = 281k (x1.59); 4 GPUs 1,431 ms = 368k (x2.09). The update does not shrink (508 ->
+  579 ms: 64 minibatch steps whatever the batch), all-reduce 6-22%, the 1-map rank waits 22%.
+* Box 2, 28 maps (7 copies x 4), 4116 envs on 4 GPUs (7 maps per GPU, weak scaling): 2,905 ms/iter
+  = 726k steps/s, ranks within 6%; DDP cost ~12% (all-reduce ~220 ms + skew ~120 ms).
+* Where one rank's time goes (box 2, 1 GPU): rollout 81% = reward 30% + observation build 32% +
+  lidar 11% + physics 8% + respawn 6% + transfers 4%; update 17%. GPU busy 12%, CPU busy 12%:
+  single-thread bound. Reward and observation are per-map Python loops (~1 ms per map per
+  decision on these cores).
+* Per GPU the CPU decides: the 1-GPU Ryzen 9950X3D box (mmg) ran mmg_D at 323k steps/s with
+  tests and searches; the EPYC box gives 176-181k per GPU. Cost per 1e9 steps: ~$0.51 (mmg) vs
+  ~$0.92 (4x5090 EPYC, weak scaling, no tests).
+* Memory: ~0.8 GB VRAM per map (fields) + ~4.5 GB at 1029 envs; 28 maps on one 5090 run out of
+  memory at start (31.2 of 32 GB). The warm-caches pass loads EVERY map on GPU 0 (21.7 GB for 28
+  maps): it cannot start 100 maps as written.
+* Tests: ~100 s per test per 7 maps per GPU on these cores; the two weight averages are ~60% of
+  it. Searches never started in these short rungs (300M-step delay); mm7_1 measured ~20% slower
+  training while one runs. Fewer CPU threads (24 vs default) was 5% faster (past the knee).
