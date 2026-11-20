@@ -50599,3 +50599,32 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   out of its start room) or all three easy maps >= 2 tests earlier. CLEAR LOSS = two of the easy
   maps >= 2 tests later. Else: no clear difference at this budget. Steps/s beside it: the PPO
   update is ~1/3 of an iteration at today's size, so x3.7 compute slows every iteration.
+
+## 2026-11-20 12:50 UTC: NOTE - mmg_S1c: unitfarmer2 finishes from the true start (shared agent)
+
+* Test 36,395,186,688 fleet steps (5.20B own per map): done footers raw 7/9, ema0 8/9, ema1 0/9.
+  score.py on the box (a finish counts only inside the trigger's clip hull, surfgym.goalhull):
+  raw 7/9 best 42.78 s, ema0 8/9 best 42.62 s, ema1 0/9 (83.7%). v14 alone (ab8n_u14): first
+  finish 3.10B own, best 37.41 s, so this run is x1.68 later in own steps. Record 35.14 s.
+* Read physically (pit box from docs/gate_boxes.json, measurement only; scratchpad
+  abl/s1c/uf2_phys.py): all 18 raw + ema0 episodes enter the pit (z min -1,266 to -1,334, y min
+  -3,313 to -3,345) and 17 climb back above z 400. The 15 finishers end at x 3,312-3,365,
+  y -2,151 to -2,081, z -405 to -543 (the finish curtains) after 5,559-5,680 ticks of 7.667 ms.
+  Misses: one never leaves the pit (raw ep 0); two fall after the climb (z -1,330, -1,334).
+* How: the run's own search loop, the same flags on all seven maps, no demo, no map constant.
+  - 7.51B-32.72B: in the pit at every test (map 1.4-1.7% from 25.36B). Searches 1-6 handed
+    back lines that never enter the pit (z min 196-975); their ends became banned dead ends
+    for the later searches.
+  - Search 7 (30.76B -> 31.14B, 1,040 s, beam + Go-Explore stage 2): 2,219 states, the FIRST
+    line through the pit (z min -861, y min -3,907, back above z 400), ending on a ledge at
+    (-2980,-1233,198), d 28,174. The curriculum restarted at its end.
+  - 33.24B: greedy 9/9 past that line's success line (d <= 28,274), frontier d 20,741 (map
+    36%): the pit exit was LEARNED 2.1B fleet (0.30B own) steps after the line arrived.
+  - Searches 8 (beam, end d 10,771), 9 (Monte Carlo, 9,499) and 10 (Monte Carlo, 1,738) each
+    moved the frontier on; the greedy passed their success lines 7/9 and 6/9. 36.40B: 7/9
+    FINISH, no search queued.
+* Shared vs alone (own steps per map): pit exit 4.75B vs 1.74B (x2.73); first finish 5.20B vs
+  3.10B (x1.68). Cannonball was x1.50 (3.62B vs 2.42B).
+* Still open: princessburglar and sidistic (0 of 9 in every test). The cut needs both plus 6
+  more tests. Credit $35.57 at 12:15 UTC, deadline 18:15 UTC (the watcher extends it). mmw_W2
+  runs beside it to 7.5B (ends about 14:20 UTC).
