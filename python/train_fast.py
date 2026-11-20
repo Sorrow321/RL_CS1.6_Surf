@@ -461,6 +461,18 @@ class _TanhDrop(nn.Module):
         return torch.tanh(x) * self.mask
 
 
+class _EndDrop(_TanhDrop):
+    """--dropout on a --simba tower: the same CONSISTENT mask (drawn once per rollout by
+    Policy.dropout_resample(), cleared for evals and the recorder) on the tower's OUTPUT - after
+    its final LayerNorm, the features the action / value head reads - with no tanh. Appended
+    after every indexed layer and without a persistent tensor, so the tower's state_dict keys do
+    not move and a --dropout checkpoint loads into a dropout-free Policy (the recorder, the
+    searches)."""
+
+    def forward(self, x):
+        return x * self.mask
+
+
 class Policy(nn.Module):
     """Scalars + lidar depth image: conv trunk (shared by pi/vf) embeds the
     depth image to `emb` features, concatenated with the selected scalars
@@ -656,8 +668,8 @@ class Policy(nn.Module):
         # --simba + --rnn gru (2026-10-08): the GRU output is appended to each tower's input and
         # the SimBa tower's first Linear is already sized feat + extra + rnn_size, so nothing in
         # the towers depends on whether h is there (tests/python/test_simba_rnn.py)
-        if self.simba and (self.trunk != "plain" or self.dropout > 0.0):
-            raise SystemExit("--simba is built on the plain trunk, without --dropout")
+        if self.simba and self.trunk != "plain":
+            raise SystemExit("--simba is built on the plain trunk")
         if self.split_trunk and (self.rnn != "none" or int(plan_film or 0)
                                  or self.trunk != "plain"):
             raise SystemExit("--split-trunk gives the value its own plain trunk; not with --rnn "
@@ -673,11 +685,13 @@ class Policy(nn.Module):
                 return _TanhDrop(self.dropout, hidden) if self.dropout > 0.0 else nn.Tanh()
             if self.simba:
                 # --simba: the input Linear (still `<tower>.0`, so the widening tools keep
-                # working), max(1, tower_depth // 2) pre-LN residual blocks, a final LayerNorm
+                # working), max(1, tower_depth // 2) pre-LN residual blocks, a final LayerNorm;
+                # --dropout: the consistent mask on the tower's output (_EndDrop), LAST
                 return nn.Sequential(
                     nn.Linear(feat + extra + self.rnn_size, hidden),
                     *[_SimbaBlock(hidden) for _ in range(max(1, self.tower_depth // 2))],
-                    nn.LayerNorm(hidden))
+                    nn.LayerNorm(hidden),
+                    *([_EndDrop(self.dropout, hidden)] if self.dropout > 0.0 else []))
             layers = [nn.Linear(feat + extra + self.rnn_size, hidden),
                       act()]
             for _ in range(self.tower_depth - 1):
@@ -5249,8 +5263,9 @@ def main() -> None:
     ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
                     help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
     ap.add_argument("--dropout", type=float, default=None,  # 0 = off
-                    help="CONSISTENT dropout after every tower activation: one "
-                         "mask per rollout, shared by the sampling and its update "
+                    help="CONSISTENT dropout after every tower activation (with "
+                         "--simba: on each tower's output, after its final LayerNorm): "
+                         "one mask per rollout, shared by the sampling and its update "
                          "(evals run the full network). ckpt restores")
     ap.add_argument("--aug-mirror", type=float, default=None,  # 0 = off
                     help="P: every TRAINING episode (spawn, autoreset, reservoir respawn) "
@@ -5262,8 +5277,9 @@ def main() -> None:
                          "GoldSrc movement is reflection-symmetric, so that IS the "
                          "mirror-image map, same physics, same reward "
                          "(surfgym/mirror.py). Evals stay on the real map. Needs "
-                         "--view-continuous; refuses the route fan, --act-hist / "
-                         "--obs-compass, --chunk, --frame-stack, --obs-views. "
+                         "--view-continuous; refuses the route fan, --act-hist, "
+                         "--chunk, --frame-stack, --obs-views (--obs-compass: its "
+                         "left column is reflected). "
                          "ckpt restores")
     ap.add_argument("--eval-mirror", type=int, default=None, choices=(0, 1),
                     help="1 = every eval also flies the greedy policy on the MIRROR "
@@ -14525,7 +14541,7 @@ def main() -> None:
         _why = [why for bad, why in (
             (not VIEWC, "the discrete yaw bins (needs --view-continuous)"),
             (N_FAN > 0, "the route / goal fan (its lateral offsets)"),
-            (N_AUX > 0, "--act-hist / --obs-compass (engine-frame history, ego compass)"),
+            (N_HIST > 0, "--act-hist (the engine-frame action history)"),
             (H > 0, "--chunk"),
             (STACK > 1, "--frame-stack"),
             (int(args.obs_views) > 1, "--obs-views (a camera ring: left and right swap)"),
@@ -14542,7 +14558,9 @@ def main() -> None:
                              "without the planner's eval hooks)")
         from surfgym.mirror import layout_for as _mirror_layout
         MIRROR = _mirror_layout(lidar, gps=bool(args.gps),
-                                rvec0=(RVEC0 if N_RVEC else -1))
+                                rvec0=(RVEC0 if N_RVEC else -1),
+                                # --obs-compass: its LEFT column, after the history block
+                                cmp_left=(AUX0 + N_HIST + 1 if N_CMP else -1))
         if MIRROR.frame != FRAME:
             raise SystemExit(f"{_mw}: the mirror's frame {MIRROR.frame} != the row's {FRAME}")
         print(f"{_mw}: " + (f"{MIRROR_P:.0%} of training episodes fly the MIRROR IMAGE of "
@@ -15198,9 +15216,11 @@ def main() -> None:
                                fused=(device.type == "cuda"))
     DROP_GEN = None
     if float(args.dropout) > 0.0:
-        print(f"consistent dropout {float(args.dropout):g} after every tower "
-              "activation: one mask per rollout, shared by the sampling and "
-              "its update; evals and the recorder run the full network")
+        print(f"consistent dropout {float(args.dropout):g} "
+              + ("on each tower's output (after the final LayerNorm, --simba)"
+                 if bool(args.simba) else "after every tower activation")
+              + ": one mask per rollout, shared by the sampling and its update; evals and "
+              "the recorder run the full network")
         # rank-identical by construction (seeded from the run seed alone)
         DROP_GEN = torch.Generator().manual_seed(int(args.seed) * 7919 + 4243)
     rnd = None
@@ -22932,6 +22952,13 @@ def main() -> None:
                     if _n_end:
                         mir_np[ended_acc] = mir_rng.random(_n_end) < MIRROR_P
                         mir_t.copy_(torch.from_numpy(mir_np))
+                        if N_KEYS:
+                            # --keys-hold: the held state is the POLICY's frame, and a fresh
+                            # episode's was just loaded in the REAL one (neutral, or a spine
+                            # row's keys under --auto-spine-keys / --demo-keys), so a mirrored
+                            # one holds the reflected side key (neutral reflects onto itself)
+                            _mk = ended_acc & mir_np
+                            keys.state[_mk, 1] = 2 - keys.state[_mk, 1]
                     mir_frac_acc[0] += float(mir_np.mean())
                     mir_frac_acc[1] += 1
                 # b_done[t] is ended_acc already on the device — reuse it

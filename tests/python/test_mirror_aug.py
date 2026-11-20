@@ -85,6 +85,8 @@ def test_layout_reads_the_normal_channel_the_gps_columns_and_the_arrow():
     assert m.neg_ch == (3,) and m.neg_cols == SCAL_NEG and m.frame == 32 * 64 * 5
     assert layout_for(lid, gps=True).neg_cols == tuple(sorted(SCAL_NEG + SCAL_NEG_GPS))
     assert 23 in layout_for(lid, rvec0=22).neg_cols          # (forward, LEFT, up, length)
+    # --obs-compass (forward, LEFT, up, d/d0, |grad|): only its LEFT column changes sign
+    assert layout_for(lid, cmp_left=16).neg_cols == tuple(sorted(SCAL_NEG + (16,)))
     plain = SimpleNamespace(H=32, W=64, channels=2, views=1, normals=False, texmap=None)
     assert layout_for(plain).neg_ch == ()
     with pytest.raises(ValueError):

@@ -37,6 +37,9 @@ What the reflection touches:
   view frame, 10 = the last yaw delta. Under ``--gps`` also 7 = sin(yaw) and
   13 = (y - map centre) / 2000 - the reflection in the plane y = centre.
 * **the arrow** of ``--ramp-obs-vec``: its LEFT component.
+* **the compass** of ``--obs-compass`` (surfgym/obsaux.py): the field's downhill direction as
+  an ego-frame unit vector (forward, LEFT, up), then d/d0 and |grad| - only its LEFT component
+  changes sign. ``--act-hist`` stays refused: its rows are ENGINE-frame commands.
 * **the engine row** - the side key's bins ``{-400, 0, +400}[i]`` become
   ``2 - i``; the view command's yaw is negated (an offset from the velocity
   heading under ``--view-absolute velocity``, a world heading under
@@ -149,10 +152,11 @@ class Mirror:
                   f"i -> 2 - i, view yaw -> -yaw")
 
 
-def layout_for(lidar, gps: bool = False, rvec0: int = -1):
+def layout_for(lidar, gps: bool = False, rvec0: int = -1, cmp_left: int = -1):
     """``Mirror`` for a renderer's row: its frame and channels, the LEFT
     channels of its normal block, and the scalar columns of the core (plus
-    ``--gps``'s and the ``--ramp-obs-vec`` arrow's when present).
+    ``--gps``'s, the ``--ramp-obs-vec`` arrow's and the ``--obs-compass``
+    LEFT column ``cmp_left`` when present).
 
     Refuses the renderers whose image is not one NHWC camera frame."""
     views = int(getattr(lidar, "views", 1) or 1)
@@ -169,4 +173,6 @@ def layout_for(lidar, gps: bool = False, rvec0: int = -1):
     neg_cols = list(SCAL_NEG) + (list(SCAL_NEG_GPS) if gps else [])
     if rvec0 >= 0:
         neg_cols.append(int(rvec0) + 1)       # the arrow: (forward, left, up, length)
+    if cmp_left >= 0:
+        neg_cols.append(int(cmp_left))        # the compass: (forward, LEFT, up, d/d0, |grad|)
     return Mirror(h, w, c, neg_cols=neg_cols, neg_ch=neg_ch)
