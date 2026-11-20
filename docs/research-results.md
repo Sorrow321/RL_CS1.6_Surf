@@ -50565,3 +50565,37 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   Credit $25.52 now, +~$25 from the user: ~57 h above the floor, ~70B more fleet steps.
 * Market at 14:36 UTC: no 5090 passed the filter (the Norway TR PRO 9975WX at $0.645 had gone);
   launch.sh polls box.py rent every 2 min for up to 8 h.
+
+## 2026-11-20 07:45 UTC: PLAN - mmw_W2: the seven maps from scratch with every layer twice as wide
+
+* The user (2026-11-20): the network is small and the GPU mostly idle; scale the model twice,
+  convolutions too, not only the dense layers; the same setup on a parallel box for ~5-7B steps;
+  compare with what we have; no clear improvement -> probably not the way to go.
+* Where the weights are (mmg_S1's net, 4.79M; ~7.0M multiply-adds per decision): conv trunk
+  0.02M (three convs, 16/32/64 channels), image embedding 2048 -> 512 1.05M, two SimBa towers
+  (537 -> 448, one 448 -> 1792 -> 448 block) 3.70M, heads 0.02M. The convs are 0.5% of it.
+* Arm, every width x2, depth unchanged: --conv-mult 2 (32/64/128 channels), --emb 1024,
+  --hidden 896 (block 896 -> 3584 -> 896) = 19.07M weights (x3.98), ~25.7M multiply-adds per
+  decision (x3.7). Existing flags (ARCH_KEYS: the checkpoint carries them; record_ckpt, beam_tas
+  and the searches rebuild the net from it). No code change.
+* The rest = mmg_S1 exactly: v14 + --adv-norm-per-map 1 + A+D+E (--unstuck-finish 1
+  --practice-share 0.25 --practice-temp 0.5 --eval-ema 3e8,1e9), from scratch, seed 0, 7 maps x
+  147 envs, lr 3e-4; mm/s7i + the bit-identical speed flags --render-graph --no-dip-diag;
+  --steps 7.5e9 (mmg_S1 stopped at 7.51B); a test every 525M fleet steps.
+* CPU smoke (scratchpad abl/w2/smoke_w2.py: two maps, the real 64x32 image, the arm's widths, a
+  search allowed at once): rc 0; run.json emb 1024, hidden 896, conv_mult 2; the blue200 search
+  (beam + MCTS) rebuilt the net from its checkpoint copy, no traceback; record_ckpt recorded
+  greedy, stochastic and --ema 0 from the checkpoint.
+* Box: one RTX 5090 (mmg_S1's card type) with mmg_S1c's fast-CPU filter. None passed at the $0.60
+  cap at 07:00 UTC; the user approved $0.662/h (an i9-13900F offer, gone before the rent; its
+  host is blocklisted anyway). Rent loop scratchpad abl/w2/launch.sh (agent mmw, worktree mm7w,
+  cap 0.662) takes the first passing box. Fleet policy RTX_5090 0.66 -> 0.67, daemon restarted
+  07:24 UTC (one daemon). Watcher abl/w2/watch.sh: credit floor $15 (this arm stops before
+  mmg_S1c's $13 floor), every test's eval files mirrored to the droplet, harvest + release.
+* Reading, fixed now (one seed per arm, matched fleet steps, the same 9-episode tests): mmg_S1
+  first finishes pet 1.05B, b200 3.15B, cel 4.20B; to 7.35B pb 0.0%, sid 26-28% from 2.6B, uf2
+  in the pit (1.5-1.9%), can 12-81% with no finish. CLEAR GAIN = one of pb, sid, uf2, can past
+  that level by 7.35B (a cannonball finish, sid > 35%, uf2 out of the pit read physically, pb
+  out of its start room) or all three easy maps >= 2 tests earlier. CLEAR LOSS = two of the easy
+  maps >= 2 tests later. Else: no clear difference at this budget. Steps/s beside it: the PPO
+  update is ~1/3 of an iteration at today's size, so x3.7 compute slows every iteration.
