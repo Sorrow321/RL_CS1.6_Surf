@@ -21576,6 +21576,9 @@ def main() -> None:
                   + f"; every greedy eval also flies it -> traj_<step>[_<map>]_ema{len(EMA) - 1}"
                   ".jsonl (an observer: nothing it flies reaches training)")
     ema_step = global_step
+    # --dropout: the consistent masks are buffers too, and the averages must keep the FULL network
+    # (they only ever fly evals) - their buffer copy below skips them. Empty without --dropout
+    DROP_MASKS = {id(_dm.mask) for _dm in policy.modules() if isinstance(_dm, _TanhDrop)}
     # (--ddp-maps shard: a map's count table lives on its owner rank alone - nothing to sync)
     int_sync = args.int_sync_every if DDP_REP else 0
     int_row = []              # --int-split: this iteration's int/* values
@@ -23624,7 +23627,8 @@ def main() -> None:
                     for _pe, _p in zip(_m.parameters(), policy.parameters()):
                         _pe.lerp_(_p.detach(), _w)
                     for _be, _b in zip(_m.buffers(), policy.buffers()):
-                        _be.copy_(_b)
+                        if id(_b) not in DROP_MASKS:
+                            _be.copy_(_b)
             ema_step = global_step
         if TKL > 0.0:
             # --target-kl: one line per 25 updates with how often and where the update stopped

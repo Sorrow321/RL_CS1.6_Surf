@@ -55,3 +55,25 @@ def test_simba_dropout_is_a_consistent_mask_on_the_tower_output():
         p.dropout_clear()
         l3, _ = p.forward_split(s, img)
         assert torch.equal(l3, lq)
+
+
+def test_the_weight_averages_keep_the_full_network():
+    """--eval-ema: the averages take the policy's buffers by copy after every update; the
+    dropout masks are buffers too and must stay out of that copy (the averages fly evals only),
+    the trainer's DROP_MASKS rule."""
+    import copy
+    torch.manual_seed(0)
+    p = _policy(0.25)
+    ema = copy.deepcopy(p)
+    drop_masks = {id(m.mask) for m in p.modules() if isinstance(m, tf._TanhDrop)}
+    assert len(drop_masks) == 2
+    p.dropout_resample(torch.Generator().manual_seed(3))
+    with torch.no_grad():
+        for _be, _b in zip(ema.buffers(), p.buffers()):     # the trainer's loop, verbatim
+            if id(_b) not in drop_masks:
+                _be.copy_(_b)
+    for m in ema.modules():
+        if isinstance(m, tf._TanhDrop):
+            assert torch.equal(m.mask, torch.ones_like(m.mask))
+    assert any(not torch.equal(m.mask, torch.ones_like(m.mask))
+               for m in p.modules() if isinstance(m, tf._TanhDrop))
