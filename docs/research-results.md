@@ -50658,3 +50658,54 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Verdict: CLEAR GAIN by the pre-registered rule, on princessburglar only; the other six maps
   level. Read as promising, not proven: it rests on one search's result in one seed. The wider
   net cost ~14% of the steps/s and lost nothing measurable.
+
+## 2026-11-20 18:47 UTC: PLAN - mma_A1: the seven maps from scratch with input augmentations
+
+* The user (2026-11-20): the main run's setup on another box plus augmentations - some pixels
+  of the render and of the potential field dropped (10-20%, not so many that the ramps cannot
+  be read), a 1-pixel shift (up, down, left, right, diagonal), a left-right mirror (the agent
+  sees the mirrored view and its action is mirrored back), and dropout in the network. The
+  question: does the agent generalize (learn the concepts, not the images), i.e. converge
+  faster on the maps?
+* All four existed from 2026-10-16 / 2026-09-19 (surfgym/mirror.py, surfgym/augment.py,
+  _TanhDrop). mm/aug (70a993bd) adds three fixes: (1) the mirror flips --obs-compass's LEFT
+  column (it refused the compass before); (2) a mirrored episode that spawns holding a spine
+  row's keys (--auto-spine-keys) holds the reflected side key (keys live in the policy frame);
+  (3) --dropout on --simba towers (refused before): the consistent per-rollout mask on each
+  tower's output, after its final LayerNorm (state_dict keys unchanged; the recorder and the
+  searches load it into a dropout-free net). dff7bdca: the --eval-ema averages copy the
+  policy's buffers after every update, the masks included, so every ema test would have flown
+  the last update's sub-network; the copy now skips the masks. Flags off: no code path
+  changes. Tests: 12 pass (test_simba_dropout.py, test_mirror_aug.py).
+* Arm flags: --aug-mirror 0.5 (half the training episodes, redrawn per episode, fly the mirror
+  image; evals stay on the real maps), --aug-drop 0.2 --aug-shift 1 (DrAC in the update, coef
+  0.1: PPO stays on the clean frames, the loss adds KL(pi(s) || pi(aug s)) + (V(aug s) -
+  V(s))^2; the rollout never sees a corrupted frame), --dropout 0.1.
+* The drop share: real frames of the policy (petrus, celestial, cannonball, rendered on the
+  main box through record_ckpt.build) at 10% and 20% pixels dropped: ramps, walls and the goal
+  map stay readable at both; 20% chosen (the top of the user's range). Sheet:
+  scratchpad abl/aug/aug_frames.png.
+* CPU smoke (scratchpad abl/aug/smoke_live.py: blue200 + uf2, the real 64x32 image, every arm
+  flag, a search allowed at once): rc 0. The mirror reverses the image columns and negates
+  channel 3 (the normal's left) and scalar columns 1, 10, 16 (lateral speed, yaw rate, the
+  compass's left); the keys block (20..26) stays in the policy frame. With 64-tick episodes
+  aug/mirror_frac moves 0.48 -> 0.54 (the per-episode redraw and the key reflection ran). Both
+  maps' searches rebuilt the net from the checkpoint copy, no traceback; the record gate
+  (greedy + stochastic) passed on both maps.
+* Priors (2026-10-16, cannonball alone, 15 min): the mirror arm learned the real map and its
+  mirror at about half the per-copy pace (no transfer at ~300M steps); DrAC kept per-step pace
+  at 0.65x throughput. Here half the episodes fly mirrored maps, so with no transfer the real
+  maps get half the data and finish later; transfer between the copies is the test.
+* The rest = mmg_S1 exactly, as for mmw_W2: v14 + --adv-norm-per-map 1 + A+D+E, from scratch,
+  seed 0, 7 maps x 147 envs, mm/s7i + --render-graph --no-dip-diag, --steps 7.5e9.
+* Box: one RTX 5090 with mmg_S1c's fast-CPU filter; none under $0.60 at 18:05 UTC (cheapest
+  0.692, 0.700); the user approved up to $0.70/h. Fleet policy RTX_5090 0.67 -> 0.70, daemon
+  restarted 18:09 UTC (one daemon). Rent loop scratchpad abl/aug/launch.sh (agent mma,
+  worktree mmaug), watcher abl/aug/watch.sh (floor $15, evals mirrored, harvest + release).
+* Reading, fixed now (the mmw_W2 rule, matched fleet steps, one seed per arm): mmg_S1 first
+  finishes pet 1.05B, b200 3.15B, cel 4.20B; to 7.35B pb 0.0%, sid 26-28%, uf2 in the pit, can
+  no finish. CLEAR GAIN = one of pb, sid, uf2, can past that level by 7.35B (a cannonball
+  finish, sid > 35%, uf2 out of the pit read physically, pb out of its start room) or all three
+  easy maps >= 2 tests earlier. CLEAR LOSS = two easy maps >= 2 tests later. Else no clear
+  difference. Second read for the mirror: the arm at 2x the steps against mmg_S1 (equal real-
+  map episodes) - level there = the mirrored half taught the real maps nothing.
