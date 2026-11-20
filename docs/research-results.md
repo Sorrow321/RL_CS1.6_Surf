@@ -50628,3 +50628,33 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Still open: princessburglar and sidistic (0 of 9 in every test). The cut needs both plus 6
   more tests. Credit $35.57 at 12:15 UTC, deadline 18:15 UTC (the watcher extends it). mmw_W2
   runs beside it to 7.5B (ends about 14:20 UTC).
+
+## 2026-11-20 15:00 UTC: RESULT - mmw_W2 (every width x2): the gain rule fires on pb only, one draw
+
+* Run: mmw_W2 (PLAN c1efcf2b) = mmg_S1's recipe from scratch with --conv-mult 2 --emb 1024
+  --hidden 896 (19.07M weights), 7,500,208,128 fleet steps, 15 tests. Box 61599397 (RTX 5090 +
+  Ryzen 9 9950X3D, Florida, $0.603/h), 07:35-14:42 UTC, ~$4.3 with two boxes that failed
+  gpu_health. The trainer stopped at --steps; harvest md5-verified in ~/ar_m2/runs/mmw/mmw_W2
+  (auto_lines fbd0693b, evals 47c707de, ckpt_latest 85ef4f96); box destroyed, tunnel stopped.
+* Speed: 308,836 steps/s over the run (tests and searches included) vs mmg_S1's 325,057 on the
+  same card and CPU type without the x1.10 speed fixes W2 had: ~0.86x per step at equal code.
+* Easy maps, first raw finish: petrus 1.05B in both (5/9 vs 4/9); celestial 3.68B vs 4.20B (one
+  test earlier); blue200 4.20B (9/9) vs 3.15B (1/9), two tests later. Neither the easy-map gain
+  rule (all three >= 2 tests earlier) nor the loss rule (two >= 2 tests later) fires.
+* Hard maps by 7.35B (gain = any one past mmg_S1's level):
+  - princessburglar: OUT OF THE START ROOM at 4.73B. Raw 8/9, ema0 5/9 drop below z 3,200 (room
+    floor z 3,287-3,320) via the room's west end to z 2,803-2,835 (map 5-7%); 7-9 of 9 in every
+    later test (raw and ema0). mmg_S1: no episode below z 3,287 in any of its 15 tests (raw and
+    ema0); the small net left the room at 11.18B (mmg_S1c, map 6.4%). THE RULE FIRES.
+  - sidistic 17-27% from 1.58B (S1 22-28%), never above 35%. unitfarmer2 2%: 9/9 in the pit and
+    0 out at 4.73B and 7.35B (scratchpad abl/s1c/uf2_phys.py). cannonball: no finish (raw map
+    up to 84%; S1 up to 81%).
+* Why pb differs: search 1 ran at 2.10B in both. W2's beam handed back the room exit (1,291
+  states, end d 55,375); the greedy passed it at 4.73B, 2.5B fleet steps later. mmg_S1's beam
+  handed back the spawn pocket (909 states, end d 56,962 at (649,-2,930,3,696)), held until
+  patience at 5.25B; search 2 (beam+ge) handed back the exit (3,420 states, d 55,140) at 5.44B;
+  the greedy passed it at 11.18B, 5.7B later (across the 7.5B resume). So the lead is one search
+  result plus a faster walk-back on a shorter line: one draw per arm, not a rate.
+* Verdict: CLEAR GAIN by the pre-registered rule, on princessburglar only; the other six maps
+  level. Read as promising, not proven: it rests on one search's result in one seed. The wider
+  net cost ~14% of the steps/s and lost nothing measurable.
