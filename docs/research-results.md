@@ -50897,3 +50897,27 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Across both maps (one seed each): celestial - first finish one test earlier, then fewer
   finishes (14 vs 20 and 10 of 63); sidistic - first finish two tests later, then more finishes
   and a faster line. No consistent effect; the speed-colour channel is not adopted.
+
+## 2026-11-21 11:01 UTC: RESULT - mmv_dflow (ego-motion flow at the real depth, --obs-flow 2) on celestial: a GAIN, the series' first
+
+* 10:18 -> 10:55 UTC, box 61787118 (the same UK machine, $0.667/h, ~$0.4); in_ch 7; cut at the
+  first finish + 6 tests; harvest md5-checked to ~/ar_m2/runs/mmv/mmv_dflow; box released.
+* Graded (score.py), finishes of 9: 529.0M 0 (49.0%); FIRST FINISH 5/9 at 604.5M (46.35 s);
+  680.0M 7 (45.21 s); 755.5M 5; 831.0M 0 (73.9%); 906.5M 8 (45.43 s); 982.0M 1; 1057.5M 2:
+  28 of 63 over the seven tests from 604.5M against ab7c_l14 20, mmp1_l14r 10, mms_cel1 14.
+  Its search 1 (457M) handed back a Monte Carlo line to d 18,243; search 2 (1.09B) one to d 0.
+* Reading (5a08df81): first finish at 604.5M = a GAIN (one test before the faster control, and
+  5/9 where mms_cel1 had 1/9 at the same test), with the most finishes after it of any celestial
+  run. It goes on to sidistic (below). One seed.
+
+## 2026-11-21 11:01 UTC: PLAN - mms_dflow: the real-depth ego-motion flow on sidistic alone
+
+* The series rule (5a08df81) and the user ("if we see improvement over baseline try on
+  sidistic"): --obs-flow 2 (mm/vsid d7c14ade = mm/vel ef53f85b + the sidistic config) on
+  surf_src_sidistic alone, from scratch, seed 0, the single-map v14 line of ab12s_v14 (the 160
+  tokens + the MCTS mix args); tests every 75.5M; one RTX 5090 at <= $0.80/h.
+* The mms_sid1 rule unchanged: first finish at or before 3.25B = a GAIN; at or after 4.76B, or
+  none, = a LOSS (stopped early at the 4.76B test, the user's "finish early if the result is
+  obvious"); between = no difference. Control ab12s_v14 4,001.9M; mms_sid1 (speed tint) 4.15B.
+  Cut: the first finish + 2 tests. Second read: finishes per test after the first (control 1 of
+  27, mms_sid1 7 of 27).
