@@ -50985,3 +50985,22 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   (none by 4.83B), the heatmap no difference (3.85B). With the speed tint (mms_sid1, 4.15B), no
   representation tried on sidistic beat v14 by the rule; none is adopted. The heatmap is the only
   one ahead on both maps (celestial 453.5M vs 680.0M; sidistic each stage 0.4-0.7B earlier).
+
+## 2026-11-21 14:10 UTC: PLAN - mmv_warp, mmv_part, mmv_arrow: the list's items 5 and 6 on celestial
+
+* The user's list (GPT, 2026-11-21): the two items not yet run, one by one on celestial under the
+  series rule (5a08df81). (5) --obs-warp 1: the depth render warped 0.2 s ahead along its own
+  real-depth ego-motion flow (each pixel reads the depth where its content comes from, shift <=
+  8 px), beside the plain depth. (6) drawn primitives, one channel: --obs-glyph 2 = a virtual
+  particle every 4 px at 1000 u drawn as its streak over 0.05 s (the sparse synthetic flow);
+  --obs-glyph 1 = the projected 3D velocity arrow (from 200 u ahead and 60 u below the eye, v x
+  0.025 s long). Code mm/vel 5bd6d8f8: 8 tests pass, --obs-flow bit-identical to ef53f85b, CPU
+  smoke + record gate passed for both flags.
+* Seen on real celestial frames: the camera mostly looks along the velocity, so the arrow is
+  mostly a 2-4 px stub below the centre; the warp and the particles change the whole image.
+* Each test: surf_src_celestial alone, from scratch, seed 0, the single-map v14 line + the one
+  representation; tests every 75.5M. First finish <= 604.5M = a GAIN (then sidistic); no finish
+  by 906.5M = a LOSS (stopped there); else no difference. Cut: first finish + 5 tests. Controls
+  ab7c_l14 680.0M, mmp1_l14r 831.0M. One seed each.
+* One fresh RTX 5090 per test at <= $0.80/h (abl/vel/series.sh, agent mmv, dashboard :8668),
+  watchdog + harvest spec, one after another beside mmg_S1c. Order: warp, particles, arrow.
