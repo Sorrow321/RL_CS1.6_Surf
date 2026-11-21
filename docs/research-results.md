@@ -51245,3 +51245,62 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   4000, for the search tools, which read it per map; the weights are identical.)
 * mmx_E1 is PAUSED for this (round 3, a PPO-only control, scored 0.983 - better than all three BC
   rounds - but was rejected on cannonball's finishes, 12 vs 16; state kept, resumable at round 4).
+
+## 2026-11-21 22:10 UTC: RESULT - surf_left_turn: AlphaZero test-time search, 8 configs
+
+* The user (2026-11-21): "the most straightforward alpha zero type approach, like MCTS that is
+  guided by network ... every node is one action" at ~30 Hz, the action sampled from the policy
+  with a temperature, the tree made asymmetric by PUCT, and "we definitely want to use the value
+  function here because field is obviously misleading". Built as tools/az_mcts.py, run through
+  beam_tas --az (mm/exit 7014bd86, 1d45dafc, 8c6e1c91). No training, no demo.
+* The search: a node = one exact simulator state at a decision boundary (4 ticks = 30.7 ms at
+  7.667 ms) plus the policy's own inference state. On creation one forward gives V(s) and K
+  candidates (the mode + K-1 draws at temperature 1), uniform prior over them (Sampled MuZero).
+  A child exists only once PUCT picks its edge. Leaf value = the checkpoint's critic, a death 0,
+  a finish 50; MuZero backup; Q min-max normalised; parallel simulations with virtual visits;
+  the root's most visited edge committed every N simulations, the tree kept (receding horizon).
+  Expansions are grouped by tick-pattern phase, so the open-loop replay of the line matches.
+  Options: --az-reward banked (the field's contact-banked progress along the path: MuZero's
+  r + gamma V), --az-novelty B (the tree's memory: B / sqrt(1 + n) for a surface cell the tree
+  has expanded into n times before, only when the map pushed back, so a fall does not pay),
+  --az-widen A (progressive widening: ceil((N + 1) ** A) candidates open, the mode first).
+* Runs (box mmx, RTX 5090; mmg_S1c final + the map's speed cap; seed 4, K 8, c_puct 1.25):
+
+      run  path reward  memory  widen  parallel  sims/decision  result (game seconds)
+      az2  none         -       -      512       4,096          start platform 14.8 s, falls
+      az3  none         1       -      512       4,096          ramp 1 at 10 s, slides off, 12.2 s
+      az4  banked       1       -      512       4,096          steps off into the gap, 5.5 s
+      az5  banked       -       -      512       4,096          start platform 23.2 s, falls
+      az6  none         1       0.5    256       2,048          start platform 14.1 s, falls
+      az7  banked       1       0.5    256       2,048          start platform 7.8 s, falls
+      az8  none         1       -      32        2,048          start platform 6.4 s, falls
+      az9  none         1       0.5    32        2,048          walks the top edge of ramp 1 to
+                                                                its end (x -1,351); alive when
+                                                                the 20 min budget ran out
+                                                                (49.8 s); never surfs
+
+  For comparison, the Go-Explore stage of auto_spine (run s1, same checkpoint, field-scored
+  cells, no training) surfed ramp 1 and ramp 2 to x -305: the furthest of all searches here.
+* THE TREE IS SHALLOW: simulations reach a mean of 4-8 decisions (max 4-15) below the root,
+  0.1-0.5 s ahead, at 512, 256 and 32 parallel simulations alike and with widening: about
+  log_8(simulations), which is what PUCT does when the candidates' Q values hardly differ.
+  Leaving the platform onto a ramp at the right speed and heading takes 1-2 s of commitment.
+* THE CRITIC IS NOT FIELD-FREE: the agent reads the goal field as its second image channel
+  (run.json obs_potential norm, curtain 1) and was trained on the field's ratchet reward
+  (race_ratchet, race_shaping 1.0; also energy_pot 3.0, int_coef 2.5). A value that counts the
+  progress still ahead ranks states with more of it left higher, so with no reward along the path
+  the search should prefer to stay near the start, as az2, az5 and az9 did (an explanation of
+  the runs, not a measurement).
+* Memory is what moves it: no run without it got onto a ramp; two of the six with it did (az3
+  slid down ramp 1, az9 walked its top edge).
+* VERDICT: NULL for AlphaZero-style test-time search with this network on this map: 0 finishes
+  in 8 configurations, no line past ramp 1.
+* Open, the user's call: a deeper tree (the policy's own probabilities as PUCT priors, so the
+  tree runs deep along its choice; or a greedy rollout at each leaf, as in classic MCTS), memory
+  at the trajectory level (Go-Explore stages from its frontier, which already surfed two ramps),
+  az9's setting with a longer budget, or a network trained without the field channel.
+* Box mmx released 21:59 UTC (0 instances left). Harvest ~/ar_m2/runs/mmx/nm_search/
+  nm_search_small.tgz (md5 2974121a: every search's log, summary and committed line, the
+  Go-Explore spine, the map's baked fields, the zero-shot evals) and the paused expert loop's
+  small files ~/ar_m2/runs/mmx/mmx_E1/mmx_E1_small.tgz (md5 8bf4e8bc). mmx_E1 resumes only on a
+  new box (state.json + the seed checkpoint, mmg_S1c's final).
