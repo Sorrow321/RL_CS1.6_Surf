@@ -139,7 +139,7 @@ from surfgym.view import (K_MAX, LOG_STD_INIT, OFF_ALPHA, OFF_MAX,
 from surfgym import keyshold
 from surfgym.keyshold import KeysHold, nvec_with_keep
 from surfgym.mirror import mirror_actions_
-from surfgym.vision import GpuLidar, LidarPotential, pick_cell
+from surfgym.vision import GpuLidar, LidarPotential, pick_cell, SPEED_TINT_REF
 from surfgym.zones import load_zones
 
 NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
@@ -1400,6 +1400,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_views", "--obs-views"),
              ("obs_no_depth", "--obs-no-depth"),
              ("obs_reach", "--obs-reach"),
+             ("obs_speed_tint", "--obs-speed-tint"),
              ("simba", "--simba"),
              ("split_trunk", "--split-trunk"),
              ("obs_views_scale", "--obs-views-scale"),
@@ -6317,6 +6318,13 @@ def main() -> None:
                          "above the apex: -1), the air control (30 u/s per tick, sideways) "
                          "bounds the turn and the speed bounds the distance. Engine constants "
                          "only. in_ch + 1: SCRATCH arms; ckpt restores, a mismatch is refused")
+    ap.add_argument("--obs-speed-tint", type=int, default=None, choices=(0, 1),
+                    help="ONE more image channel (the user, 2026-11-21): the depth render "
+                         "coloured by the player's SPEED, a scalar - more red = faster, more "
+                         "blue = slower. The channel is the red part, |v| / 4000 (clipped to 1) "
+                         "x the near-bright depth (1 - enc / 1.25); the blue part is affine in "
+                         "the depth channel. in_ch + 1: SCRATCH arms; ckpt restores, a mismatch "
+                         "is refused")
     ap.add_argument("--obs-no-depth", type=int, default=None, choices=(0, 1),
                     help="the policy does NOT see the depth channel (the user, 2026-10-02): the "
                          "image keeps its other channels (e.g. --obs-normal's normal + the "
@@ -9679,6 +9687,16 @@ def main() -> None:
                 "--obs-reach changes the conv trunk's input channels (+1) and a checkpoint's "
                 "first layer cannot be widened or narrowed - start a fresh run, or drop the flag "
                 f"to keep the ckpt's setting ({int(ck_cfg.get('obs_reach') or 0)})")
+        if args.obs_speed_tint is None and ck_cfg.get("obs_speed_tint"):
+            args.obs_speed_tint = 1
+            restored.append("obs_speed_tint=1")
+        elif args.obs_speed_tint is not None \
+                and int(args.obs_speed_tint) != int(ck_cfg.get("obs_speed_tint") or 0):
+            raise SystemExit(
+                "--obs-speed-tint changes the conv trunk's input channels (+1) and a "
+                "checkpoint's first layer cannot be widened or narrowed - start a fresh run, or "
+                f"drop the flag to keep the ckpt's setting "
+                f"({int(ck_cfg.get('obs_speed_tint') or 0)})")
         if args.obs_no_depth is None and ck_cfg.get("obs_no_depth"):
             args.obs_no_depth = 1
             restored.append("obs_no_depth=1")
@@ -10848,6 +10866,15 @@ def main() -> None:
         args.obs_no_depth = 0
     if args.obs_reach is None:
         args.obs_reach = 0
+    if args.obs_speed_tint is None:
+        args.obs_speed_tint = 0
+    if args.obs_speed_tint and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
+                                or args.normals or (args.obs_views or 1) > 1
+                                or (args.depth_enc or "legacy") != "legacy"):
+        raise SystemExit("--obs-speed-tint is a post-process of the legacy-depth plain / "
+                         "potential / face renders: not with --goals (its wrappers do not pass "
+                         "the velocity), --frame-stack, --surf-mask, --normals, --obs-views or "
+                         "--depth-enc")
     if args.simba is None:
         args.simba = 0
     if args.split_trunk is None:
@@ -14040,6 +14067,7 @@ def main() -> None:
                                   views=int(args.obs_views),
                                   views_scale=int(args.obs_views_scale),
                                   reach=bool(args.obs_reach),
+                                  speed_tint=bool(args.obs_speed_tint),
                                   texture=bool(args.obs_texture or args.obs_normal
                                                or args.obs_slope),
                                   texture_mode=("normal" if args.obs_normal else "slope"
@@ -14068,6 +14096,10 @@ def main() -> None:
             print(f"--obs-reach: {slot.name} the free-flight reach channel (gravity "
                   f"{slot.lidar.reach_g:g}, air control {30.0 / slot.lidar.reach_tick_s:g} u/s^2 "
                   f"sideways) -> in_ch {slot.lidar.channels}")
+        if args.obs_speed_tint:
+            print(f"--obs-speed-tint: {slot.name} the speed colour channel (|v| / "
+                  f"{SPEED_TINT_REF:g} x the near-bright depth; red = fast, blue = slow) -> "
+                  f"in_ch {slot.lidar.channels}")
         if args.obs_no_depth:
             print(f"--obs-no-depth: {slot.name} the policy's conv reads channels 1..."
                   f"{slot.lidar.channels - 1} of {slot.lidar.channels} - NOT the depth (still "
@@ -14239,6 +14271,7 @@ def main() -> None:
                                     views=int(args.obs_views),
                                     views_scale=int(args.obs_views_scale),
                                     reach=bool(args.obs_reach),
+                                    speed_tint=bool(args.obs_speed_tint),
                                     texture=bool(args.obs_texture or args.obs_normal
                                                  or args.obs_slope),
                                     texture_mode=("normal" if args.obs_normal else "slope"
@@ -16684,6 +16717,8 @@ def main() -> None:
         meta["config"]["obs_no_depth"] = 1
     if args.obs_reach:
         meta["config"]["obs_reach"] = 1
+    if args.obs_speed_tint:
+        meta["config"]["obs_speed_tint"] = 1
     if args.min_speed_kill:
         meta["config"]["min_speed_kill"] = float(args.min_speed_kill)
         meta["config"]["min_speed_grace"] = float(args.min_speed_grace
@@ -19146,7 +19181,7 @@ def main() -> None:
     if args.render_graph and RGRAPH is None:
         print("--render-graph: not on a CUDA device - the render stays eager")
     # (x, y, z, yaw, pitch, ducked) [+ (vx, vy, vz) under --obs-ttc]
-    _VIS_W = 9 if (args.obs_ttc or args.obs_reach) else 6
+    _VIS_W = 9 if (args.obs_ttc or args.obs_reach or args.obs_speed_tint) else 6
     vis_pin = torch.zeros((N, _VIS_W), pin_memory=(device.type == "cuda"))
     vis_np = vis_pin.numpy()
     vis_gpu = torch.zeros((N, _VIS_W), device=device)
@@ -22310,7 +22345,8 @@ def main() -> None:
                             _vel = (torch.stack(((ts[:, 0] * ts[:, 8] - ts[:, 1] * ts[:, 7]),
                                                  (ts[:, 0] * ts[:, 7] + ts[:, 1] * ts[:, 8]),
                                                  ts[:, 2]), 1) * 1000.0
-                                    if (args.obs_ttc or args.obs_reach) else None)
+                                    if (args.obs_ttc or args.obs_reach
+                                        or args.obs_speed_tint) else None)
                             vis = fleet.render_rows(ti, pos, yawd,
                                                     _pt, ts[:, 5], velocity=_vel)
                             if ring is not None:
