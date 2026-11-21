@@ -133,3 +133,15 @@ def test_the_loop_overrides_a_recipe_token_list():
     # a value that is itself a flag string survives untouched, as does a bare switch
     i = t.index("--auto-spine-args")
     assert t[i + 1] == "--ge-cell-heading 0 --mc-envs 4096" and "--render-graph" in t
+
+
+def test_a_wave_whose_greedy_failed_is_held_to_the_incumbents_pace():
+    sys.path.insert(0, str(ROOT / "tools"))
+    from exit_mm import median
+    from exit_local import keep_wave
+    assert median([3.0, 1.0, 2.0]) == 2.0 and median([4.0, 1.0, 2.0, 3.0]) == 2.5
+    assert median([]) is None
+    pace = median([112.0, 113.4, 113.0, 114.1])               # the policy's own finishes
+    assert not keep_wave(138.1, pace, 0.0)                   # a slower line is no expert target
+    assert keep_wave(110.9, pace, 0.0)
+    assert keep_wave(66.28, 68.32, 0.0) and not keep_wave(12.29, 12.229, 0.0)

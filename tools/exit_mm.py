@@ -8,7 +8,10 @@ Round r (OUT/round_<r>/):
   1. PLAN    every map: tools/beam_tas.py waves from the incumbent (the policy's own proposals,
              a greedy floor, the K fastest finishers kept), --plan-par maps at a time; a wave is
              distilled only if it crossed and its fastest line is not slower than its own greedy
-             + --distil-max-over-greedy (exit_local.keep_wave);
+             + --distil-max-over-greedy (exit_local.keep_wave) - or, when that greedy did not
+             finish, than the incumbent's own PACE on the map (the median finish of its latest
+             test): a map the policy finishes 7 times in 9 must not learn a line slower than the
+             runs it already flies (mmx_E1 round 0: a 138 s sidistic line against ~113 s);
   2. DISTIL  every map with a kept wave: tools/plan_to_bc.py -> <map>/bc.npz + <map>/spine.npy
              (+ spine.keys.npy under --keys-hold);
   3. TRAIN   ONE warm resume of the incumbent over all its maps with the run's own recipe tokens
@@ -145,6 +148,12 @@ def map_times(rdir: Path, m: str, stem: str, n_evals: int):
     return out
 
 
+def median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    return None if not n else (xs[n // 2] if n % 2 else 0.5 * (xs[n // 2 - 1] + xs[n // 2]))
+
+
 def expected(times, dnf_s: float):
     return (sum(dnf_s if t is None else t for t in times) / len(times)) if times else None
 
@@ -208,9 +217,10 @@ def main() -> int:
         st = json.loads(state_p.read_text(encoding="utf-8"))
         inc, caps = Path(st["incumbent"]), {m: float(st["caps"][m]) for m in maps}
         tick_ms = float(st["tick_ms"])
+        pace = {m: st.get("pace", {}).get(m) for m in maps}
         log(fh, f"restart: incumbent {inc}, caps {caps}")
     else:
-        inc, caps, tick_ms = seed, None, None
+        inc, caps, tick_ms, pace = seed, None, None, {}
     log(fh, f"seed {seed} (step {ckpt_step(seed):,}); maps {', '.join(tags)}; deadline in "
             f"{args.deadline_h:g} h")
     plan_extra, distil_extra = args.plan_args.split(), args.distil_args.split()
@@ -231,10 +241,12 @@ def main() -> int:
                 raise SystemExit(f"the seed finishes no episode on {m} (rc {rcs.get((m, 0))}): "
                                  "the loop improves times of maps the policy already finishes")
             caps[m] = round(max(fins) * float(args.cap_mult), 2)
+            pace[m] = round(median(fins), 3)
             log(fh, f"seed {tag_of[m]}: {len(fins)} finish(es), best {min(fins):.2f} s, slowest "
                     f"{max(fins):.2f} s -> cap {caps[m]:.2f} s")
         state_p.write_text(json.dumps({"incumbent": str(inc), "caps": caps,
-                                       "tick_ms": tick_ms}, indent=1), encoding="utf-8")
+                                       "tick_ms": tick_ms, "pace": pace}, indent=1),
+                           encoding="utf-8")
 
     for r in range(args.start_round, args.start_round + args.rounds):
         if (out / "STOP").exists():
@@ -277,17 +289,19 @@ def main() -> int:
                     s = json.loads(sp.read_text(encoding="utf-8"))
                 ok = (rcs.get((m, w)) == 0 and s.get("crossed")
                       and (md / f"wave_{w}" / "beam_best.npz").exists())
-                keep = bool(ok and keep_wave(s.get("best_s"), s.get("greedy_s"),
-                                             args.distil_max_over_greedy))
+                # the bar: the wave's own greedy, or the incumbent's pace when that greedy failed
+                bar = s.get("greedy_s") if s.get("greedy_s") is not None else pace.get(m)
+                keep = bool(ok and keep_wave(s.get("best_s"), bar, args.distil_max_over_greedy))
                 ws.append({"wave": w, "rc": rcs.get((m, w)), "crossed": bool(s.get("crossed")),
                            "best_s": s.get("best_s"), "greedy_s": s.get("greedy_s"),
-                           "distilled": keep})
+                           "bar_s": bar, "distilled": keep})
                 if keep:
                     kept.setdefault(m, []).append(md / f"wave_{w}" / "beam_best.npz")
             plan[tag_of[m]] = ws
             best = min([x["best_s"] for x in ws if x.get("best_s")], default=None)
             log(fh, f"round {r} plan {tag_of[m]}: best {best} s; waves "
                     + ", ".join(f"{x['best_s']} vs greedy {x['greedy_s']}"
+                                + ("" if x["greedy_s"] is not None else f" (pace {x['bar_s']})")
                                 + ("" if x["distilled"] else " (not kept)") for x in ws))
         row["plan"] = {"maps": plan, "wall_s": round(time.time() - t0, 1)}
         if not kept:
@@ -411,6 +425,11 @@ def main() -> int:
                     f"{per[tag_of[m]]['best']}")
         mean_ratio = (sum(ratios) / len(ratios)) if ratios else None
         accept = mean_ratio is not None and mean_ratio < 1.0 and not worse
+        for m in maps:
+            tm = [t for t in map_times(rdir, m, "eval" if accept else "eval_incumbent",
+                                       args.gate_evals) if t is not None]
+            if tm:
+                pace[m] = round(median(tm), 3)
         row["gate"] = {"maps": per, "mean_ratio": None if mean_ratio is None
                        else round(mean_ratio, 4), "worse": worse,
                        "verdict": "accepted" if accept else "rejected"}
@@ -418,13 +437,19 @@ def main() -> int:
             shutil.copyfile(final, out / "best_mean.pt")
             inc = out / "best_mean.pt"
             state_p.write_text(json.dumps({"incumbent": str(inc), "caps": caps,
-                                           "tick_ms": tick_ms}, indent=1), encoding="utf-8")
+                                           "tick_ms": tick_ms, "pace": pace}, indent=1),
+                               encoding="utf-8")
             log(fh, f"round {r}: gate ACCEPTED (mean expected ratio {mean_ratio:.4f}) -> {inc}")
         else:
             log(fh, f"round {r}: gate rejected (mean expected ratio "
                     f"{'n/a' if mean_ratio is None else f'{mean_ratio:.4f}'}"
                     + (f"; {'; '.join(worse)}" if worse else "") + f") - the next round plans "
                     f"from {inc}")
+        row["pace"] = dict(pace)
+        if not accept:
+            state_p.write_text(json.dumps({"incumbent": str(inc), "caps": caps,
+                                           "tick_ms": tick_ms, "pace": pace}, indent=1),
+                               encoding="utf-8")
         with open(out / "summary.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
     log(fh, f"done: incumbent {inc}")
