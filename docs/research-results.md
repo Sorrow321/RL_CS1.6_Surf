@@ -50879,3 +50879,21 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   finish against the controls' two and four; best times 44.0-45.1 s, the controls' range.
 * Reading (5a08df81): first finish at 680.0M = the faster control's test: no difference shown.
   Not sent to sidistic.
+
+## 2026-11-21 10:37 UTC: RESULT - mms_sid1: the speed-coloured depth on sidistic: first finish level with v14 (4.15B vs 4.00B), steadier and faster after it
+
+* 08:08 -> 10:31 UTC on box 61773968 (RTX 5090 + Ryzen 9 7900X3D, France, $0.789/h, ~$2.0); 4.30B
+  steps; cut at the first finish + 2 tests (the control's cut); harvest md5-checked to
+  ~/ar_m2/runs/mms/mms_sid1; box released. Record gate passed; in_ch 6. An early stop at the
+  plan's loss line (4.76B) was armed at 10:20 once a gain (<= 3.25B) was no longer possible; the
+  finish came first.
+* Graded (score.py, the sidistic field of ~/RL_Surf_az/maps): 97.9% (CP7) at 4.00B; FIRST FINISH
+  1/9 at 4,152,885,248 (121.17 s); 2/9 at 4.23B (115.59 s); 4/9 at 4.30B (115.16 s, median
+  97.9%). Search 7 (3.54B) handed back a line to the finish (d 0), 0.61B steps before it.
+* Control ab12s_v14: 1/9 at 4,001,890,304 (120.07 s), then 0/9 and 0/9 (best 120.07 s).
+* Reading (c1861873): first finish two tests after the control = no difference shown (the gain
+  line 3.25B, the loss line 4.76B). Second read: 7 of 27 finishes over the first finish + 2
+  tests against the control's 1 of 27, best 115.16 s against 120.07 s.
+* Across both maps (one seed each): celestial - first finish one test earlier, then fewer
+  finishes (14 vs 20 and 10 of 63); sidistic - first finish two tests later, then more finishes
+  and a faster line. No consistent effect; the speed-colour channel is not adopted.
