@@ -2271,6 +2271,9 @@ def main():
                     help="--az: the tree's memory - an expansion into a cell (--mcts-cell u x "
                          "--mcts-cell-energy u of energy height) seen n times before earns "
                          "BETA / sqrt(1 + n); 0 = off")
+    ap.add_argument("--az-widen", type=float, default=0.0,
+                    help="--az: progressive widening - a node visited N times offers its first "
+                         "ceil((N + 1) ** ALPHA) candidates (the mode first); 0 = all K at once")
     ap.add_argument("--az-minutes", type=float, default=20.0)
     ap.add_argument("--az-log-every", type=int, default=20)
     ap.add_argument("--mcts", action="store_true",

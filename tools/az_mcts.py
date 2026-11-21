@@ -38,6 +38,12 @@ Go-Explore's cell weight), so the tree remembers where it has been and pushes in
 the map; the critic still scores safety. Only a decision during which the map pushed back counts
 (contact_mask: a surface stood or surfed on), so a fall through new air does not pay.
 
+WIDENING (--az-widen ALPHA, 0 = off: all K candidates open at once): progressive widening
+(Coulom 2007, Couetoux et al. 2011) - a node visited N times offers only its first
+ceil((N + 1) ** ALPHA) candidates (the mode first, then the draws), so a node the search has
+barely visited extends the policy's own choice and the tree runs deep along it, widening where
+visits pile up. Every commit logs how deep below the root its simulations reached.
+
 ACTING (receding horizon, AlphaZero's play): --az-sims simulations from the root, then the root's
 most visited edge is COMMITTED - the real episode advances one decision and keeps that subtree -
 until the root finishes, dies, reaches --max-ticks or the --az-minutes budget ends. The committed
@@ -195,6 +201,7 @@ def run_az(ctx: dict, a) -> dict:
     d0 = float(field_d(gf, np.asarray(ctx["row0"]["origin"]).reshape(-1, 3))[0])
     scale = 100.0 / d0 if np.isfinite(d0) and d0 > 0 else 0.0
     fin_pay = float(a.az_finish)
+    widen = float(a.az_widen)
     beta = float(a.az_novelty)
     arch = CellArchive(float(a.mcts_cell), float(a.mcts_cell_energy)) if beta > 0 else None
 
@@ -244,6 +251,7 @@ def run_az(ctx: dict, a) -> dict:
         return (q - q_lo) / max(q_hi - q_lo, 1e-6)
 
     line_act, line_view = [], []
+    dep_means, dep_maxes = [], []
     commits, n_sims, waves = 0, 0, 0
     why = "cap"
     t_wave = 0.0
@@ -252,6 +260,7 @@ def run_az(ctx: dict, a) -> dict:
           f"{SIMS} simulations per committed decision in waves of {B}, c_puct {c_puct:g}, "
           f"reward {mode} (scale {scale:.5f}/u, d0 {d0:,.0f}), gamma/decision {gamma_dec:.6f}, "
           f"value = the checkpoint's critic"
+          + (f", progressive widening (N + 1) ** {widen:g}" if widen > 0 else "")
           + (f", novelty {beta:g} / sqrt(1 + n) per cell ({float(a.mcts_cell):g} u x "
              f"{float(a.mcts_cell_energy):g} u of energy)" if beta > 0 else ""), flush=True)
     while True:
@@ -265,10 +274,11 @@ def run_az(ctx: dict, a) -> dict:
             why = "budget"
             break
         done_sims = 0
+        dep_sum, dep_max = 0, 0
         while done_sims < SIMS:
             # ---- select B leaf edges (virtual loss), back up terminal hits at once ------------
             leaves, paths = [], []
-            pend = set()
+            pend = {}
             for _b in range(B):
                 s, path = root, []
                 leaf = None
@@ -278,9 +288,10 @@ def run_az(ctx: dict, a) -> dict:
                     with np.errstate(divide="ignore", invalid="ignore"):
                         q = np.where(ne > 0, tree.We[s] / np.maximum(ne, 1e-9), tree.V[s])
                     u = qnorm(q) + c_puct * (1.0 / KC) * np.sqrt(ns + 1.0) / (1.0 + ne)
-                    for k_ in range(KC):
-                        if (s, k_) in pend:
-                            u[k_] = -np.inf
+                    if widen > 0:
+                        u[min(KC, int(np.ceil((ns + 1.0) ** widen))):] = -np.inf
+                    for k_ in pend.get(s, ()):
+                        u[k_] = -np.inf
                     if not np.isfinite(u).any():
                         break
                     k = int(np.argmax(u))
@@ -289,7 +300,7 @@ def run_az(ctx: dict, a) -> dict:
                     c = int(tree.child[s, k])
                     if c < 0:
                         leaf = (s, k)
-                        pend.add((s, k))
+                        pend.setdefault(s, set()).add(k)
                         break
                     if tree.term[c]:
                         leaf = ("term", c)
@@ -301,6 +312,8 @@ def run_az(ctx: dict, a) -> dict:
                     continue
                 leaves.append(leaf)
                 paths.append(path)
+                dep_sum += len(path)
+                dep_max = max(dep_max, len(path))
             if not leaves:
                 break
             exp = [i for i, l in enumerate(leaves) if l[0] != "term"]
@@ -437,6 +450,9 @@ def run_az(ctx: dict, a) -> dict:
         if c < 0:
             why = "unexpanded best edge"
             break
+        dep_mean = dep_sum / max(done_sims, 1)
+        dep_means.append(dep_mean)
+        dep_maxes.append(dep_max)
         line_act.append(tree.e_act[c].copy())
         line_view.append(tree.e_view[c].copy())
         root = c
@@ -446,7 +462,8 @@ def run_az(ctx: dict, a) -> dict:
             print(f"az commit {commits:4d}: tick {int(tree.tick[root]):5d} "
                   f"({tree.tick[root] / tps:6.2f}s), d {float(tree.d[root]):7,.0f}, banked record "
                   f"{best_rec:7,.0f} ({100 * (d0 - best_rec) / d0:5.1f}%), V {tree.V[root]:7.2f}, "
-                  f"root visits {int(ne.sum())}, tree {tree.n:,} nodes, sims {n_sims:,}, "
+                  f"root visits {int(ne.sum())}, depth mean {dep_mean:4.1f} max {dep_max:3d}, "
+                  f"tree {tree.n:,} nodes, sims {n_sims:,}, "
                   + (f"cells {arch.n:,}, " if arch is not None else "")
                   + f"{time.time() - t_all:5.0f}s", flush=True)
     fin = bool(tree.term[root] == 2)
@@ -463,7 +480,9 @@ def run_az(ctx: dict, a) -> dict:
                "best_d": best, "d0": d0, "best_pct": 100.0 * (d0 - best) / d0,
                "greedy_pct": float("nan"), "reward": mode, "k": KC, "sims": SIMS,
                "cpuct": c_puct, "keys_temp": float(a.az_keys_temp),
-               "view_temp": float(a.az_view_temp), "novelty": beta,
+               "view_temp": float(a.az_view_temp), "novelty": beta, "widen": widen,
+               "depth_mean": float(np.mean(dep_means)) if dep_means else None,
+               "depth_max": int(max(dep_maxes)) if dep_maxes else None,
                "cells": int(arch.n) if arch is not None else None,
                "wall_s": time.time() - t_all}
     return {"frontier": frontier, "summary": summary}
