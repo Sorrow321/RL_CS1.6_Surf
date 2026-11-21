@@ -51090,3 +51090,33 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   series now has three gains: the real-depth flow (604.5M, 5/9), the heatmap (453.5M, 1/9), the
   arrow (604.5M, 3/9) - all three place the motion's direction in the image; warp, particles, the
   uniform map, the virtual-depth flow and the velocity colour did not.
+
+## 2026-11-21 17:20 UTC: PLAN - mmx_E1: the expert loop on the seven-map shared agent
+
+* The user (2026-11-21): implement the expert loop for the multi-map run ("timers are improving,
+  but quite slowly; the expert loop does a better job at improving timers"). mm/exit 246e352d +
+  9ae4d8c1: train_fast --bc-file per map under --maps (each map's planner rows rendered by its own
+  map, an equal share of every BC batch), --resume-spines (a map restarts on a given policy-derived
+  line), tools/exit_mm.py (exit_local's round over all maps, one shared warm resume per round).
+* Seed: mmg_S1c's checkpoint at 79,021,931,520 fleet steps (md5 8c126ea8: a copy taken during its
+  six extra tests, all seven maps finishing; the cut adds ~1B more). Each round:
+  every map 2 beam_tas waves from the incumbent (2048 envs, 128 greedy, score dh, score-energy 30,
+  16 fastest finishers kept, each wave from its own spawn), a wave distilled only if its best line
+  is not slower than its own greedy; plan_to_bc per wave merged per map; ONE warm resume of the
+  run's own 174 launch tokens for 7e8 fleet steps with the maps' BC rows (coef 0.5 throughout,
+  target dist, --bc-keys-engine, --bc-pitch-coef 0, as zlEXIT1) and spawns uniform along each
+  map's planner lines (a fixed full window, 10% at the start); no in-run tests or searches.
+* Gate (fixed now): challenger and incumbent on the same spawns, 2 x 9 greedy episodes per map;
+  per map the expected time with a non-finish charged the map's cap (the seed's slowest finish x
+  1.5); accept iff the mean over maps of challenger / incumbent < 1 and no map finishes more than
+  2 of its 18 episodes fewer. One seed; the planner proposes from the policy's own distribution
+  (no demo; SELF_STATES); the same flags and constants on all seven maps.
+* Acceptance on the box (17:02-17:20 UTC): one round end to end (seed test, search ~1 min for all
+  seven maps at 512 envs, distil, train at lr 1e-12: weights moved 4e-12, eval, gate). All-greedy
+  lines: BC head-acc 0.985, joint 0.945, view-mse 2e-5 on the policy's own greedy rows (4 maps):
+  each map's rows render as the policy saw them. Identical weights gated 1.0205 and 1.0047 on
+  3 episodes per map (one-episode flips on sidistic and unitfarmer2): the gate's noise floor.
+  Training with BC rows: 335k steps/s on this box.
+* Box: 61831125 (RTX 5090 + Ryzen 9 7900X, Michigan, $0.497/h, the user's cap $0.60), agent mmx,
+  dashboard :8670, watchdog + harvest spec; droplet watcher abl/exitmm/watch.sh (floor $13: a STOP
+  file, then harvest + release). Reported per round: the gate's per-map times and finishes.
