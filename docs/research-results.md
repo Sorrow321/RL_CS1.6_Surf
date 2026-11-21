@@ -50841,3 +50841,18 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   test), one after another (scratchpad abl/vel/series.sh + queue.txt; agent mmv, worktree mmvel,
   dashboard :8668); each with the watchdog, harvest spec and pid file, harvested and released at
   its cut. Beside it: mmg_S1c and mms_sid1.
+
+## 2026-11-21 09:01 UTC: RESULT - mmv_cshade (velocity colour, --obs-speed-tint 2) on celestial: LOSS by the rule, a near one
+
+* 08:26 -> 08:56 UTC, box 61775581 (RTX 5090 + Core Ultra 7 270K Plus, UK, $0.614/h, ~$0.4),
+  287k steps/s; in_ch 8; record gate passed. Cut at the 906.5M test with no finish (982.0M came
+  in the same watcher pass); harvest md5-checked to ~/ar_m2/runs/mmv/mmv_cshade; box released.
+* Graded (score.py): 0/9 at every test to 982.0M. Best progress 75.1% (378M), 91.0% (529M),
+  90.1% (604.5M), 49.6% (680M), 95.6% (755.5M), 99.4% (831.0M, median 98.5%), 98.9% (906.5M),
+  98.6% (982.0M). Controls: ab7c_l14 first finish 680.0M, mmp1_l14r 831.0M; mms_cel1 604.5M.
+* Its loop: search 1 (from ~300M) handed back a line the greedy had already passed (STALE,
+  discarded at 469M); search 2's line to d 1,217 arrived at 996.7M, after the cut. The controls
+  finished one test after their first adopted line reached the bowl's far side.
+* Reading (5a08df81): a LOSS (no finish by 906.5M), but the greedy stood at 98.6-99.4% from 831M
+  - the controls' pre-finish level - and the miss lines up with a stale first search, so this
+  is weak evidence against the channel, not a clear harm. Not sent to sidistic.
