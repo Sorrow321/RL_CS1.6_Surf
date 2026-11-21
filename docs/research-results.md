@@ -51060,3 +51060,19 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   difference; cut at the first finish + 2 tests. Controls ab12s_v14 4.00B; heatmap 3.85B.
 * One RTX 5090 at <= $0.80/h (agent mmb, scratchpad abl/asid, dashboard :8669), watchdog +
   harvest spec; beside mmg_S1c (cutting after its six tests) and the celestial arrow test.
+
+## 2026-11-21 16:35 UTC: NOTE - the seven-map agent on an UNSEEN map: blue100 zero-shot, 9/9
+
+* The user (2026-11-21, after all seven maps finished): run the same agent on a simple map it has
+  never seen. surf_edgeflow_blue100 (the user's tarball of 2026-11-11, md5 9fe50261) on the main
+  box beside the training, from a snapshot of mmg_S1c's checkpoint at 77,874,456,576 fleet steps;
+  record_ckpt, 9 greedy episodes from the map start for each policy, --maxvel 4000 (the run's rule
+  for every map but unitfarmer2 and princessburglar); no training on the map, no search.
+* Graded (score.py, its own no-corner-cut field baked on the box; the grading keys of blue200,
+  whose 16 spawn points and 2,672 u start geodesic it shares): raw 8/9 (10.04-11.09 s, one fall),
+  ema0 9/9 (9.51-10.79 s), ema1 9/9 (9.68-10.70 s).
+* Reading: near transfer - blue100 is blue200's sibling (the same spawns, a shallower dip), and
+  blue200 is in training. A map of another family is the real test of zero-shot transfer.
+* Needed a fix: record_ckpt refused a map without an entry in the checkpoint's per-map speed caps
+  even with --maxvel given; an unseen map now takes the caller's cap (mm/s7i 712378b3). Files:
+  ~/ar_m2/runs/mmg/mmg_S1c/blue100_zero_shot (recordings, logs, the baked goalc/faceid grids).
