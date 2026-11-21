@@ -1401,6 +1401,8 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_no_depth", "--obs-no-depth"),
              ("obs_reach", "--obs-reach"),
              ("obs_speed_tint", "--obs-speed-tint"),
+             ("obs_flow", "--obs-flow"),
+             ("obs_vel_blob", "--obs-vel-blob"),
              ("simba", "--simba"),
              ("split_trunk", "--split-trunk"),
              ("obs_views_scale", "--obs-views-scale"),
@@ -6318,7 +6320,7 @@ def main() -> None:
                          "above the apex: -1), the air control (30 u/s per tick, sideways) "
                          "bounds the turn and the speed bounds the distance. Engine constants "
                          "only. in_ch + 1: SCRATCH arms; ckpt restores, a mismatch is refused")
-    ap.add_argument("--obs-speed-tint", type=int, default=None, choices=(0, 1, 2),
+    ap.add_argument("--obs-speed-tint", type=int, default=None, choices=(0, 1, 2, 3),
                     help="the depth render coloured by the player's velocity (the user, "
                          "2026-11-21). 1 = the SPEED, a scalar, ONE more image channel - more "
                          "red = faster, more blue = slower: the red part, |v| / 4000 (clipped to "
@@ -6326,8 +6328,20 @@ def main() -> None:
                          "in the depth channel. 2 = the VELOCITY, THREE more channels: R, G, B = "
                          "the near-bright depth x (1 + v_i / 4000) / 2 for the forward, left and "
                          "up components in the camera's yaw frame (each clipped to +-4000; "
-                         "mid-grey = still). in_ch + 1 / + 3: SCRATCH arms; ckpt restores, a "
+                         "mid-grey = still). 3 = the same three components as a UNIFORM image, "
+                         "no depth shading. in_ch + 1 / + 3: SCRATCH arms; ckpt restores, a "
                          "mismatch is refused")
+    ap.add_argument("--obs-flow", type=int, default=None, choices=(0, 1, 2),
+                    help="TWO more image channels (the user's list, 2026-11-21): the ego-motion "
+                         "optical flow (columns, rows) of every pixel from the camera's own "
+                         "translation over 0.03 s, tanh(px / 2); 1 = every point at a virtual "
+                         "depth of 1000 u (synthetic flow), 2 = at its real depth. in_ch + 2: "
+                         "SCRATCH arms; ckpt restores, a mismatch is refused")
+    ap.add_argument("--obs-vel-blob", type=int, default=None, choices=(0, 1),
+                    help="ONE more image channel (the user's list, 2026-11-21): a heatmap of "
+                         "where the velocity points - |v| / 4000 x exp(-angle(ray, v)^2 / (2 x "
+                         "(8 deg)^2)). in_ch + 1: SCRATCH arms; ckpt restores, a mismatch is "
+                         "refused")
     ap.add_argument("--obs-no-depth", type=int, default=None, choices=(0, 1),
                     help="the policy does NOT see the depth channel (the user, 2026-10-02): the "
                          "image keeps its other channels (e.g. --obs-normal's normal + the "
@@ -9700,6 +9714,16 @@ def main() -> None:
                 "checkpoint's first layer cannot be widened or narrowed - start a fresh run, or "
                 f"drop the flag to keep the ckpt's setting "
                 f"({int(ck_cfg.get('obs_speed_tint') or 0)})")
+        for _k, _fl in (("obs_flow", "--obs-flow"), ("obs_vel_blob", "--obs-vel-blob")):
+            if getattr(args, _k) is None and ck_cfg.get(_k):
+                setattr(args, _k, int(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k)}")
+            elif getattr(args, _k) is not None \
+                    and int(getattr(args, _k)) != int(ck_cfg.get(_k) or 0):
+                raise SystemExit(
+                    f"{_fl} changes the conv trunk's input channels and a checkpoint's first "
+                    "layer cannot be widened or narrowed - start a fresh run, or drop the flag "
+                    f"to keep the ckpt's setting ({int(ck_cfg.get(_k) or 0)})")
         if args.obs_no_depth is None and ck_cfg.get("obs_no_depth"):
             args.obs_no_depth = 1
             restored.append("obs_no_depth=1")
@@ -10871,6 +10895,18 @@ def main() -> None:
         args.obs_reach = 0
     if args.obs_speed_tint is None:
         args.obs_speed_tint = 0
+    if args.obs_flow is None:
+        args.obs_flow = 0
+    if args.obs_vel_blob is None:
+        args.obs_vel_blob = 0
+    if (args.obs_flow or args.obs_vel_blob) and (
+            args.goals or (args.frame_stack or 0) > 1 or args.surf_mask or args.normals
+            or (args.obs_views or 1) > 1 or args.pinhole
+            or (args.depth_enc or "legacy") != "legacy"):
+        raise SystemExit("--obs-flow / --obs-vel-blob are post-processes of the legacy-depth "
+                         "equiangular plain / potential / face renders: not with --goals, "
+                         "--frame-stack, --surf-mask, --normals, --obs-views, --pinhole or "
+                         "--depth-enc")
     if args.obs_speed_tint and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
                                 or args.normals or (args.obs_views or 1) > 1
                                 or (args.depth_enc or "legacy") != "legacy"):
@@ -14071,6 +14107,8 @@ def main() -> None:
                                   views_scale=int(args.obs_views_scale),
                                   reach=bool(args.obs_reach),
                                   speed_tint=int(args.obs_speed_tint),
+                                  flow=int(args.obs_flow),
+                                  vel_blob=bool(args.obs_vel_blob),
                                   texture=bool(args.obs_texture or args.obs_normal
                                                or args.obs_slope),
                                   texture_mode=("normal" if args.obs_normal else "slope"
@@ -14103,11 +14141,23 @@ def main() -> None:
             print(f"--obs-speed-tint 1: {slot.name} the speed colour channel (|v| / "
                   f"{SPEED_TINT_REF:g} x the near-bright depth; red = fast, blue = slow) -> "
                   f"in_ch {slot.lidar.channels}")
+        elif args.obs_speed_tint == 3:
+            print(f"--obs-speed-tint 3: {slot.name} the uniform velocity map (R, G, B = (1 + v / "
+                  f"{SPEED_TINT_REF:g}) / 2 for forward, left, up in the camera's yaw frame, "
+                  f"the same at every pixel) -> in_ch {slot.lidar.channels}")
         elif args.obs_speed_tint == 2:
             print(f"--obs-speed-tint 2: {slot.name} the velocity colour channels (R, G, B = "
                   f"the near-bright depth x (1 + v / {SPEED_TINT_REF:g}) / 2 for forward, left, "
                   f"up in the camera's yaw frame; mid-grey = still) -> in_ch "
                   f"{slot.lidar.channels}")
+        if args.obs_flow:
+            print(f"--obs-flow {args.obs_flow}: {slot.name} the ego-motion flow (columns, rows; "
+                  + ("every point at a virtual depth of 1000 u" if args.obs_flow == 1 else
+                     "every point at its real depth")
+                  + f"; 0.03 s of the velocity, tanh(px / 2)) -> in_ch {slot.lidar.channels}")
+        if args.obs_vel_blob:
+            print(f"--obs-vel-blob: {slot.name} the velocity-direction heatmap (|v| / 4000 x a "
+                  f"gaussian of 8 deg around v) -> in_ch {slot.lidar.channels}")
         if args.obs_no_depth:
             print(f"--obs-no-depth: {slot.name} the policy's conv reads channels 1..."
                   f"{slot.lidar.channels - 1} of {slot.lidar.channels} - NOT the depth (still "
@@ -14280,6 +14330,8 @@ def main() -> None:
                                     views_scale=int(args.obs_views_scale),
                                     reach=bool(args.obs_reach),
                                     speed_tint=int(args.obs_speed_tint),
+                                    flow=int(args.obs_flow),
+                                    vel_blob=bool(args.obs_vel_blob),
                                     texture=bool(args.obs_texture or args.obs_normal
                                                  or args.obs_slope),
                                     texture_mode=("normal" if args.obs_normal else "slope"
@@ -16727,6 +16779,10 @@ def main() -> None:
         meta["config"]["obs_reach"] = 1
     if args.obs_speed_tint:
         meta["config"]["obs_speed_tint"] = int(args.obs_speed_tint)
+    if args.obs_flow:
+        meta["config"]["obs_flow"] = int(args.obs_flow)
+    if args.obs_vel_blob:
+        meta["config"]["obs_vel_blob"] = 1
     if args.min_speed_kill:
         meta["config"]["min_speed_kill"] = float(args.min_speed_kill)
         meta["config"]["min_speed_grace"] = float(args.min_speed_grace
@@ -19189,7 +19245,8 @@ def main() -> None:
     if args.render_graph and RGRAPH is None:
         print("--render-graph: not on a CUDA device - the render stays eager")
     # (x, y, z, yaw, pitch, ducked) [+ (vx, vy, vz) under --obs-ttc]
-    _VIS_W = 9 if (args.obs_ttc or args.obs_reach or args.obs_speed_tint) else 6
+    _VIS_W = 9 if (args.obs_ttc or args.obs_reach or args.obs_speed_tint or args.obs_flow
+                   or args.obs_vel_blob) else 6
     vis_pin = torch.zeros((N, _VIS_W), pin_memory=(device.type == "cuda"))
     vis_np = vis_pin.numpy()
     vis_gpu = torch.zeros((N, _VIS_W), device=device)
@@ -22354,7 +22411,8 @@ def main() -> None:
                                                  (ts[:, 0] * ts[:, 7] + ts[:, 1] * ts[:, 8]),
                                                  ts[:, 2]), 1) * 1000.0
                                     if (args.obs_ttc or args.obs_reach
-                                        or args.obs_speed_tint) else None)
+                                        or args.obs_speed_tint or args.obs_flow
+                                        or args.obs_vel_blob) else None)
                             vis = fleet.render_rows(ti, pos, yawd,
                                                     _pt, ts[:, 5], velocity=_vel)
                             if ring is not None:

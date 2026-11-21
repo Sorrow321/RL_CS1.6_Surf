@@ -1386,6 +1386,15 @@ TTC_TAU = 1.0
 SPEED_TINT_REF = 4000.0
 #: the legacy depth encoding's limit (a clear ray at infinite range: 1 + 1/4)
 _ENC_LIMIT = 1.25
+#: --obs-flow: the ego-motion flow of every pixel over FLOW_DT seconds (~ one decision of the v14
+#: recipe, 4 x 7.667 ms), in pixels, read through tanh(px / FLOW_PX); mode 1 puts every pixel at
+#: the virtual depth FLOW_Z0 (u), mode 2 at its real depth (floored at FLOW_DMIN)
+FLOW_DT = 0.03
+FLOW_PX = 2.0
+FLOW_Z0 = 1000.0
+FLOW_DMIN = 16.0
+#: --obs-vel-blob: the heatmap's angular width (deg) around the velocity's direction
+BLOB_SIGMA_DEG = 8.0
 #: --obs-reach: the reach channel's time scale, s (tanh(slack / REACH_TAU))
 REACH_TAU = 1.0
 #: the engine's air-control cap, u/s per tick (src/pm.c pm_air_accelerate: wishspeed is
@@ -2277,7 +2286,8 @@ class GpuLidar:
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
                  texture=False, texture_mode: str = "rgb", ttc: bool = False,
                  edges: bool = False, views: int = 1, views_scale: int = 1,
-                 reach: bool = False, speed_tint: int = 0) -> None:
+                 reach: bool = False, speed_tint: int = 0, flow: int = 0,
+                 vel_blob: bool = False) -> None:
         if texture_mode not in ("rgb", "normal", "slope", "edgesrc"):
             raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
                              "(--obs-normal) or slope (--obs-slope)")
@@ -2453,20 +2463,46 @@ class GpuLidar:
         # VELOCITY, three channels (R, G, B) = nearness x (1 + v_i / SPEED_TINT_REF) / 2 for the
         # components (forward, left, up) in the camera's yaw frame - the frame of the core
         # scalars 0..2 (mid-grey = still, so the image's colour states the whole velocity)
+        # 3 = the same three components as a UNIFORM image (no depth shading): the constant
+        # RGB velocity map
         self.speed_tint = int(speed_tint or 0)
-        if self.speed_tint not in (0, 1, 2):
-            raise ValueError(f"speed_tint {speed_tint!r}: 0 off, 1 speed, 2 velocity")
+        if self.speed_tint not in (0, 1, 2, 3):
+            raise ValueError(f"speed_tint {speed_tint!r}: 0 off, 1 speed, 2 velocity, 3 uniform")
         if self.speed_tint and self.depth_enc != "legacy":
             raise ValueError("--obs-speed-tint colours the legacy depth render: not with "
                              "--depth-enc")
-        self.channels += (0, 1, 3)[self.speed_tint]
-        self.tint_channel = (self.channels - (0, 1, 3)[self.speed_tint]
+        self.channels += (0, 1, 3, 3)[self.speed_tint]
+        self.tint_channel = (self.channels - (0, 1, 3, 3)[self.speed_tint]
                              if self.speed_tint else None)
+        # --obs-flow (the user's list, 2026-11-21): TWO more channels, the ego-motion optical
+        # flow of every pixel (columns, rows) from the camera's own translation - each pixel's 3D
+        # point re-aimed after FLOW_DT seconds of the current velocity, the camera's rotation
+        # left out. 1 = every point at the virtual depth FLOW_Z0 (synthetic flow), 2 = at its
+        # real depth (the march's own). Equiangular camera only (the pixel IS a yaw / pitch
+        # offset, so the flow is exact)
+        self.flow = int(flow or 0)
+        if self.flow not in (0, 1, 2):
+            raise ValueError(f"flow {flow!r}: 0 off, 1 constant depth, 2 real depth")
+        if self.flow and (pinhole or self.depth_enc != "legacy"):
+            raise ValueError("--obs-flow reads the legacy depth of the equiangular camera: not "
+                             "with --pinhole or --depth-enc")
+        if self.flow:
+            self.channels += 2
+        self.flow_channel = self.channels - 2 if self.flow else None
+        # --obs-vel-blob (the user's list): ONE more channel, a heatmap of where the velocity
+        # points - share x exp(-angle(ray, v)^2 / (2 sigma^2)), share = |v| / SPEED_TINT_REF
+        self.vel_blob = bool(vel_blob)
+        if self.vel_blob and pinhole:
+            raise ValueError("--obs-vel-blob: the equiangular camera only (not --pinhole)")
+        if self.vel_blob:
+            self.channels += 1
+        self.blob_channel = self.channels - 1 if self.vel_blob else None
         _ph = getattr(getattr(core, "config", None), "phys", None)
         self.reach_g = float(getattr(_ph, "sv_gravity", 800.0) or 800.0)
         self.reach_tick_s = float(getattr(core, "tick_ms", 10.0) or 10.0) / 1000.0
         # the velocity rides into render() for the looming and the reach channels
-        self.uses_velocity = bool(self.ttc or self.reach or self.speed_tint)
+        self.uses_velocity = bool(self.ttc or self.reach or self.speed_tint or self.flow
+                                  or self.vel_blob)
         self._edge_cam_obj = None
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
@@ -2513,7 +2549,7 @@ class GpuLidar:
             raise ValueError(f"views {views!r} / views_scale {views_scale!r}: 1 or 4 views, "
                              "side cameras at scale 1 or 2")
         if self.views > 1 and (self.ttc or self.edges or self.reach or self.speed_tint
-                               or self.surf_mask
+                               or self.flow or self.vel_blob or self.surf_mask
                                or self.normals
                                or self.pinhole or self.depth_enc != "legacy"):
             raise ValueError("--obs-views turns the plain / potential / face renders of the "
@@ -2582,6 +2618,10 @@ class GpuLidar:
             out = self._append_reach(out, origin, yaw_deg, pitch_deg, ducked, velocity)
         if self.speed_tint:
             out = self._append_speed_tint(out, velocity, yaw_deg)
+        if self.flow:
+            out = self._append_flow(out, yaw_deg, pitch_deg, velocity)
+        if self.vel_blob:
+            out = self._append_vel_blob(out, yaw_deg, pitch_deg, velocity)
         return out
 
     def _render_raw(self, origin, yaw_deg, pitch_deg, ducked):
@@ -2783,20 +2823,89 @@ class GpuLidar:
         dep = out if out.dim() == 3 else out[..., 0]
         near = (1.0 - dep.float() / _ENC_LIMIT).clamp(0.0, 1.0)
         v = torch.as_tensor(velocity, dtype=torch.float32, device=dep.device).reshape(N, 3)
-        if self.speed_tint == 2:
+        if self.speed_tint in (2, 3):
             yr = torch.as_tensor(yaw_deg, dtype=torch.float32,
                                  device=dep.device).reshape(N) * (np.pi / 180.0)
             cy, sy = torch.cos(yr), torch.sin(yr)
             c = torch.stack((v[:, 0] * cy + v[:, 1] * sy, -v[:, 0] * sy + v[:, 1] * cy,
                              v[:, 2]), dim=1) / SPEED_TINT_REF
             col = (0.5 * (1.0 + c.clamp(-1.0, 1.0))).reshape(N, 1, 1, 3)
-            tint = (col * near[..., None]).to(out.dtype)
+            if self.speed_tint == 2:
+                tint = (col * near[..., None]).to(out.dtype)
+            else:                                   # 3: the uniform map, no depth shading
+                tint = col.expand(N, dep.shape[1], dep.shape[2], 3).to(out.dtype)
         else:
             share = (v.norm(dim=1) / SPEED_TINT_REF).clamp(0.0, 1.0).reshape(N, 1, 1)
             tint = (share * near).to(out.dtype)[..., None]
         if out.dim() == 3:
             out = out[..., None]
         return torch.cat((out, tint), dim=-1)
+
+    def _ray_angles(self, N, yaw_deg, pitch_deg, device):
+        """Every pixel's world yaw and pitch (rad; (N, 1, W) and (N, H, 1)) and its unit ray
+        (N, H, W) x 3, the equiangular camera's own construction (_dirs_equiangular)."""
+        d2r = np.pi / 180.0
+        p = (torch.as_tensor(pitch_deg, dtype=torch.float32, device=device).reshape(N, 1, 1)
+             * d2r + self.poff.view(1, self.H, 1))
+        y = (torch.as_tensor(yaw_deg, dtype=torch.float32, device=device).reshape(N, 1, 1)
+             * d2r + self.yoff.view(1, 1, self.W))
+        cp = torch.cos(p)
+        rx, ry = cp * torch.cos(y), cp * torch.sin(y)
+        rz = torch.sin(p).expand(N, self.H, self.W)
+        return y, p, rx, ry, rz
+
+    @torch.no_grad()
+    def _append_flow(self, out, yaw_deg, pitch_deg, velocity):
+        """--obs-flow: (columns, rows) the pixel's 3D point moves on the image when the eye moves
+        by velocity x FLOW_DT and the camera keeps its aim - the point at the virtual depth
+        FLOW_Z0 (mode 1) or at its real depth (mode 2); tanh(px / FLOW_PX), appended LAST (2)"""
+        if velocity is None:
+            raise ValueError("--obs-flow: GpuLidar.render needs the velocity (velocity=)")
+        N = out.shape[0]
+        dep = out if out.dim() == 3 else out[..., 0]
+        _y, _p, rx, ry, rz = self._ray_angles(N, yaw_deg, pitch_deg, dep.device)
+        if self.flow == 2:
+            D = self.decode_depth(dep).clamp(min=FLOW_DMIN)
+        else:
+            D = torch.full(dep.shape, FLOW_Z0, dtype=torch.float32, device=dep.device)
+        v = torch.as_tensor(velocity, dtype=torch.float32,
+                            device=dep.device).reshape(N, 3, 1, 1) * FLOW_DT
+        qx, qy, qz = D * rx, D * ry, D * rz             # the point, from the eye
+        px, py, pz = qx - v[:, 0], qy - v[:, 1], qz - v[:, 2]
+        # both aims through the same atan2s, so a still eye reads exactly 0
+        y0, p0 = torch.atan2(qy, qx), torch.atan2(qz, torch.sqrt(qx * qx + qy * qy))
+        y1, p1 = torch.atan2(py, px), torch.atan2(pz, torch.sqrt(px * px + py * py))
+        dy = torch.remainder(y1 - y0 + np.pi, 2.0 * np.pi) - np.pi
+        d2r = np.pi / 180.0
+        # a column is -yaw (yoff falls left to right), a row is -pitch (poff falls downward)
+        col = -dy / (self.hfov_deg * d2r / self.W)
+        row = -(p1 - p0) / (self.vfov_deg * d2r / self.H)
+        fl = torch.tanh(torch.stack((col, row), dim=-1) / FLOW_PX).to(out.dtype)
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, fl), dim=-1)
+
+    @torch.no_grad()
+    def _append_vel_blob(self, out, yaw_deg, pitch_deg, velocity):
+        """--obs-vel-blob: share x exp(-angle(ray, v)^2 / (2 BLOB_SIGMA^2)) - a soft spot where
+        the velocity points (off the image when it points outside the view), its brightness the
+        speed share |v| / SPEED_TINT_REF; appended LAST"""
+        if velocity is None:
+            raise ValueError("--obs-vel-blob: GpuLidar.render needs the velocity (velocity=)")
+        N = out.shape[0]
+        dev = out.device
+        _y, _p, rx, ry, rz = self._ray_angles(N, yaw_deg, pitch_deg, dev)
+        v = torch.as_tensor(velocity, dtype=torch.float32, device=dev).reshape(N, 3)
+        sp = v.norm(dim=1)
+        u = (v / sp.clamp(min=1.0).reshape(N, 1)).reshape(N, 3, 1, 1)
+        cosang = (rx * u[:, 0] + ry * u[:, 1] + rz * u[:, 2]).clamp(-1.0, 1.0)
+        ang = torch.acos(cosang)
+        share = (sp / SPEED_TINT_REF).clamp(0.0, 1.0).reshape(N, 1, 1)
+        sig = BLOB_SIGMA_DEG * np.pi / 180.0
+        blob = (share * torch.exp(-0.5 * (ang / sig) ** 2)).to(out.dtype)
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, blob[..., None]), dim=-1)
 
     @torch.no_grad()
     def _append_reach(self, out, origin, yaw_deg, pitch_deg, ducked, velocity):

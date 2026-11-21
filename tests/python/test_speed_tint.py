@@ -81,4 +81,61 @@ def test_the_velocity_mode_colours_the_camera_frame_components(scene):
     b = lv._append_speed_tint(d, v2, yaw2)[..., 1:]
     assert torch.allclose(a, b, atol=1e-5)
     with pytest.raises(ValueError):
-        vision.GpuLidar(None, 16, 8, speed_tint=3, **KW)
+        vision.GpuLidar(None, 16, 8, speed_tint=4, **KW)
+
+
+def _flat(n, yaw=0.0, pitch=0.0):
+    return (torch.full((n,), float(yaw)), torch.full((n,), float(pitch)))
+
+
+def test_the_uniform_map_is_the_velocity_at_every_pixel(scene):
+    p = _poses(*VIEWS)
+    n = len(VIEWS)
+    lu = vision.GpuLidar(None, 16, 8, speed_tint=3, **KW)
+    assert (lu.channels, lu.tint_channel) == (4, 1)
+    out = lu.render(*p, velocity=torch.tensor([[2000.0, 0.0, -4000.0]] * n))
+    img = out[..., 1:]
+    assert torch.allclose(img, img[:, :1, :1, :].expand_as(img))       # one colour per frame
+    assert float(img[..., 2].max()) == 0.0                             # straight down: blue 0
+
+
+def test_the_flow_is_the_ego_motion_of_each_pixel(scene):
+    lf = vision.GpuLidar(None, 16, 8, flow=1, **KW)
+    ld = vision.GpuLidar(None, 16, 8, flow=2, **KW)
+    assert (lf.channels, lf.flow_channel, lf.uses_velocity) == (3, 1, True)
+    n = 1
+    y, pt = _flat(n)
+    dep = torch.full((n, 8, 16), 0.3)
+    zero = lf._append_flow(dep, y, pt, torch.zeros(n, 3))[..., 1:]
+    assert float(zero.abs().max()) == 0.0
+    # forward (yaw 0 = +x): the points spread from the middle - left half to the left (columns
+    # fall), right half to the right, top up (rows fall), bottom down
+    # channel 0 is the depth; 1 = columns, 2 = rows
+    f = lf._append_flow(dep, y, pt, torch.tensor([[3000.0, 0.0, 0.0]]))[0]
+    assert (f[:, :8, 1] < 0).all() and (f[:, 8:, 1] > 0).all()
+    assert (f[:4, :, 2] < 0).all() and (f[4:, :, 2] > 0).all()
+    # to the LEFT (+y at yaw 0): every point slides right on the image
+    s = lf._append_flow(dep, y, pt, torch.tensor([[0.0, 3000.0, 0.0]]))[0]
+    assert (s[..., 1] > 0).all()
+    # real depth: the nearer half of the image moves more
+    d2 = dep.clone()
+    d2[..., :8] = 0.05                                  # the left half near, the right half far
+    r = ld._append_flow(d2, y, pt, torch.tensor([[0.0, 3000.0, 0.0]]))[0]
+    assert float(r[:, :8, 1].abs().mean()) > 2.0 * float(r[:, 8:, 1].abs().mean())
+    with pytest.raises(ValueError):
+        vision.GpuLidar(None, 16, 8, flow=1, pinhole=True, **KW)
+
+
+def test_the_blob_sits_where_the_velocity_points(scene):
+    lb = vision.GpuLidar(None, 16, 8, vel_blob=True, **KW)
+    assert (lb.channels, lb.blob_channel, lb.uses_velocity) == (2, 1, True)
+    n = 1
+    y, pt = _flat(n)
+    dep = torch.full((n, 8, 16), 0.3)
+    assert float(lb._append_vel_blob(dep, y, pt, torch.zeros(n, 3))[..., 1].max()) == 0.0
+    b = lb._append_vel_blob(dep, y, pt, torch.tensor([[4000.0, 0.0, 0.0]]))[0, ..., 1]
+    r, c = divmod(int(b.argmax()), 16)
+    # dead ahead (the 16 x 8 test camera's middle pixels sit 3.75 / 5.6 deg off it), full speed
+    assert r in (3, 4) and c in (7, 8) and float(b.max()) > 0.65
+    left = lb._append_vel_blob(dep, y, pt, torch.tensor([[2000.0, 2000.0, 0.0]]))[0, ..., 1]
+    assert int(left.argmax()) % 16 < 4                                   # 45 deg left: left side

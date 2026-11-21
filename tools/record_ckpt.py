@@ -1476,6 +1476,9 @@ def main(argv=None, build_only: bool = False, device=None):
                      # --obs-speed-tint: MIRRORED (the speed colour channel; the policy wrapper
                      # passes the eval core's velocity)
                      speed_tint=int(cfg.get("obs_speed_tint") or 0),
+                     # --obs-flow / --obs-vel-blob: MIRRORED (the velocity image channels)
+                     flow=int(cfg.get("obs_flow") or 0),
+                     vel_blob=bool(cfg.get("obs_vel_blob") or 0),
                      texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal")
                                   or cfg.get("obs_slope") or 0),
                      # --obs-normal / --obs-slope: MIRRORED (what the face channels carry)
