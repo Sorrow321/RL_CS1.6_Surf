@@ -51219,3 +51219,29 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   13, 17), as the run's last six tests did (sidistic 5, 5, 2, 9, 6, 7 of 9).
 * Round 3 = the same round with the BC coefficient 0 (PPO continuation only): if it is rejected
   by as much, the loss comes with continued training and the gate's noise, not with the BC rows.
+
+## 2026-11-21 20:52 UTC: NOTE - the user's new map surf_left_turn: zero-shot 0/27; test-time search
+
+* The user (2026-11-21) built surf_left_turn ("moving forward and then left, surfing on quite large
+  ramps"; passed it first try) and asked to try the seven-map agent on it. BSP md5 fa7fb231
+  (3,510,292 bytes): type 1 - start trigger_multiple 'left_turn_start' (*2), finish
+  'left_turn_finish' (*3), both named by targetname, so zones.json was written by hand from the two
+  brush boxes; a fall = trigger_teleport *4 at z -760..-600; 16 spawns at z 1240. Its fields were
+  baked on the box (start geodesic 4,971 u on the no-corner-cut field).
+* Physics: the recipe's (sv_airaccelerate 100, the core's default) and --maxvel 4000 (the run's
+  rule for every map but unitfarmer2 and princessburglar). The user's own server (~/cs16
+  server.cfg) runs sv_airaccelerate 10000, which the agent never trained with.
+* ZERO-SHOT, mmg_S1c's final checkpoint (80.0B), 9 greedy episodes each: raw 0/9, ema0 0/9, ema1
+  0/9 - every episode falls into the teleport within 3.5-7.1 s, best 1-24% of the start geodesic
+  (median ~15%), around the first ramp (x -2,130 .. -1,500).
+* THE USER'S IDEA (also in memory): search at INFERENCE time as the generalization tool - a
+  deterministic policy has one attempt and no memory; a tree search over the simulator with the
+  trained policy as the proposal distribution keeps memory (failed branches are not retried) and
+  turns test-time compute into attempts, so an agent trained on many maps could pass a new one by
+  a long search. First test here: tools/auto_spine.py (the training loop's own search: beam ->
+  MCTS -> Monte Carlo -> Go-Explore) from the map start, the final checkpoint as the prior, the
+  map's own geodesic field for scoring (geometry only), no training. Reported: the search budget,
+  whether a FINISHING line exists, its time. (A checkpoint copy names surf_left_turn's speed cap,
+  4000, for the search tools, which read it per map; the weights are identical.)
+* mmx_E1 is PAUSED for this (round 3, a PPO-only control, scored 0.983 - better than all three BC
+  rounds - but was rejected on cannonball's finishes, 12 vs 16; state kept, resumable at round 4).
