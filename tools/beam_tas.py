@@ -2247,6 +2247,28 @@ def main():
                     "Off = the deepest-d rule, byte-identical")
     # --mcts (unr1b3, 2026-11-08): policy-prior MCTS over macro-actions as the search, instead of
     # the population beam (tools/mcts_search.py's docstring). Off = the tool as it was.
+    ap.add_argument("--az", action="store_true",
+                    help="AlphaZero-style test-time search, ONE decision per edge: lazy PUCT "
+                         "expansion with the policy's mode + draws as the candidates, the "
+                         "checkpoint's critic as the leaf value, the root's most visited edge "
+                         "committed every --az-sims simulations (tools/az_mcts.py; the user, "
+                         "2026-11-21). --save-frontier replays the committed line")
+    ap.add_argument("--az-sims", type=int, default=1024,
+                    help="--az: simulations per committed decision")
+    ap.add_argument("--az-k", type=int, default=8,
+                    help="--az: candidate decisions per node (the mode + K-1 draws)")
+    ap.add_argument("--az-cpuct", type=float, default=1.25)
+    ap.add_argument("--az-keys-temp", type=float, default=1.0,
+                    help="--az: the candidates' keys temperature (1 = the policy's own)")
+    ap.add_argument("--az-view-temp", type=float, default=1.0,
+                    help="--az: the candidates' yaw sigma temperature (1 = the policy's own)")
+    ap.add_argument("--az-reward", choices=("none", "banked"), default="none",
+                    help="--az: none = the critic alone (a finish pays --az-finish, a death "
+                         "is 0); banked = MuZero's backup with the field's banked progress")
+    ap.add_argument("--az-finish", type=float, default=50.0,
+                    help="--az: what a finishing edge pays (the trainer's --success-bonus)")
+    ap.add_argument("--az-minutes", type=float, default=20.0)
+    ap.add_argument("--az-log-every", type=int, default=20)
     ap.add_argument("--mcts", action="store_true",
                     help="PUCT over macro-actions rooted on the policy's own greedy line "
                          "(tools/mcts_search.py); --save-frontier writes its best line. "
@@ -2815,6 +2837,30 @@ def main():
         print(f"greedy baseline: {greedy_ticks} ticks = "
               f"{secs(greedy_ticks):.2f}s -> {gpath}")
     if args.greedy_only:
+        return
+
+    if args.az:
+        # ---- --az: AlphaZero-style test-time search, one decision per edge (az_mcts.py) ---
+        from az_mcts import run_az
+        ctx = dict(policy=policy, packer=packer, device=device, lidar=lidar, K=K, stack=stack,
+                   KEYS=KEYS, SPAWN_DUCK=SPAWN_DUCK, VIEWC=VIEWC, VIEW_ABS=VIEW_ABS,
+                   mk_feed=mk_feed, XF=XF, cc_fn1=cc_fn1, cc_fnN=cc_fnN, build_sim=build_sim,
+                   cfg=cfg, map_path=map_path, ep_cap=ep_cap, TICK=TICK, arm=arm, row0=row0,
+                   obs_start=obs_start, gate_seed=gate_seed, gf=ogf, N=int(args.envs),
+                   max_ticks=int(args.max_ticks), secs=secs, g_step=gravity_step(core1))
+        res = run_az(ctx, args)
+        fr = res["frontier"]
+        summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": int(args.envs),
+                   **tick_json, **res["summary"], "crossed": bool(fr["finished"]),
+                   "frontier_d": fr["d"], "frontier_tick": fr["tick"],
+                   "frontier_s": secs(fr["tick"])}
+        (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        if args.save_frontier and len(fr["acts"]):
+            save_frontier_line(fr, cfg, map_path, ep_cap, TICK, arm, row0, obs_start,
+                               gate_seed, K, out_dir, ogf, finished=bool(fr["finished"]))
+        print(f"beam TAS (--az): {summary['why']}, {'FINISHED' if fr['finished'] else 'no finish'}"
+              f" at {secs(fr['tick']):.2f}s, banked {summary['best_pct']:.1f}%, total wall "
+              f"{time.time() - t_all:.0f}s")
         return
 
     if args.mcts:
