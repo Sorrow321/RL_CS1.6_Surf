@@ -50709,3 +50709,29 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   easy maps >= 2 tests earlier. CLEAR LOSS = two easy maps >= 2 tests later. Else no clear
   difference. Second read for the mirror: the arm at 2x the steps against mmg_S1 (equal real-
   map episodes) - level there = the mirrored half taught the real maps nothing.
+
+## 2026-11-21 06:42 UTC: PLAN - mms_cel1: the depth render coloured by speed, celestial alone
+
+* The user (2026-11-21): embed the speed into the image as colour - "more blue = lower speed,
+  more red = higher speed. Speed = scalar, not vector" - a simple heuristic, tested on one map.
+  Unlike the looming channel (2026-10-01, null on cannonball), which lit only surfaces flown
+  straight into within ~1 s, this one covers every pixel.
+* --obs-speed-tint 1 (mm/spd 3e967185): one more image channel, the red part of that picture,
+  share x nearness: share = |v| / 4000 clipped to [0, 1] (one value per frame), nearness = 1 -
+  enc / 1.25 of the legacy depth (near bright). The blue part (nearness - red) is affine in the
+  depth channel, so one channel gives the conv the whole two-colour image; in_ch 5 -> 6.
+  Plumbed like --obs-reach (the rollout, the bootstrap, MapFleet, the eval wrapper pass the
+  velocity; record_ckpt and beam_tas mirror it). Flag off: no change. test_speed_tint.py passes;
+  CPU smoke (blue200, 64x32, a search): rc 0, in_ch 6, search rebuilt the net, record gate ok.
+* Arm: surf_src_celestial alone, from scratch, seed 0, the single-map v14 line of the two
+  celestial controls (the 160 tokens + --auto-spine-mcts-args '--mcts-mix-rule sib
+  --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2') + --obs-speed-tint 1; tests
+  every 75.5M steps, 9 greedy episodes. Code mm/s7i + the flag (the controls ran ab/ab14l; the
+  s7 changes are bit-identical speed and logging fixes); one RTX 5090 (the controls: RTX 5080).
+* Controls: ab7c_l14 first finish 4/9 at 680.0M, mmp1_l14r 2/9 at 831.0M (same code, config,
+  seed and card as each other). Cut (theirs): the first finish + 5 tests, or 2.0B steps without.
+* Reading, fixed now: first finish at or before 604.5M (one test earlier than both controls) =
+  a GAIN on this map; at or after 906.5M (one test later than both) = a LOSS; in between = no
+  difference shown. One seed: a hint for a seven-map run, not a verdict.
+* Box: one RTX 5090 with the fast-CPU filter at the user-approved cap $0.70/h; scratchpad
+  abl/spd/launch.sh (agent mms, worktree mmspd), watcher abl/spd/watch.sh (floor $14).
