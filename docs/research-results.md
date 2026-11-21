@@ -51154,3 +51154,20 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Fix: a wave whose greedy did not finish is held to the incumbent's PACE on the map (the median
   finish of its latest test: the seed test, then each gate's). The round was stopped during its
   training and the loop restarted from the same seed, nothing else changed.
+
+## 2026-11-21 18:44 UTC: RESULT - mmx_E1 round 0 rejected (1.054, pb 8/18); gentler rounds next
+
+* Round 0 (17:49-18:38 UTC): lines kept on princessburglar (66.28 s, greedy 68.32), unitfarmer2,
+  cannonball, blue200 and petrus; sidistic's 138 s line refused by the pace rule, celestial's waves
+  not faster than its greedy. 7e8 fleet steps in 2,112 s (334k steps/s).
+* Gate (18 shared-spawn episodes per map, challenger vs incumbent): pb 8 vs 18 finishes (expected
+  89.24 vs 69.22 s), sidistic 6 vs 7 (152.50 vs 148.51), unitfarmer2 18/18 (40.29 vs 39.98),
+  cannonball 16 vs 15 (79.64 vs 81.64), blue200 18/18 (12.98 vs 12.93), celestial 17 vs 18 (43.66
+  vs 42.02), petrus 17 vs 18 (28.44 vs 27.47): mean ratio 1.0539, REJECTED.
+* Why (train log): BC head-acc 0.87 -> 0.996 (joint 0.59 -> 0.99) on the planner rows, while the
+  per-update KL rose from 0.06 to 0.23 (the main run's PPO-only KL: median 0.032, p90 0.038): the
+  constant BC pull (0.5, zlEXIT1's) at lr 3e-4 moved the shared policy several times faster than
+  its own training did, and princessburglar's 2 s faster line was learned at the cost of its
+  reliability.
+* Round 1 onward (restart at round 1, nothing else changed): BC coef 0.5 -> 0 over the round
+  (exit_local's default: BC early, PPO alone at the end) and lr 1e-4 (exit_local's default).
