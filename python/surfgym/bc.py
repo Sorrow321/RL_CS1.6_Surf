@@ -1378,3 +1378,105 @@ class BCDataset:
                    + (f" [absolute {self.view_absolute}]"
                       if self.view_absolute else "")
                    if self.view_continuous else ""))
+
+
+def parse_map_files(spec, tags, flag: str) -> dict:
+    """``tag=path,tag=path`` (a --maps run's per-map files: --bc-file, --resume-spines) ->
+    {slot index: path}. ``tags`` = the slots' tags in --maps order; a full map stem names its
+    slot too. Refused: an item without ``=``, an unknown or repeated map, an empty path."""
+    from pathlib import Path
+    from surfgym.mapfleet import map_tag
+    index = {}
+    for k, t in enumerate(tags):
+        index[str(t)] = k
+        index.setdefault(map_tag(str(t)), k)
+    out = {}
+    for item in [x.strip() for x in str(spec).split(",") if x.strip()]:
+        if "=" not in item:
+            raise SystemExit(f"{flag} under --maps takes tag=path items (the map's tag, as the "
+                             f"run prints it: {', '.join(map(str, tags))}); got {item!r}")
+        tag, path = (x.strip() for x in item.split("=", 1))
+        k = index.get(tag, index.get(map_tag(tag)))
+        if k is None:
+            raise SystemExit(f"{flag}: {tag!r} is not one of the run's maps "
+                             f"({', '.join(map(str, tags))})")
+        if k in out:
+            raise SystemExit(f"{flag}: map {tag!r} named twice")
+        if not path or not Path(path).is_file():
+            raise SystemExit(f"{flag}: {tag}: no file {path!r}")
+        out[k] = path
+    if not out:
+        raise SystemExit(f"{flag}: no tag=path item")
+    return out
+
+
+def resume_spine_keys(spine_path, n: int):
+    """--resume-spines: the held keys of a given spine's rows - ``<spine>.keys.npy`` next to it
+    (tools/plan_to_bc.py --spine writes one under --keys-hold), (n, 3) engine bins fwd / side
+    0..2 and duck 0..1 - or None when there is no such file (the spawns then hold neutral keys,
+    as every resumed held spine does). A file of the wrong shape or range is refused."""
+    from pathlib import Path
+    kp = Path(str(spine_path)).with_suffix(".keys.npy")
+    if not kp.is_file():
+        print(f"--resume-spines: {spine_path}: no {kp.name} - its spawns hold neutral keys")
+        return None
+    k = np.asarray(np.load(kp), np.int64)
+    if k.shape != (int(n), 3):
+        raise SystemExit(f"--resume-spines: {kp}: shape {k.shape}, the spine has {n} rows "
+                         "(want (n, 3): fwd, side, duck)")
+    if k[:, :2].min() < 0 or k[:, :2].max() > 2 or k[:, 2].min() < 0 or k[:, 2].max() > 1:
+        raise SystemExit(f"--resume-spines: {kp}: fwd / side must be engine bins 0..2, duck 0..1")
+    print(f"--resume-spines: {spine_path}: its spawns hold their rows' keys ({kp.name})")
+    return k.astype(np.int32)
+
+
+class MultiMapBC:
+    """--bc-file under --maps: one BCDataset per map that has planner rows, each block of rows
+    rendered by its OWN map's lidar (the geometry, the face grid and the goal potential of the
+    map the planner flew). The trainer's BC step sees BCDataset's interface: ``sample_all(n)``
+    draws a FIXED share of the n rows from every map - n // k each, the first n % k maps one more,
+    so the shapes never change and the compiled step stays compiled - concatenated in map order,
+    and ``render`` cuts the pose block at the same boundaries. Every map counts the same in the
+    cloning loss whatever the length of its line."""
+
+    def __init__(self, parts, lidars):
+        import torch
+        if not parts or len(parts) != len(lidars):
+            raise ValueError("MultiMapBC: one lidar per (tag, BCDataset) part")
+        self.parts, self.lidars = list(parts), list(lidars)
+        ds = [p for _, p in self.parts]
+        for name in ("has_probs", "has_value", "keys_col", "view_continuous", "n_cc"):
+            vals = {getattr(p, name) for p in ds}
+            if len(vals) != 1:
+                raise SystemExit(f"--bc-file: the maps' files disagree on {name} ({vals}); build "
+                                 "every map's file with tools/plan_to_bc.py from one checkpoint")
+        self.has_probs, self.has_value = ds[0].has_probs, ds[0].has_value
+        self.keys_col, self.view_continuous, self.n_cc = (ds[0].keys_col, ds[0].view_continuous,
+                                                          ds[0].n_cc)
+        self.n = int(sum(p.n for p in ds))
+        self.value_rows = int(sum(p.value_rows for p in ds))
+        self.meta = {"maps": {t: p.meta for t, p in self.parts}}
+        self.path = ", ".join(f"{t}={p.path}" for t, p in self.parts)
+        self._cat = torch.cat
+
+    def split(self, n: int) -> list:
+        """the rows each map contributes to a batch of n, in map order"""
+        k = len(self.parts)
+        return [n // k + (1 if i < n % k else 0) for i in range(k)]
+
+    def sample_all(self, n: int, view: bool = False):
+        outs = [p.sample_all(s, view=view)
+                for (_, p), s in zip(self.parts, self.split(n))]
+        return tuple(None if outs[0][i] is None else self._cat([o[i] for o in outs])
+                     for i in range(len(outs[0])))
+
+    def render(self, lidar, pose, dtype):
+        """``lidar`` is ignored: block i of ``pose`` (cut by split) renders with map i's own"""
+        imgs, o = [], 0
+        for lid, s in zip(self.lidars, self.split(int(pose.shape[0]))):
+            imgs.append(BCDataset.render(lid, pose[o:o + s], dtype))
+            o += s
+        return self._cat(imgs)
+
+    def describe(self) -> str:
+        return "\n".join(f"[{t}] {p.describe()}" for t, p in self.parts)

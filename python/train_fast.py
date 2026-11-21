@@ -119,7 +119,7 @@ from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_fe
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout, record_rollout_parallel
-from surfgym.bc import BCDataset
+from surfgym.bc import BCDataset, MultiMapBC, parse_map_files, resume_spine_keys
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum, FrontierPerturbRows,
                              FrontierSpawnSampler, NovelSpawnSampler,
                              RandomSpawnSampler, RespawnBuffer)
@@ -5714,6 +5714,14 @@ def main() -> None:
                          "first search fires at the first eval past --auto-spine-delay. Every "
                          "later spine is the run's own search on its own weights. Off = "
                          "byte-identical; config only when on")
+    ap.add_argument("--resume-spines", default=None,
+                    help="--maps + --auto-spine-scratch, a RESUME: tag=path,tag=path - these "
+                         "maps' curricula restart on the given spine (a policy-derived line, "
+                         "e.g. tools/exit_mm.py's planner line through tools/plan_to_bc.py "
+                         "--spine) instead of the spine the checkpoint holds; a sibling "
+                         "<spine>.keys.npy gives its spawns their held keys (--auto-spine-keys). "
+                         "The other maps keep their held spines. Off = byte-identical; never "
+                         "restored")
     ap.add_argument("--demo-share", type=float, default=None,   # None = off
                     help="--demo-file: the curriculum's window draws take this SHARE of every "
                          "training spawn pool (uniformly chosen positions, like --finish-line) "
@@ -5925,7 +5933,10 @@ def main() -> None:
                          "every PPO minibatch step; the rows' depth images "
                          "are rendered per minibatch from the stored states "
                          "with the trainer's own lidar. Never restored from "
-                         "a checkpoint: one round, one file")
+                         "a checkpoint: one round, one file. Under --maps: "
+                         "tag=path,tag=path, one file per map that has rows "
+                         "(each rendered by its own map; every listed map "
+                         "takes an equal share of --bc-batch)")
     ap.add_argument("--bc-coef", type=float, default=0.5,
                     help="--bc-file: aux loss weight at the start of the run")
     ap.add_argument("--bc-coef-final", type=float, default=0.0,
@@ -13225,6 +13236,10 @@ def main() -> None:
         respawn = None
     demo = None
     SPINES0 = [None] * len(slots)        # --maps + --auto-spine-scratch: each map's first spine
+    RESUME_SPINES = [None] * len(slots)  # --resume-spines: the maps whose spine the flag gave
+    if args.resume_spines and not (MULTI and args.auto_spine_scratch):
+        raise SystemExit("--resume-spines restarts --maps curricula (--auto-spine-scratch's held "
+                         "spines) on given lines: give --maps and --auto-spine-scratch")
     DEMOS = []                           # --maps: each map's curriculum (DEMOS[0] IS demo)
     if args.auto_spine_scratch:
         # --auto-spine-scratch: the first spine is the map's own spawn (two copies), written next
@@ -13239,11 +13254,24 @@ def main() -> None:
             # auto/<tag>/; a resume restores each map's held spine from the checkpoint
             from surfgym.core import STATE_DTYPE as _SD0
             _ck_sp = (ck.get("auto_spine_spines") or {}) if ck is not None else {}
+            if args.resume_spines:
+                # --resume-spines: these maps restart on the given line, not the held one
+                if ck is None:
+                    raise SystemExit("--resume-spines replaces a RESUMED run's held spines: "
+                                     "give --ckpt")
+                _ck_sp = dict(_ck_sp)
+                for _k, _pth in parse_map_files(args.resume_spines, [_s.tag for _s in slots],
+                                                "--resume-spines").items():
+                    _ck_sp[slots[_k].tag] = str(Path(_pth).resolve())
+                    RESUME_SPINES[_k] = str(Path(_pth).resolve())
             for _k, _s in enumerate(slots):
                 _held = _ck_sp.get(_s.tag)
                 if _held and Path(_held).exists():
                     SPINES0[_k] = str(_held)
-                    print(f"--auto-spine-scratch[{_s.tag}]: resumes on its held spine {_held}")
+                    print(f"--auto-spine-scratch[{_s.tag}]: "
+                          + (f"restarts on the GIVEN spine {_held} (--resume-spines)"
+                             if RESUME_SPINES[_k] is not None else
+                             f"resumes on its held spine {_held}"))
                     continue
                 _sp0 = np.asarray(_s.pool[:1], _SD0).copy()
                 _sp0["tick"] = 0
@@ -14439,6 +14467,11 @@ def main() -> None:
         if DEMO_KEYS[0] is None and args.demo_file:
             _ns = len(np.load(args.demo_file, mmap_mode="r"))
             DEMO_KEYS[0] = np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (_ns, 1))
+            if RESUME_SPINES[0] is not None:
+                # --resume-spines: a given spine spawns holding its own keys
+                _rk = resume_spine_keys(RESUME_SPINES[0], _ns)
+                if _rk is not None:
+                    DEMO_KEYS[0] = _rk
             print(f"--auto-spine-keys: the first spine ({_ns} rows) holds neutral keys; every "
                   f"spine the search hands back spawns holding its own")
     REHEARSE = args.demo_rehearse is not None
@@ -18092,6 +18125,11 @@ def main() -> None:
             if DEMO_KEYS[0] is not None:
                 # (--auto-spine-keys: the first spine holds neutral keys, as slot 0's)
                 _kk = [np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (_dm.n, 1))]
+                if RESUME_SPINES[_k] is not None:
+                    # --resume-spines: a given spine spawns holding its own keys
+                    _rk = resume_spine_keys(RESUME_SPINES[_k], _dm.n)
+                    if _rk is not None:
+                        _kk = [_rk]
             DSL.append(dict(demo=_dm, end_d=_edk, h_min=None, paid=[None], ok=[None, None],
                             alv=[None] * 5, miles=[np.asarray(MILES[0]).copy(), None],
                             keys=_kk, auto=_au, pace=None))
@@ -21010,10 +21048,13 @@ def main() -> None:
         raise SystemExit("--bc-pitch-coef must be >= 0")
     bc_stats = None
     if args.bc_file:
-        if MULTI or route is not None or STACK > 1 or H > 0:
-            raise SystemExit("--bc-file: single-map, flat (no --chunk), "
-                             "unstacked, fan-less race policies only - the "
-                             "planner cannot clone the other per-env states")
+        if route is not None or STACK > 1 or H > 0:
+            raise SystemExit("--bc-file: flat (no --chunk), unstacked, fan-less "
+                             "race policies only - the planner cannot clone the "
+                             "other per-env states")
+        if MULTI and D.enabled:
+            raise SystemExit("--bc-file under --maps is one process (every map's rows are "
+                             "rendered by its own slot here): not with --ddp")
         if N_HIST or N_PASS or N_RVEC:
             raise SystemExit("--bc-file with --act-hist / --ramp-obs-pass / --ramp-obs-vec: "
                              "tools/plan_to_bc.py does not record those blocks yet (the "
@@ -21031,11 +21072,12 @@ def main() -> None:
         # callers - a second copy here is exactly the drift it warns about).
         # d is resampled on the reward field, tick comes off the stored
         # state, latch is the file's own column, arc is 0 (the guard above).
-        bc_priv_fn = None
-        if args.priv_critic:
-            _pv = slots[0].priv
-            _pf = (slots[0].reward_field if slots[0].reward_field is not None
-                   else slots[0].goal_field)
+        def _bc_priv_fn(slot):
+            if not args.priv_critic:
+                return None
+            _pv = slot.priv
+            _pf = (slot.reward_field if slot.reward_field is not None
+                   else slot.goal_field)
 
             def bc_priv_fn(states, latch, _pv=_pv, _pf=_pf):
                 n = len(states)
@@ -21045,28 +21087,43 @@ def main() -> None:
                          states["tick"], arc=None,
                          latch=(np.asarray(latch, np.float32) > 0.5))
                 return out_pv
+            return bc_priv_fn
 
-        bc = BCDataset(args.bc_file, device, n_latch=N_LATCH,
-                       obs_reward=bool(args.obs_reward),
-                       seed=args.seed + 31 * D.rank, priv_fn=bc_priv_fn,
-                       # --view-continuous: the rows' view targets (z), read
-                       # from the file's own view columns or derived from
-                       # the bins the way the core would apply them
-                       view_continuous=VIEWC,
-                       yaw_adaptive=bool(args.yaw_adaptive),
-                       pitch_rate_max_deg=float(
-                           core.config.pitch_rate_max_deg),
-                       # --view-absolute: the file's rows must be targets
-                       # of the same mode (z_from_view_abs), never deltas
-                       view_absolute=VIEW_ABS,
-                       # --curiosity-cond: the rows get the T = 0 column
-                       n_cc=N_CC,
-                       # --keys-hold: the rows' held-key columns + policy-space targets
-                       keys_hold=bool(args.keys_hold),
-                       # the compass, ratchet gap, surf flag and pot rate the file must carry
-                       # (plan_to_bc records them per decision; surfgym.bc.XBLOCKS)
-                       xlayout={"aux": N_AUX, "ratchet": N_RATCHET, "surf": N_SURF,
-                                "prate": N_PRATE})
+        def _bc_dataset(path, slot, seed):
+            return BCDataset(path, device, n_latch=N_LATCH,
+                             obs_reward=bool(args.obs_reward),
+                             seed=seed, priv_fn=_bc_priv_fn(slot),
+                             # --view-continuous: the rows' view targets (z), read
+                             # from the file's own view columns or derived from
+                             # the bins the way the core would apply them
+                             view_continuous=VIEWC,
+                             yaw_adaptive=bool(args.yaw_adaptive),
+                             pitch_rate_max_deg=float(
+                                 slot.core.config.pitch_rate_max_deg),
+                             # --view-absolute: the file's rows must be targets
+                             # of the same mode (z_from_view_abs), never deltas
+                             view_absolute=VIEW_ABS,
+                             # --curiosity-cond: the rows get the T = 0 column
+                             n_cc=N_CC,
+                             # --keys-hold: the rows' held-key columns + policy-space targets
+                             keys_hold=bool(args.keys_hold),
+                             # the compass, ratchet gap, surf flag and pot rate the file must carry
+                             # (plan_to_bc records them per decision; surfgym.bc.XBLOCKS)
+                             xlayout={"aux": N_AUX, "ratchet": N_RATCHET, "surf": N_SURF,
+                                      "prate": N_PRATE})
+        if MULTI:
+            # --maps: one file per map (tag=path), each block rendered by its own map's lidar
+            _bcm = parse_map_files(args.bc_file, [_s.tag for _s in slots], "--bc-file")
+            bc = MultiMapBC([(slots[_k].tag,
+                              _bc_dataset(_bcm[_k], slots[_k],
+                                          args.seed + 31 * D.rank + 1009 * _k))
+                             for _k in sorted(_bcm)],
+                            [slots[_k].lidar for _k in sorted(_bcm)])
+            print(f"bc: --maps - {len(_bcm)} map(s) with planner rows, "
+                  f"{' / '.join(str(_x) for _x in bc.split(args.bc_batch))} of each "
+                  f"{args.bc_batch}-row batch (each rendered by its own map)")
+        else:
+            bc = _bc_dataset(args.bc_file, slots[0], args.seed + 31 * D.rank)
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
