@@ -51047,3 +51047,16 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   search (462M), a Monte Carlo line to d 2,092.
 * Reading (5a08df81): first finish at 755.5M, between the controls = no difference shown; fewer
   finishes after it and slower lines than both controls. Not sent to sidistic.
+
+## 2026-11-21 16:33 UTC: PLAN - mmb_arrow: the projected velocity arrow on sidistic alone
+
+* mmv_arrow (--obs-glyph 1, the list's item 6) on celestial: first finish 3/9 at 604.5M, then 4/9
+  at 680.0M and 5/9 at 831.0M (the run goes on to its cut; RESULT follows) = a GAIN by the series
+  rule (24896892: first finish <= 604.5M), so it goes to sidistic.
+* --obs-glyph 1 on surf_src_sidistic alone, from scratch, seed 0, the single-map v14 line of
+  ab12s_v14 (the 160 tokens + the MCTS mix args); branch mm/gsid d1574ec5 (= mm/vel 5bd6d8f8 + the
+  sidistic config); tests every 75.5M. The mms_dflow / mmb_blob rule unchanged: first finish <=
+  3.25B = a GAIN, >= 4.76B or none = a LOSS (stopped early at the 4.76B test), else no
+  difference; cut at the first finish + 2 tests. Controls ab12s_v14 4.00B; heatmap 3.85B.
+* One RTX 5090 at <= $0.80/h (agent mmb, scratchpad abl/asid, dashboard :8669), watchdog +
+  harvest spec; beside mmg_S1c (cutting after its six tests) and the celestial arrow test.
