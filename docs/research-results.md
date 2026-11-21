@@ -51142,3 +51142,15 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   (37.41) and princessburglar (64.79).
 * Beside it the same weights flew the UNSEEN blue100 zero-shot (d8752578) and seed the expert
   loop mmx_E1 (703d80c4, a copy at 79.02B).
+
+## 2026-11-21 17:49 UTC: NOTE - mmx_E1 restarted at 17:49 with the pace rule (mm/exit 48639dae)
+
+* Round 0's search (17:23-17:27, ~4 min for 2 waves on all seven maps at 2048 envs) found lines
+  faster than the policy's own greedy on five maps: princessburglar 66.28 s (greedy 68.32),
+  unitfarmer2 39.38 (39.87), cannonball 74.18 (75.36), blue200 12.01 (12.23), petrus 27.01
+  (27.48); celestial's two waves were slower than their greedy (not kept). But sidistic's only
+  crossing wave had a greedy that failed, and keep_wave kept its 138.1 s line against a policy
+  that finishes the map in ~113 s - a slower line taught as the expert target.
+* Fix: a wave whose greedy did not finish is held to the incumbent's PACE on the map (the median
+  finish of its latest test: the seed test, then each gate's). The round was stopped during its
+  training and the loop restarted from the same seed, nothing else changed.
