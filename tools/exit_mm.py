@@ -190,6 +190,11 @@ def main() -> int:
     ap.add_argument("--bc-coef-final", type=float, default=0.5)
     ap.add_argument("--bc-target", default="dist")
     ap.add_argument("--bc-value-coef", type=float, default=0.0)
+    ap.add_argument("--spines", type=int, default=1, choices=(0, 1),
+                    help="1 = the maps with planner rows restart on the planner's lines "
+                         "(--resume-spines); 0 = every map keeps the spine it holds - the "
+                         "planner enters through the BC rows alone (mmx_E1 rounds 0-1: spawns "
+                         "moved onto the planner's few lines cost princessburglar its finishes)")
     ap.add_argument("--train-args", default="",
                     help="more trainer tokens for every round (one string; last wins)")
     # EVAL / GATE
@@ -371,8 +376,8 @@ def main() -> int:
                "--bc-coef", args.bc_coef, "--bc-coef-final", args.bc_coef_final,
                "--bc-steps", args.train_steps, "--bc-target", args.bc_target,
                "--bc-value-coef", args.bc_value_coef,
-               "--resume-spines", ",".join(f"{tag_of[m]}={d / 'spine.npy'}"
-                                           for m, d in bcs.items()),
+               *(["--resume-spines", ",".join(f"{tag_of[m]}={d / 'spine.npy'}"
+                                              for m, d in bcs.items())] if args.spines else []),
                *args.train_args.split()]
         rcs = run_many([("train", cmd, rdir / "train.log", {"SELF_STATES": "1"})], 1, 6 * 3600)
         final = ROOT / "runs" / run_name / "ckpt_final.pt"
