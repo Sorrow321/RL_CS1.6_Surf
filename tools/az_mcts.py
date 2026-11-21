@@ -44,6 +44,13 @@ ceil((N + 1) ** ALPHA) candidates (the mode first, then the draws), so a node th
 barely visited extends the policy's own choice and the tree runs deep along it, widening where
 visits pile up. Every commit logs how deep below the root its simulations reached.
 
+PRIOR (--az-prior): uniform = 1 / K per candidate (Sampled MuZero's rule for candidates drawn
+from the policy itself); policy = each candidate weighted by its own probability under the policy
+(the key heads + the yaw), so PUCT runs deep along the policy's choice (AlphaZero's prior).
+ROLLOUTS (--az-rollout H, 0 = off): a new leaf is judged by the policy's mode played on for H
+decisions from it (finish = --az-finish, death = 0, survivors bootstrap on the critic), classic
+MCTS's rollout, so a fall that ends a second later is seen at the leaf.
+
 ACTING (receding horizon, AlphaZero's play): --az-sims simulations from the root, then the root's
 most visited edge is COMMITTED - the real episode advances one decision and keeps that subtree -
 until the root finishes, dies, reaches --max-ticks or the --az-minutes budget ends. The committed
@@ -85,6 +92,12 @@ def make_az_policy():
             cat, mu = split_view(logits.float())
             padded = self._mask_padded(self.packer.pad(cat), obs)
             act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            g = self.greedy
+            if g is not None and np.any(g):
+                # --az-rollout: the rolled-out envs take the policy's mode (MctsPolicy's mask)
+                gi = torch.as_tensor(np.flatnonzero(g), device=act.device)
+                act[gi, N_VIEW:] = padded[gi, N_VIEW:].argmax(-1)
+                z[gi] = mu[gi]
             if self.force_idx is not None and len(self.force_idx):
                 fi = torch.as_tensor(self.force_idx, device=act.device)
                 act[fi, N_VIEW:] = torch.as_tensor(self.force_act, device=act.device,
@@ -94,7 +107,9 @@ def make_az_policy():
 
         @torch.inference_mode()
         def propose(self, obs, k: int, keys_temp: float, view_temp: float):
-            """-> (acts (n, k, heads - N_VIEW) int, z (n, k, n_z) float, value (n,) float)."""
+            """-> (acts (n, k, heads - N_VIEW) int, z (n, k, n_z) float, value (n,) float,
+            logp (n, k) float: each candidate's log-probability under the policy at temperature 1,
+            the key heads plus the yaw (the pitch moves nothing))."""
             logits, v = self._net(self._obs(obs))
             cat, mu = split_view(logits.float())
             padded = self._mask_padded(self.packer.pad(cat), obs)
@@ -113,8 +128,16 @@ def make_az_policy():
                 acts.append(a_s[:, N_VIEW:].reshape(n, k - 1, -1))
                 zs.append(z_s.reshape(n, k - 1, -1))
             val = v.float().reshape(n)
-            return (torch.cat(acts, 1).cpu().numpy(), torch.cat(zs, 1).cpu().numpy(),
-                    val.cpu().numpy())
+            A = torch.cat(acts, 1)
+            Z = torch.cat(zs, 1)
+            lsm = torch.log_softmax(padded[:, N_VIEW:], dim=-1)
+            lk = torch.gather(lsm.unsqueeze(1).expand(-1, A.shape[1], -1, -1), 3,
+                              A.long().unsqueeze(-1)).squeeze(-1).sum(-1)
+            ls = self.policy.log_std().float()
+            ls0 = ls[..., 0].reshape(-1, 1) if ls.dim() > 1 else ls[0]
+            lv = -0.5 * ((Z[..., 0] - mu[:, None, 0]) / ls0.exp()) ** 2 - ls0
+            return (A.cpu().numpy(), Z.cpu().numpy(), val.cpu().numpy(),
+                    (lk + lv).double().cpu().numpy())
 
     return AzPolicy
 
@@ -145,6 +168,7 @@ class AzTree:
         self.We = np.zeros((cap, K), np.float64)
         self.cand_act = np.zeros((cap, K, self.heads), np.int64)
         self.cand_z = np.zeros((cap, K, self.n_z), np.float32)
+        self.prior = np.full((cap, K), 1.0 / K, np.float64)
         self.e_act = None                              # the engine row / view each edge executed
         self.e_view = np.zeros((cap, 2), np.float32)
 
@@ -154,7 +178,7 @@ class AzTree:
             return
         new = max(need, 2 * cap)
         for name in ("parent", "pa", "depth", "slot", "V", "r", "term", "rec", "d", "tick",
-                     "child", "Ne", "We", "cand_act", "cand_z", "e_view", "e_act"):
+                     "child", "Ne", "We", "cand_act", "cand_z", "e_view", "e_act", "prior"):
             a = getattr(self, name)
             if a is None:
                 continue
@@ -163,6 +187,8 @@ class AzTree:
                 b[:] = -1
             if name in ("rec", "d"):
                 b[:] = np.inf
+            if name == "prior":
+                b[:] = 1.0 / self.K
             b[:cap] = a
             setattr(self, name, b)
 
@@ -202,6 +228,18 @@ def run_az(ctx: dict, a) -> dict:
     scale = 100.0 / d0 if np.isfinite(d0) and d0 > 0 else 0.0
     fin_pay = float(a.az_finish)
     widen = float(a.az_widen)
+    prior_mode = str(a.az_prior)
+    H_roll = int(a.az_rollout)
+
+    def priors(logp):
+        # --az-prior policy: each candidate weighted by its probability under the policy
+        # (softmax of the log-probs over the node's K candidates); uniform: 1 / K (Sampled
+        # MuZero's rule for candidates drawn from the policy itself)
+        if prior_mode != "policy":
+            return np.full(logp.shape, 1.0 / logp.shape[1])
+        x = logp - logp.max(axis=1, keepdims=True)
+        e = np.exp(x)
+        return e / e.sum(axis=1, keepdims=True)
     beta = float(a.az_novelty)
     arch = CellArchive(float(a.mcts_cell), float(a.mcts_cell_energy)) if beta > 0 else None
 
@@ -237,12 +275,13 @@ def run_az(ctx: dict, a) -> dict:
     slot0 = store.add(core.get_states()[0:1].copy(), obs[0:1].copy(), side0)
     # the wrapper renders every env of the core at once: always the full batch, then the rows
     side_all = side.gather(np.arange(B))
-    acts0, z0, v0 = pol.propose(obs, KC, a.az_keys_temp, a.az_view_temp)
+    acts0, z0, v0, lp0 = pol.propose(obs, KC, a.az_keys_temp, a.az_view_temp)
     side.scatter(np.arange(B), side_all)
     heads = acts0.shape[2]
     tree = AzTree(KC, heads, z0.shape[2])
     root = int(tree.add(1)[0])
     tree.slot[root], tree.V[root] = int(slot0[0]), float(v0[0])
+    tree.prior[root] = priors(lp0[0:1])[0]
     tree.cand_act[root], tree.cand_z[root] = acts0[0], z0[0]
     tree.d[root] = tree.rec[root] = d0
     q_lo, q_hi = float(v0[0]), float(v0[0]) + 1e-6
@@ -255,12 +294,15 @@ def run_az(ctx: dict, a) -> dict:
     commits, n_sims, waves = 0, 0, 0
     why = "cap"
     t_wave = 0.0
+    n_roll = 0
     print(f"az: one decision per edge ({K_ACT} ticks), {KC} candidates per node (mode + "
           f"{KC - 1} draws at keys temp {a.az_keys_temp:g} / view temp {a.az_view_temp:g}), "
           f"{SIMS} simulations per committed decision in waves of {B}, c_puct {c_puct:g}, "
           f"reward {mode} (scale {scale:.5f}/u, d0 {d0:,.0f}), gamma/decision {gamma_dec:.6f}, "
           f"value = the checkpoint's critic"
           + (f", progressive widening (N + 1) ** {widen:g}" if widen > 0 else "")
+          + f", prior {prior_mode}"
+          + (f", leaf rollouts of {H_roll} decisions (the policy's mode)" if H_roll > 0 else "")
           + (f", novelty {beta:g} / sqrt(1 + n) per cell ({float(a.mcts_cell):g} u x "
              f"{float(a.mcts_cell_energy):g} u of energy)" if beta > 0 else ""), flush=True)
     while True:
@@ -287,7 +329,7 @@ def run_az(ctx: dict, a) -> dict:
                     ns = ne.sum()
                     with np.errstate(divide="ignore", invalid="ignore"):
                         q = np.where(ne > 0, tree.We[s] / np.maximum(ne, 1e-9), tree.V[s])
-                    u = qnorm(q) + c_puct * (1.0 / KC) * np.sqrt(ns + 1.0) / (1.0 + ne)
+                    u = qnorm(q) + c_puct * tree.prior[s] * np.sqrt(ns + 1.0) / (1.0 + ne)
                     if widen > 0:
                         u[min(KC, int(np.ceil((ns + 1.0) ** widen))):] = -np.inf
                     for k_ in pend.get(s, ()):
@@ -384,8 +426,8 @@ def run_az(ctx: dict, a) -> dict:
                     states = core.get_states()[:m].copy()
                     side_rows = side.gather(idx)
                     slots = store.add(states, obs[:m].copy(), side_rows)
-                    acts_c, z_c, v_c = pol.propose(obs, KC, a.az_keys_temp, a.az_view_temp)
-                    acts_c, z_c, v_c = acts_c[:m], z_c[:m], v_c[:m]
+                    acts_c, z_c, v_c, lp_c = pol.propose(obs, KC, a.az_keys_temp, a.az_view_temp)
+                    acts_c, z_c, v_c, lp_c = acts_c[:m], z_c[:m], v_c[:m], lp_c[:m]
                     side.scatter(idx, side_rows)
                     ids = tree.add(m)
                     if tree.e_act is None:
@@ -398,6 +440,7 @@ def run_az(ctx: dict, a) -> dict:
                     tree.term[ids] = term
                     tree.rec[ids], tree.d[ids] = rec, d_end
                     tree.cand_act[ids], tree.cand_z[ids] = acts_c, z_c
+                    tree.prior[ids] = priors(lp_c)
                     tree.e_act[ids] = e_act
                     tree.e_view[ids] = e_view
                     tree.child[par, kk] = ids
@@ -418,8 +461,58 @@ def run_az(ctx: dict, a) -> dict:
                     tree.r[ids] = r
                     v = np.where(term == 0, v_c.astype(np.float64), 0.0)
                     tree.V[ids] = v
+                    vleaf = v
+                    if H_roll > 0 and (term == 0).any():
+                        # --az-rollout H: the leaf judged by the policy's own mode played on for H
+                        # decisions (classic MCTS's rollout, which AlphaGo mixed with its critic):
+                        # a finish pays fin_pay, a death 0, the survivors bootstrap on V
+                        live_r = np.zeros(B, bool)
+                        live_r[:m] = term == 0
+                        g_roll = np.zeros(m, np.float64)
+                        disc = np.ones(m, np.float64)
+                        rec_r = rec.copy()
+                        pol.greedy = np.ones(B, bool)
+                        pol._tick, pol._held = 0, None
+                        ob_r = obs
+                        for t in range(H_roll * K_ACT):
+                            act_r = np.ascontiguousarray(pol.act(ob_r), np.int32)
+                            vz0 = np.asarray(core.states_view["velocity"][:m, 2],
+                                             np.float64).copy()
+                            ob_r, _r, dn, tr, _i = core.step(
+                                act_r, view=np.ascontiguousarray(pol.view, np.float32))
+                            ob_r = np.array(ob_r)
+                            dn = np.asarray(dn)[:m].astype(bool)
+                            tr = np.asarray(tr)[:m].astype(bool)
+                            fin = np.asarray(core.goal_hits[:m]).astype(bool)
+                            lr = live_r[:m]
+                            ended = lr & (dn | tr)
+                            hit = ended & dn & fin
+                            g_roll[hit] += disc[hit] * fin_pay
+                            still = lr & ~ended
+                            if mode == "banked" and still.any():
+                                st = core.states_view
+                                dd = field_d(gf, np.asarray(st["origin"][:m], np.float64)[still])
+                                cm = contact_mask(vz0[still], np.asarray(
+                                    st["velocity"][:m, 2], np.float64)[still], g_step, tol, vmax)
+                                rr = rec_r[still]
+                                nr = np.where(cm & (dd < rr), dd, rr)
+                                g_roll[still] += disc[still] * (scale * np.maximum(0.0, rr - nr)
+                                                                - time_pen)
+                                rec_r[still] = nr
+                            live_r[:m] = still
+                            if (t + 1) % K_ACT == 0:
+                                disc[still] *= gamma_dec
+                            if not live_r.any():
+                                break
+                        pol.greedy = np.zeros(B, bool)
+                        if live_r.any():
+                            _a, _z, v_end, _l = pol.propose(ob_r, 1, 1.0, 1.0)
+                            lr = live_r[:m]
+                            g_roll[lr] += disc[lr] * v_end[:m][lr].astype(np.float64)
+                        vleaf = np.where(term == 0, g_roll, 0.0)
+                        n_roll += int((term == 0).sum())
                     for j, i in enumerate(gexp):
-                        vals[i] = r[j] + gamma_dec * v[j]
+                        vals[i] = r[j] + gamma_dec * vleaf[j]
                         new_nodes[i] = int(ids[j])
                 t_wave += time.time() - t0
             for i, l in enumerate(leaves):
@@ -481,6 +574,7 @@ def run_az(ctx: dict, a) -> dict:
                "greedy_pct": float("nan"), "reward": mode, "k": KC, "sims": SIMS,
                "cpuct": c_puct, "keys_temp": float(a.az_keys_temp),
                "view_temp": float(a.az_view_temp), "novelty": beta, "widen": widen,
+               "prior": prior_mode, "rollout": H_roll, "rollouts": n_roll,
                "depth_mean": float(np.mean(dep_means)) if dep_means else None,
                "depth_max": int(max(dep_maxes)) if dep_maxes else None,
                "cells": int(arch.n) if arch is not None else None,

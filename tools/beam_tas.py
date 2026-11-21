@@ -2274,6 +2274,12 @@ def main():
     ap.add_argument("--az-widen", type=float, default=0.0,
                     help="--az: progressive widening - a node visited N times offers its first "
                          "ceil((N + 1) ** ALPHA) candidates (the mode first); 0 = all K at once")
+    ap.add_argument("--az-prior", choices=("uniform", "policy"), default="uniform",
+                    help="--az: the PUCT prior over a node's K candidates - uniform (1 / K) or "
+                         "policy (each candidate's own probability under the policy)")
+    ap.add_argument("--az-rollout", type=int, default=0,
+                    help="--az: judge every new leaf by the policy's mode played on for this "
+                         "many decisions (0 = the critic alone)")
     ap.add_argument("--az-minutes", type=float, default=20.0)
     ap.add_argument("--az-log-every", type=int, default=20)
     ap.add_argument("--mcts", action="store_true",
