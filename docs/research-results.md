@@ -51004,3 +51004,16 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   ab7c_l14 680.0M, mmp1_l14r 831.0M. One seed each.
 * One fresh RTX 5090 per test at <= $0.80/h (abl/vel/series.sh, agent mmv, dashboard :8668),
   watchdog + harvest spec, one after another beside mmg_S1c. Order: warp, particles, arrow.
+
+## 2026-11-21 15:00 UTC: RESULT - mmv_warp (depth warped 0.2 s ahead, --obs-warp 1) on celestial: no difference
+
+* 14:12 -> 15:00 UTC, box 61811031 (RTX 5090, Colorado, US, $0.763/h, ~$0.6); in_ch 6; 529k
+  steps/s; cut at the first finish + 5 tests (7: three tests came in one watcher pass); harvest
+  md5-checked to ~/ar_m2/runs/mmv/mmv_warp; box released.
+* Graded (score.py), finishes of 9: 529.0M 0 (92.7%), 604.5M 0 (91.8%), 680.0M 0 (82.1%), 755.5M 0
+  (75.8%); FIRST FINISH 2/9 at 831.0M (44.12 s); 906.5M 3, 982.0M 3 (43.54 s), 1057.5M 4, 1133.0M
+  1, 1208.5M 1, 1284.0M 7 (43.03 s), 1359.5M 2. Over the seven tests 604.5-1057.5M: 12 of 63
+  (ab7c_l14 20, mmp1_l14r 10). Search 1 (456M) handed back a beam line to d 11,509, search 2
+  (1.00B) one to d 911, after the first finish.
+* Reading (5a08df81): first finish at 831.0M = the slower control's test: no difference shown;
+  finishes after it between the two controls, best times in their range. Not sent to sidistic.
