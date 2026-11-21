@@ -31,6 +31,13 @@ normalised over the tree (MuZero) before PUCT:
 an unvisited edge reads its parent's own normalised value (first-play urgency). A batch of B
 simulations runs per wave with virtual loss (Chaslot et al. 2008).
 
+MEMORY (--az-novelty BETA, 0 = off): the tree's Go-Explore archive - every expansion that reaches
+a cell (position / --mcts-cell u, energy height / --mcts-cell-energy u) the whole search has
+visited n times before earns BETA / sqrt(1 + n) on its edge (count-based novelty, Bellemare 2016 /
+Go-Explore's cell weight), so the tree remembers where it has been and pushes into new parts of
+the map; the critic still scores safety. Only a decision during which the map pushed back counts
+(contact_mask: a surface stood or surfed on), so a fall through new air does not pay.
+
 ACTING (receding horizon, AlphaZero's play): --az-sims simulations from the root, then the root's
 most visited edge is COMMITTED - the real episode advances one decision and keeps that subtree -
 until the root finishes, dies, reaches --max-ticks or the --az-minutes budget ends. The committed
@@ -48,7 +55,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from mcts_search import RowStore, SideState, contact_mask, field_d  # noqa: E402
+from mcts_search import CellArchive, RowStore, SideState, contact_mask, field_d  # noqa: E402
 
 
 def make_az_policy():
@@ -188,6 +195,8 @@ def run_az(ctx: dict, a) -> dict:
     d0 = float(field_d(gf, np.asarray(ctx["row0"]["origin"]).reshape(-1, 3))[0])
     scale = 100.0 / d0 if np.isfinite(d0) and d0 > 0 else 0.0
     fin_pay = float(a.az_finish)
+    beta = float(a.az_novelty)
+    arch = CellArchive(float(a.mcts_cell), float(a.mcts_cell_energy)) if beta > 0 else None
 
     def mk_wrapper(core):
         es, ef, fstate, lf = ctx["mk_feed"]()
@@ -242,7 +251,9 @@ def run_az(ctx: dict, a) -> dict:
           f"{KC - 1} draws at keys temp {a.az_keys_temp:g} / view temp {a.az_view_temp:g}), "
           f"{SIMS} simulations per committed decision in waves of {B}, c_puct {c_puct:g}, "
           f"reward {mode} (scale {scale:.5f}/u, d0 {d0:,.0f}), gamma/decision {gamma_dec:.6f}, "
-          f"value = the checkpoint's critic", flush=True)
+          f"value = the checkpoint's critic"
+          + (f", novelty {beta:g} / sqrt(1 + n) per cell ({float(a.mcts_cell):g} u x "
+             f"{float(a.mcts_cell_energy):g} u of energy)" if beta > 0 else ""), flush=True)
     while True:
         if tree.term[root]:
             why = {1: "death", 2: "finish", 3: "cap"}[int(tree.term[root])]
@@ -323,6 +334,7 @@ def run_az(ctx: dict, a) -> dict:
                     term = np.zeros(m, np.int8)
                     rec = tree.rec[par].copy()
                     d_end = tree.d[par].copy()
+                    touch = np.zeros(m, bool)      # the map pushed back during this decision
                     e_view = None
                     e_act = None
                     for t in range(K_ACT):
@@ -353,6 +365,7 @@ def run_az(ctx: dict, a) -> dict:
                                               g_step, tol, vmax)
                             rr = rec[live]
                             rec[live] = np.where(cm & (dd < rr), dd, rr)
+                            touch[live] |= cm
                         alive = live
                     pol.force_idx = None
                     states = core.get_states()[:m].copy()
@@ -381,6 +394,14 @@ def run_az(ctx: dict, a) -> dict:
                     if mode == "banked":
                         r = scale * gain - time_pen * K_ACT
                     r = r + np.where(term == 2, fin_pay, 0.0)
+                    if arch is not None and ((term == 0) & touch).any():
+                        # the tree's memory: a cell seen n times before pays beta / sqrt(1 + n),
+                        # counted only where the map pushed back (a surface stood or surfed on):
+                        # a fall through new air would otherwise pay its way into the void
+                        lv = np.flatnonzero((term == 0) & touch)
+                        cid, _nn = arch.visit(arch.keys(states["origin"][lv],
+                                                        states["velocity"][lv]))
+                        r[lv] += beta / np.sqrt(arch.seen[cid])
                     tree.r[ids] = r
                     v = np.where(term == 0, v_c.astype(np.float64), 0.0)
                     tree.V[ids] = v
@@ -426,7 +447,8 @@ def run_az(ctx: dict, a) -> dict:
                   f"({tree.tick[root] / tps:6.2f}s), d {float(tree.d[root]):7,.0f}, banked record "
                   f"{best_rec:7,.0f} ({100 * (d0 - best_rec) / d0:5.1f}%), V {tree.V[root]:7.2f}, "
                   f"root visits {int(ne.sum())}, tree {tree.n:,} nodes, sims {n_sims:,}, "
-                  f"{time.time() - t_all:5.0f}s", flush=True)
+                  + (f"cells {arch.n:,}, " if arch is not None else "")
+                  + f"{time.time() - t_all:5.0f}s", flush=True)
     fin = bool(tree.term[root] == 2)
     print(f"az: {why} after {commits} committed decisions ({tree.tick[root] / tps:.2f}s), "
           f"{n_sims:,} simulations in {waves:,} waves, {tree.n:,} nodes, wall "
@@ -441,5 +463,7 @@ def run_az(ctx: dict, a) -> dict:
                "best_d": best, "d0": d0, "best_pct": 100.0 * (d0 - best) / d0,
                "greedy_pct": float("nan"), "reward": mode, "k": KC, "sims": SIMS,
                "cpuct": c_puct, "keys_temp": float(a.az_keys_temp),
-               "view_temp": float(a.az_view_temp), "wall_s": time.time() - t_all}
+               "view_temp": float(a.az_view_temp), "novelty": beta,
+               "cells": int(arch.n) if arch is not None else None,
+               "wall_s": time.time() - t_all}
     return {"frontier": frontier, "summary": summary}

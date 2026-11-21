@@ -2267,6 +2267,10 @@ def main():
                          "is 0); banked = MuZero's backup with the field's banked progress")
     ap.add_argument("--az-finish", type=float, default=50.0,
                     help="--az: what a finishing edge pays (the trainer's --success-bonus)")
+    ap.add_argument("--az-novelty", type=float, default=0.0,
+                    help="--az: the tree's memory - an expansion into a cell (--mcts-cell u x "
+                         "--mcts-cell-energy u of energy height) seen n times before earns "
+                         "BETA / sqrt(1 + n); 0 = off")
     ap.add_argument("--az-minutes", type=float, default=20.0)
     ap.add_argument("--az-log-every", type=int, default=20)
     ap.add_argument("--mcts", action="store_true",
