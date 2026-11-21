@@ -51034,3 +51034,16 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * The test, raw/ema0 finishes of 9: pb 8/8, sid 1/0, uf2 9/9, can 8/9, b200 9/9, cel 8/9, pet
   9/9. Next (the 11-19 PLAN): six more complete tests, then stop, harvest and release, done by
   watch.sh on its own. Credit $27.87.
+
+## 2026-11-21 16:03 UTC: RESULT - mmv_part (particle streaks, --obs-glyph 2): no difference
+
+* 15:00 -> 15:52 UTC, box 61816842 (RTX 5090, Latvia, $0.698/h, ~$0.6); in_ch 6; 443k steps/s;
+  cut at the first finish + 5 tests (6, two in one watcher pass); harvest md5-checked to
+  ~/ar_m2/runs/mmv/mmv_part; box released.
+* Graded (score.py), finishes of 9: 529.0M 0 (78.5%), 604.5M 0 (99.5%), 680.0M 0 (100% of d,
+  no finish); FIRST FINISH 1/9 at 755.5M (62.83 s); 831.0M 0, 906.5M 0, 982.0M 0, 1057.5M 6
+  (48.13 s), 1133.0M 1 (47.96 s), 1208.5M 3. Over the seven tests 604.5-1057.5M: 7 of 63
+  (ab7c_l14 20, mmp1_l14r 10); best 47.96 s against the controls' 42.81 s and 46.23 s. One
+  search (462M), a Monte Carlo line to d 2,092.
+* Reading (5a08df81): first finish at 755.5M, between the controls = no difference shown; fewer
+  finishes after it and slower lines than both controls. Not sent to sidistic.
