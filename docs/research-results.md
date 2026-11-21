@@ -51204,3 +51204,18 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Round 2 onward (restart at round 2): --spines 0 (mm/exit fb53928f) - every map keeps its held
   spine, the planner enters through the BC rows alone - and 3.5e8 fleet steps a round (smaller
   steps for the gate). BC 0.5 -> 0, lr 1e-4 unchanged.
+
+## 2026-11-21 20:16 UTC: RESULT - mmx_E1 round 2 rejected (1.016); round 3 is a PPO-only control
+
+* Round 2 (--spines 0: BC rows alone, held spines kept; 3.5e8 fleet steps, BC 0.5 -> 0, lr 1e-4):
+  lines kept on six maps (sidistic not: 113.94 vs greedy 113.58, the other wave none). 1,062 s.
+* Gate (18 episodes per map, challenger vs incumbent): pb 16 vs 17 finishes (expected 72.51 vs
+  71.11 s), sidistic 6 vs 9 (151.84 vs 142.10), unitfarmer2 18/18 (39.59 vs 40.02), cannonball 15
+  vs 17 (80.87 vs 77.46), blue200 18/18 (12.73 vs 12.85), celestial 17 vs 18 (43.13 vs 41.91),
+  petrus 18 vs 17 (27.44 vs 28.22): mean ratio 1.0162, REJECTED.
+* Three rounds rejected (1.054, 1.019, 1.016), each losing finishes somewhere (pb; pb, uf2, cel;
+  sid, can, cel) while the expected time improved elsewhere (can; can; uf2, b200, pet). The
+  incumbent's own finishes swing as much between rounds (sidistic 7, 12, 9 of 18; cannonball 15,
+  13, 17), as the run's last six tests did (sidistic 5, 5, 2, 9, 6, 7 of 9).
+* Round 3 = the same round with the BC coefficient 0 (PPO continuation only): if it is rejected
+  by as much, the loss comes with continued training and the gate's noise, not with the BC rows.
