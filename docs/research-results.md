@@ -51304,3 +51304,22 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   Go-Explore spine, the map's baked fields, the zero-shot evals) and the paused expert loop's
   small files ~/ar_m2/runs/mmx/mmx_E1/mmx_E1_small.tgz (md5 8bf4e8bc). mmx_E1 resumes only on a
   new box (state.json + the seed checkpoint, mmg_S1c's final).
+
+## 2026-11-21 22:40 UTC: PLAN - surf_left_turn overnight test-time search queue (box nmx)
+
+* The user (2026-11-21): "try different methods overnight. If you find a solution, it would be
+  good." No training: the seven-map agent (mmg_S1c final, md5 70119029) as the prior, the map's
+  own geometry and fields only, no demo. One RTX 5090 at $0.529/h (instance 61868963, Texas),
+  mm/exit 73e63400, up to three jobs at once (tools/nm_queue.sh-style runner on the box), the
+  droplet watcher: STOP at 08:30 UTC or at the $13 credit floor, then harvest + release; the
+  fleet watchdog harvests runs/nm_res. Credit $21.63 at the start.
+* New options (73e63400): --az-prior policy (each candidate weighted by its own probability under
+  the policy, key heads + yaw: AlphaZero's prior), --az-rollout H (every new leaf judged by the
+  policy's mode played on for H decisions; finish 50, death 0, survivors bootstrap on the
+  critic), and tools/ge_iter.py (auto_spine's Go-Explore stage repeated, each stage rooted at the
+  end of the line before it, from the s1 line that surfed ramps 1-2).
+* Queue: geit1 (Go-Explore stages of 30 min, up to 12); azP1 (policy prior + memory, 32
+  parallel, 2,048 sims); azR1 (policy prior + memory + 96-decision rollouts, 256 sims); azR2
+  (policy prior + banked reward + rollouts); azP2 (policy prior + widening 0.25 + memory); az9L
+  (az9 again, 90 min). More are added as results come in. The verdict: a finish (the trainer's
+  physics) and how far each method gets (x along the route, the field d).
