@@ -50856,3 +50856,14 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Reading (5a08df81): a LOSS (no finish by 906.5M), but the greedy stood at 98.6-99.4% from 831M
   - the controls' pre-finish level - and the miss lines up with a stale first search, so this
   is weak evidence against the channel, not a clear harm. Not sent to sidistic.
+
+## 2026-11-21 09:37 UTC: RESULT - mmv_cuni (uniform RGB velocity map, --obs-speed-tint 3) on celestial: no difference shown
+
+* 09:02 -> 09:33 UTC, box 61779132 (the same UK machine, $0.614/h, ~$0.4); in_ch 8; cut at the
+  first finish + 5 tests; harvest md5-checked to ~/ar_m2/runs/mmv/mmv_cuni; box released.
+* Graded (score.py), finishes of 9: 604.5M 0 (99.3%), 680.0M 2 (62.77 s), 755.5M 0 (66.6%),
+  831.0M 7 (51.27 s), 906.5M 2, 982.0M 7 (50.46 s), 1057.5M 0 (43.3%): 18 of 54 over the six
+  tests from 680.0M; ab7c_l14 20, mmp1_l14r 10, mms_cel1 (speed tint) 13 over the same tests.
+* Reading (5a08df81): first finish at 680.0M = the faster control's test: no difference shown;
+  as reliable as the controls; its best times are 4-8 s slower (50.46 s vs 42.81-47.09 s). Not
+  sent to sidistic.
