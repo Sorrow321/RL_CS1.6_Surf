@@ -50945,3 +50945,43 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   single-map v14 line of ab12s_v14; the mms_sid1 / mms_dflow rule unchanged (gain <= 3.25B, loss
   >= 4.76B with an early stop there, or none; cut first finish + 2 tests). One RTX 5090 at <=
   $0.80/h, agent mmb (scratchpad abl/bsid), beside mms_dflow and mmg_S1c.
+
+## 2026-11-21 13:58 UTC: RESULT - mms_dflow: real-depth flow on sidistic, a LOSS (none by 4.83B)
+
+* 11:01 -> 13:50 UTC on box 61791602 (RTX 5090, Colorado, US, $0.763/h, ~$2.1); in_ch 7; 520k
+  steps/s (mms_sid1 502k); stopped by the early stop after the 4.83B test (no finish by the
+  plan's loss line, 4.76B); harvest md5-checked to ~/ar_m2/runs/mms/mms_dflow; box released.
+* Graded (score.py, the sidistic field of ~/RL_Surf_az/maps): 65 tests, 0 of 585 episodes
+  finished. Best per test: about 32% from 0.83B to 3.10B; 54.1% at 3.25B, 70.3% at 3.55B, 82.3%
+  at 4.00B, 96.7% (CP6) at 4.53B; 78.5% at the 4.76B test. Never CP7.
+* Control ab12s_v14 (same grader): 42.0% at 1.28B, 71.5% at 1.59B, 80.7% at 2.04B, 96.4% (CP6)
+  at 2.87B, 98.0% (CP7) at 2.94B, first finish 4.00B. The first test past 40%: control 1.28B,
+  flow 3.25B (1.97B later); CP6: 2.87B against 4.53B (1.66B later).
+* Its 8 searches: 7 handed back lines (search 3 came back stale), the deepest search 8's beam
+  line to d 18,210 at 4.24B; none reached the finish (mms_sid1's search 7 gave d 0 at 3.54B).
+* Reading (the 11:01 rule): a LOSS on sidistic after a GAIN on celestial (604.5M, 5a08df81). As
+  with the speed tint, the two maps disagree, and the sidistic loss is large (2B more steps on
+  the 32% shelf). The real-depth flow is not adopted. One seed per map.
+
+## 2026-11-21 13:58 UTC: RESULT - mmb_blob: the velocity heatmap on sidistic, no difference (3.85B)
+
+* 11:37 -> 13:51 UTC on box 61795268 (RTX 5090, United Kingdom, $0.678/h, ~$1.5); in_ch 6; 524k
+  steps/s; cut at the first finish + 2 tests (4.00B); box released. Harvest: the evals and the
+  held lines md5-checked to ~/ar_m2/runs/mmb/mmb_blob, with progress.csv, run.json and the launch
+  log; the final checkpoint copy (box.py pull) FAILED while the droplet's disk was full and the
+  box was released without it (the result needs only the evals).
+* Graded (score.py, the sidistic field of ~/RL_Surf_az/maps): FIRST FINISH 1/9 at 3,850,895,360
+  (116.85 s); 1/9 at 3.93B (116.36 s); 0/9 at 4.00B (97.9%). Before it: 44.0% at 0.83B, 82.2% at
+  1.66B, 97.9% (CP7) at 2.27B; CP7 in 10 of 12 tests from 2.64B to 3.47B, then 31.9-82.3% to 3.78B.
+* Control ab12s_v14 (same grader): 42.0% at 1.28B, 80.7% at 2.04B, 98.0% (CP7) at 2.94B, first
+  finish 4.00B (1/9, 120.07 s), then 0/9 and 1/9 (124.08 s). The heatmap reached each stage
+  0.4-0.7B steps earlier, then took 1.58B steps from CP7 to the finish (the control 1.06B).
+* Its 5 searches: lines to d 72,048 (468M), stale (917M), d 27,413 (1.53B), d 9,017 (2.23B, Monte
+  Carlo), d 2,266 (3.46B, Monte Carlo); the first finish came 0.39B steps after the last.
+* Reading (the 11:37 rule): first finish at 3.85B, between the gain line 3.25B and the loss line
+  4.76B = no difference shown. Second read: 2 of 27 finishes over the first finish + 2 tests
+  (control 1 of 27, mms_sid1 7 of 27), best 116.36 s (control 120.07 s, mms_sid1 115.16 s).
+* The two celestial gains on sidistic (one seed each, control 4.00B): the real-depth flow a LOSS
+  (none by 4.83B), the heatmap no difference (3.85B). With the speed tint (mms_sid1, 4.15B), no
+  representation tried on sidistic beat v14 by the rule; none is adopted. The heatmap is the only
+  one ahead on both maps (celestial 453.5M vs 680.0M; sidistic each stage 0.4-0.7B earlier).
