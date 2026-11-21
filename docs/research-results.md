@@ -50921,3 +50921,27 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   obvious"); between = no difference. Control ab12s_v14 4,001.9M; mms_sid1 (speed tint) 4.15B.
   Cut: the first finish + 2 tests. Second read: finishes per test after the first (control 1 of
   27, mms_sid1 7 of 27).
+
+## 2026-11-21 11:37 UTC: RESULT - mmv_blob (velocity-direction heatmap, --obs-vel-blob 1) on celestial: a GAIN; the celestial series ends
+
+* 11:01 -> 11:31 UTC, box 61791267 (the same UK machine, ~$0.35); in_ch 6; cut at the first
+  finish + 6 tests; harvest md5-checked to ~/ar_m2/runs/mmv/mmv_blob; box released.
+* Graded (score.py), finishes of 9: FIRST FINISH 1/9 at 453.5M (46.61 s) - before its first
+  search line (search 1's beam line to d 21,269 came at 470.3M); 529.0M 0 (92.1%); 604.5M 0
+  (99.2%); 680.0M 3; 755.5M 9/9 (46.48 s); 831.0M 2; 906.5M 0 (82.9%). The first 9/9 of any
+  celestial run (ab7c_l14: 1,133.0M).
+* Reading (5a08df81): first finish at or before 604.5M = a GAIN (on one episode, then two empty
+  tests); it goes on to sidistic (below).
+* The series on celestial (one seed each; controls 680.0M / 831.0M; finishes over the five
+  tests 604.5-906.5M, controls 8 and 2 of 45): velocity colour (cshade) none by 906.5M (99.4% at
+  831M); uniform map (cuni) 680.0M, 11 of 45; virtual-depth flow (cflow) 680.0M, 15; REAL-DEPTH
+  FLOW (dflow) 604.5M with 5/9, 25; HEATMAP (blob) 453.5M with 1/9, 14; speed tint (mms_cel1)
+  604.5M with 1/9, 14. The two representations that place the motion in the scene - the flow
+  from the real depth, the spot where the velocity points - are the two gains.
+
+## 2026-11-21 11:37 UTC: PLAN - mmb_blob: the velocity-direction heatmap on sidistic alone
+
+* --obs-vel-blob 1 (mm/vsid d7c14ade) on surf_src_sidistic alone, from scratch, seed 0, the
+  single-map v14 line of ab12s_v14; the mms_sid1 / mms_dflow rule unchanged (gain <= 3.25B, loss
+  >= 4.76B with an early stop there, or none; cut first finish + 2 tests). One RTX 5090 at <=
+  $0.80/h, agent mmb (scratchpad abl/bsid), beside mms_dflow and mmg_S1c.
