@@ -51017,3 +51017,20 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   (1.00B) one to d 911, after the first finish.
 * Reading (5a08df81): first finish at 831.0M = the slower control's test: no difference shown;
   finishes after it between the two controls, best times in their range. Not sent to sidistic.
+
+## 2026-11-21 15:17 UTC: NOTE - mmg_S1c: SIDISTIC FINISHES - all seven maps finished by one agent
+
+* First finish at test 76,840,780,800 fleet steps (10.98B own per map): score.py on md5-checked
+  copies of the box's eval files (the sidistic field of ~/RL_Surf_az/maps) raw 1/9 (115.42 s),
+  ema0 0/9 (97.8%, CP7), ema1 0/9 (98.0%). v14 alone first finished sidistic at 4.00B (120.07 s).
+* How: the run's own search 16 (started at 76.32B, back at 76.47B) handed back a Monte Carlo line
+  that reaches the finish (d 0, 14,695 states), the first of its sixteen sidistic searches to do
+  so (the deepest before it ended at d 3,316, search 13 at 65.9B); the greedy finish came at the
+  next test, 0.37B fleet steps (53M own) later.
+* THE MILESTONE (the user, 2026-11-19: train until all seven maps finish): every map has now
+  finished in this one run from the true start - petrus, blue200 and celestial before 7.50B
+  (mmg_S1), cannonball 25.36B, unitfarmer2 36.40B, princessburglar 49.00B, sidistic 76.84B fleet
+  steps. One policy, the same flags and constants on all seven maps, no demo, no map constant.
+* The test, raw/ema0 finishes of 9: pb 8/8, sid 1/0, uf2 9/9, can 8/9, b200 9/9, cel 8/9, pet
+  9/9. Next (the 11-19 PLAN): six more complete tests, then stop, harvest and release, done by
+  watch.sh on its own. Credit $27.87.
