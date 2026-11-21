@@ -1403,6 +1403,8 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_speed_tint", "--obs-speed-tint"),
              ("obs_flow", "--obs-flow"),
              ("obs_vel_blob", "--obs-vel-blob"),
+             ("obs_warp", "--obs-warp"),
+             ("obs_glyph", "--obs-glyph"),
              ("simba", "--simba"),
              ("split_trunk", "--split-trunk"),
              ("obs_views_scale", "--obs-views-scale"),
@@ -6342,6 +6344,19 @@ def main() -> None:
                          "where the velocity points - |v| / 4000 x exp(-angle(ray, v)^2 / (2 x "
                          "(8 deg)^2)). in_ch + 1: SCRATCH arms; ckpt restores, a mismatch is "
                          "refused")
+    ap.add_argument("--obs-warp", type=int, default=None, choices=(0, 1),
+                    help="ONE more image channel (the user's list, item 5): the depth render "
+                         "WARPED by its own real-depth ego-motion flow over 0.2 s (each pixel "
+                         "reads the depth where its content comes from, the shift capped softly "
+                         "at 8 px) - roughly the view 0.2 s ahead. in_ch + 1: SCRATCH arms; ckpt "
+                         "restores, a mismatch is refused")
+    ap.add_argument("--obs-glyph", type=int, default=None, choices=(0, 1, 2),
+                    help="ONE more image channel of drawn primitives (the user's list, item 6): "
+                         "1 = the 3D velocity ARROW projected (from 200 u ahead and 60 u below "
+                         "the eye, v x 0.025 s long), 2 = a virtual PARTICLE every 4 px at a "
+                         "virtual depth of 1000 u drawn as its streak over 0.05 s; brightness "
+                         "0.25 at the tail -> 1 at the head. in_ch + 1: SCRATCH arms; ckpt "
+                         "restores, a mismatch is refused")
     ap.add_argument("--obs-no-depth", type=int, default=None, choices=(0, 1),
                     help="the policy does NOT see the depth channel (the user, 2026-10-02): the "
                          "image keeps its other channels (e.g. --obs-normal's normal + the "
@@ -9714,7 +9729,8 @@ def main() -> None:
                 "checkpoint's first layer cannot be widened or narrowed - start a fresh run, or "
                 f"drop the flag to keep the ckpt's setting "
                 f"({int(ck_cfg.get('obs_speed_tint') or 0)})")
-        for _k, _fl in (("obs_flow", "--obs-flow"), ("obs_vel_blob", "--obs-vel-blob")):
+        for _k, _fl in (("obs_flow", "--obs-flow"), ("obs_vel_blob", "--obs-vel-blob"),
+                        ("obs_warp", "--obs-warp"), ("obs_glyph", "--obs-glyph")):
             if getattr(args, _k) is None and ck_cfg.get(_k):
                 setattr(args, _k, int(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k)}")
@@ -10899,11 +10915,16 @@ def main() -> None:
         args.obs_flow = 0
     if args.obs_vel_blob is None:
         args.obs_vel_blob = 0
-    if (args.obs_flow or args.obs_vel_blob) and (
+    if args.obs_warp is None:
+        args.obs_warp = 0
+    if args.obs_glyph is None:
+        args.obs_glyph = 0
+    if (args.obs_flow or args.obs_vel_blob or args.obs_warp or args.obs_glyph) and (
             args.goals or (args.frame_stack or 0) > 1 or args.surf_mask or args.normals
             or (args.obs_views or 1) > 1 or args.pinhole
             or (args.depth_enc or "legacy") != "legacy"):
-        raise SystemExit("--obs-flow / --obs-vel-blob are post-processes of the legacy-depth "
+        raise SystemExit("--obs-flow / --obs-vel-blob / --obs-warp / --obs-glyph are "
+                         "post-processes of the legacy-depth "
                          "equiangular plain / potential / face renders: not with --goals, "
                          "--frame-stack, --surf-mask, --normals, --obs-views, --pinhole or "
                          "--depth-enc")
@@ -14109,6 +14130,8 @@ def main() -> None:
                                   speed_tint=int(args.obs_speed_tint),
                                   flow=int(args.obs_flow),
                                   vel_blob=bool(args.obs_vel_blob),
+                                  warp=bool(args.obs_warp),
+                                  glyph=int(args.obs_glyph),
                                   texture=bool(args.obs_texture or args.obs_normal
                                                or args.obs_slope),
                                   texture_mode=("normal" if args.obs_normal else "slope"
@@ -14158,6 +14181,14 @@ def main() -> None:
         if args.obs_vel_blob:
             print(f"--obs-vel-blob: {slot.name} the velocity-direction heatmap (|v| / 4000 x a "
                   f"gaussian of 8 deg around v) -> in_ch {slot.lidar.channels}")
+        if args.obs_warp:
+            print(f"--obs-warp: {slot.name} the depth render warped 0.2 s ahead along its own "
+                  f"real-depth ego-motion flow (shift <= 8 px) -> in_ch {slot.lidar.channels}")
+        if args.obs_glyph:
+            print(f"--obs-glyph {args.obs_glyph}: {slot.name} "
+                  + ("the projected 3D velocity arrow" if args.obs_glyph == 1 else
+                     "a virtual particle grid's motion streaks (every 4 px, 1000 u, 0.05 s)")
+                  + f" -> in_ch {slot.lidar.channels}")
         if args.obs_no_depth:
             print(f"--obs-no-depth: {slot.name} the policy's conv reads channels 1..."
                   f"{slot.lidar.channels - 1} of {slot.lidar.channels} - NOT the depth (still "
@@ -14332,6 +14363,8 @@ def main() -> None:
                                     speed_tint=int(args.obs_speed_tint),
                                     flow=int(args.obs_flow),
                                     vel_blob=bool(args.obs_vel_blob),
+                                    warp=bool(args.obs_warp),
+                                    glyph=int(args.obs_glyph),
                                     texture=bool(args.obs_texture or args.obs_normal
                                                  or args.obs_slope),
                                     texture_mode=("normal" if args.obs_normal else "slope"
@@ -16783,6 +16816,10 @@ def main() -> None:
         meta["config"]["obs_flow"] = int(args.obs_flow)
     if args.obs_vel_blob:
         meta["config"]["obs_vel_blob"] = 1
+    if args.obs_warp:
+        meta["config"]["obs_warp"] = 1
+    if args.obs_glyph:
+        meta["config"]["obs_glyph"] = int(args.obs_glyph)
     if args.min_speed_kill:
         meta["config"]["min_speed_kill"] = float(args.min_speed_kill)
         meta["config"]["min_speed_grace"] = float(args.min_speed_grace
@@ -19246,7 +19283,7 @@ def main() -> None:
         print("--render-graph: not on a CUDA device - the render stays eager")
     # (x, y, z, yaw, pitch, ducked) [+ (vx, vy, vz) under --obs-ttc]
     _VIS_W = 9 if (args.obs_ttc or args.obs_reach or args.obs_speed_tint or args.obs_flow
-                   or args.obs_vel_blob) else 6
+                   or args.obs_vel_blob or args.obs_warp or args.obs_glyph) else 6
     vis_pin = torch.zeros((N, _VIS_W), pin_memory=(device.type == "cuda"))
     vis_np = vis_pin.numpy()
     vis_gpu = torch.zeros((N, _VIS_W), device=device)
@@ -22412,7 +22449,8 @@ def main() -> None:
                                                  ts[:, 2]), 1) * 1000.0
                                     if (args.obs_ttc or args.obs_reach
                                         or args.obs_speed_tint or args.obs_flow
-                                        or args.obs_vel_blob) else None)
+                                        or args.obs_vel_blob or args.obs_warp
+                                        or args.obs_glyph) else None)
                             vis = fleet.render_rows(ti, pos, yawd,
                                                     _pt, ts[:, 5], velocity=_vel)
                             if ring is not None:

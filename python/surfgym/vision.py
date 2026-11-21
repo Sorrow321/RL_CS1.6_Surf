@@ -1395,6 +1395,23 @@ FLOW_Z0 = 1000.0
 FLOW_DMIN = 16.0
 #: --obs-vel-blob: the heatmap's angular width (deg) around the velocity's direction
 BLOB_SIGMA_DEG = 8.0
+#: --obs-warp: the depth render warped WARP_DT seconds ahead along its own real-depth ego-motion
+#: flow (the camera's aim kept), each pixel's shift capped softly at WARP_MAX_PX pixels
+WARP_DT = 0.2
+WARP_MAX_PX = 8.0
+#: --obs-glyph 1: the velocity ARROW, from a point GLYPH_BASE u ahead of the eye along the view
+#: and GLYPH_DROP u below it, v x GLYPH_ARROW_T long (100 u at 4000 u/s), GLYPH_ARROW_K samples
+GLYPH_BASE = 200.0
+GLYPH_DROP = 60.0
+GLYPH_ARROW_T = 0.025
+GLYPH_ARROW_K = 48
+#: --obs-glyph 2: a virtual PARTICLE every GLYPH_STEP pixels at the virtual depth FLOW_Z0, drawn
+#: as its streak over GLYPH_DT seconds of the eye's translation, GLYPH_STREAK_K samples
+GLYPH_STEP = 4
+GLYPH_DT = 0.05
+GLYPH_STREAK_K = 16
+#: a glyph's brightness at its tail (1 at its head: the bright end shows the direction)
+GLYPH_TAIL = 0.25
 #: --obs-reach: the reach channel's time scale, s (tanh(slack / REACH_TAU))
 REACH_TAU = 1.0
 #: the engine's air-control cap, u/s per tick (src/pm.c pm_air_accelerate: wishspeed is
@@ -2287,7 +2304,7 @@ class GpuLidar:
                  texture=False, texture_mode: str = "rgb", ttc: bool = False,
                  edges: bool = False, views: int = 1, views_scale: int = 1,
                  reach: bool = False, speed_tint: int = 0, flow: int = 0,
-                 vel_blob: bool = False) -> None:
+                 vel_blob: bool = False, warp: bool = False, glyph: int = 0) -> None:
         if texture_mode not in ("rgb", "normal", "slope", "edgesrc"):
             raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
                              "(--obs-normal) or slope (--obs-slope)")
@@ -2497,12 +2514,33 @@ class GpuLidar:
         if self.vel_blob:
             self.channels += 1
         self.blob_channel = self.channels - 1 if self.vel_blob else None
+        # --obs-warp (the user's list, item 5): ONE more channel, the depth render WARPED by its
+        # own ego-motion flow - roughly the view WARP_DT seconds ahead: each pixel takes the
+        # depth from where the real-depth flow brings its content from (the values are not
+        # re-ranged: an image warp)
+        self.warp = bool(warp)
+        if self.warp and (pinhole or self.depth_enc != "legacy"):
+            raise ValueError("--obs-warp reads the legacy depth of the equiangular camera: not "
+                             "with --pinhole or --depth-enc")
+        if self.warp:
+            self.channels += 1
+        self.warp_channel = self.channels - 1 if self.warp else None
+        # --obs-glyph (the user's list, item 6): ONE more channel of drawn primitives in [0, 1] -
+        # 1 = the projected 3D velocity ARROW, 2 = a virtual PARTICLE grid's motion streaks
+        self.glyph = int(glyph or 0)
+        if self.glyph not in (0, 1, 2):
+            raise ValueError(f"glyph {glyph!r}: 0 off, 1 arrow, 2 particles")
+        if self.glyph and pinhole:
+            raise ValueError("--obs-glyph: the equiangular camera only (not --pinhole)")
+        if self.glyph:
+            self.channels += 1
+        self.glyph_channel = self.channels - 1 if self.glyph else None
         _ph = getattr(getattr(core, "config", None), "phys", None)
         self.reach_g = float(getattr(_ph, "sv_gravity", 800.0) or 800.0)
         self.reach_tick_s = float(getattr(core, "tick_ms", 10.0) or 10.0) / 1000.0
         # the velocity rides into render() for the looming and the reach channels
         self.uses_velocity = bool(self.ttc or self.reach or self.speed_tint or self.flow
-                                  or self.vel_blob)
+                                  or self.vel_blob or self.warp or self.glyph)
         self._edge_cam_obj = None
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
@@ -2549,7 +2587,8 @@ class GpuLidar:
             raise ValueError(f"views {views!r} / views_scale {views_scale!r}: 1 or 4 views, "
                              "side cameras at scale 1 or 2")
         if self.views > 1 and (self.ttc or self.edges or self.reach or self.speed_tint
-                               or self.flow or self.vel_blob or self.surf_mask
+                               or self.flow or self.vel_blob or self.warp or self.glyph
+                               or self.surf_mask
                                or self.normals
                                or self.pinhole or self.depth_enc != "legacy"):
             raise ValueError("--obs-views turns the plain / potential / face renders of the "
@@ -2622,6 +2661,10 @@ class GpuLidar:
             out = self._append_flow(out, yaw_deg, pitch_deg, velocity)
         if self.vel_blob:
             out = self._append_vel_blob(out, yaw_deg, pitch_deg, velocity)
+        if self.warp:
+            out = self._append_warp(out, yaw_deg, pitch_deg, velocity)
+        if self.glyph:
+            out = self._append_glyph(out, yaw_deg, pitch_deg, velocity)
         return out
 
     def _render_raw(self, origin, yaw_deg, pitch_deg, ducked):
@@ -2861,15 +2904,25 @@ class GpuLidar:
         FLOW_Z0 (mode 1) or at its real depth (mode 2); tanh(px / FLOW_PX), appended LAST (2)"""
         if velocity is None:
             raise ValueError("--obs-flow: GpuLidar.render needs the velocity (velocity=)")
-        N = out.shape[0]
         dep = out if out.dim() == 3 else out[..., 0]
-        _y, _p, rx, ry, rz = self._ray_angles(N, yaw_deg, pitch_deg, dep.device)
         if self.flow == 2:
             D = self.decode_depth(dep).clamp(min=FLOW_DMIN)
         else:
             D = torch.full(dep.shape, FLOW_Z0, dtype=torch.float32, device=dep.device)
+        col, row = self._flow_px(D, yaw_deg, pitch_deg, velocity, FLOW_DT)
+        fl = torch.tanh(torch.stack((col, row), dim=-1) / FLOW_PX).to(out.dtype)
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, fl), dim=-1)
+
+    def _flow_px(self, D, yaw_deg, pitch_deg, velocity, dt):
+        """(columns, rows) each pixel's 3D point - at the distance D (N, H, W), u - moves on the
+        image when the eye moves by velocity x dt and the camera keeps its aim (--obs-flow,
+        --obs-warp)"""
+        N = D.shape[0]
+        _y, _p, rx, ry, rz = self._ray_angles(N, yaw_deg, pitch_deg, D.device)
         v = torch.as_tensor(velocity, dtype=torch.float32,
-                            device=dep.device).reshape(N, 3, 1, 1) * FLOW_DT
+                            device=D.device).reshape(N, 3, 1, 1) * dt
         qx, qy, qz = D * rx, D * ry, D * rz             # the point, from the eye
         px, py, pz = qx - v[:, 0], qy - v[:, 1], qz - v[:, 2]
         # both aims through the same atan2s, so a still eye reads exactly 0
@@ -2880,10 +2933,7 @@ class GpuLidar:
         # a column is -yaw (yoff falls left to right), a row is -pitch (poff falls downward)
         col = -dy / (self.hfov_deg * d2r / self.W)
         row = -(p1 - p0) / (self.vfov_deg * d2r / self.H)
-        fl = torch.tanh(torch.stack((col, row), dim=-1) / FLOW_PX).to(out.dtype)
-        if out.dim() == 3:
-            out = out[..., None]
-        return torch.cat((out, fl), dim=-1)
+        return col, row
 
     @torch.no_grad()
     def _append_vel_blob(self, out, yaw_deg, pitch_deg, velocity):
@@ -2906,6 +2956,85 @@ class GpuLidar:
         if out.dim() == 3:
             out = out[..., None]
         return torch.cat((out, blob[..., None]), dim=-1)
+
+    @torch.no_grad()
+    def _append_warp(self, out, yaw_deg, pitch_deg, velocity):
+        """--obs-warp: the depth channel 0 resampled at x - F(x), F = the real-depth ego-motion
+        flow over WARP_DT seconds (pixels, each component softly capped at WARP_MAX_PX) - roughly
+        the depth render WARP_DT seconds ahead, its values unchanged (an image warp; bilinear,
+        the edge pixel past the border); appended LAST"""
+        if velocity is None:
+            raise ValueError("--obs-warp: GpuLidar.render needs the velocity (velocity=)")
+        dep = out if out.dim() == 3 else out[..., 0]
+        D = self.decode_depth(dep).clamp(min=FLOW_DMIN)
+        col, row = self._flow_px(D, yaw_deg, pitch_deg, velocity, WARP_DT)
+        col = WARP_MAX_PX * torch.tanh(col / WARP_MAX_PX)
+        row = WARP_MAX_PX * torch.tanh(row / WARP_MAX_PX)
+        # grid_sample's normalised coordinates (align_corners=False): pixel c's centre is
+        # (2 c + 1) / W - 1; the content at x moves to x + F, so x reads x - F
+        c = torch.arange(self.W, dtype=torch.float32, device=dep.device).view(1, 1, self.W)
+        r = torch.arange(self.H, dtype=torch.float32, device=dep.device).view(1, self.H, 1)
+        grid = torch.stack(((2.0 * (c - col) + 1.0) / self.W - 1.0,
+                            (2.0 * (r - row) + 1.0) / self.H - 1.0), dim=-1)
+        wp = torch.nn.functional.grid_sample(dep.float()[:, None], grid, mode="bilinear",
+                                             padding_mode="border", align_corners=False)
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, wp[:, 0, ..., None].to(out.dtype)), dim=-1)
+
+    @torch.no_grad()
+    def _append_glyph(self, out, yaw_deg, pitch_deg, velocity):
+        """--obs-glyph, ONE channel of drawn primitives in [0, 1], appended LAST. A primitive is
+        a 3D curve from the eye sampled at K points, each projected through the equiangular
+        camera to its nearest pixel, GLYPH_TAIL bright at the tail rising to 1 at the head; a
+        pixel keeps its brightest sample.
+
+        1: the velocity ARROW - from B = GLYPH_BASE u ahead of the eye along the view and
+           GLYPH_DROP u below it (the camera's up) to B + v x GLYPH_ARROW_T: it points where the
+           player moves, longer the faster (a still player: one dot at B; the drop keeps an
+           arrow along the view, forward or back, readable instead of a dot at the centre);
+        2: a virtual PARTICLE at every GLYPH_STEP-th pixel centre (both axes) at the virtual
+           depth FLOW_Z0, drawn as its streak over GLYPH_DT seconds of the eye's translation
+           (the camera keeps its aim): the sparse synthetic flow, the head where it goes"""
+        if velocity is None:
+            raise ValueError("--obs-glyph: GpuLidar.render needs the velocity (velocity=)")
+        N, H, W = out.shape[0], self.H, self.W
+        dev = out.device
+        d2r = np.pi / 180.0
+        v = torch.as_tensor(velocity, dtype=torch.float32, device=dev).reshape(N, 1, 1, 3)
+        yc = torch.as_tensor(yaw_deg, dtype=torch.float32, device=dev).reshape(N, 1, 1) * d2r
+        pc = torch.as_tensor(pitch_deg, dtype=torch.float32, device=dev).reshape(N, 1, 1) * d2r
+        if self.glyph == 1:
+            K = GLYPH_ARROW_K
+            cy, sy, cp, sp = torch.cos(yc), torch.sin(yc), torch.cos(pc), torch.sin(pc)
+            fwd = torch.stack((cp * cy, cp * sy, sp), dim=-1)            # (N, 1, 1, 3)
+            up = torch.stack((-sp * cy, -sp * sy, cp), dim=-1)
+            s = torch.linspace(0.0, 1.0, K, device=dev).view(1, 1, K, 1)
+            pts = (GLYPH_BASE * fwd - GLYPH_DROP * up) + s * (v * GLYPH_ARROW_T)
+        else:
+            K, o = GLYPH_STREAK_K, GLYPH_STEP // 2
+            _y, _p, rx, ry, rz = self._ray_angles(N, yaw_deg, pitch_deg, dev)
+            q = torch.stack((rx[:, o::GLYPH_STEP, o::GLYPH_STEP],
+                             ry[:, o::GLYPH_STEP, o::GLYPH_STEP],
+                             rz[:, o::GLYPH_STEP, o::GLYPH_STEP]), dim=-1).reshape(N, -1, 1, 3)
+            s = torch.linspace(0.0, 1.0, K, device=dev).view(1, 1, K, 1)
+            pts = FLOW_Z0 * q - s * (v * GLYPH_DT)                       # (N, P, K, 3)
+        # the camera inverted: pixel (r, c) looks at yaw yc + yoff[c] and pitch pc + poff[r],
+        # yoff = hfov (0.5 - (c + 0.5) / W), poff = vfov (0.5 - (r + 0.5) / H)
+        x, y, z = pts[..., 0], pts[..., 1], pts[..., 2]
+        dyaw = torch.remainder(torch.atan2(y, x) - yc + np.pi, 2.0 * np.pi) - np.pi
+        dpit = torch.atan2(z, torch.sqrt(x * x + y * y)) - pc
+        col = torch.round(W * (0.5 - dyaw / (self.hfov_deg * d2r)) - 0.5)
+        row = torch.round(H * (0.5 - dpit / (self.vfov_deg * d2r)) - 0.5)
+        ok = (col >= 0) & (col < W) & (row >= 0) & (row < H)
+        lum = (GLYPH_TAIL + (1.0 - GLYPH_TAIL) * s[..., 0]).expand(x.shape)
+        idx = torch.where(ok, row * W + col, torch.zeros_like(col)).long().reshape(N, -1)
+        src = torch.where(ok, lum, torch.zeros_like(lum)).reshape(N, -1)
+        img = torch.zeros((N, H * W), dtype=torch.float32, device=dev)
+        img.scatter_reduce_(1, idx, src, reduce="amax", include_self=True)
+        if out.dim() == 3:
+            out = out[..., None]
+        return torch.cat((out, img.view(N, H, W, 1).to(out.dtype)), dim=-1)
 
     @torch.no_grad()
     def _append_reach(self, out, origin, yaw_deg, pitch_deg, ducked, velocity):

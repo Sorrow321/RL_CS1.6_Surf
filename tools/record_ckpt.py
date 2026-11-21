@@ -1479,6 +1479,9 @@ def main(argv=None, build_only: bool = False, device=None):
                      # --obs-flow / --obs-vel-blob: MIRRORED (the velocity image channels)
                      flow=int(cfg.get("obs_flow") or 0),
                      vel_blob=bool(cfg.get("obs_vel_blob") or 0),
+                     # --obs-warp / --obs-glyph: MIRRORED (the list's items 5 and 6)
+                     warp=bool(cfg.get("obs_warp") or 0),
+                     glyph=int(cfg.get("obs_glyph") or 0),
                      texture=bool(cfg.get("obs_texture") or cfg.get("obs_normal")
                                   or cfg.get("obs_slope") or 0),
                      # --obs-normal / --obs-slope: MIRRORED (what the face channels carry)
