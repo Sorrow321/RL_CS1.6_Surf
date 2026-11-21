@@ -2280,6 +2280,9 @@ def main():
     ap.add_argument("--az-prior-temp", type=float, default=1.0,
                     help="--az-prior policy: P ~ pi ** (1 / T); T < 1 sharpens the prior towards "
                          "the policy's own choice, so the tree runs deeper along it")
+    ap.add_argument("--az-blank-pot", action="store_true",
+                    help="--az: blank the goal field's image channel (--obs-potential) for the "
+                         "policy and the critic - the agent without its field")
     ap.add_argument("--az-rollout", type=int, default=0,
                     help="--az: judge every new leaf by the policy's mode played on for this "
                          "many decisions (0 = the critic alone)")

@@ -263,6 +263,19 @@ def run_az(ctx: dict, a) -> dict:
         core.set_state(i, ctx["row0"])
     obs[:] = np.asarray(ctx["obs_start"], np.float32)[None, :]
     pol, side = mk_wrapper(core)
+    if getattr(a, "az_blank_pot", False):
+        # --az-blank-pot: the goal field's image channel (--obs-potential, the second channel of
+        # every (H, W, 2) render) set to 0 - under norm the frame's own mean, a field that points
+        # nowhere - for the policy AND the critic: what the agent does without its field
+        _render = pol.lidar.render
+
+        def _render_blank(*args, **kw):
+            out = _render(*args, **kw)
+            if out.dim() == 4 and out.shape[-1] >= 2:
+                out = out.clone()
+                out[..., 1] = 0.0
+            return out
+        pol.lidar.render = _render_blank
     with torch.inference_mode():
         pol._obs(obs)                       # allocate every lazily-built side array (tick 0)
     g_step = float(ctx["g_step"])
@@ -303,6 +316,7 @@ def run_az(ctx: dict, a) -> dict:
           f"reward {mode} (scale {scale:.5f}/u, d0 {d0:,.0f}), gamma/decision {gamma_dec:.6f}, "
           f"value = the checkpoint's critic"
           + (f", progressive widening (N + 1) ** {widen:g}" if widen > 0 else "")
+          + (", the field's image channel BLANKED" if getattr(a, "az_blank_pot", False) else "")
           + f", prior {prior_mode}" + (f" at temperature {prior_temp:g}" if prior_temp != 1.0 else "")
           + (f", leaf rollouts of {H_roll} decisions (the policy's mode)" if H_roll > 0 else "")
           + (f", novelty {beta:g} / sqrt(1 + n) per cell ({float(a.mcts_cell):g} u x "
@@ -577,6 +591,7 @@ def run_az(ctx: dict, a) -> dict:
                "cpuct": c_puct, "keys_temp": float(a.az_keys_temp),
                "view_temp": float(a.az_view_temp), "novelty": beta, "widen": widen,
                "prior": prior_mode, "prior_temp": prior_temp, "rollout": H_roll,
+               "blank_pot": bool(getattr(a, "az_blank_pot", False)),
                "rollouts": n_roll,
                "depth_mean": float(np.mean(dep_means)) if dep_means else None,
                "depth_max": int(max(dep_maxes)) if dep_maxes else None,
