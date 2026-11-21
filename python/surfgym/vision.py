@@ -2277,7 +2277,7 @@ class GpuLidar:
                  depth_enc: str = "legacy", depth_log_d0: float = 200.0,
                  texture=False, texture_mode: str = "rgb", ttc: bool = False,
                  edges: bool = False, views: int = 1, views_scale: int = 1,
-                 reach: bool = False, speed_tint: bool = False) -> None:
+                 reach: bool = False, speed_tint: int = 0) -> None:
         if texture_mode not in ("rgb", "normal", "slope", "edgesrc"):
             raise ValueError(f"texture_mode {texture_mode!r}: rgb (--obs-texture), normal "
                              "(--obs-normal) or slope (--obs-slope)")
@@ -2445,23 +2445,28 @@ class GpuLidar:
         if self.reach:
             self.channels += 1
         self.reach_channel = self.channels - 1 if self.reach else None
-        # --obs-speed-tint (the user, 2026-11-21): one more channel, LAST of all - the depth
-        # render coloured by the player's SPEED, a scalar: more red = faster, more blue = slower.
-        # Its red part is share x nearness (share = |v| / SPEED_TINT_REF, nearness = the
-        # near-bright depth render 1 - enc / 1.25); the blue part, nearness - red, is affine in
-        # the depth channel, so this one channel hands the conv the whole two-colour picture
-        self.speed_tint = bool(speed_tint)
+        # --obs-speed-tint (the user, 2026-11-21), LAST of all - the depth render coloured by the
+        # player's velocity. 1 = the SPEED, a scalar, one channel: more red = faster, more blue
+        # = slower; its red part is share x nearness (share = |v| / SPEED_TINT_REF, nearness =
+        # the near-bright depth render 1 - enc / 1.25), and the blue part, nearness - red, is
+        # affine in the depth channel, so one channel hands the conv the whole picture. 2 = the
+        # VELOCITY, three channels (R, G, B) = nearness x (1 + v_i / SPEED_TINT_REF) / 2 for the
+        # components (forward, left, up) in the camera's yaw frame - the frame of the core
+        # scalars 0..2 (mid-grey = still, so the image's colour states the whole velocity)
+        self.speed_tint = int(speed_tint or 0)
+        if self.speed_tint not in (0, 1, 2):
+            raise ValueError(f"speed_tint {speed_tint!r}: 0 off, 1 speed, 2 velocity")
         if self.speed_tint and self.depth_enc != "legacy":
             raise ValueError("--obs-speed-tint colours the legacy depth render: not with "
                              "--depth-enc")
-        if self.speed_tint:
-            self.channels += 1
-        self.tint_channel = self.channels - 1 if self.speed_tint else None
+        self.channels += (0, 1, 3)[self.speed_tint]
+        self.tint_channel = (self.channels - (0, 1, 3)[self.speed_tint]
+                             if self.speed_tint else None)
         _ph = getattr(getattr(core, "config", None), "phys", None)
         self.reach_g = float(getattr(_ph, "sv_gravity", 800.0) or 800.0)
         self.reach_tick_s = float(getattr(core, "tick_ms", 10.0) or 10.0) / 1000.0
         # the velocity rides into render() for the looming and the reach channels
-        self.uses_velocity = self.ttc or self.reach or self.speed_tint
+        self.uses_velocity = bool(self.ttc or self.reach or self.speed_tint)
         self._edge_cam_obj = None
         self.tex_pix_rad = float(np.radians(self.vfov_deg / self.H))
         # the depth channel 0's largest value (a clear ray at the range), for displays
@@ -2576,7 +2581,7 @@ class GpuLidar:
         if self.reach:
             out = self._append_reach(out, origin, yaw_deg, pitch_deg, ducked, velocity)
         if self.speed_tint:
-            out = self._append_speed_tint(out, velocity)
+            out = self._append_speed_tint(out, velocity, yaw_deg)
         return out
 
     def _render_raw(self, origin, yaw_deg, pitch_deg, ducked):
@@ -2763,22 +2768,35 @@ class GpuLidar:
         return torch.cat((out, ttc[..., None]), dim=-1)
 
     @torch.no_grad()
-    def _append_speed_tint(self, out, velocity):
-        """--obs-speed-tint: the RED part of the depth render coloured by speed - share x
-        nearness, share = |v| / SPEED_TINT_REF clipped to [0, 1] (one value per frame: speed is
-        a scalar), nearness = 1 - enc / 1.25 of the legacy depth channel 0 (near = bright, a
-        clear ray ~0) - appended as the last channel, in [0, 1]"""
+    def _append_speed_tint(self, out, velocity, yaw_deg=None):
+        """--obs-speed-tint, appended LAST, every value in [0, 1]; nearness = 1 - enc / 1.25 of
+        the legacy depth channel 0 (near = bright, a clear ray ~0).
+
+        1: the RED part of the depth render coloured by speed - share x nearness, share = |v| /
+           SPEED_TINT_REF clipped to [0, 1] (one value per frame: speed is a scalar).
+        2: three channels, nearness x (1 + c_i) / 2 with c = (forward, left, up) velocity in the
+           camera's YAW frame (forward = (cos yaw, sin yaw), left = (-sin yaw, cos yaw): the core
+           scalars 0..2) / SPEED_TINT_REF, each clipped to [-1, 1] - R forward, G left, B up."""
         if velocity is None:
             raise ValueError("--obs-speed-tint: GpuLidar.render needs the velocity (velocity=)")
         N = out.shape[0]
         dep = out if out.dim() == 3 else out[..., 0]
         near = (1.0 - dep.float() / _ENC_LIMIT).clamp(0.0, 1.0)
         v = torch.as_tensor(velocity, dtype=torch.float32, device=dep.device).reshape(N, 3)
-        share = (v.norm(dim=1) / SPEED_TINT_REF).clamp(0.0, 1.0).reshape(N, 1, 1)
-        tint = (share * near).to(out.dtype)
+        if self.speed_tint == 2:
+            yr = torch.as_tensor(yaw_deg, dtype=torch.float32,
+                                 device=dep.device).reshape(N) * (np.pi / 180.0)
+            cy, sy = torch.cos(yr), torch.sin(yr)
+            c = torch.stack((v[:, 0] * cy + v[:, 1] * sy, -v[:, 0] * sy + v[:, 1] * cy,
+                             v[:, 2]), dim=1) / SPEED_TINT_REF
+            col = (0.5 * (1.0 + c.clamp(-1.0, 1.0))).reshape(N, 1, 1, 3)
+            tint = (col * near[..., None]).to(out.dtype)
+        else:
+            share = (v.norm(dim=1) / SPEED_TINT_REF).clamp(0.0, 1.0).reshape(N, 1, 1)
+            tint = (share * near).to(out.dtype)[..., None]
         if out.dim() == 3:
             out = out[..., None]
-        return torch.cat((out, tint[..., None]), dim=-1)
+        return torch.cat((out, tint), dim=-1)
 
     @torch.no_grad()
     def _append_reach(self, out, origin, yaw_deg, pitch_deg, ducked, velocity):
