@@ -51171,3 +51171,20 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   reliability.
 * Round 1 onward (restart at round 1, nothing else changed): BC coef 0.5 -> 0 over the round
   (exit_local's default: BC early, PPO alone at the end) and lr 1e-4 (exit_local's default).
+
+## 2026-11-21 19:02 UTC: RESULT - mmb_arrow: the velocity arrow on sidistic, no difference (4.38B)
+
+* 16:35 -> 19:01 UTC on box 61828295 (RTX 5090, Mexico, $0.540/h, ~$1.3); in_ch 6; 548k steps/s;
+  cut at the first finish + 2 tests (3 came in one watcher pass); harvest md5-checked to
+  ~/ar_m2/runs/mmb/mmb_arrow (the loose evals removed, they are in evals.tgz); box released.
+* Graded (score.py): CP7 (97.8%) first at 3.10B (control 2.94B, heatmap 2.27B); FIRST FINISH 1/9
+  at 4,379,377,664 (118.37 s); 4.45B 1/9 (118.29 s); 4.53B 0/9 (33.2%); 4.61B 0/9. Six search
+  lines, the last (4.17B) a beam line to d 1,069, 0.21B steps before the first finish.
+* Reading (20554378): between the gain line 3.25B and the loss line 4.76B = no difference, five
+  tests after the control's 4.00B. Second read: 2 of 27 finishes over the first finish + 2 tests
+  (control 1 of 27), best 118.29 s (control 120.07 s).
+* The velocity-image series ends (the user's two colour ideas + the six items of the GPT list): on
+  celestial three gains - the real-depth flow (604.5M), the heatmap (453.5M), the arrow (604.5M),
+  the three that place the motion's direction in the image - and the rest no difference or
+  worse; on sidistic none of the three beat v14 (flow a LOSS, heatmap 3.85B and arrow 4.38B no
+  difference). No representation repeats on a second map (section 0b's bar); none is adopted.
