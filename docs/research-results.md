@@ -50795,3 +50795,23 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Verdict: a narrow, rule-level gain in time to the first finish on one map, one seed; not
   shown to be more than seed spread. The October looming channel (velocity x depth, null) is
   the prior. A second map with the same flag (CLAUDE.md section 0b) would decide it.
+
+## 2026-11-21 08:02 UTC: PLAN - mms_sid1: the speed-coloured depth on sidistic alone
+
+* The user (2026-11-21, after mms_cel1): "Let's test color run on sidistic alone. Celestial is
+  medium lvl map in terms of complexity." The same flag, unchanged: --obs-speed-tint 1 (mm/spd
+  3e967185; config ccc061ee).
+* Arm: surf_src_sidistic alone, from scratch, seed 0, the single-map v14 line of ab12s_v14 (the
+  160 tokens + --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05
+  --mcts-mix-horizon 256 --mcts-mix-warm 2', 1024 envs, --maxvel 4000) + --obs-speed-tint 1;
+  tests every 75.5M steps, 9 greedy episodes, graded by score.py.
+* Control: ab12s_v14 (RTX 4080 SUPER) first finish 1/9 at 4,001.9M (120.07 s), then 0/9, 0/9;
+  98% (CP7) from 2.94B. Other bars: v5 5,058.9M; the ratchet arm 6,115.8M. Cut (the control's):
+  the first finish + 2 tests, or 6.0B steps with none (--steps 6.1e9 ceiling).
+* Reading, fixed now (one control, one seed): first finish at or before 3.25B (10 tests, 19%
+  earlier) = a GAIN on this map; at or after 4.76B, or none by 6.0B = a LOSS; between = no
+  difference shown. Second read: finishes per test after the first.
+* Box: one RTX 5090 with the fast-CPU filter at the user-approved cap ~$0.80/h (fleet policy
+  0.80, daemon restarted 08:03 UTC); the user adds credit so mmg_S1c keeps running beside it.
+  Scratchpad abl/spd2/launch.sh (agent mms, worktree mmspd), watcher abl/spd2/watch.sh (floor
+  $14, disk cleanup each loop, harvest + release).
