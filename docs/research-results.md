@@ -50867,3 +50867,15 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Reading (5a08df81): first finish at 680.0M = the faster control's test: no difference shown;
   as reliable as the controls; its best times are 4-8 s slower (50.46 s vs 42.81-47.09 s). Not
   sent to sidistic.
+
+## 2026-11-21 10:18 UTC: RESULT - mmv_cflow (synthetic ego-motion flow at a virtual 1000 u, --obs-flow 1) on celestial: no difference shown
+
+* 09:37 -> 10:14 UTC, box 61782763 (the same UK machine, $0.653/h, ~$0.45); in_ch 7; cut at the
+  first finish + 6 tests (two tests in one watcher pass); harvest md5-checked to
+  ~/ar_m2/runs/mmv/mmv_cflow; box released.
+* Graded (score.py), finishes of 9: 604.5M 0 (93.9%), 680.0M 4 (44.65 s), 755.5M 2, 831.0M 6
+  (44.01 s), 906.5M 3, 982.0M 0 (40.9%), 1057.5M 2, 1133.0M 4: 17 of 54 over the six tests from
+  680.0M (ab7c_l14 20, mmp1_l14r 10, mms_cel1 13, mmv_cuni 18); one empty test after the first
+  finish against the controls' two and four; best times 44.0-45.1 s, the controls' range.
+* Reading (5a08df81): first finish at 680.0M = the faster control's test: no difference shown.
+  Not sent to sidistic.
