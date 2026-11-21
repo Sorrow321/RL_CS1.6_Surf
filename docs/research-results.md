@@ -51076,3 +51076,17 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Needed a fix: record_ckpt refused a map without an entry in the checkpoint's per-map speed caps
   even with --maxvel given; an unseen map now takes the caller's cap (mm/s7i 712378b3). Files:
   ~/ar_m2/runs/mmg/mmg_S1c/blue100_zero_shot (recordings, logs, the baked goalc/faceid grids).
+
+## 2026-11-21 16:36 UTC: RESULT - mmv_arrow (velocity arrow, --obs-glyph 1) on celestial: a GAIN
+
+* 15:53 -> 16:35 UTC, box 61823223 (RTX 5090, Latvia, $0.698/h, ~$0.5); in_ch 6; 442k steps/s;
+  cut at the first finish + 5 tests; harvest md5-checked to ~/ar_m2/runs/mmv/mmv_arrow; released.
+* Graded (score.py), finishes of 9: 453.5M 0 (35.0%), 529.0M 0 (98.6%); FIRST FINISH 3/9 at 604.5M
+  (48.55 s); 680.0M 4 (48.25 s), 755.5M 0, 831.0M 5 (47.61 s), 906.5M 4, 982.0M 1: 17 of 54 over
+  the six tests 604.5-982.0M (ab7c_l14 12, mmp1_l14r 2), its lines 47.6-48.6 s (the controls'
+  best over their first seven tests 42.81 s and 46.23 s). One search (459M), a beam line to d 4,367.
+* Reading (5a08df81 / 24896892): first finish at 604.5M = a GAIN, with 3/9 where the speed tint had
+  1/9 at the same test; it goes to sidistic (mmb_arrow, PLAN 20554378, renting). The celestial
+  series now has three gains: the real-depth flow (604.5M, 5/9), the heatmap (453.5M, 1/9), the
+  arrow (604.5M, 3/9) - all three place the motion's direction in the image; warp, particles, the
+  uniform map, the virtual-depth flow and the velocity colour did not.
