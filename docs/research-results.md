@@ -51188,3 +51188,19 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   the three that place the motion's direction in the image - and the rest no difference or
   worse; on sidistic none of the three beat v14 (flow a LOSS, heatmap 3.85B and arrow 4.38B no
   difference). No representation repeats on a second map (section 0b's bar); none is adopted.
+
+## 2026-11-21 19:36 UTC: RESULT - mmx_E1 round 1 rejected (1.019, pb 12/18); BC rows alone next
+
+* Round 1 (BC 0.5 -> 0, lr 1e-4): lines kept on six maps (all but sidistic: its waves 126.94 and
+  113.39 s against greedies of 113.53 and 113.08 s). 7e8 fleet steps in 2,138 s. KL 0.03-0.08
+  (round 0: up to 0.23); BC head-acc 0.87 -> 0.96.
+* Gate (18 episodes per map, challenger vs incumbent): pb 12 vs 16 finishes (expected 80.73 vs
+  72.79 s), sidistic 12 vs 12 (132.91 vs 132.48), unitfarmer2 16 vs 18 (41.86 vs 39.95),
+  cannonball 15 vs 13 (80.69 vs 85.89), blue200 18/18 (12.84 vs 12.87), celestial 17 vs 18 (43.22
+  vs 42.18), petrus 18/18 (27.73 vs 27.45): mean ratio 1.0188, REJECTED.
+* Reading: with the update size near the run's own the loss is still in FINISHES (pb, unitfarmer2,
+  celestial), the gain in cannonball's. Both rounds moved 90% of a map's spawns onto two nearly
+  identical planner lines; the run's own spawns cover the states a greedy run deviates into.
+* Round 2 onward (restart at round 2): --spines 0 (mm/exit fb53928f) - every map keeps its held
+  spine, the planner enters through the BC rows alone - and 3.5e8 fleet steps a round (smaller
+  steps for the gate). BC 0.5 -> 0, lr 1e-4 unchanged.
