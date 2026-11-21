@@ -229,6 +229,7 @@ def run_az(ctx: dict, a) -> dict:
     fin_pay = float(a.az_finish)
     widen = float(a.az_widen)
     prior_mode = str(a.az_prior)
+    prior_temp = float(getattr(a, "az_prior_temp", 1.0) or 1.0)
     H_roll = int(a.az_rollout)
 
     def priors(logp):
@@ -237,7 +238,8 @@ def run_az(ctx: dict, a) -> dict:
         # MuZero's rule for candidates drawn from the policy itself)
         if prior_mode != "policy":
             return np.full(logp.shape, 1.0 / logp.shape[1])
-        x = logp - logp.max(axis=1, keepdims=True)
+        # --az-prior-temp T: P ~ pi ** (1 / T); T < 1 sharpens it towards the policy's mode
+        x = (logp - logp.max(axis=1, keepdims=True)) / prior_temp
         e = np.exp(x)
         return e / e.sum(axis=1, keepdims=True)
     beta = float(a.az_novelty)
@@ -301,7 +303,7 @@ def run_az(ctx: dict, a) -> dict:
           f"reward {mode} (scale {scale:.5f}/u, d0 {d0:,.0f}), gamma/decision {gamma_dec:.6f}, "
           f"value = the checkpoint's critic"
           + (f", progressive widening (N + 1) ** {widen:g}" if widen > 0 else "")
-          + f", prior {prior_mode}"
+          + f", prior {prior_mode}" + (f" at temperature {prior_temp:g}" if prior_temp != 1.0 else "")
           + (f", leaf rollouts of {H_roll} decisions (the policy's mode)" if H_roll > 0 else "")
           + (f", novelty {beta:g} / sqrt(1 + n) per cell ({float(a.mcts_cell):g} u x "
              f"{float(a.mcts_cell_energy):g} u of energy)" if beta > 0 else ""), flush=True)
@@ -574,7 +576,8 @@ def run_az(ctx: dict, a) -> dict:
                "greedy_pct": float("nan"), "reward": mode, "k": KC, "sims": SIMS,
                "cpuct": c_puct, "keys_temp": float(a.az_keys_temp),
                "view_temp": float(a.az_view_temp), "novelty": beta, "widen": widen,
-               "prior": prior_mode, "rollout": H_roll, "rollouts": n_roll,
+               "prior": prior_mode, "prior_temp": prior_temp, "rollout": H_roll,
+               "rollouts": n_roll,
                "depth_mean": float(np.mean(dep_means)) if dep_means else None,
                "depth_max": int(max(dep_maxes)) if dep_maxes else None,
                "cells": int(arch.n) if arch is not None else None,

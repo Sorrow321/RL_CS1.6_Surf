@@ -2277,6 +2277,9 @@ def main():
     ap.add_argument("--az-prior", choices=("uniform", "policy"), default="uniform",
                     help="--az: the PUCT prior over a node's K candidates - uniform (1 / K) or "
                          "policy (each candidate's own probability under the policy)")
+    ap.add_argument("--az-prior-temp", type=float, default=1.0,
+                    help="--az-prior policy: P ~ pi ** (1 / T); T < 1 sharpens the prior towards "
+                         "the policy's own choice, so the tree runs deeper along it")
     ap.add_argument("--az-rollout", type=int, default=0,
                     help="--az: judge every new leaf by the policy's mode played on for this "
                          "many decisions (0 = the critic alone)")
