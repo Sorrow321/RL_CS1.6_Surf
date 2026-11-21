@@ -51120,3 +51120,25 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Box: 61831125 (RTX 5090 + Ryzen 9 7900X, Michigan, $0.497/h, the user's cap $0.60), agent mmx,
   dashboard :8670, watchdog + harvest spec; droplet watcher abl/exitmm/watch.sh (floor $13: a STOP
   file, then harvest + release). Reported per round: the gate's per-map times and finishes.
+
+## 2026-11-21 17:47 UTC: RESULT - mmg_S1c ENDED: one shared agent finishes all seven maps
+
+* Ran 2026-11-19 16:20 -> 2026-11-21 17:43 UTC on box 61476645 (RTX 5090 + Ryzen 9 9900X, Sweden,
+  $0.59/h, ~$29), resumed from mmg_S1 at 7.50B to 79.99B fleet steps (11.4B per map); cut by its
+  watcher at the rule of the 11-19 PLAN (all seven maps finished + 6 tests); harvest md5-checked
+  to ~/ar_m2/runs/mmg/mmg_S1c (held lines; the last 20 tests' evals, the full set being 4.3 GB;
+  ckpt_latest with its two weight averages; run.json; progress.csv and the launch log gzipped;
+  first_finishes/: every first-finish test's three eval files); box released.
+* First greedy finish per map (fleet steps): petrus, blue200, celestial before 7.50B (mmg_S1);
+  cannonball 25.36B, unitfarmer2 36.40B, princessburglar 49.00B, sidistic 76.84B (5dda83ee).
+* The six tests after it (76.84B -> 79.99B), finishes of 54 (raw / ema0): pb 46 / 49, sidistic
+  34 / 42, unitfarmer2 53 / 52, cannonball 37 / 45, blue200 54 / 54, celestial 54 / 53, petrus
+  53 / 50.
+* The last test (79.99B), score.py, finishes of 9 and best time, raw | ema0: pb 9 68.75 s | 7
+  68.32 s; sidistic 7 113.37 s | 9 112.04 s; unitfarmer2 9 39.68 s | 9 39.66 s; cannonball 7
+  75.81 s | 9 75.12 s; blue200 9 12.30 s | 9 12.17 s; celestial 9 41.42 s | 8 41.60 s; petrus 9
+  27.54 s | 8 27.26 s. Against v14 alone (best times): faster on sidistic (120.07 s), cannonball
+  (78.21), celestial (42.81) and petrus (30.10), level on blue200 (12.14), slower on unitfarmer2
+  (37.41) and princessburglar (64.79).
+* Beside it the same weights flew the UNSEEN blue100 zero-shot (d8752578) and seed the expert
+  loop mmx_E1 (703d80c4, a copy at 79.02B).
