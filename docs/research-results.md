@@ -50773,3 +50773,25 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Verdict: input augmentation as built here slows the seven-map run several-fold and showed
   no transfer between a map and its mirror image; not adopted. Prior (2026-10-16, one map):
   the same picture.
+
+## 2026-11-21 07:48 UTC: RESULT - mms_cel1: speed-coloured depth on celestial: earliest first finish (604.5M), not more reliable
+
+* Ran 07:11 -> 07:42 UTC on box 61768355 (RTX 5090 + Ryzen 9 9950X3D, Spain, $0.657/h, ~$0.45;
+  the user approved up to $0.75): 1.06B steps at ~384k steps/s; cut by the watcher at the first
+  finish + 6 tests; harvest md5-checked to ~/ar_m2/runs/mms/mms_cel1; box released. Record gate
+  passed (greedy, stochastic, mixed, POV); in_ch 6.
+* Graded (score.py, clip hull), finishes of 9 per test, arm / ab7c_l14 / mmp1_l14r:
+  529.0M 0 (44.7%) / 0 (64.7%) / 0 (97.4%); 604.5M 1 (45.01 s) / 0 / 0; 680.0M 6 (43.39 s) / 4
+  / 0; 755.5M 1 / 4 / 0; 831.0M 4 / 0 / 2; 906.5M 2 / 0 / 0; 982.0M 0 (78.3%) / 4 / 0;
+  1057.5M 0 (35.1%) / 8 / 8. Over the seven tests from 604.5M: 14 / 20 / 10 of 63; best
+  43.12 s / 42.81 s / 46.23 s.
+* The rule fixed in de29f88b: first finish at or before 604.5M = a GAIN on this map. It fires,
+  by exactly one test against the faster control (680.0M) and three against the other. But the
+  two identical controls are themselves two tests apart, so a one-test lead is inside their
+  spread, and after the first finish the arm is not more reliable (14 vs 20 and 10 of 63); it
+  ends at 0/9 twice where both controls reach 8/9 (one search, line adopted at 481M, then the
+  walk-back backed off around row 2,200 of 6,001 while the training reward rose: the greedy
+  lost its line, as the controls did at 831-982M before they recovered).
+* Verdict: a narrow, rule-level gain in time to the first finish on one map, one seed; not
+  shown to be more than seed spread. The October looming channel (velocity x depth, null) is
+  the prior. A second map with the same flag (CLAUDE.md section 0b) would decide it.
