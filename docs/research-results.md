@@ -50815,3 +50815,29 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   0.80, daemon restarted 08:03 UTC); the user adds credit so mmg_S1c keeps running beside it.
   Scratchpad abl/spd2/launch.sh (agent mms, worktree mmspd), watcher abl/spd2/watch.sh (floor
   $14, disk cleanup each loop, harvest + release).
+
+## 2026-11-21 08:19 UTC: PLAN - mmv_*: velocity image representations, one by one on celestial
+
+* The user (2026-11-21): encode the velocity VECTOR as colour (red x, green y, blue z, scaled by a
+  physics limit); then a list of image representations of velocity discussed with GPT: "Let's try
+  them one by one (celestial - if we see improvement over baseline try on sidistic). Let current
+  runs finish (or finish early if result is obvious) and go over others."
+* The list and its mapping here: (0) velocity as numbers beside the image features = what the
+  policy already has (core scalars 0..3), so the v14 celestial controls are that baseline; (2)
+  uniform RGB velocity map; (3) synthetic ego-motion flow at a constant virtual depth; (1) flow
+  from the real depth (the renderer has it exactly); (4) a heatmap of the motion direction; (5)
+  warp and (6) arrows / particle grids last. The user's own colour idea runs first:
+  --obs-speed-tint 2 (mm/vel 4cb11a21), R G B = the near-bright depth x (1 + v_i / 4000) / 2,
+  v = (forward, left, up) in the camera's yaw frame (mid-grey = still; the map's axes would hand
+  the policy the absolute heading gps-off withholds). in_ch 8. Tests + CPU smoke + record gate ok.
+* Every test: surf_src_celestial alone, from scratch, seed 0, the single-map v14 line of the two
+  controls (160 tokens + the MCTS mix args) + the one representation; tests every 75.5M. Controls
+  ab7c_l14 680.0M and mmp1_l14r 831.0M first finish; mms_cel1 (speed tint) 604.5M.
+* Reading per test, fixed now: first finish at or before 604.5M = a GAIN on celestial, which sends
+  that representation to sidistic (vs ab12s_v14, 4,001.9M); no finish by the 906.5M test = a LOSS,
+  and the run stops there (the user: finish early when the result is obvious); else no difference
+  shown. Cut otherwise: the first finish + 5 tests. One seed: a screen, not a verdict.
+* Boxes: one fresh RTX 5090 per test (fast-CPU filter, cap 0.80, as approved for the sidistic
+  test), one after another (scratchpad abl/vel/series.sh + queue.txt; agent mmv, worktree mmvel,
+  dashboard :8668); each with the watchdog, harvest spec and pid file, harvested and released at
+  its cut. Beside it: mmg_S1c and mms_sid1.
