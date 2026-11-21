@@ -50735,3 +50735,41 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   difference shown. One seed: a hint for a seven-map run, not a verdict.
 * Box: one RTX 5090 with the fast-CPU filter at the user-approved cap $0.70/h; scratchpad
   abl/spd/launch.sh (agent mms, worktree mmspd), watcher abl/spd/watch.sh (floor $14).
+
+## 2026-11-21 06:46 UTC: NOTE - mmg_S1c: princessburglar finishes from the true start (shared agent)
+
+* First finish at test 49,001,605,632 fleet steps (7.00B own per map): score.py on the box
+  (clip-hull finish) raw 0/9, ema0 1/9 (72.69 s), ema1 0/9. Then 49.53B 0/0, 50.58B raw 1/9
+  (71.75 s) and ema0 3/9 (71.60 s), and from ~60B steady: 62.66B 7/7, 63.18B 5/6, 63.71B 8/7,
+  64.23B 1/8 (raw/ema0; best 68.15 s). v14 alone first finished pb at 17.29B (64.79 s).
+* Six of seven maps now finish in the one shared run (pet, b200, cel since S1; cannonball
+  25.36B; unitfarmer2 36.40B; pb 49.00B). Sidistic is the one left: best 96.9% of the course
+  (CP7), median 86% at 64.23B, 0 finishes. Credit $17.0 at 06:32 UTC (floor $13).
+* How: the run's own search loop, the same flags on all seven maps, no demo, no map constant.
+
+## 2026-11-21 06:46 UTC: RESULT - mma_A1: augmentations to 7.5B: CLEAR LOSS, every map later or never
+
+* Ran 19:05 -> 03:51 UTC on box 61686322 (RTX 5090, Latvia, $0.698/h, ~$6.2): 7.50B fleet
+  steps (its own --steps), harvested md5-checked to ~/ar_m2/runs/mma/mma_A1 (auto lines, evals,
+  ckpt_latest, run.json, progress.csv, launch log), box released. The watcher logged every test.
+* Graded (score.py, clip hull): blue200 first finish 9/9 at 5.78B (14.38 s); petrus 1/9 at
+  6.30B (33.89 s), 7/9 at 7.35B; celestial none (18-35% of the course); cannonball 2-7%, no
+  finish; sidistic 5-19%; pb never below z 3,289 (never left the start room); unitfarmer2 in
+  the pit (9/9 at 7.35B), never out.
+* mmg_S1 at the same fleet steps: petrus 1.05B, blue200 3.15B, celestial 4.20B; cannonball
+  12-81%; sidistic 13-28%; pb and unitfarmer2 the same as here. mmw_W2: 1.05B, 4.20B, 3.68B.
+* The rule fixed in 3cff891e: CLEAR LOSS - all three easy maps later (petrus +10 tests,
+  blue200 +5, celestial none against 4.20B), and cannonball and sidistic lower at every
+  matched test from 1.05B on.
+* The mirror's data split, read at twice the steps against mmg_S1: blue200 (5.78B against
+  6.30B) and celestial (none by 7.35B against 8.40B) fit half the data; petrus (6.30B against
+  2.10B) and cannonball (7% at 2.10B against S1's 41% at 1.05B) do not. So the mirrored half
+  taught the real maps nothing measurable, and the run lost more than the split on two maps.
+  Which of the four (mirror, DrAC drop + shift, dropout) cost what: not separable in one run.
+* Logs: aug/mirror_frac median 0.504; DrAC's KL(pi(s) || pi(aug s)) median 0.035 (the size of
+  PPO's own approx_kl, 0.031) and (V(aug s) - V(s))^2 median 0.41, 0.96 at the end: the
+  network never became insensitive to the corruption at coef 0.1. Throughput 243k against
+  mmg_S1's 325k steps/s (0.75x: DrAC's second forward and backward in every minibatch).
+* Verdict: input augmentation as built here slows the seven-map run several-fold and showed
+  no transfer between a map and its mirror image; not adopted. Prior (2026-10-16, one map):
+  the same picture.
