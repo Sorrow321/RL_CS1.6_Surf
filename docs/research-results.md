@@ -51519,3 +51519,33 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   greedy raw / ema0 / ema1 x 9 (mmg_S1c final md5 70119029, --maxvel 4000), the training loop's
   search with s1's flags (greedy-d / current-d by the trainer's rules), az2, az9. One RTX 5090
   <= $0.60/h, fleet watchdog + droplet watcher (STOP 11:00 UTC, $13 floor). Credit $19.45.
+
+## 2026-11-22 09:05 UTC: RESULT - surf_left_turn_curve: the training loop's search FINISHES in 70 s
+
+* PLAN 635b8122. Box nmv (instance 61942013, RTX 5090 $0.598/h, Texas), the same battery (mm/exit
+  50bcc467, mmg_S1c final md5 70119029, --maxvel 4000). Jobs 08:57-09:00 UTC. The map: the sym
+  version's first stretch (three mirrored ramp pairs) and north ramps, joined by a curved ramp
+  pair at the left turn (x ~300..1,650); the wall kept (solid on y = 0 up to x 640).
+* ZERO-SHOT greedy, raw / ema0 / ema1 x 9: 0 of 27 finishes, 0 past the first ramp pair; 7 of 27
+  touch a ramp of it (sym version 4 of 27); furthest east median x -1,957, best -1,488 (sym
+  -1,846 / -1,590). The first stretch is the sym version's, and so is the result.
+* ALPHAZERO with the agent: az2 and az9 both die at the first ramp pair (4.0 s, x -1,596 /
+  -1,575).
+* THE TRAINING LOOP'S SEARCH (auto_spine, s1's flags; greedy-d 5,630, current-d 6,446): its tree
+  stage FINISHED after 510 waves, 70 s of search (1.04M nodes; 406 tree paths reached the
+  finish). The line: 2,170 states from the spawn, 16.64 s at 7.667 ms, largest one-tick move
+  20.1 u, top horizontal speed 839 u/s; east along the first pairs' north row, round the curved
+  turn, north up the left column into the finish. beam_tas replayed it (beam_replay_ok 1); the
+  finish trigger (model *5) is a plain box (GoalHull.plain_box: the core's test is the
+  engine's), and the line's last state stepped one tick in the droplet's core fires goal_hits.
+  Its 40 macros: 8 the policy's mode (G), 10 policy samples (P), 9 perturbed policy (E), 13
+  random-held (R).
+* Against the sym version (same flags, same first stretch): there the same stage stopped at the
+  end of the first stretch (x 316) in 10 min; the curved pair joins the two stretches, and the
+  search surfed round the turn and finished in 70 s. One draw per map.
+* VERDICT: the agent alone does not pass the curved version (it never reaches the new turn);
+  the training loop's search, with the agent proposing about two thirds of its moves, finishes
+  it in about a minute.
+* Cost $0.10 (credit $19.35). Files ~/ar_m2/runs/nmv (s1v/out/spine.npy, md5 a07282a7, the
+  finishing line); droplet
+  scratchpad curvmap/ (figures curve_greedy, curve_searches).
