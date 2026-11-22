@@ -124,3 +124,47 @@ def test_wd_skip_norms_groups():
     opt = torch.optim.AdamW([{"params": dec, "weight_decay": 0.01},
                              {"params": nod, "weight_decay": 0.0}], lr=3e-4, eps=1e-5)
     assert [g["weight_decay"] for g in opt.param_groups] == [0.01, 0.0]
+
+
+# --- --final-ln-affine / --mlp-act (mm/health round 2) ---------------------------------------
+def test_final_ln_affine_and_mlp_act_off_is_today():
+    a, b = make(), make(final_ln_affine=True, mlp_act="relu")
+    sa, sb = a.state_dict(), b.state_dict()
+    assert list(sa) == list(sb)
+    for k in sa:
+        assert torch.equal(sa[k], sb[k]), k
+
+
+def test_final_ln_without_affine():
+    a, b = make(), make(final_ln_affine=False)
+    sa, sb = a.state_dict(), b.state_dict()
+    assert "pi.2.weight" in sa and "pi.2.weight" not in sb and "vf.2.bias" not in sb
+    for k in sb:                      # every other tensor is the same draw
+        assert torch.equal(sa[k], sb[k]), k
+    ln = [m for m in b.pi if isinstance(m, torch.nn.LayerNorm)][-1]
+    assert not ln.elementwise_affine
+    with torch.no_grad():
+        lg, v = b.eval()(obs())
+    assert torch.isfinite(lg).all() and torch.isfinite(v).all()
+
+
+def test_mlp_act_leaky_passes_negative_inputs():
+    a, b = make(), make(mlp_act="leaky")
+    blk_a = [m for m in a.pi if type(m).__name__ == "_SimbaBlock"][0]
+    blk_b = [m for m in b.pi if type(m).__name__ == "_SimbaBlock"][0]
+    assert blk_a.act == "relu" and blk_b.act == "leaky"
+    x = torch.randn(8, 448)
+    with torch.no_grad():
+        # make every unit negative: ReLU passes nothing, leaky passes 1%
+        blk_a.fc1.bias.fill_(-1e3)
+        blk_b.fc1.bias.fill_(-1e3)
+        ya, yb = blk_a(x) - x, blk_b(x) - x
+    assert torch.allclose(ya, blk_a.fc2.bias.expand_as(ya))
+    assert not torch.allclose(yb, blk_b.fc2.bias.expand_as(yb))
+
+
+def test_round2_needs_simba():
+    with pytest.raises(SystemExit):
+        torch.manual_seed(0)
+        Policy(N_SCALAR + LW * LH * CH, LW, LH, emb=512, hidden=448, in_ch=CH, simba=False,
+               final_ln_affine=False)

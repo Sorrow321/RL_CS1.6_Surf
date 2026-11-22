@@ -423,14 +423,22 @@ class _SimbaBlock(nn.Module):
     deeper network only pays once the layers are normalised like this; the plain towers here
     are two tanh Linears with no normalisation at all."""
 
-    def __init__(self, h: int, expand: int = SIMBA_EXPAND):
+    def __init__(self, h: int, expand: int = SIMBA_EXPAND, act: str = "relu"):
         super().__init__()
         self.ln = nn.LayerNorm(h)
         self.fc1 = nn.Linear(h, expand * h)
         self.fc2 = nn.Linear(expand * h, h)
+        # --mlp-act leaky (mm/health, 2026-11-22): a unit whose input is negative on every
+        # observation still passes 1% and still gets a gradient (which Adam's per-parameter
+        # scaling turns into a full-size step), so it can come back; ReLU's cannot - 93-97% of
+        # this block's activations were 0 in the cannonball health test (ledger 5b425c00)
+        self.act = str(act)
 
     def forward(self, x):
-        return x + self.fc2(F.relu(self.fc1(self.ln(x))))
+        h = self.fc1(self.ln(x))
+        if self.act == "leaky":
+            return x + self.fc2(F.leaky_relu(h, 0.01))
+        return x + self.fc2(F.relu(h))
 
 
 class _TanhDrop(nn.Module):
@@ -488,7 +496,8 @@ class Policy(nn.Module):
                  views: int = 1, views_scale: int = 1, drop_depth: bool = False,
                  simba: bool = False, split_trunk: bool = False,
                  pitch_sigma_min: float = 0.0, yaw_sigma_max: float = 0.0,
-                 conv_norm: bool = False, fp32_trunk: bool = False):
+                 conv_norm: bool = False, fp32_trunk: bool = False,
+                 final_ln_affine: bool = True, mlp_act: str = "relu"):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -518,6 +527,15 @@ class Policy(nn.Module):
         # --conv-norm / --fp32-trunk (mm/health, 2026-11-22): see _plain_trunk and features
         self.conv_norm = bool(conv_norm)
         self.fp32_trunk = bool(fp32_trunk)
+        # --final-ln-affine 0 / --mlp-act leaky (mm/health): the towers' final LayerNorm without
+        # a learned gain and shift, and the residual blocks' activation - see mlp() below
+        self.final_ln_affine = bool(final_ln_affine)
+        self.mlp_act = str(mlp_act or "relu")
+        if self.mlp_act not in ("relu", "leaky"):
+            raise SystemExit(f"--mlp-act {self.mlp_act!r}: relu or leaky")
+        if (not self.final_ln_affine or self.mlp_act != "relu") and not simba:
+            raise SystemExit("--final-ln-affine 0 / --mlp-act leaky change the --simba towers' "
+                             "final LayerNorm and residual blocks: --simba 1")
         if self.conv_norm and (str(trunk or "plain") != "plain" or int(plan_film or 0)):
             raise SystemExit("--conv-norm normalises the PLAIN trunk's three convs (and moves "
                              "their Sequential indices, which --plan-film reads): plain trunk, "
@@ -682,10 +700,16 @@ class Policy(nn.Module):
             if self.simba:
                 # --simba: the input Linear (still `<tower>.0`, so the widening tools keep
                 # working), max(1, tower_depth // 2) pre-LN residual blocks, a final LayerNorm
+                # --final-ln-affine 0 (mm/health): the final LayerNorm WITHOUT a learned gain and
+                # shift - the heads read every channel at unit scale and cannot be fed through
+                # gains switched off (the policy's final LayerNorm had 344-374 of 448 gains near 0
+                # after 4B steps with or without weight decay, ledger 5b425c00); the heads' own
+                # weights still choose what to read
                 return nn.Sequential(
                     nn.Linear(feat + extra + self.rnn_size, hidden),
-                    *[_SimbaBlock(hidden) for _ in range(max(1, self.tower_depth // 2))],
-                    nn.LayerNorm(hidden))
+                    *[_SimbaBlock(hidden, act=self.mlp_act)
+                      for _ in range(max(1, self.tower_depth // 2))],
+                    nn.LayerNorm(hidden, elementwise_affine=self.final_ln_affine))
             layers = [nn.Linear(feat + extra + self.rnn_size, hidden),
                       act()]
             for _ in range(self.tower_depth - 1):
@@ -1435,6 +1459,8 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("simba", "--simba"),
              ("split_trunk", "--split-trunk"),
              ("conv_norm", "--conv-norm"),
+             ("final_ln_affine", "--final-ln-affine"),
+             ("mlp_act", "--mlp-act"),
              ("obs_views_scale", "--obs-views-scale"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
@@ -6353,6 +6379,16 @@ def main() -> None:
                          "final LayerNorm, and the image embedding gets a LayerNorm before its "
                          "ReLU. Plain trunk only. SCRATCH arms; ckpt restores, a mismatch is "
                          "refused")
+    ap.add_argument("--final-ln-affine", type=int, default=None, choices=(0, 1),
+                    help="0: the --simba towers' final LayerNorm without a learned gain and shift "
+                         "(mm/health: the policy's final gains collapsed to ~0 on 344-374 of 448 "
+                         "channels in 4B steps, ledger 5b425c00). 1 = today. SCRATCH arms; ckpt "
+                         "restores, a mismatch is refused")
+    ap.add_argument("--mlp-act", default=None, choices=("relu", "leaky"),
+                    help="the --simba residual blocks' activation: leaky = LeakyReLU(0.01), a unit "
+                         "negative on every input still gets a gradient (mm/health: 93-97%% of the "
+                         "ReLU blocks' activations were 0). relu = today. SCRATCH arms; ckpt "
+                         "restores, a mismatch is refused")
     ap.add_argument("--conv-norm", type=int, default=None, choices=(0, 1),
                     help="a GroupNorm(1, C) (LayerNorm over C, H, W per image) between each of "
                          "the plain trunk's three convs and its ReLU (mm/health, 2026-11-22: the "
@@ -9713,6 +9749,20 @@ def main() -> None:
                     f"{_vf} changes the image row and the conv trunk's input channels, and a "
                     "checkpoint's first layer cannot be widened or narrowed - start a fresh run, "
                     f"or drop the flag to keep the ckpt's setting ({_cv})")
+        # --final-ln-affine / --mlp-act: written only when they differ from today's network
+        # (affine 1, relu), so an absent key IS that network; restored when the flag is absent,
+        # a different value refused like the other module flags
+        for _ak, _af, _dv in (("final_ln_affine", "--final-ln-affine", 1),
+                              ("mlp_act", "--mlp-act", "relu")):
+            _cv = ck_cfg.get(_ak, _dv)
+            if getattr(args, _ak) is None:
+                setattr(args, _ak, _cv)
+                if _cv != _dv:
+                    restored.append(f"{_ak}={_cv}")
+            elif str(getattr(args, _ak)) != str(_cv):
+                raise SystemExit(f"{_af} changes the towers' modules, and a checkpoint's cannot "
+                                 "be rebuilt into another - start a fresh run, or drop the flag "
+                                 f"to keep the ckpt's setting ({_cv})")
         for _ak, _af in (("simba", "--simba"), ("split_trunk", "--split-trunk"),
                          ("conv_norm", "--conv-norm")):
             _cv = int(ck_cfg.get(_ak) or 0)
@@ -10923,6 +10973,10 @@ def main() -> None:
         args.simba = 0
     if args.conv_norm is None:
         args.conv_norm = 0
+    if args.final_ln_affine is None:
+        args.final_ln_affine = 1
+    if args.mlp_act is None:
+        args.mlp_act = "relu"
     if args.split_trunk is None:
         args.split_trunk = 0
     if args.obs_reach and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
@@ -15221,7 +15275,9 @@ def main() -> None:
                     simba=bool(args.simba),
                     split_trunk=bool(args.split_trunk),
                     conv_norm=bool(args.conv_norm),
-                    fp32_trunk=bool(args.fp32_trunk)).to(device)
+                    fp32_trunk=bool(args.fp32_trunk),
+                    final_ln_affine=bool(args.final_ln_affine),
+                    mlp_act=str(args.mlp_act)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -16807,6 +16863,10 @@ def main() -> None:
         meta["config"]["simba"] = 1
     if args.conv_norm:
         meta["config"]["conv_norm"] = 1
+    if not int(args.final_ln_affine):
+        meta["config"]["final_ln_affine"] = 0
+    if str(args.mlp_act) != "relu":
+        meta["config"]["mlp_act"] = str(args.mlp_act)
     if args.fp32_trunk:
         meta["config"]["fp32_trunk"] = 1
     if args.wd_skip_norms:
@@ -17227,7 +17287,8 @@ def main() -> None:
     # rest are listed, so the log says how far this run is from the one that trained them.
     if INIT_W is not None:
         _reads = ("act_every", "act_hist", "chunk", "n_codes", "conv_mult", "emb", "hidden",
-                  "tower_depth", "trunk", "simba", "conv_norm", "rnn", "rnn_size", "frame_stack",
+                  "tower_depth", "trunk", "simba", "conv_norm", "final_ln_affine", "mlp_act",
+                  "rnn", "rnn_size", "frame_stack",
                   "lidar_w", "lidar_h", "lidar_cell", "lidar_hfov", "lidar_vfov", "lidar_near",
                   "lidar_range", "pinhole", "normals", "obs_compass", "obs_fourier",
                   "obs_normal", "obs_pot_rate", "obs_potential", "obs_potential_curtain",

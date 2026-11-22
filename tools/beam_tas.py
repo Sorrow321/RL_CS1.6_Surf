@@ -2658,6 +2658,8 @@ def main():
                     simba=bool(cfg.get("simba") or 0),
                     split_trunk=bool(cfg.get("split_trunk") or 0),
                     conv_norm=bool(cfg.get("conv_norm") or 0),
+                    final_ln_affine=bool(cfg.get("final_ln_affine", 1)),
+                    mlp_act=str(cfg.get("mlp_act") or "relu"),
                     # the scalar columns after the core's: latch, the cc T column and the
                     # --keys-hold held state, in the order the wrappers' _obs appends them
                     n_codes=0, chunk=0, route_dim=n_latch + n_cc + n_keys + n_x,

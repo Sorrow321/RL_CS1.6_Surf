@@ -2313,6 +2313,10 @@ def main(argv=None, build_only: bool = False, device=None):
                     split_trunk=bool(cfg.get("split_trunk") or 0),
                     # --conv-norm: MIRRORED (a GroupNorm after each conv: the trunk's modules)
                     conv_norm=bool(cfg.get("conv_norm") or 0),
+                    # --final-ln-affine / --mlp-act: MIRRORED (the towers' final LayerNorm and
+                    # their residual blocks' activation; absent = today's network)
+                    final_ln_affine=bool(cfg.get("final_ln_affine", 1)),
+                    mlp_act=str(cfg.get("mlp_act") or "relu"),
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,
                     route_critic_only=bool(cfg.get("route_critic_only")),
