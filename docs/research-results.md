@@ -51573,3 +51573,45 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   the embedding's and the final LayerNorms' principal-component shares, residual ratios, key
   confidence, view saturation; the same observations through the architecture at init (the
   explosion factor) and under bf16 autocast (decision changes). Watchdog + droplet watcher.
+
+## 2026-11-22 09:54 UTC: RESULT - seven-map agent: pre-LN explosion, collapse, dormant MLPs
+
+* PLAN 9ee60779. Box nma (instance 61946223, RTX 5090 $0.577/h, UK). mm/exit fc2d39cd
+  (tools/act_probe.py) + 73287407 (tools/demo_probe.py, beam_tas --az-probe-line). The model:
+  mmg_S1c final, raw weights (md5 70119029). No NaN / inf in any layer on any map.
+* ACTIVATIONS, 3 greedy episodes on each of the seven maps (finishes as before: 6 maps 3/3,
+  cannonball 1/3) and on surf_left_turn / _curve (0/3 each); the same observations through the
+  architecture at init (record_ckpt --cold-policy 0). On unitfarmer2, trained / fresh rms:
+  conv.0 82x, conv.2 3,661x, conv.4 131,475x, the image embedding before its LayerNorm (conv.8)
+  67,342,570x (rms 2.7e7-5.4e7 on the nine maps); pi.1.fc2 581x, action logits 394x. The
+  residual block's branch is 117x its input in the policy tower (fresh 0.66x): the skip path
+  no longer counts. COLLAPSE: before its LayerNorm the image embedding varies along ONE
+  direction (85-98% of the variance on every map; fresh: 142 directions for 90%); the policy
+  head's input needs 2-6 directions for 90% (fresh 132); the value head's 1-9. DORMANCY: in
+  the residual MLP blocks 93-98% (policy) and 94-99% (value) of the hidden activations are
+  zero (fresh ~52%); 862-1,245 of the policy block's 1,792 units and 1,089-1,622 of the
+  value block's never fire on a whole map (fresh 18 / 24). bf16 autocast (the trainer's
+  precision; the recorder flies fp32) flips 1.4-3.7% of the side-key choices and 0.3-2.6% of
+  the others on the same observations.
+* THE USER'S OWN RUN (left_turn_human3.dem, surf_left_turn without the wall, airaccelerate 100
+  = our physics, 129 fps; finish at 14.67 s), teacher-forced, 478 decisions (ANALYSIS ONLY,
+  section 0). Mean probability of the user's key state: fwd 0.91, side 0.55 (agrees 57%;
+  14% of decisions under 1%), jump 0.44, duck 0.75. By phase: start platform: P(no jump) on
+  the ground 0.3% (the user never jumps; the agent jumps on every ground contact); ramps 1-3:
+  side agrees 71%; the LEFT-TURN CORNER: side agrees 48%, 26% of the user's strafes under 1%;
+  north ramps: 58%, 20% under 1%. View: the user looks 2.5 deg (median) off the velocity, the
+  policy's preferred offset is within 2.6 deg (5.7 of its own sigmas). VALUE: does not track
+  the run - corr(value, field progress) 0.10, 1-7 most of the way with single spikes to 53 /
+  28 / 18 / 44, 1.8 one second before the finish, up to ~55 only in the last 0.3 s; the
+  agent's own flights on the training maps read 20-60.
+* VERDICT: nothing is numerically broken (finite, no dead conv channel), but the network is
+  in the late-training state the plasticity literature describes: weights 9-60x their init with
+  no weight decay, an exponential activation scale through the un-normalised conv stack that
+  only the LayerNorms hide, a rank-1 image embedding, 2-6 effective directions into the heads,
+  and residual MLP blocks that are >90% dormant. On the unseen map the critic does not read
+  progress and the policy disagrees with a human pass exactly at the left turn. Generic
+  candidates (one flag each, not built, the user's call): AdamW weight decay; a normalisation
+  in the conv stack; dormant-unit recycling (ReDo) or shrink-and-perturb; fp32 for the image
+  embedding in training.
+* Cost $0.29 (box 09:27-09:54 UTC; credit $19.06). Files: ~/ar_m2/runs/nma; droplet scratchpad
+  weights/ (static reader, audit), actmap/ (figures), humandemo/ (line, probe, figure).
