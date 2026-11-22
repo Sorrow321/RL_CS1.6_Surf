@@ -51405,3 +51405,9 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   and critic nor as a pilot of the found route. Open (the user's call): train the agent on the
   map with a found route as its spawn curriculum (the recipe's own mechanism), policy-proposed
   actions inside Go-Explore, a video of the 23.42 s route.
+
+## 2026-11-22 02:20 UTC: CORRECTION - the AlphaZero run count in 76baea50
+
+* "0 finishes in 15 runs" should read: 12 AlphaZero runs overnight (azP1, azP2, azR1, azR2,
+  azT1, azT2, az9L, azB1, azB2, azB3, azRt1, azRt2) plus 2 greedy K 1 runs (azG0, azG1), and the
+  8 of the evening (az2-az9): 0 finishes in all 22, none past ramp 1.
