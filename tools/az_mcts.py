@@ -916,7 +916,8 @@ def run_critic_probe(ctx: dict, a) -> dict:
     # ---- (2) siblings from every root: a macro each, then the mode for H_DEC decisions ----------
     TM = M_HOLD * K_ACT                         # ticks of the macro
     TT = TM + H_DEC * K_ACT                     # ticks of macro + continuation
-    out = {k: [] for k in ("root", "k", "R", "V", "G", "G2", "Gr", "died", "fin", "mac_dead")}
+    out = {k: [] for k in ("root", "k", "R", "R_eff", "R_eff2", "V", "G", "G2", "Gr", "died",
+                           "fin", "mac_dead")}
     groups: dict = {}
     for ri, rt in enumerate(chosen):
         groups.setdefault(int(rt[1] % PL), []).append(ri)
@@ -990,32 +991,32 @@ def run_critic_probe(ctx: dict, a) -> dict:
                     break
             pol.greedy = np.zeros(B, bool)
 
-            def total(upto, kind, ph_=prog, pe_=pen):
-                """discounted return over ticks [0, upto) in the search's units: the macro's
-                reward undiscounted, the continuation discounted from the macro's end (as the
-                tree's R + gamma V), a death giving back its last W of banked progress."""
-                g = np.zeros(n, np.float64)
-                src = ph_ if kind == "bank" else ratg
-                for j in range(n):
-                    u = int(upto)
-                    pr = src[j, :u].copy()
-                    if kind == "bank" and W_TK > 0 and 0 <= died[j] < u:
-                        pr[max(0, int(died[j]) - W_TK):int(died[j]) + 1] = 0.0
-                    g[j] = pr.sum() - pe_[j, :u].sum()
-                    if 0 <= fin[j] < u:
-                        g[j] += fin_pay * disc_t[int(fin[j])]
+            def eff(upto_death):
+                """the banked progress with each death's last W given back - for deaths before
+                tick upto_death (a truncated horizon does not know a later death)"""
+                pe = prog.copy()
+                if W_TK > 0:
+                    for j in np.flatnonzero((died >= 0) & (died < upto_death)):
+                        pe[j, max(0, int(died[j]) - W_TK):int(died[j]) + 1] = 0.0
+                return pe
+
+            def seg(pe, a0, a1):
+                """reward over ticks [a0, a1): progress - time penalty + a finish in the span"""
+                g = pe[:, a0:a1].sum(1) - pen[:, a0:a1].sum(1)
+                f = (fin >= a0) & (fin < a1)
+                g[f] += fin_pay * disc_t[fin[f]]
                 return g
-            R = total(TM, "bank")
-            G_all = total(TT, "bank")
-            G_2 = total(TM + SHORT_DEC * K_ACT, "bank")
-            Gr_all = total(TT, "ratchet")
-            Gr_mac = total(TM, "ratchet")
-            # the continuation's own return from the child state (what V predicts): its
-            # discount starts at 1 on the macro's end, so it is the total less the macro
-            for key, val in (("root", rid), ("k", kk), ("R", R), ("V", V),
-                             ("G", G_all - R), ("G2", G_2 - R),
-                             ("Gr", Gr_all - Gr_mac), ("died", died),
-                             ("fin", fin), ("mac_dead", (died >= 0) & (died < TM))):
+            T2 = TM + SHORT_DEC * K_ACT
+            pe_full, pe_mac, pe_2 = eff(TT), eff(TM), eff(T2)
+            # R: what the tree knows when the edge is made (a death inside the macro gives back);
+            # R_eff / R_eff2: the same edge once the later death (full / 2 s horizon) is known;
+            # G, G2: the continuation's own return from the child state, its discount starting
+            # at 1 on the macro's end - what V predicts; Gr: the trainer's all-tick ratchet
+            for key, val in (("root", rid), ("k", kk), ("R", seg(pe_mac, 0, TM)),
+                             ("R_eff", seg(pe_full, 0, TM)), ("R_eff2", seg(pe_2, 0, TM)),
+                             ("V", V), ("G", seg(pe_full, TM, TT)), ("G2", seg(pe_2, TM, T2)),
+                             ("Gr", seg(ratg, TM, TT)), ("died", died), ("fin", fin),
+                             ("mac_dead", (died >= 0) & (died < TM))):
                 out[key].append(np.asarray(val))
     res = {k: np.concatenate(v) for k, v in out.items()}
     root_V = np.asarray([r[2] for r in chosen])
@@ -1038,8 +1039,8 @@ def run_critic_probe(ctx: dict, a) -> dict:
         return {"roots_used": used, "spearman_mean": float(np.mean(rho)) if rho else None,
                 "top1": float(np.mean(top)) if top else None}
 
-    tot_act = res["R"] + gamma_edge * res["G"]
-    tot_act2 = res["R"] + gamma_edge * res["G2"]
+    tot_act = res["R_eff"] + gamma_edge * res["G"]
+    tot_act2 = res["R_eff2"] + gamma_edge * res["G2"]
     pred_c = res["R"] + gamma_edge * res["V"]
     pred_n = res["R"]
     alive_m = ~res["mac_dead"]
