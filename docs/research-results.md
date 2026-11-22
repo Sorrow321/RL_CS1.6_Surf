@@ -51355,3 +51355,19 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * So far: test-time search finds the map's route without the agent (random actions + memory of
   where they got, ~1 h); the agent cannot fly that route; for the agent to pass, it needs
   training on the map (the search can supply the route as a spawn curriculum).
+
+## 2026-11-22 01:10 UTC: RESULT - surf_left_turn: a second Go-Explore finish from the spawn
+
+* geit3 (from the spawn, 30 min stages, seed 100): stage 1 to the north ramp (837, 595), stage 2
+  to (916, 2228), stage 3 HIT THE FINISH after 13.6 min: about 74 min of search. Its route
+  (tools/ge_win_route.py, mm/exit 50bcc467): 4,586 ticks = 36.69 s at 8 ms, chain links
+  14/14 exact, root match 0.00 u, largest one-tick move 18.1 u. With geit2 (27.06 s, ~63 min):
+  2 of 2 runs from the spawn with 30 min stages finished in their third stage.
+* geit4 (15 min stages): stage 3 gained nothing (a 2-tick chain), stage 4 rooted wider (8 s)
+  and reached the north ramp (843, 596) at 60 min; running. geit5 (--pick far, the goal-free
+  hand-off): stage 1 reached (890, 556), the same north ramp the field-based hand-offs reached in
+  their first stage; running.
+* AlphaZero from the route (--az-root-line, az9's setting: memory + widening, 32 parallel):
+  from past ramp 1 (route index 533) death after 2.73 s; from the left-turn corner (1128) death
+  after 2.70 s. The field-blanked sharp-prior run (azB3) survived 114.6 s near the start (d 4,871)
+  and died. AlphaZero with this agent does not move along this map from anywhere on it.
