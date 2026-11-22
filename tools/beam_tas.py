@@ -2287,6 +2287,11 @@ def main():
                     help="--az: start from a state of this line (.npy states / .npz) instead of "
                          "the spawn (a bench; do not combine with --save-frontier)")
     ap.add_argument("--az-root-index", type=int, default=0)
+    ap.add_argument("--az-probe-line", default=None,
+                    help="--az: no search - evaluate the policy teacher-forced ALONG this recorded "
+                         "line (.npz: states, keys, view, t; tools/demo_probe.py): per decision the "
+                         "probability of the line's keys, the view it prefers, the value, and the "
+                         "activations. Analysis only (a demo is never training data)")
     ap.add_argument("--az-rollout", type=int, default=0,
                     help="--az: judge every new leaf by the policy's mode played on for this "
                          "many decisions (0 = the critic alone)")
@@ -2871,6 +2876,15 @@ def main():
                    cfg=cfg, map_path=map_path, ep_cap=ep_cap, TICK=TICK, arm=arm, row0=row0,
                    obs_start=obs_start, gate_seed=gate_seed, gf=ogf, N=int(args.envs),
                    max_ticks=int(args.max_ticks), secs=secs, g_step=gravity_step(core1))
+        if args.az_probe_line:
+            # --az-probe-line: the policy evaluated along a recorded line, no search
+            from demo_probe import run_probe_line, summarize
+            res = run_probe_line(ctx, args)
+            res["summary"] = summarize(res)
+            (out_dir / "probe_line.json").write_text(json.dumps(res, default=float),
+                                                     encoding="utf-8")
+            print("DEMO_PROBE " + json.dumps(res["summary"]), flush=True)
+            return
         res = run_az(ctx, args)
         fr = res["frontier"]
         summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": int(args.envs),
