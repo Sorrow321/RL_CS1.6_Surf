@@ -2689,7 +2689,14 @@ def main():
                     # what the proposals sample the camera with
                     pitch_sigma_min=float(cfg.get("pitch_sigma_min") or 0.0),
                     # --yaw-sigma-max: MIRRORED (record_ckpt) - the proposals' view sampling
-                    yaw_sigma_max=float(cfg.get("yaw_sigma_max") or 0.0)
+                    yaw_sigma_max=float(cfg.get("yaw_sigma_max") or 0.0),
+                    # --priv-critic / --int-split: MIRRORED (record_ckpt) - they change the
+                    # critic's SHAPE (a wider value_head and a priv_mlp; an int_head), so the
+                    # strict load below needs them; no action reads either (a --priv-critic
+                    # critic's value is NaN here unless a search feeds the block: az_mcts does)
+                    priv_dim=(_tf.PRIV_DIM if cfg.get("priv_critic") else 0),
+                    priv_hidden=int(cfg.get("priv_hidden") or 128),
+                    int_split=bool(cfg.get("int_split"))
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()

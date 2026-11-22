@@ -154,3 +154,12 @@ def test_beam_tas_has_the_search_flags():
     for f in ("--az-hold", "--az-death-window", "--az-critic-probe", "--az-probe-every",
               "--az-probe-secs"):
         assert f'"{f}"' in src, f
+
+
+def test_beam_tas_builds_the_critics_shape():
+    """beam_tas (the training loop's searches and az_mcts load checkpoints through it) builds the
+    Policy with the checkpoint's --priv-critic / --int-split shape, or the strict load fails."""
+    src = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
+    assert 'priv_dim=(_tf.PRIV_DIM if cfg.get("priv_critic") else 0)' in src
+    assert 'priv_hidden=int(cfg.get("priv_hidden") or 128)' in src
+    assert 'int_split=bool(cfg.get("int_split"))' in src
