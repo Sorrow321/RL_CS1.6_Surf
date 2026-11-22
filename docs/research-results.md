@@ -51508,3 +51508,14 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   scored search clears the first stretch in one stage, as on the wall map. One draw each.
 * Cost $0.20 (credit $19.45). Files ~/ar_m2/runs/nmz; droplet scratchpad symmap/ (figures sym_greedy,
   sym_searches).
+
+## 2026-11-22 08:47 UTC: PLAN - surf_left_turn_curve: the agent on the fourth version
+
+* The user (2026-11-22): "let's try this edit now" - surf_left_turn_curve.bsp, md5 2fdeadb2
+  (2,780,752 bytes): the same 33 entities and trigger boxes as surf_left_turn_wall_sym (start *4,
+  finish *5, teleport *6, the wall kept); 303 new planes: curved ramp segments (57.4-57.6
+  degrees, faces turning in steps over ~35 degrees). The droplet's core loads it (16 spawns).
+* Runs: the same battery as the wall and sym versions (PLAN ea0a5d4e / 89df167c): zero-shot
+  greedy raw / ema0 / ema1 x 9 (mmg_S1c final md5 70119029, --maxvel 4000), the training loop's
+  search with s1's flags (greedy-d / current-d by the trainer's rules), az2, az9. One RTX 5090
+  <= $0.60/h, fleet watchdog + droplet watcher (STOP 11:00 UTC, $13 floor). Credit $19.45.
