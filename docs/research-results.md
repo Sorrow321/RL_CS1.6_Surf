@@ -51323,3 +51323,35 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   (policy prior + banked reward + rollouts); azP2 (policy prior + widening 0.25 + memory); az9L
   (az9 again, 90 min). More are added as results come in. The verdict: a finish (the trainer's
   physics) and how far each method gets (x along the route, the field d).
+
+## 2026-11-22 00:35 UTC: RESULT - surf_left_turn: Go-Explore finishes from the spawn (27.06 s)
+
+* The overnight queue (PLAN 41219263), first results. GO-EXPLORE in stages (tools/ge_iter.py,
+  mm/exit 73e63400 and later): auto_spine's own stage repeated - tools/explore_phase1.py
+  --exact-chains, uniform random actions, the Nature cell weight 1 / sqrt(seen + 1), 64 u x
+  32 u-of-energy cells with the heading split, the view held along the velocity; 30 min a stage,
+  rooted at the last 4 s of the line before, handing on the deepest held cell on the goal field.
+  No training, no use of the agent's network, no demo.
+  - geit2, FROM THE SPAWN: stage 1 to the left-turn corner (665, -63), stage 2 to (787, 2129),
+    stage 3 HIT THE FINISH after 3.1 min - about 63 min of search in all. The route: 3,383 ticks
+    = 27.06 s at the explorer's 8 ms. The finish model *3 is a plain box (GoalHull.plain_box),
+    so the core's finish test is the engine's; the winning chain replays exactly (ge_replay,
+    links 9/9) and starts on the line it was rooted on (0.00 u); the largest one-tick move on the
+    whole route is 20.1 u; top horizontal speed 1,005 u/s.
+  - geit1, from the s1 line (end of ramp 2): stage 1 to (936, 613), stage 2 to (1018, 2259),
+    stage 3 finish after 11.9 min (a 46.13 s route; its first part is the beam's 7.667 ms line).
+  - geit3 / geit4 (repeats from the spawn, 30 / 15 min stages) and geit5 (--pick far: the
+    hand-off is the held cell farthest from the start, so no decision reads the field) running.
+* ALPHAZERO (az_mcts), every variant from the spawn, 0 finishes, none past ramp 1: policy prior
+  (T 1 + memory 4.3 s; T 0.2 + memory 13.2 s; T 0.2 + banked 4.3 s), 96-decision leaf rollouts
+  (+ memory 12.6 s, + banked 4.5 s), widening 0.25 + memory 7.4 s, az9 for 90 min (alive at the
+  115 s cap, banked 3.9%), and with the field channel blanked (az9 38.1 s, rollouts 10.3 s).
+  The greedy agent alone: 3.04 s (field blanked: 4.42 s).
+* BENCH (az_mcts --az-root-line, K 1 = the greedy agent): started at 17 points of geit2's route
+  (every 1.6 s of it), the agent gets less than 1 s further along the route before it falls
+  from 15 of them, with the field channel or without; from one it cuts a loop (+4.6 s), from the
+  one 2.3 s before the chain's end it reaches that end but not the finish. On this map the
+  agent's surfing does not transfer, not only its direction at the start.
+* So far: test-time search finds the map's route without the agent (random actions + memory of
+  where they got, ~1 h); the agent cannot fly that route; for the agent to pass, it needs
+  training on the map (the search can supply the route as a spawn curriculum).
