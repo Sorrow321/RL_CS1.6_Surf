@@ -2297,6 +2297,24 @@ def main():
     ap.add_argument("--az-rollout", type=int, default=0,
                     help="--az: judge every new leaf by the policy's mode played on for this "
                          "many decisions (0 = the critic alone)")
+    ap.add_argument("--az-hold", type=int, default=1,
+                    help="--az: decisions per edge - the candidate decides the first, the policy "
+                         "acts closed-loop for the rest (child 0 on its mode, the others on its "
+                         "own sampling); 16 = ~0.5 s at 7.63 ms. 1 = one decision per edge")
+    ap.add_argument("--az-death-window", type=float, default=0.0,
+                    help="--az-reward banked: a simulation that ends in a death gives back the "
+                         "progress it was paid in its last W seconds (the trainer's "
+                         "--death-charge-window); 0 = off")
+    ap.add_argument("--az-critic-probe", type=int, default=0,
+                    help="--az: no search - measure the critic on this map the way the search "
+                         "uses it, from N roots of the policy's own flights (az_mcts."
+                         "run_critic_probe): does R + gamma V rank the --az-k siblings (one "
+                         "--az-hold macro each) as their real returns rank; 0 = off")
+    ap.add_argument("--az-probe-every", type=int, default=8,
+                    help="--az-critic-probe: a root every this many decisions of every flight")
+    ap.add_argument("--az-probe-secs", type=float, default=20.0,
+                    help="--az-critic-probe: seconds of the policy's mode after each macro (the "
+                         "actual return's horizon; the critic's own is ~20 s)")
     ap.add_argument("--az-minutes", type=float, default=20.0)
     ap.add_argument("--az-log-every", type=int, default=20)
     ap.add_argument("--mcts", action="store_true",
@@ -2889,6 +2907,17 @@ def main():
             (out_dir / "probe_line.json").write_text(json.dumps(res, default=float),
                                                      encoding="utf-8")
             print("DEMO_PROBE " + json.dumps(res["summary"]), flush=True)
+            return
+        if args.az_critic_probe:
+            # --az-critic-probe: the critic measured as the search uses it, no search
+            from az_mcts import run_critic_probe
+            res = run_critic_probe(ctx, args)
+            summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": int(args.envs),
+                       **tick_json, **res["summary"]}
+            (out_dir / "critic_probe.json").write_text(json.dumps(summary, indent=2,
+                                                                  default=float),
+                                                       encoding="utf-8")
+            print("CRITIC_PROBE " + json.dumps(summary, default=float), flush=True)
             return
         res = run_az(ctx, args)
         fr = res["frontier"]

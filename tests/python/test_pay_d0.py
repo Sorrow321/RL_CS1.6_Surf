@@ -104,3 +104,53 @@ def test_trainer_flag_and_config_key():
     assert "100.0 / _s.rf_d0" not in src
     assert "ratchet_d0=_s.rf_d0" not in src
     assert src.count("_pay_d0(_s)") >= 5
+
+
+# --- the search side (tools/az_mcts.py): the pay the tree banks at, the critic's feed, ranks ----
+def _az():
+    sys.path.insert(0, str(ROOT / "tools"))
+    import az_mcts
+    return az_mcts
+
+
+def test_search_pays_in_the_checkpoints_units():
+    az = _az()
+    assert az.pay_scale({}, 2673.0) == pytest.approx(100.0 / 2673.0)
+    assert az.pay_scale({"race_pay_d0": 1e5}, 2673.0) == pytest.approx(1e-3)
+    assert az.pay_scale({"race_pay_d0": 0.0}, 198991.0) == pytest.approx(100.0 / 198991.0)
+
+
+def test_search_feeds_the_distance_only_critic():
+    az = _az()
+    assert az.priv_feed({}, None) is None
+    with pytest.raises(SystemExit):
+        az.priv_feed({"priv_critic": 1}, None)
+    with pytest.raises(SystemExit):
+        az.priv_feed({"priv_critic": 2}, None)
+
+    class _F:
+        def sample(self, o):
+            return np.asarray(o)[:, 0] * 10.0
+
+    class _C:
+        states_view = {"origin": np.array([[100.0, 0, 0], [2500.0, 5, 5]])}
+    fn = az.priv_feed({"priv_critic": 2, "race_pay_d0": 1e5}, _F())
+    out = fn(_C())
+    assert out.shape == (2, PRIV_DIM)
+    assert np.allclose(out[:, 6], [1000.0 / 1e5, 25000.0 / 1e5])
+    assert np.all(np.delete(out, 6, axis=1) == 0.0)
+
+
+def test_spearman_with_ties():
+    az = _az()
+    assert az.spearman([1, 2, 3, 4], [10, 20, 30, 40]) == pytest.approx(1.0)
+    assert az.spearman([1, 2, 3, 4], [4, 3, 2, 1]) == pytest.approx(-1.0)
+    assert np.isnan(az.spearman([1, 1, 1], [1, 2, 3]))
+    assert np.allclose(az.ranks([5.0, 1.0, 5.0, 2.0]), [2.5, 0.0, 2.5, 1.0])
+
+
+def test_beam_tas_has_the_search_flags():
+    src = (ROOT / "tools" / "beam_tas.py").read_text(encoding="utf-8")
+    for f in ("--az-hold", "--az-death-window", "--az-critic-probe", "--az-probe-every",
+              "--az-probe-secs"):
+        assert f'"{f}"' in src, f
