@@ -51719,3 +51719,26 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Cost $1.76 (credit $13.99 - at the $13 floor: no rental without the user). Files
   ~/ar_m2/runs/health/hg_cb (sync with health/ incl. heads_*.txt, ckpt_final.pt md5 52c209da);
   figure scratchpad health/ana/health_round2.png.
+
+## 2026-11-22 20:25 UTC: PLAN - pay test: plain-unit progress pay and a distance-only critic, 3 maps
+
+* The user (2026-11-22): the critic cannot know how long a map is, so with progress paid at 100/d0
+  the same state is worth up to 74x more on one map than on another (0.50-37.4 per 1,000 u on the
+  seven maps). Test map-invariant pay on a small joint run before the next multi-map run. For
+  test-time search on a new map the tree's nodes hold the map's value; nothing is trained there.
+  "let's try these methods" (and a $25 top-up).
+* Code: mm/health e61deff1: --race-pay-d0 D (the SAME D in place of each map's start geodesic for
+  the progress pay and the ratchet record-gap column; 1e5 = sidistic's pay, the map the recipe
+  was tuned on; mirrored in record_ckpt, beam_tas and az_mcts) and --priv-critic 2 (the critic
+  alone reads d / D, nothing else). Off = unchanged by construction (20 tests). Config 58865046.
+* Three arms, ONE policy on cannonball + petrus + blue200 (today's pay 0.503 / 2.783 / 37.418 per
+  1,000 u), 342 envs each, recipe v14 + the seven-map extras + round 2's architecture (--wd 0.01
+  --wd-skip-norms 1 --conv-norm 1 --final-ln-affine 0 --mlp-act leaky), from scratch, seed 0,
+  8e9 steps, one RTX 5090 <= $0.60/h each:
+  ua_3m control; ub_3m + --race-pay-d0 100000; uc_3m + --race-pay-d0 100000 --priv-critic 2.
+* Measured: per map, the official grader's first finish (own steps) and finishes per eval (does
+  plain pay still train); on held-out maps (blue100, the four left_turn versions) the critic's
+  value against the actual return and whether it ranks sibling branches the way their real
+  returns rank (what a search needs); test-time search there with each checkpoint, no training.
+* Budget ~$14 (credit $38.98). Watchdog + harvest per box, droplet watchers (floor $13),
+  dashboards :8681 / :8682 / :8683.
