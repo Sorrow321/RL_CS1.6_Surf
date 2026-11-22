@@ -2540,8 +2540,13 @@ def main(argv=None, build_only: bool = False, device=None):
             raise SystemExit("this ckpt uses --race-ratchet but has no goal "
                              "field to recompute the record gap from")
         _rd0 = float(np.mean(ogf.sample(map_spawn_pool(core)["origin"])))
-        print(f"--race-ratchet: record gap normalised by the start "
-              f"geodesic {_rd0:,.0f}u")
+        if float(cfg.get("race_pay_d0") or 0.0) > 0.0:
+            # --race-pay-d0: MIRRORED - the trainer normalises the gap by the fixed pay
+            # distance (the same on every map) instead of this map's start geodesic
+            _rd0 = float(cfg["race_pay_d0"])
+        print(f"--race-ratchet: record gap normalised by "
+              + ("the fixed --race-pay-d0 " if cfg.get("race_pay_d0") else "the start geodesic ")
+              + f"{_rd0:,.0f}u")
         _rs = {"rec": None, "tick": None}
 
         def ratchet_fn(c, _f=ogf, _d0=_rd0):
@@ -2614,9 +2619,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                  "goal field to recompute it from")
             d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
             # --race-shaping scales the trainer's potential; the feed
-            # mirrors it
-            scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping")
-                                                 or 1.0)
+            # mirrors it (and --race-pay-d0 replaces the d0 it is spread over)
+            scale = 100.0 / max(float(cfg.get("race_pay_d0") or 0.0) or d0, 1.0) \
+                * float(cfg.get("race_shaping") or 1.0)
             _st = {"d": None}
             # --race-dfloor clamps the potential and --race-latch switches it
             # off; slot 12 carries the policy's OWN shaping, so a mirror that

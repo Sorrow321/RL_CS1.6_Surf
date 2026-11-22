@@ -117,7 +117,8 @@ from surfgym.greedy_spawn import GreedyLinePool, as_truncated
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot, map_tags
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux, PotRate, make_pot_rate_feed
 from surfgym.surfflag import SurfFlag, g_step_of, make_surf_feed
-from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
+from surfgym.privfeat import (PRIV_DIM, PRIV_FEATURES, PRIV_FEATURES_DIST, PrivFeat,
+                              velocity_from_obs)
 from surfgym.record import record_rollout, record_rollout_parallel
 from surfgym.bc import BCDataset, MultiMapBC, parse_map_files, resume_spine_keys
 from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum, FrontierPerturbRows,
@@ -5435,6 +5436,17 @@ def main() -> None:
                          "fail/time penalties and the intrinsic novelty "
                          "bonus remain. The obs-reward eval feed follows it. "
                          "ckpt restores")
+    ap.add_argument("--race-pay-d0", type=float, default=None,   # 0 = off
+                    help="race: the distance a map's 100 of progress pay is spread over. "
+                         "0 = each map's own start geodesic (today: one unit of progress pays "
+                         "100/d0, so a full run is worth 100 on every map and the per-unit pay "
+                         "differs 74x across the seven maps); D > 0 = the SAME D on every map, "
+                         "so one unit pays 100/D everywhere (plain units: the value of a state "
+                         "no longer depends on the length of the map it is on). The --race-ratchet "
+                         "record-gap column is normalised by the same D. 1e5 = sidistic's pay, "
+                         "the map the recipe's constants were tuned on. Map-relative MEASUREMENTS "
+                         "(eval progress %%, the frontier bands, the novelty schedule) keep the "
+                         "map's own d0. ckpt restores")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
                          "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
@@ -6539,6 +6551,11 @@ def main() -> None:
                          "reach them, so the deployed policy is identical "
                          "in form to the control's. Watch "
                          "train/explained_var - that is the direct effect. "
+                         "2 = the same block with ONE live column: column 6 "
+                         "is d / --race-pay-d0 (the distance to the finish in "
+                         "plain units, the same normaliser on every map) and "
+                         "the other nine are 0 - no position, nothing "
+                         "map-relative. Needs --race-pay-d0. "
                          "0 = today, byte for byte")
     ap.add_argument("--priv-hidden", type=int, default=None,   # 128
                     help="width of the --priv-critic MLP (default 128). "
@@ -9174,6 +9191,10 @@ def main() -> None:
         if args.race_shaping is None and ck_cfg.get("race_shaping") is not None:
             args.race_shaping = float(ck_cfg["race_shaping"])
             restored.append(f"race_shaping={args.race_shaping:g}")
+        # --race-pay-d0: what one unit of progress pays (and what the ratchet column means)
+        if args.race_pay_d0 is None and ck_cfg.get("race_pay_d0") is not None:
+            args.race_pay_d0 = float(ck_cfg["race_pay_d0"])
+            restored.append(f"race_pay_d0={args.race_pay_d0:g}")
         # --race-dfloor changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it would
         # hand the policy a different objective than its weights were fitted
@@ -10012,6 +10033,11 @@ def main() -> None:
                 "re-initialised critic dressed as a warm start. Pass "
                 "--priv-critic 1 (the ACTOR is the same weights either "
                 "way), or start the control from a non-priv checkpoint")
+        if _ck_priv and int(args.priv_critic or 0) != _ck_priv:
+            raise SystemExit(
+                f"--priv-critic {args.priv_critic} but this checkpoint's critic was "
+                f"trained with --priv-critic {_ck_priv}: the same tensors read a "
+                "different block")
         if _ck_priv and int(args.priv_hidden) != _ck_ph:
             raise SystemExit(
                 f"--priv-hidden {args.priv_hidden} but this checkpoint's "
@@ -10849,6 +10875,10 @@ def main() -> None:
         args.respawn_killsafe = 0
     if args.race_shaping is None:
         args.race_shaping = 1.0
+    if args.race_pay_d0 is None:
+        args.race_pay_d0 = 0.0
+    if float(args.race_pay_d0) < 0.0:
+        raise SystemExit(f"--race-pay-d0 {args.race_pay_d0:g}: a distance > 0, or 0 = off")
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
     if args.race_field_blur is None:
@@ -11115,6 +11145,22 @@ def main() -> None:
                          "block to the critic, so --act-hist/--obs-compass "
                          "would never reach the actor - which is the only "
                          "place they can change behaviour")
+    if int(args.priv_critic or 0) not in (0, 1, 2):
+        raise SystemExit(f"--priv-critic {args.priv_critic}: 0, 1 (the ten-column block) or "
+                         "2 (the distance-only block)")
+    if int(args.priv_critic or 0) == 2 and not float(args.race_pay_d0) > 0.0:
+        raise SystemExit("--priv-critic 2 reads d / --race-pay-d0, the distance in plain units: "
+                         "pass --race-pay-d0 (a normaliser that is the same on every map)")
+    if float(args.race_pay_d0) > 0.0:
+        # one scale for the geodesic potential only: the arc shaping, the NG tax and the
+        # per-env goal potentials have their own normalisers, which this flag does not touch
+        if args.reward != "race":
+            raise SystemExit("--race-pay-d0 sets the race reward's progress pay: --reward race")
+        for _bad, _nm in ((args.race_arc, "--race-arc"), (args.race_ng, "--race-ng"),
+                          (args.goals, "--goals")):
+            if _bad:
+                raise SystemExit(f"--race-pay-d0 with {_nm} is untested (it has its own "
+                                 "normaliser): run it as its own arm")
     if args.priv_critic:
         # Six of the ten columns are RaceReward's own state (the geodesic d
         # it shapes on, the arc anchor, the latch flag) and the seventh is
@@ -15426,6 +15472,18 @@ def main() -> None:
               f"{crl_frame.scale:,.0f}u); A = Q - mean of "
               f"{args.crl_v_samples} behaviour draws (CPPO)")
     # ---- one reward function PER SLOT -------------------------------------
+    # --race-pay-d0 D: the SAME D in place of every map's own start geodesic wherever the d0
+    # sets what progress PAYS (the scale) or what the ratchet column MEANS; 0 = rf_d0, today
+    def _pay_d0(_s):
+        return float(args.race_pay_d0) if float(args.race_pay_d0) > 0.0 else _s.rf_d0
+
+    if float(args.race_pay_d0) > 0.0:
+        print(f"race: PLAIN-UNIT PAY (--race-pay-d0 {args.race_pay_d0:,.0f}u) - one unit of "
+              f"progress pays {100.0 / float(args.race_pay_d0) * args.race_shaping:.6g} on "
+              "every map (each map's own 100/d0 would be "
+              + ", ".join(f"{_s.tag}: {100.0 / max(_s.rf_d0, 1.0) * args.race_shaping:.6g}"
+                          for _s in slots) + "); the ratchet column is (d - b) / "
+              f"{args.race_pay_d0:,.0f}")
     # `scale = 100 / d0` is computed from THAT map's own start geodesic, so a
     # full start->finish run is worth 100 on every map whatever its length.
     # A shared scale would make the short map invisible: cannonball's d0 is
@@ -15459,7 +15517,7 @@ def main() -> None:
                  else _s.reward_field),
                 scale=(float(args.goal_euclid_scale)
                        if goal_dist_field is not None
-                       else 100.0 / _s.rf_d0 * args.race_shaping),
+                       else 100.0 / _pay_d0(_s) * args.race_shaping),
                 time_pen=TIME_PEN_T,
                 success_bonus=args.success_bonus,
                 stall_ticks=TICK.secs_to_ticks(args.stall_secs),
@@ -15510,7 +15568,7 @@ def main() -> None:
                 stall_arc=bool(args.stall_arc),
                 # --race-ratchet: the record rule, and THIS map's start
                 # geodesic as the observation column's normaliser
-                ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
+                ratchet=bool(args.race_ratchet), ratchet_d0=_pay_d0(_s),
                 d0_per_env=(goal_dist_field is not None),
                 tick_ms=TICK.ms,
                 # --curiosity-cond: the per-env T family; the draw's seed
@@ -15608,14 +15666,14 @@ def main() -> None:
         # attribute they read on a training slot. int_coef 0: no novelty
         # table, and on_reset is never called on it either.
         _s.reward_fn = RaceReward(
-            _s.goal_field, scale=100.0 / _s.rf_d0 * args.race_shaping,
+            _s.goal_field, scale=100.0 / _pay_d0(_s) * args.race_shaping,
             time_pen=TIME_PEN_T, success_bonus=args.success_bonus,
             stall_ticks=TICK.secs_to_ticks(args.stall_secs),
             stall_eps=STALL_EPS_T, max_step=args.max_step,
             every=(KH if args.reward_per_decision else 1),
             d_floor=args.race_dfloor, d_latch=_s.d_latch,
             ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
-            ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
+            ratchet=bool(args.race_ratchet), ratchet_d0=_pay_d0(_s),
             tick_ms=TICK.ms,
             # eval-only slot: __call__ is never reached, so there is no dip
             # to meter and nothing to allocate
@@ -15704,12 +15762,12 @@ def main() -> None:
                 _s.reward_field if _s.reward_field is not None
                 else _s.goal_field, _s.reward_fn.d_latch)
         # --race-ratchet: the eval's own record, per map, normalised by
-        # that map's own start geodesic - the same number the training
-        # column carries.
+        # that map's own start geodesic (or the fixed --race-pay-d0) - the
+        # same number the training column carries.
         _s.eval_ratchet_feed = (
             _make_eval_ratchet_feed(
                 _s.reward_field if _s.reward_field is not None
-                else _s.goal_field, max(_s.rf_d0, 1.0))
+                else _s.goal_field, max(_pay_d0(_s), 1.0))
             if N_RATCHET else None)
         # --curiosity-cond: the in-trainer eval runs the T = 0 member (the
         # exploit policy: full shaping, no novelty); the tools pick another
@@ -15725,12 +15783,15 @@ def main() -> None:
         _s.eval_priv_feed = None
         if args.priv_critic and _s.core is not None:
             _mn, _mx = _s.core.map_bounds()
+            _dist = int(args.priv_critic) == 2
             _s.priv = PrivFeat(_s.map_center,
                                float(np.max((_mx - _mn) / 2.0)),
-                               _s.rf_d0 if _s.rf_d0 else _s.d0,
+                               (float(args.race_pay_d0) if _dist else
+                                _s.rf_d0 if _s.rf_d0 else _s.d0),
                                args.ep_ticks,
                                arc_len=(arc_line.length
-                                        if arc_line is not None else 0.0))
+                                        if arc_line is not None else 0.0),
+                               mode=("dist" if _dist else "full"))
             if not MULTI or _s is slots[0]:
                 print(_s.priv.describe())
             if _s.eval_core is not None:
@@ -16235,11 +16296,13 @@ def main() -> None:
                                         if route is not None else None),
                        "route_span": (route.offsets[-1]
                                       if route is not None else None),
-                       "priv_critic": int(bool(args.priv_critic)),
+                       "priv_critic": int(args.priv_critic or 0),
                        # the exact block the critic was trained on, written
                        # out so a ledger entry and any later reader never
                        # have to infer it from the flag alone
-                       "priv_features": (list(PRIV_FEATURES)
+                       "priv_features": (list(PRIV_FEATURES_DIST)
+                                         if int(args.priv_critic or 0) == 2 else
+                                         list(PRIV_FEATURES)
                                          if args.priv_critic else None),
                        "priv_hidden": (int(args.priv_hidden)
                                        if args.priv_critic else None),
@@ -16871,6 +16934,8 @@ def main() -> None:
         meta["config"]["fp32_trunk"] = 1
     if args.wd_skip_norms:
         meta["config"]["wd_skip_norms"] = 1
+    if float(args.race_pay_d0) > 0.0:
+        meta["config"]["race_pay_d0"] = float(args.race_pay_d0)
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)

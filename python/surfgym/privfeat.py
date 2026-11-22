@@ -30,6 +30,14 @@ The block is TEN columns, in this order, per env:
   9  ``latch``   1.0 once --race-latch has fired this episode, else 0.0
 ===  ==========  ===================================================
 
+``--priv-critic 2`` (mode ``"dist"``, mm/health 2026-11-22) keeps the block's
+width and fills ONE column: column 6 is ``d / D`` with ``D`` the FIXED
+--race-pay-d0 distance instead of the map's own start geodesic, and every
+other column is 0.  The critic then reads the distance to the finish in plain
+units - the one number the value of a state needs under map-invariant pay
+(the success bonus is reachable within the 20 s horizon or it is not) - and
+nothing that names the map (no position, no map-relative fraction).
+
 ``map_center`` is the BSP bounds' midpoint (the same centre obs slots 12..14
 use) and ``map_scale`` is the LARGEST half-extent of those bounds, so the
 three position columns share ONE scale - a per-axis normalisation would
@@ -55,6 +63,9 @@ PRIV_FEATURES = ("pos_x", "pos_y", "pos_z",
                  "d_frac", "arc_frac", "t_frac", "latch")
 PRIV_DIM = len(PRIV_FEATURES)
 
+#: --priv-critic 2: the same width, one live column (6 = d / --race-pay-d0)
+PRIV_FEATURES_DIST = tuple("d_abs" if i == 6 else "zero" for i in range(PRIV_DIM))
+
 #: velocity normaliser.  A FIXED constant, not --maxvel: the block has to
 #: mean the same thing across runs for two arms to be comparable, and 4000
 #: is the horizontal cap every arm in this project has used.
@@ -73,14 +84,22 @@ class PrivFeat:
     names = PRIV_FEATURES
 
     def __init__(self, map_center, map_scale: float, d0: float,
-                 ep_ticks: int, arc_len: float = 0.0):
+                 ep_ticks: int, arc_len: float = 0.0, mode: str = "full"):
+        if mode not in ("full", "dist"):
+            raise ValueError(f"priv mode {mode!r}: full or dist")
         self.center = np.asarray(map_center, np.float64).reshape(3)
         self.scale = float(max(float(map_scale), 1.0))
         self.d0 = float(max(float(d0), 1.0))
         self.ep_ticks = float(max(int(ep_ticks), 1))
         self.arc_len = float(arc_len or 0.0)
+        self.mode = mode
+        if mode == "dist":
+            self.names = PRIV_FEATURES_DIST
 
     def describe(self) -> str:
+        if self.mode == "dist":
+            return (f"priv-critic 2: ONE live column of {self.dim}, d / {self.d0:,.0f}u "
+                    f"(the fixed --race-pay-d0, the same on every map); the rest are 0")
         return (f"priv-critic: {self.dim} columns {list(self.names)} | "
                 f"centre {np.round(self.center, 1).tolist()} scale "
                 f"{self.scale:,.0f}u | d0 {self.d0:,.0f}u | ep_ticks "
@@ -102,6 +121,11 @@ class PrivFeat:
         if out.shape[1] != self.dim:
             raise ValueError(f"priv block is {self.dim} wide, got "
                              f"{out.shape[1]}")
+        if self.mode == "dist":
+            out[:] = 0.0
+            out[:, 6] = (np.asarray(d, np.float64).reshape(n)
+                         / self.d0).astype(np.float32)
+            return
         p = np.asarray(pos, np.float64).reshape(n, 3)
         v = np.asarray(vel, np.float64).reshape(n, 3)
         out[:, 0:3] = ((p - self.center) / self.scale).astype(np.float32)

@@ -226,6 +226,10 @@ def run_az(ctx: dict, a) -> dict:
     time_pen = float(cfg.get("time_pen") or 0.0) * (float(ctx["TICK"].ms) / 10.0)
     d0 = float(field_d(gf, np.asarray(ctx["row0"]["origin"]).reshape(-1, 3))[0])
     scale = 100.0 / d0 if np.isfinite(d0) and d0 > 0 else 0.0
+    if float(cfg.get("race_pay_d0") or 0.0) > 0.0:
+        # --race-pay-d0: the checkpoint was paid in plain units - the path rewards here use the
+        # same per-unit pay as the critic's training, whatever this map's own start distance
+        scale = 100.0 / float(cfg["race_pay_d0"])
     fin_pay = float(a.az_finish)
     widen = float(a.az_widen)
     prior_mode = str(a.az_prior)

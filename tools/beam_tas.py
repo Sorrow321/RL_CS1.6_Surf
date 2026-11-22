@@ -213,6 +213,8 @@ class XFeeds:
             # record_ckpt's ratchet_fn verbatim: the record gap (d - b)/d0, b the episode's best
             # d so far (an episode start, read off the tick, re-arms it)
             _d0 = float(np.mean(self.ogf.sample(map_spawn_pool(core)["origin"])))
+            # --race-pay-d0: the trainer's fixed normaliser, as record_ckpt mirrors it
+            _d0 = float(self.cfg.get("race_pay_d0") or 0.0) or _d0
             _rs = {"rec": None, "tick": None}
 
             def ratchet_fn(c, _f=self.ogf, _d0=_d0):
