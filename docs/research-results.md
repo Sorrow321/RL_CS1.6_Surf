@@ -51549,3 +51549,27 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Cost $0.10 (credit $19.35). Files ~/ar_m2/runs/nmv (s1v/out/spine.npy, md5 a07282a7, the
   finishing line); droplet
   scratchpad curvmap/ (figures curve_greedy, curve_searches).
+
+## 2026-11-22 09:24 UTC: PLAN - the seven-map agent's weights and activations: red-flag check
+
+* The user (2026-11-22): look at the model's weights for abnormalities ("giant weights ...
+  red flags"), then run it on maps and look at the activations ("maybe the activations
+  explode"). The model: mmg_S1c final (md5 70119029, step 80.2B; simba towers, hidden 448,
+  emb 512, bf16 + compile in training, Adam lr 3e-4 constant, NO weight decay).
+* WEIGHTS (read on the droplet WITHOUT unpickling: a static opcode reader of the zip's pickle,
+  raw tensor blobs into numpy): no NaN / inf, no dead row or column, the EMA copies within
+  2-5% of the raw weights, the unused discrete yaw / pitch heads untouched at their init.
+  Against the exact orthogonal-init norms: every hidden layer 9-60x (conv 20-24x, the image
+  embedding conv.8 59x, the value tower 21-31x), largest singular values up to 1,045x
+  (conv.8: ONE direction holds 62% of its energy, s1 1,478 vs s2 150); the action head 720x
+  its 0.01 init; the fwd key's bin 1 bias -18.2. The policy tower's final LayerNorm (pi.2):
+  428 of 448 gains |g| < 0.05 (median 0.000): 13 channels carry 99% of what reaches the
+  action head, 6 of the view head's (value: 49). Adam's per-step update is 2e-5..7e-5 of the
+  weights in the hidden layers (vs ~1e-3 usual), and for 59-98% of the tower and head weights
+  sqrt(v) < eps = 1e-5.
+* ACTIVATIONS (next): tools/act_probe.py (mm/exit fc2d39cd) on one RTX 5090 <= $0.60/h: the
+  raw weights fly 3 greedy episodes on each of the seven maps and on surf_left_turn and
+  surf_left_turn_curve (--maxvel 4000); per layer rms / absmax / non-finite, dead ReLU units,
+  the embedding's and the final LayerNorms' principal-component shares, residual ratios, key
+  confidence, view saturation; the same observations through the architecture at init (the
+  explosion factor) and under bf16 autocast (decision changes). Watchdog + droplet watcher.
