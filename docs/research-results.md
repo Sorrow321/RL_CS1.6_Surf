@@ -51411,3 +51411,24 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * "0 finishes in 15 runs" should read: 12 AlphaZero runs overnight (azP1, azP2, azR1, azR2,
   azT1, azT2, az9L, azB1, azB2, azB3, azRt1, azRt2) plus 2 greedy K 1 runs (azG0, azG1), and the
   8 of the evening (az2-az9): 0 finishes in all 22, none past ramp 1.
+
+## 2026-11-22 07:50 UTC: PLAN - surf_left_turn_wall: the agent and the basic searches, with a wall
+
+* The user (2026-11-22): a wall added to surf_left_turn "so the field shouldn't go to empty air";
+  try the greedy policy and some basic search on it, no training: an ablation of the map change.
+* The map: surf_left_turn_wall.bsp, md5 70b0926c (3,446,556 bytes). Same start, finish and fall
+  triggers (now models *4, *5, *6, the same boxes), plus one world brush x -3,336..640,
+  y -64..64, full height (it splits the water in three). None of the six Go-Explore routes of the
+  night comes within 538 u of it, so the found route stays open; the wall closes the air between
+  the start half and the finish half up to the left-turn corner. The droplet's core loads it
+  (16 spawns, the same spawn state).
+* Runs (one RTX 5090 <= $0.60/h, mm/exit 50bcc467, mmg_S1c final md5 70119029, --maxvel 4000),
+  the same flags as on surf_left_turn: zero-shot greedy raw / ema0 / ema1, 9 episodes each (the
+  first recording bakes the fields); auto_spine with s1's flags (greedy-d = the median deepest d
+  of the raw episodes, current-d = the median d at their spawns, on the new field; the same rule
+  gives 4,068 / 5,090 on the old map, where s1 ran with 4,026 / 4,971); az2 (plain, 25 min) and
+  az9 (memory + widening 0.5, 20 min). Queue runner PAR 3, fleet watchdog with a harvest of
+  runs/nm_res, droplet watcher (STOP at 10:30 UTC, $13 credit floor). Credit $19.82.
+* Measured: finishes; how far along the night's geit2 route (27.06 s) each run gets, against the
+  same runs on surf_left_turn (zero-shot fell at ramp 1 in 3.5-7.1 s; az9 walked ramp 1's top
+  edge; s1 surfed ramps 1-2 to x -305); and the field d along that route, old map vs new.
