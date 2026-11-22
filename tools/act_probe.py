@@ -86,6 +86,14 @@ class Probe:
         self.hooks = []
         self.obs = Reservoir(KEEP_OBS, self.rng)
         mods = dict(policy.named_modules())
+        # the layers whose rows go to the PCA reservoir: the image embedding (the trunk's last
+        # Linear, conv.8 on the plain trunk, conv.11 under --conv-norm) and each tower's final
+        # LayerNorm - found by type, so a trunk with more modules is read the same way
+        lin = [n for n, m in mods.items() if n.startswith("conv.") and isinstance(m, torch.nn.Linear)]
+        lns = {t: [n for n, m in mods.items() if n.startswith(t + ".") and n.count(".") == 1
+                   and isinstance(m, torch.nn.LayerNorm)] for t in ("pi", "vf")}
+        self.pca_names = set(lin[-1:] + lns["pi"][-1:] + lns["vf"][-1:])
+        self.emb_name = lin[-1] if lin else "conv.8"
         for name, m in mods.items():
             if isinstance(m, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.LayerNorm, torch.nn.ReLU)):
                 self.hooks.append(m.register_forward_hook(self._make(name, m)))
@@ -107,7 +115,7 @@ class Probe:
 
     def _make(self, name, m):
         relu_like = isinstance(m, torch.nn.ReLU) or name.endswith("fc1")
-        pca = name in ("conv.8", "pi.2", "vf.2")
+        pca = name in getattr(self, "pca_names", ("conv.8", "pi.2", "vf.2"))
 
         def hook(mod, inp, out):
             if not self.on or not torch.is_tensor(out):

@@ -407,6 +407,11 @@ TRAIN_ONLY = frozenset({
     # chose - it changes where the rounding happens in TRAINING, not what a
     # recording computes. If a recorder ever grows an autocast, mirror it.
     "fp32_heads",
+    # --fp32-trunk (mm/health): the image trunk outside autocast in TRAINING; a recording runs
+    # fp32 throughout already (see fp32_heads above)
+    "fp32_trunk",
+    # --wd-skip-norms (mm/health): which parameters --wd decays - an optimizer setting
+    "wd_skip_norms",
     # --goals training-side knobs: the goal DISTRIBUTION during training
     # (horizon band, curriculum, air share). A recording draws its own
     # goals (--goal-band); what the policy SEES is mirrored via "goals",
@@ -2306,6 +2311,8 @@ def main(argv=None, build_only: bool = False, device=None):
                     # --simba / --split-trunk: MIRRORED (the network's modules)
                     simba=bool(cfg.get("simba") or 0),
                     split_trunk=bool(cfg.get("split_trunk") or 0),
+                    # --conv-norm: MIRRORED (a GroupNorm after each conv: the trunk's modules)
+                    conv_norm=bool(cfg.get("conv_norm") or 0),
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,
                     route_critic_only=bool(cfg.get("route_critic_only")),

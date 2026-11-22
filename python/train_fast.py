@@ -487,7 +487,8 @@ class Policy(nn.Module):
                  plan_film: int = 0, film_dim: int = 0,
                  views: int = 1, views_scale: int = 1, drop_depth: bool = False,
                  simba: bool = False, split_trunk: bool = False,
-                 pitch_sigma_min: float = 0.0, yaw_sigma_max: float = 0.0):
+                 pitch_sigma_min: float = 0.0, yaw_sigma_max: float = 0.0,
+                 conv_norm: bool = False, fp32_trunk: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -514,6 +515,13 @@ class Policy(nn.Module):
         # checkpoint moves between the two settings freely; False is the
         # same expression the pre-flag heads() was.
         self.fp32_heads = bool(fp32_heads)
+        # --conv-norm / --fp32-trunk (mm/health, 2026-11-22): see _plain_trunk and features
+        self.conv_norm = bool(conv_norm)
+        self.fp32_trunk = bool(fp32_trunk)
+        if self.conv_norm and (str(trunk or "plain") != "plain" or int(plan_film or 0)):
+            raise SystemExit("--conv-norm normalises the PLAIN trunk's three convs (and moves "
+                             "their Sequential indices, which --plan-film reads): plain trunk, "
+                             "no --plan-film")
         # --tower-depth / --conv-mult: the two capacity knobs that are NOT
         # emb/hidden. tower_depth is how many Linear+Tanh layers each of the
         # pi/vf towers has (2 = the historical stack); conv_mult scales the
@@ -992,6 +1000,22 @@ class Policy(nn.Module):
         _m = self.conv_mult
         tail = ([nn.Linear(64 * _m * 4 * 8, emb), nn.LayerNorm(emb), nn.ReLU()] if ln else
                 [nn.Linear(64 * _m * 4 * 8, emb), nn.ReLU()])
+        if getattr(self, "conv_norm", False):
+            # --conv-norm (mm/health, 2026-11-22): GroupNorm(1, C) - a LayerNorm over (C, H, W)
+            # per image - between each conv and its ReLU. Without it the three convs and the
+            # embedding Linear multiply their scales: the seven-map agent's image embedding ran
+            # at 6.7e7x its initial activation size before its LayerNorm, along ONE direction
+            # (ledger a47d36da). With it every conv's output is O(1) whatever its weights' norm.
+            # Same convs in the same order: the orthogonal init draws are unchanged.
+            return nn.Sequential(
+                nn.Conv2d(conv_ch, 16 * _m, 5, stride=2, padding=2), nn.GroupNorm(1, 16 * _m),
+                nn.ReLU(),
+                nn.Conv2d(16 * _m, 32 * _m, 3, stride=2, padding=1), nn.GroupNorm(1, 32 * _m),
+                nn.ReLU(),
+                nn.Conv2d(32 * _m, 64 * _m, 3, stride=2, padding=1), nn.GroupNorm(1, 64 * _m),
+                nn.ReLU(),
+                nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(), *tail,
+            )
         return nn.Sequential(
             nn.Conv2d(conv_ch, 16 * _m, 5, stride=2, padding=2), nn.ReLU(),
             nn.Conv2d(16 * _m, 32 * _m, 3, stride=2, padding=1), nn.ReLU(),
@@ -1040,6 +1064,14 @@ class Policy(nn.Module):
             im = torch.cat([im, torch.sin(a), torch.cos(a)], dim=-1)
         im = im.permute(0, 3, 1, 2)
         if self.film is None:
+            if self.fp32_trunk:
+                # --fp32-trunk (mm/health): the image trunk outside autocast, so the convs, the
+                # embedding Linear and its LayerNorm run fp32 in training as in every recording
+                # (bf16 flipped 1.4-3.7% of the seven-map agent's key choices, ledger
+                # a47d36da). Captured / traced like --fp32-heads' block.
+                with torch.autocast(device_type="cuda", enabled=False):
+                    e = (self.conv if trunk is None else trunk)(im.float())
+                return torch.cat([scal[:, self.feat_idx].float(), e.float()], dim=1)
             return torch.cat([scal[:, self.feat_idx],
                               (self.conv if trunk is None else trunk)(im)], dim=1)
         # --plan-film: conv[0..5] are the three conv+ReLU blocks; the gate
@@ -1402,6 +1434,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("obs_reach", "--obs-reach"),
              ("simba", "--simba"),
              ("split_trunk", "--split-trunk"),
+             ("conv_norm", "--conv-norm"),
              ("obs_views_scale", "--obs-views-scale"),
              ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
@@ -5248,6 +5281,11 @@ def main() -> None:
                          "checkpoint")
     ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
                     help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
+    ap.add_argument("--wd-skip-norms", type=int, default=None, choices=(0, 1),
+                    help="with --wd: decay only the weight matrices (Linear / Conv kernels); "
+                         "biases, LayerNorm / GroupNorm parameters and the view log-std keep "
+                         "plain Adam (mm/health, 2026-11-22). 0 = --wd decays every parameter, "
+                         "as it always did. ckpt restores")
     ap.add_argument("--dropout", type=float, default=None,  # 0 = off
                     help="CONSISTENT dropout after every tower activation: one "
                          "mask per rollout, shared by the sampling and its update "
@@ -6315,6 +6353,12 @@ def main() -> None:
                          "final LayerNorm, and the image embedding gets a LayerNorm before its "
                          "ReLU. Plain trunk only. SCRATCH arms; ckpt restores, a mismatch is "
                          "refused")
+    ap.add_argument("--conv-norm", type=int, default=None, choices=(0, 1),
+                    help="a GroupNorm(1, C) (LayerNorm over C, H, W per image) between each of "
+                         "the plain trunk's three convs and its ReLU (mm/health, 2026-11-22: the "
+                         "seven-map agent's image embedding ran at 6.7e7x its initial activation "
+                         "size before its LayerNorm, ledger a47d36da). Plain trunk, no "
+                         "--plan-film. SCRATCH arms; ckpt restores, a mismatch is refused")
     ap.add_argument("--split-trunk", type=int, default=None, choices=(0, 1),
                     help="separate image encoders for the policy and the value (the user, "
                          "2026-10-03): the value tower reads its own plain trunk, so the value "
@@ -8752,6 +8796,11 @@ def main() -> None:
                          "value the rollout stores and every ratio the update "
                          "differences goes through these two Linears). The "
                          "trunk and towers stay bf16. 0 = today")
+    ap.add_argument("--fp32-trunk", type=int, default=None, choices=(0, 1),
+                    help="run the image trunk (convs, embedding Linear, its LayerNorm) with "
+                         "autocast disabled in training, as every recording runs it (mm/health: "
+                         "bf16 flipped 1.4-3.7%% of the seven-map agent's key choices against "
+                         "fp32, ledger a47d36da). No tensor changes; ckpt restores. 0 = today")
     args = ap.parse_args()
     # --maxvel V1,V2,...: one sv_maxvelocity per map (_maxvel_arg returns a tuple only for a list).
     # args.maxvel becomes the FIRST map's value, so every single-value reader is unchanged, and
@@ -9397,6 +9446,9 @@ def main() -> None:
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, float(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k):g}")
+        if args.wd_skip_norms is None and ck_cfg.get("wd_skip_norms") is not None:
+            args.wd_skip_norms = int(ck_cfg["wd_skip_norms"])
+            restored.append(f"wd_skip_norms={args.wd_skip_norms}")
         # --aug-mirror / --eval-mirror / the DrAC block: training-time only (no tensor
         # shape moves, a checkpoint resumes with or without them), restored so a plain
         # resume continues the arm it came from
@@ -9661,7 +9713,8 @@ def main() -> None:
                     f"{_vf} changes the image row and the conv trunk's input channels, and a "
                     "checkpoint's first layer cannot be widened or narrowed - start a fresh run, "
                     f"or drop the flag to keep the ckpt's setting ({_cv})")
-        for _ak, _af in (("simba", "--simba"), ("split_trunk", "--split-trunk")):
+        for _ak, _af in (("simba", "--simba"), ("split_trunk", "--split-trunk"),
+                         ("conv_norm", "--conv-norm")):
             _cv = int(ck_cfg.get(_ak) or 0)
             if getattr(args, _ak) is None:
                 if _cv:
@@ -9924,6 +9977,9 @@ def main() -> None:
         if args.fp32_heads is None and ck_cfg.get("fp32_heads") is not None:
             args.fp32_heads = int(ck_cfg["fp32_heads"])
             restored.append(f"fp32_heads={args.fp32_heads}")
+        if args.fp32_trunk is None and ck_cfg.get("fp32_trunk") is not None:
+            args.fp32_trunk = int(ck_cfg["fp32_trunk"])
+            restored.append(f"fp32_trunk={args.fp32_trunk}")
         if (args.fix_pitch is None and not args.free_pitch
                 and ck_cfg.get("fix_pitch") is not None):
             args.fix_pitch = float(ck_cfg["fix_pitch"])
@@ -10310,6 +10366,10 @@ def main() -> None:
         args.gae = 0.95
     if args.wd is None:
         args.wd = 0.0
+    if args.wd_skip_norms is None:
+        args.wd_skip_norms = 0
+    if int(args.wd_skip_norms) and float(args.wd) <= 0.0:
+        raise SystemExit("--wd-skip-norms selects WHICH parameters --wd decays: pass --wd > 0")
     if args.dropout is None:
         args.dropout = 0.0
     for _k, _v in (("aug_mirror", 0.0), ("eval_mirror", 0), ("aug_drop", 0.0),
@@ -10861,6 +10921,8 @@ def main() -> None:
         args.obs_reach = 0
     if args.simba is None:
         args.simba = 0
+    if args.conv_norm is None:
+        args.conv_norm = 0
     if args.split_trunk is None:
         args.split_trunk = 0
     if args.obs_reach and (args.goals or (args.frame_stack or 0) > 1 or args.surf_mask
@@ -11662,6 +11724,8 @@ def main() -> None:
         args.conv_mult = 1            # the historical 16/32/64 stack
     if args.fp32_heads is None:
         args.fp32_heads = 0           # heads inside autocast, as they were
+    if args.fp32_trunk is None:
+        args.fp32_trunk = 0           # the image trunk inside autocast, as it was
     if args.priv_critic is None:
         args.priv_critic = 0          # symmetric critic, as it was
     if args.priv_hidden is None:
@@ -15155,7 +15219,9 @@ def main() -> None:
                     views_scale=int(args.obs_views_scale),
                     drop_depth=bool(args.obs_no_depth),
                     simba=bool(args.simba),
-                    split_trunk=bool(args.split_trunk)).to(device)
+                    split_trunk=bool(args.split_trunk),
+                    conv_norm=bool(args.conv_norm),
+                    fp32_trunk=bool(args.fp32_trunk)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -15219,7 +15285,21 @@ def main() -> None:
             print(f"decoder initialised from {cb_path.name} "
                   f"(+{args.codebook_bias:g} on {NCODES}x{H}x{NACT} fitted "
                   "indices; still fully trainable)")
-    if float(args.wd) > 0.0:
+    if float(args.wd) > 0.0 and int(args.wd_skip_norms):
+        # --wd-skip-norms (mm/health): decay the weight MATRICES only (Linear / Conv kernels,
+        # ndim >= 2); biases, LayerNorm / GroupNorm gains and shifts and the view log-std
+        # keep plain Adam. A gain decayed towards 0 is a feature switched off (the seven-map
+        # agent's final policy LayerNorm already had 428 of 448 gains near 0 with no decay at
+        # all, ledger a47d36da), and a decayed log-std pulls the view noise towards sigma 1.
+        _dec = [q for q in policy.parameters() if q.ndim >= 2]
+        _nod = [q for q in policy.parameters() if q.ndim < 2]
+        opt = torch.optim.AdamW([{"params": _dec, "weight_decay": float(args.wd)},
+                                 {"params": _nod, "weight_decay": 0.0}],
+                                lr=args.lr, eps=1e-5, fused=(device.type == "cuda"))
+        print(f"AdamW: decoupled weight decay {float(args.wd):g} on {len(_dec)} weight "
+              f"matrices ({sum(q.numel() for q in _dec):,} values); {len(_nod)} biases / norm "
+              "parameters / log-std undecayed (--wd-skip-norms)")
+    elif float(args.wd) > 0.0:
         # decoupled decay (Loshchilov & Hutter): the same Adam moments, the
         # weights shrink by lr * wd per step outside the gradient
         opt = torch.optim.AdamW(policy.parameters(), lr=args.lr, eps=1e-5,
@@ -16725,6 +16805,12 @@ def main() -> None:
             meta["config"]["min_speed_secs"] = float(args.min_speed_secs)
     if args.simba:
         meta["config"]["simba"] = 1
+    if args.conv_norm:
+        meta["config"]["conv_norm"] = 1
+    if args.fp32_trunk:
+        meta["config"]["fp32_trunk"] = 1
+    if args.wd_skip_norms:
+        meta["config"]["wd_skip_norms"] = 1
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
@@ -17141,7 +17227,7 @@ def main() -> None:
     # rest are listed, so the log says how far this run is from the one that trained them.
     if INIT_W is not None:
         _reads = ("act_every", "act_hist", "chunk", "n_codes", "conv_mult", "emb", "hidden",
-                  "tower_depth", "trunk", "simba", "rnn", "rnn_size", "frame_stack",
+                  "tower_depth", "trunk", "simba", "conv_norm", "rnn", "rnn_size", "frame_stack",
                   "lidar_w", "lidar_h", "lidar_cell", "lidar_hfov", "lidar_vfov", "lidar_near",
                   "lidar_range", "pinhole", "normals", "obs_compass", "obs_fourier",
                   "obs_normal", "obs_pot_rate", "obs_potential", "obs_potential_curtain",

@@ -1,8 +1,8 @@
 {
   "_doc": "Multi-map run mm7 (mm/s7, 2026-11-16): ONE policy, recipe v14 exactly, on the seven development maps from scratch (box.py launch --multimap). Pre-launch body: abl/ledger/mm7_pre.md. Launches after P1 ends and only once the user tops up.",
   "goal": "mm7: does training ONE v14 policy on seven maps at once speed up surf_princessburglar_b26, counted in pb's OWN steps, against v14 alone (room exit ~1.96B, the x -1,005 wall 9.59B, the shaft 14.27B, first finish 17.29B)? And each map at matched own steps against its v14-alone run.",
-  "map": "maps/surf_princessburglar_b26.bsp",
-  "field": "maps/surf_princessburglar_b26.goalc_32.npz",
+  "map": "maps/surf_src_cannonball.bsp",
+  "field": "maps/surf_src_cannonball.goalc_32.npz",
   "_field_doc": "surf_unitfarmer2's goal graph WITHOUT corner cutting at lidar cell 32, the field the recipe shapes on (--race-no-corner-cut 1). All caches (goal_32, goalc_32, occ_32, slabocc_32, sdf_32, faceid_32) were baked on 2026-10-30 by the smoke launch uf2op_bake on a box, on a core that already loads every brush entity (6bd7f931), and are deployed from ~/ar_m2/maps/uf2_maps.tar.gz (md5 84e7daa0, a copy of ~/ar_uf2/maps/uf2_maps.tar.gz; goalc_32 md5 bfd4e79b, bsp md5 9834c24c). The field builder is unchanged for a single-box zone since that bake (the only change, 2026-10-31, adds a signature suffix for zones of several boxes), so the box bakes nothing. goalc_32: 6.84M voxels, reach_max 34,596 u; the field is seeded from the finish trigger's bounding box while the finish itself is tested on the clip hull.",
   "score_episodes": 9,
   "_score_episodes_doc": "score.py counts only the first N episodes of an eval (header episode index < N): its score is a max over episodes, so an eval with more episodes would buy lottery tickets (r6b1 scored 98.418 with 54-episode evals of the incumbent's weights). 0 = all.",
