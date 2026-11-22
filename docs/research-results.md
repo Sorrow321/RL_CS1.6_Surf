@@ -51483,3 +51483,28 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   and az9. One RTX 5090 <= $0.60/h, fleet watchdog + droplet watcher (STOP 10:45 UTC, $13
   floor). The night's routes do not fit the new ramps, so the measures are finishes, the field's
   progress and where the runs end. Credit $19.65.
+
+## 2026-11-22 08:41 UTC: RESULT - surf_left_turn_wall_sym: the agent fails at the first ramp pair
+
+* PLAN 89df167c. Box nmz (instance 61937973, RTX 5090 $0.579/h, Florida, Ryzen 9 9950X3D), the
+  wall map's battery unchanged (mm/exit 50bcc467, mmg_S1c final md5 70119029, --maxvel 4000).
+  Jobs 08:23-08:36 UTC. The new first stretch: three pairs of mirrored ramps (rows y ~ -750 and
+  ~ -1,250, crests z ~780, 400 u below the start platform, 64 u from its edge; an open gap
+  between the two ramps of a pair), x -2,216..312; the wall kept. Start geodesic 6,283 u.
+* ZERO-SHOT greedy, raw / ema0 / ema1 x 9: 0 of 27 finishes, 0 past the first ramp pair; only
+  4 of 27 touch a ramp of it, the rest fall through the gap between the pair or off its sides
+  (3.1-8.3 s). Field progress median 11% (best 15-16%), furthest east median x -1,846 (best
+  -1,590). On the wall map: median x -1,604, 3 of 27 past ramp 2 (x 557-723); on the old map
+  -2,116. Worse than the wall map.
+* ALPHAZERO with the agent: az2 died at 5.1 s (x -1,212), az9 at 3.5 s (x -1,491): both at the
+  first ramp pair (the wall map: 11.4 s / 7.8 s, ramp 1).
+* THE TRAINING LOOP'S SEARCH (auto_spine, s1's flags; greedy-d 5,699, current-d 6,446): the
+  10 min tree stage (P/E/R mix 0.22/0.35/0.42) found a 9.8 s line that drops onto the first pair
+  at 4.9 s and rides the north row of all three pairs at 720-760 u/s to x 316 (the end of the
+  first stretch, before the corner): d 3,289 = 44.4% (deepest live tick 56.7%); adopted. The
+  wall map's same stage: x 714 at the corner after 24.8 s of play.
+* VERDICT: the agent does not pass the third version and does worse than on the wall map; its
+  skills do not transfer to the low paired ramps (it misses the drop onto them). The field-
+  scored search clears the first stretch in one stage, as on the wall map. One draw each.
+* Cost $0.20 (credit $19.45). Files ~/ar_m2/runs/nmz; droplet scratchpad symmap/ (figures sym_greedy,
+  sym_searches).
