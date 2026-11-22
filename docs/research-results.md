@@ -51615,3 +51615,27 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   embedding in training.
 * Cost $0.29 (box 09:27-09:54 UTC; credit $19.06). Files: ~/ar_m2/runs/nma; droplet scratchpad
   weights/ (static reader, audit), actmap/ (figures), humandemo/ (line, probe, figure).
+
+## 2026-11-22 10:11 UTC: PLAN - health fixes from scratch on cannonball: control vs the three fixes
+
+* The user (2026-11-22), after the audit (a47d36da): no rescue of the old checkpoint - fix the
+  architecture and train a new one; options 1, 2 and 4 (weight decay, a normalisation in the
+  conv stack, fp32 for the image trunk) from scratch on one map; if the fixed network does at
+  least as well, the next multi-map run uses it.
+* Code: mm/health 6d1cf701 (from mm/exit 73287407): --conv-norm (GroupNorm(1, C) between each
+  plain-trunk conv and its ReLU; architecture key, restored / refused, mirrored in record_ckpt
+  and beam_tas), --fp32-trunk (the image trunk outside autocast in training), --wd-skip-norms
+  (with --wd: AdamW decay on the weight matrices only; norms, biases, log-std undecayed). All
+  off = unchanged (tests/python/test_health_flags.py, 8 passed). History: --wd 0.01 on every
+  parameter was NULL on blue050 at 700M (2026-09-19: weights 0.67x, frontier unchanged).
+* Arms (box.py launch, the incumbent recipe v14 + its launch extra --auto-spine-mcts-args
+  '--mcts-mix-rule sib ...', surf_src_cannonball, seed 0, 4e9 steps, one RTX 5090 <= $0.60/h
+  each, same branch): hc_cb = control (no new flag); hf_cb = + --wd 0.01 --wd-skip-norms 1
+  --conv-norm 1 --fp32-trunk 1. v14's own cannonball run: first greedy finish 2.42B (78.21 s).
+* Measured: the first greedy finish and finishes per eval (the grader), corridor progress; at
+  the end, on each arm's checkpoints near 1B / 2B / 3B / final: tools/act_probe.py (trained /
+  fresh activation size per layer, dormant units, principal-component shares, bf16 flips) and
+  the static weight audit (norms vs init, LayerNorm gains, Adam's relative step). One seed:
+  the health numbers are structural, the finish step is a coin within the recipe's noise.
+* Fleet watchdog with a harvest of runs/<run>, droplet watchers (credit floor $13). Credit
+  $19.06.
