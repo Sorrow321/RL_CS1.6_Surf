@@ -51469,3 +51469,17 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   route, one draw each). Past the corner the field is unchanged (its 635 u climb remains).
 * Cost about $0.17 (box up 07:53-08:10 UTC). Files: ~/ar_m2/runs/nmw (harvest), droplet
   scratchpad wallmap/ (map, zones, scripts, figures).
+
+## 2026-11-22 08:16 UTC: PLAN - surf_left_turn_wall_sym: the agent on the third version
+
+* The user (2026-11-22): a third version of surf_left_turn, "the ramps smaller ... symmetrical
+  ... the arcs around them removed. Let's see if the agent passes this map." The map:
+  surf_left_turn_wall_sym.bsp, md5 39c5c273 (2,786,040 bytes): the same 33 entities and trigger
+  boxes as surf_left_turn_wall (start *4, finish *5, teleport *6, the wall kept), new world
+  geometry (ramp faces at 57 degrees in mirrored pairs). The droplet's core loads it (16 spawns).
+* Runs: the wall map's battery unchanged (PLAN ea0a5d4e, RESULT 7d115a79): zero-shot greedy
+  raw / ema0 / ema1 x 9 (mmg_S1c final md5 70119029, --maxvel 4000), then the training loop's
+  search with s1's flags (greedy-d / current-d by the trainer's rules on this map's field), az2
+  and az9. One RTX 5090 <= $0.60/h, fleet watchdog + droplet watcher (STOP 10:45 UTC, $13
+  floor). The night's routes do not fit the new ramps, so the measures are finishes, the field's
+  progress and where the runs end. Credit $19.65.
