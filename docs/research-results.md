@@ -51639,3 +51639,35 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   the health numbers are structural, the finish step is a coin within the recipe's noise.
 * Fleet watchdog with a harvest of runs/<run>, droplet watchers (credit floor $13). Credit
   $19.06.
+
+## 2026-11-22 14:05 UTC: RESULT - health fixes on cannonball: explosion fixed, no finish in 4B
+
+* PLAN ec036ee0, mm/health 6d1cf701 (+ config start_d fix). hc_cb (box 61951482, Texas) =
+  control; hf_cb (61953202, Florida) = + --wd 0.01 --wd-skip-norms 1 --conv-norm 1
+  --fp32-trunk 1. Recipe v14, cannonball from scratch, seed 0, 4.0B steps each. Throughput:
+  control 493k steps/s, fixed 318-363k (about 0.7x: the fp32 trunk and the GroupNorms).
+* PERFORMANCE (official grader autoresearch/score.py on every eval): control: first greedy
+  finish at 3,624,402,944 (4/9, 78.09 s), 21/45 over the last five evals, best 76.69 s.
+  Fixed: no finish in 4.0B; best progress 98.9%, 98-99% in nine evals from 2.94B. v14's own
+  run finished at 2.42B, so one-seed finish timing spans > 1B; at face value the fixed arm did
+  NOT do at least as well within this budget.
+* HEALTH (act_probe + static weight audit at 1B / 2B / 3B / 4B, trained vs fresh on the same
+  observations): hidden weights 3.1x vs 1.6x init (median at 4B); the image embedding before
+  its LayerNorm 100 -> 347 -> 789 -> 1,490x (control, doubling per 1B) vs 9.6 -> 10.3 -> 11.2 ->
+  13.3x (fixed); conv outputs 5x / 20x / 85x vs ~1x; embedding top PC 0.48 vs 0.19. NOT fixed:
+  the policy's final LayerNorm (pi.2) gains near 0: 0 -> 113 -> 293 -> 344 (control) vs 0 ->
+  206 -> 318 -> 374 (fixed; the 80B agent 428); MLP blocks 93-97% zero activations in both
+  (fresh ~52%); the policy head reads 4 directions in both. bf16 vs fp32 key flips ~1% in both
+  (the probe runs the whole net in bf16: with the conv norm the trunk adds no flips).
+* VERDICT: the conv GroupNorm + weight decay fix the activation explosion and halve the weight
+  growth; they do not fix the LayerNorm-gain collapse or the dormant MLP units, and in this
+  one-seed budget the fixed arm reached 98.9% without finishing while the control finished at
+  3.62B. --fp32-trunk cost ~30% throughput for no measured gain. The control reproduces the
+  80B agent's pathologies within 4B steps on one map, so this test is an instrument for the
+  next fixes (the gain collapse: a final LayerNorm without a learned gain or decayed towards 1;
+  dormancy: a non-dying activation or ReDo); none built, the user's call.
+* Note: the session's live monitor counted '"end":"success"' but a finish is '"end":"done"';
+  the control's 21 finishes were missed in the running updates until the grader.
+* Cost $3.28 (credit $15.78). Files ~/ar_m2/runs/health/{hc_cb,hf_cb} (sync with health/,
+  control ckpt_final.pt; the fixed arm's ckpt_3001024512.pt - its 4B weights were not pulled);
+  figure scratchpad health/ana/health_test.png.
