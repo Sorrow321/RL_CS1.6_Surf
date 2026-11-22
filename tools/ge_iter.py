@@ -75,6 +75,10 @@ def main(argv=None) -> int:
     ap.add_argument("--ge-select-energy", type=float, default=0.0)
     ap.add_argument("--ge-boost", default="1.0")
     ap.add_argument("--kind", choices=("plain", "held", "contact"), default="held")
+    ap.add_argument("--pick", choices=("field", "far"), default="field",
+                    help="which archive cell a stage hands on: field = the deepest held cell on the "
+                         "goal field (auto_spine's rule); far = the held cell farthest from the "
+                         "line's first state (goal-free: the field is never read)")
     ap.add_argument("--gain", type=float, default=50.0,
                     help="a stage counts as progress when the line's best field d drops by this")
     ap.add_argument("--patience", type=int, default=3)
@@ -84,6 +88,8 @@ def main(argv=None) -> int:
     ap.add_argument("--threads", type=int, default=0)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
+    if a.pick == "far" and a.kind != "held":
+        raise SystemExit("--pick far reads the archive's held column: --kind held")
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -92,7 +98,23 @@ def main(argv=None) -> int:
     fld = auto_spine.load_field(a.field)
     line = load_line(a.line)
     base_roots = float(a.roots_secs)
-    best = field_best(fld, line)
+    o0 = np.asarray(line[0]["origin"], np.float64)
+
+    def far_of(ln):
+        return float(np.max(np.linalg.norm(np.asarray(ln["origin"], np.float64) - o0, axis=1)))
+
+    def pick_far(arch):
+        z = np.load(arch, allow_pickle=False)
+        r = np.linalg.norm(z["state"]["origin"].astype(np.float64) - o0, axis=1)
+        r[~z["held"]] = -np.inf
+        return int(np.argmax(r)) if np.isfinite(r).any() else None
+
+    # the progress a stage is judged on: the field's best d (field), or minus the farthest
+    # distance from the start (far: smaller is better either way)
+    def score(ln):
+        return field_best(fld, ln) if a.pick == "field" else -far_of(ln)
+
+    best = score(line)
     print(f"ge_iter: start line {len(line)} ticks, end {np.round(line[-1]['origin']).tolist()}, "
           f"end d {field_end(fld, line):,.0f}, best d {best:,.0f}; {a.stages} stages of "
           f"{a.ge_minutes:g} min, roots {a.roots_secs:g} s, kind {a.kind}", flush=True)
@@ -102,7 +124,8 @@ def main(argv=None) -> int:
         t0 = time.time()
         a.seed = int(a.seed) + 1
         tag = f"st{k:02d}"
-        gl, info = auto_spine.go_explore(a, out, line, len(line) - 1, tag=tag, kind=a.kind)
+        gl, info = auto_spine.go_explore(a, out, line, len(line) - 1, tag=tag, kind=a.kind,
+                                         pick=(pick_far if a.pick == "far" else None))
         sd = out / tag
         win = (sd / "win_1.spine.npy").exists()
         freed = 0 if win else prune(sd)      # a goal hit keeps its archive: the exact replay
@@ -114,9 +137,10 @@ def main(argv=None) -> int:
             rec["result"] = "no chain"
             stale += 1
         else:
-            nb = field_best(fld, gl)
+            nb = score(gl)
             rec.update(result="line", ticks=int(len(gl)), end=np.round(gl[-1]["origin"]).tolist(),
-                       end_d=round(field_end(fld, gl)), best_d=round(nb))
+                       end_d=round(field_end(fld, gl)), best_d=round(field_best(fld, gl)),
+                       far=round(far_of(gl)))
             if nb < best - float(a.gain) or win:
                 stale = 0
                 a.roots_secs = base_roots
