@@ -51690,3 +51690,32 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   static weight audit at 1B / 2B / 3B / final (gain collapse is gone by construction - the
   question is whether the heads still read a handful of directions; the silent units are read
   as units negative on every observation).
+
+## 2026-11-22 17:55 UTC: RESULT - health round 2: earlier finish, explosion and gain collapse gone
+
+* PLAN a771cae8, mm/health 69081517. hg_cb (box 61988991, California, $0.598/h): recipe v14 +
+  --wd 0.01 --wd-skip-norms 1 --conv-norm 1 --final-ln-affine 0 --mlp-act leaky, cannonball
+  from scratch, seed 0, 4.0B steps (421k steps/s, 0.85x the control; round 1 0.65-0.74x).
+* PERFORMANCE (official grader on all 53 evals; references from 5b425c00): first greedy finish
+  2,642,935,808 (control 3.62B, round 1 none in 4B, v14's own run 2.42B); 23/477 finishes
+  (control 21, round 1 0); 19 of them in five consecutive evals 3.25-3.55B; 8 of the 18 evals
+  from the first finish on finish; but the last seven evals (>= 3.5B) 8/54 vs the control's
+  21/54; best time 78.01 s (control 76.69 s). One seed each.
+* HEALTH at 4B (control / round 1 / round 2): hidden weights 3.11x / 1.61x / 1.37x init; the
+  image embedding before its LayerNorm 1,490x / 13.3x / 13.5x a fresh net's; its top PC 0.48 /
+  0.19 / 0.16; final-LayerNorm gains near 0: 344 / 374 / none (removed); channels carrying 90%
+  of the action head's input 17 / 15 (3B) / 176 (1B 252, 2B 208, 3B 187); the value head's
+  input 5 / 3 / 17 directions for 90%; the policy head's input 4 / 4 / 5 directions (NOT
+  fixed: the tower's output still varies along ~5 directions); policy-block units never firing
+  539 / 511 / 444 of 1,792 (round 2: 182 / 227 / 119 at 1B / 2B / 3B against the control's 498 /
+  488 / 253); ~92% of MLP activations below 0 in all three (leaky units keep a gradient); the
+  residual branch 17-67x its input in all three (not fixed).
+* VERDICT: round 2 meets the user's bar on this map - at least as good on performance (first
+  finish ~1B steps earlier, slightly more finishes in total; less reliable over its last 0.5B)
+  with the explosion, the weight growth and the gain collapse gone and the heads reading
+  broadly. Candidate architecture for the next multi-map run: --conv-norm 1 --wd 0.01
+  --wd-skip-norms 1 --final-ln-affine 0 --mlp-act leaky (no --fp32-trunk). Open: the policy
+  representation's ~5 directions and the residual branch's dominance; one seed.
+* Cost $1.76 (credit $13.99 - at the $13 floor: no rental without the user). Files
+  ~/ar_m2/runs/health/hg_cb (sync with health/ incl. heads_*.txt, ckpt_final.pt md5 52c209da);
+  figure scratchpad health/ana/health_round2.png.
