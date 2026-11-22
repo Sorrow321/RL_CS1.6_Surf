@@ -15641,7 +15641,9 @@ def main() -> None:
                       f"paid (r = scale*(b_t - b_t+1) >= 0, b_0 = the "
                       f"episode's own start d); detours and re-gains cost "
                       f"and pay nothing. The record gap (d - b)/d0 is obs "
-                      f"column {RATCHET_COL} (d0 = {_s.rf_d0:,.0f}u); "
+                      f"column {RATCHET_COL} (d0 = {_pay_d0(_s):,.0f}u"
+                      + (", the fixed --race-pay-d0" if float(args.race_pay_d0) > 0.0 else "")
+                      + "); "
                       f"stall/stagnant keep the raw d")
             if _s.d_latch > 0.0:
                 print(f"race{f'[{_s.name}]' if MULTI else ''}: shaping "
