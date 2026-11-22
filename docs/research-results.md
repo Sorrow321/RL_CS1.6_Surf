@@ -51371,3 +51371,37 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   from past ramp 1 (route index 533) death after 2.73 s; from the left-turn corner (1128) death
   after 2.70 s. The field-blanked sharp-prior run (azB3) survived 114.6 s near the start (d 4,871)
   and died. AlphaZero with this agent does not move along this map from anywhere on it.
+
+## 2026-11-22 02:15 UTC: RESULT - surf_left_turn overnight queue ENDED: Go-Explore 6 of 6 finish
+
+* The box (nmx, 61868963) ran 22:31 to 01:54 UTC and was released by the watcher when the queue
+  ran out (0 instances); about $1.81 (credit $21.63 -> $19.82). Every goal stage was pulled with
+  its archive (~/ar_m2/runs/nmx/win/*.tgz, 25-88 MB each) and the small files of every job
+  (~/ar_m2/runs/nmx/nm_res). The routes were re-derived on the droplet with a fresh build of the
+  mm/exit core (tools/ge_win_route.py): ~/ar_m2/runs/nmx/routes/<run>/route.json + route_*.npy.
+* GO-EXPLORE (tools/ge_iter.py; uniform random actions, no agent), every run FINISHED:
+
+      run    start      hand-off   stage   search   goal stage   route (8 ms ticks)
+      geit1  s1 line    field      30 min  72.1 min      3       46.13 s (mixed tick start)
+      geit2  spawn      field      30 min  63.3 min      3       27.06 s
+      geit3  spawn      field      30 min  73.8 min      3       36.69 s
+      geit4  spawn      field      15 min  77.7 min      6       38.74 s
+      geit5  spawn      far        30 min  64.3 min      3       50.02 s
+      geit6  spawn      far        30 min  42.9 min      2       23.42 s
+
+  From the spawn 5 of 5 finished, after 42.9-77.7 min of search (median 64.3). --pick far (the
+  hand-off reads no field: the held cell farthest from the start) finished 2 of 2, including the
+  fastest route of the night, 23.42 s. Every winning chain replays exactly (links 9/9 to 14/14),
+  every root matches its line at 0.00 u, the largest one-tick move on any route is 20.1 u, and
+  every route ends on the finish box's south face (y 2447.6-2448.0, the box grown by the
+  player's 16 u); the finish model *3 is a plain box, so the core's test is the engine's. All
+  five routes take the same corridor: ramps 1-3, the left turn, the north ramps, the finish.
+* ALPHAZERO (az_mcts, the agent as prior and critic): 0 finishes in 15 runs (from the spawn and
+  from the route), none past ramp 1. BENCH: the greedy agent placed on the route gets < 1 s
+  further from 15 of 17 points, field or not.
+* Verdict for the user's idea on this map: test-time SEARCH solves an unseen map in about an
+  hour with no training, but the search that does it is Go-Explore with random actions and a
+  memory of places reached; the trained agent contributed nothing - neither as AlphaZero's prior
+  and critic nor as a pilot of the found route. Open (the user's call): train the agent on the
+  map with a found route as its spawn curriculum (the recipe's own mechanism), policy-proposed
+  actions inside Go-Explore, a video of the 23.42 s route.
