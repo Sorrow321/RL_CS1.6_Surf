@@ -51671,3 +51671,22 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Cost $3.28 (credit $15.78). Files ~/ar_m2/runs/health/{hc_cb,hf_cb} (sync with health/,
   control ckpt_final.pt; the fixed arm's ckpt_3001024512.pt - its 4B weights were not pulled);
   figure scratchpad health/ana/health_test.png.
+
+## 2026-11-22 14:23 UTC: PLAN - health round 2: no-gain final LayerNorm + leaky MLP, cannonball
+
+* The user (2026-11-22), after 5b425c00 (conv norm + weight decay fixed the explosion, not the
+  policy's final-LayerNorm gain collapse nor the 93-97% silent ReLU units; the fixed arm did
+  not finish in 4B, the control did at 3.62B): "let's try these changes".
+* Code: mm/health 69081517: --final-ln-affine 0 (the towers' final LayerNorm without a learned
+  gain / shift) and --mlp-act leaky (LeakyReLU(0.01) in the residual blocks); both architecture
+  keys, restored / refused, mirrored in record_ckpt and beam_tas, off = unchanged (20 tests).
+* ONE arm (the credit, $15.75 against the $13 floor, buys one): hg_cb = recipe v14 + --wd 0.01
+  --wd-skip-norms 1 --conv-norm 1 --final-ln-affine 0 --mlp-act leaky (--fp32-trunk DROPPED: no
+  measured gain for ~30% throughput), cannonball from scratch, seed 0, 4e9 steps, one RTX 5090
+  <= $0.60/h. References: this morning's hc_cb (control, first finish 3.62B) and hf_cb (round
+  1, no finish, 98.9%) - same branch, map, seed and budget. Two changes in one arm: their
+  effects are not separated.
+* Measured as round 1: the official grader's finishes and progress per eval; act_probe and the
+  static weight audit at 1B / 2B / 3B / final (gain collapse is gone by construction - the
+  question is whether the heads still read a handful of directions; the silent units are read
+  as units negative on every observation).
