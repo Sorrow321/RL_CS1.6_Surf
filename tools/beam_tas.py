@@ -2283,6 +2283,10 @@ def main():
     ap.add_argument("--az-blank-pot", action="store_true",
                     help="--az: blank the goal field's image channel (--obs-potential) for the "
                          "policy and the critic - the agent without its field")
+    ap.add_argument("--az-root-line", default=None,
+                    help="--az: start from a state of this line (.npy states / .npz) instead of "
+                         "the spawn (a bench; do not combine with --save-frontier)")
+    ap.add_argument("--az-root-index", type=int, default=0)
     ap.add_argument("--az-rollout", type=int, default=0,
                     help="--az: judge every new leaf by the policy's mode played on for this "
                          "many decisions (0 = the critic alone)")

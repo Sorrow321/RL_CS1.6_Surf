@@ -278,6 +278,30 @@ def run_az(ctx: dict, a) -> dict:
         pol.lidar.render = _render_blank
     with torch.inference_mode():
         pol._obs(obs)                       # allocate every lazily-built side array (tick 0)
+    root_line = getattr(a, "az_root_line", None)
+    if root_line:
+        # --az-root-line PATH --az-root-index I: the search starts from a state of a line (a
+        # bench of where the agent can go on from), not the spawn. A restored state has no
+        # observation of its own, so every env takes ONE tick on the policy's decision from the
+        # spawn's scalars and the root is the state after it (one tick of drift); the wrapper
+        # then decides afresh. No --save-frontier (that replays from the spawn): the committed
+        # states go to az_line_states.npy
+        Lz = np.load(root_line, allow_pickle=False)
+        Lz = Lz["states"] if str(root_line).endswith(".npz") else Lz
+        st = np.array(Lz[int(a.az_root_index)], copy=True).reshape(1).astype(STATE_DTYPE)
+        st["tick"] = 0
+        st["stuck_ticks"] = 0
+        for i in range(B):
+            core.set_state(i, st)
+        pol._tick, pol._held = 0, None
+        act_r = np.ascontiguousarray(pol.act(obs), np.int32)
+        obs, _r, dn, tr, _i = core.step(act_r, view=np.ascontiguousarray(pol.view, np.float32))
+        obs = np.array(obs)
+        if bool(np.asarray(dn)[0]) or bool(np.asarray(tr)[0]):
+            raise SystemExit(f"--az-root-line: index {a.az_root_index} ended within one tick")
+        pol._tick, pol._held = 0, None
+        print(f"az: root = {root_line} index {a.az_root_index} at "
+              f"{np.round(core.get_states()[0]['origin'], 1).tolist()} (+1 tick)", flush=True)
     g_step = float(ctx["g_step"])
     _pat = getattr(core, "tick_pattern", None)
     PL = len(_pat) if _pat else 1
@@ -299,6 +323,10 @@ def run_az(ctx: dict, a) -> dict:
     tree.prior[root] = priors(lp0[0:1])[0]
     tree.cand_act[root], tree.cand_z[root] = acts0[0], z0[0]
     tree.d[root] = tree.rec[root] = d0
+    if root_line:
+        tree.d[root] = tree.rec[root] = float(field_d(
+            gf, np.asarray(core.get_states()[0:1]["origin"], np.float64).reshape(-1, 3))[0])
+    line_states = [store.S[int(slot0[0])].copy()]
     q_lo, q_hi = float(v0[0]), float(v0[0]) + 1e-6
 
     def qnorm(q):
@@ -563,6 +591,7 @@ def run_az(ctx: dict, a) -> dict:
         dep_means.append(dep_mean)
         dep_maxes.append(dep_max)
         line_act.append(tree.e_act[c].copy())
+        line_states.append(store.S[int(tree.slot[c])].copy())
         line_view.append(tree.e_view[c].copy())
         root = c
         commits += 1
@@ -597,4 +626,10 @@ def run_az(ctx: dict, a) -> dict:
                "depth_max": int(max(dep_maxes)) if dep_maxes else None,
                "cells": int(arch.n) if arch is not None else None,
                "wall_s": time.time() - t_all}
+    od = getattr(a, "out_dir", None)
+    if od:
+        Path(od).mkdir(parents=True, exist_ok=True)
+        np.save(Path(od) / "az_line_states.npy", np.asarray(line_states, STATE_DTYPE))
+    if root_line:
+        summary.update(root_line=str(root_line), root_index=int(a.az_root_index))
     return {"frontier": frontier, "summary": summary}
