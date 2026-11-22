@@ -51432,3 +51432,40 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Measured: finishes; how far along the night's geit2 route (27.06 s) each run gets, against the
   same runs on surf_left_turn (zero-shot fell at ramp 1 in 3.5-7.1 s; az9 walked ramp 1's top
   edge; s1 surfed ramps 1-2 to x -305); and the field d along that route, old map vs new.
+
+## 2026-11-22 08:11 UTC: RESULT - surf_left_turn_wall: field fixed to the corner, 0 finishes
+
+* PLAN ea0a5d4e. Box nmw (instance 61934708, RTX 5090 $0.577/h, UK), mm/exit 50bcc467, mmg_S1c
+  final (md5 70119029), --maxvel 4000, every flag as on surf_left_turn. All jobs ran 07:54-08:06
+  UTC. The ruler is the night's geit2 Go-Explore route (27.06 s; 256 u tolerance): the wall
+  leaves it open (538 u clear), so "seconds along the route" compares the two maps directly.
+* THE FIELD (goalc_32): start geodesic 6,283 u (old map 4,971). Along geit2's route, downhill
+  on 63% -> 78% of 1 s steps; the old field's 689 u climb at ramp 1 (3.6 s) is GONE; the largest
+  climb left is 635 u at 13-16 s, past the corner, the same on both maps; total uphill
+  2,146 -> 1,330 u (geit6's route: 1,204 -> 607 u, largest climb 519 -> 204 u).
+* ZERO-SHOT greedy, raw / ema0 / ema1 x 9: 0 of 27 finishes on both maps. On the old map 16 of
+  27 episodes end north of the start box (towards the finish through the air), 8 east of
+  x -2,000; with the wall 0 and 22. Median seconds along the route 0.5 / 0.3 /
+  1.1 -> 1.5 / 1.9 / 1.9, best 3.4 -> 4.5; 3 raw episodes surf ramps 1-2 to x 557-723 (old best
+  x -1,333) and fall into the teleport at 5.3-7.5 s.
+* AGENT ON THE ROUTE (bench: greedy from 17 states of geit2's route): no change. Median gain
+  0.42 -> 0.36 s, >= 1 s from 5 -> 4 of 17 starts; only the start at 6.4 s improved (0.4 ->
+  3.8 s, past the corner). The agent still cannot fly these ramps.
+* ALPHAZERO with the agent (az_mcts; prior uniform over the policy's 8 candidates, critic at
+  the leaves): az2 (plain, 512 parallel, 4,096 sims) died at 11.4 s, 4.2 s along the route (old
+  map 3.2 s); az9 (memory + widening 0.5, 32 parallel) died at 7.8 s, 3.1 s along (old 2.8 s,
+  alive on ramp 1's top edge at 49.8 s). Trees 5 decisions deep on average, as before.
+* THE TRAINING LOOP'S SEARCH (auto_spine, s1's flags; greedy-d 5,577, current-d 6,679 by the
+  trainer's rules): its 10 min tree stage (MCTS: P/E/R mix 0.19/0.30/0.51, i.e. about a fifth of
+  the moves from the policy, the rest perturbed or random; the field scores) found a 24.8 s line
+  over ramps 1-3 to (714, -1,064, 1,118) at the left-turn corner: 9.5 s along the route, d 3,540
+  (42.5% of the field, deepest live tick 54.8%), adopted as the stage's line. The same search on
+  the old map: 6.0 s along the route (tree 14%, Monte Carlo, Go-Explore stage to x -305). ONE
+  draw per map: not separated from search luck.
+* VERDICT: the wall does what it was meant to - the field now shows the path from the start to
+  the corner, and the agent turns the right way - but it does not make the agent able to surf
+  these ramps: 0 finishes greedy, no change on the route bench, AlphaZero with the agent still
+  dies at ramp 1. The one gain is in the field-scored training-loop search (6.0 -> 9.5 s of the
+  route, one draw each). Past the corner the field is unchanged (its 635 u climb remains).
+* Cost about $0.17 (box up 07:53-08:10 UTC). Files: ~/ar_m2/runs/nmw (harvest), droplet
+  scratchpad wallmap/ (map, zones, scripts, figures).
