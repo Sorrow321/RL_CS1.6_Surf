@@ -245,7 +245,7 @@
     "--int-share-max",
     "0.25"
   ],
-  "start_d": 57191.1,
+  "start_d": 198991,
   "_start_d_span_doc": "score.py: the goalc_32 field at the map's ONE spawn point (-2176, -2272, 1192) reads 30,660 u; the player drops 4 u onto the start platform, where an episode's first row reads 30,647.5 (October's start_d). The 2% start test is taken outside this span. Grader only: nothing in training reads it.",
   "model": "claude-opus-5-5",
   "effort": "max",
