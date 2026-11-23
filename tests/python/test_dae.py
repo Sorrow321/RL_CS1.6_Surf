@@ -187,6 +187,36 @@ def test_the_loss_recovers_the_true_advantage():
     assert float((A - At).abs().mean()) < 0.1 * float(At.abs().mean())
 
 
+def test_the_step_is_scaled_by_the_gae_spread():
+    """the policy step: A centred per map, divided by the per-map std of the GAE advantage of the
+    same rows (ue_3m collapsed with A standardised by its own, 5-6x smaller, std); without
+    scale_of the normaliser is the shipped one op for op"""
+    g = torch.Generator().manual_seed(8)
+    n, k = 400, 3
+    slot = torch.randint(0, k, (n,), generator=g)
+    slot[:2] = 2                                     # map 2 also has rows below...
+    a = torch.randn(n, generator=g) * 0.15
+    gae = torch.randn(n, generator=g) * torch.tensor([0.5, 0.8, 1.3])[slot]
+    a64 = a.double()
+    oh = torch.nn.functional.one_hot(slot, k).double()
+    cnt = oh.sum(0)
+    mean = (oh * a64[:, None]).sum(0) / cnt
+    dev = a64[:, None] - mean[None, :]
+    std = ((oh * dev * dev).sum(0) / (cnt - 1.0)).sqrt()
+    old = ((a64 - mean[slot]) / (std[slot] + 1e-8)).float()
+    assert torch.equal(tf.adv_norm_per_map(a, slot, k), old)
+    got = tf.adv_norm_per_map(a, slot, k, scale_of=gae)
+    for m in range(k):
+        r = slot == m
+        want = (a[r].double() - a[r].double().mean()) / (gae[r].double().std() + 1e-8)
+        assert torch.allclose(got[r].double(), want, atol=1e-6)
+    assert got.std() < 0.5                           # A's own scale, not unit
+    # a map below min_rows falls back to the POOLED moments: a's mean, the GAE std
+    few = tf.adv_norm_per_map(a, slot, k, min_rows=10 ** 6, scale_of=gae)
+    assert torch.allclose(few.double(), (a64 - a64.mean()) / (gae.double().std() + 1e-8),
+                          atol=1e-6)
+
+
 # ==========================================================================
 # (d) the model
 # ==========================================================================
@@ -278,7 +308,7 @@ def test_flag_on_trains_resumes_and_refuses():
         head, rows = _csv(d / "progress.csv")
         tags = [h.split(".", 1)[1] for h in head if h.startswith("dae/adv_std.")]
         assert len(tags) == 2 and len(rows) >= 3
-        for c in ["dae/adv_std", "dae/adv_abs", "dae/ret", "dae/ev"]:
+        for c in ["dae/adv_std", "dae/adv_abs", "dae/ret", "dae/ev", "dae/adv_vs_gae"]:
             vals = [row[head.index(c)] for row in rows]
             assert all(v != "" and np.isfinite(float(v)) for v in vals), (c, vals)
         assert float(rows[-1][head.index("dae/adv_std")]) > 0.0

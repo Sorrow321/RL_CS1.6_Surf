@@ -2760,7 +2760,7 @@ ADV_MAP_MIN_ROWS = 32
 
 
 def adv_norm_per_map(a, slot, n_maps: int, min_rows: int = ADV_MAP_MIN_ROWS,
-                     eps: float = 1e-8, pooled=None):
+                     eps: float = 1e-8, pooled=None, scale_of=None):
     """--adv-norm-per-map: ``(a - mean_k) / (std_k + eps)`` with map k's moments taken over
     ITS rows of this minibatch (``slot`` = each row's map index) - torch.std's unbiased
     estimator per map, the one the pooled line applies to the whole minibatch, so every map's
@@ -2772,17 +2772,25 @@ def adv_norm_per_map(a, slot, n_maps: int, min_rows: int = ADV_MAP_MIN_ROWS,
     cc_bucket_normalize. ``pooled`` = (mean, std) of the WHOLE minibatch when this process
     holds only part of it (--ddp-maps shard: the union of the ranks' rows, all-reduced); the
     fallback rows then get the union's moments, as one process would give them. None (every
-    other run) = this minibatch's own a.mean() / a.std(), op for op."""
+    other run) = this minibatch's own a.mean() / a.std(), op for op.
+
+    ``scale_of`` (--dae): the std per map is taken from THIS tensor's rows instead of a's - the
+    GAE advantage of the same rows - so a's step has the scale GAE's would have had (the mean
+    still comes from a). None = a's own std, the line below op for op."""
     a64 = a.double()
     oh = F.one_hot(slot, n_maps).to(a64.dtype)
     cnt = oh.sum(0)
     mean = (oh * a64.unsqueeze(1)).sum(0) / cnt.clamp_min(1.0)
-    dev = a64.unsqueeze(1) - mean.unsqueeze(0)
+    s64, smean = a64, mean
+    if scale_of is not None:
+        s64 = scale_of.double()
+        smean = (oh * s64.unsqueeze(1)).sum(0) / cnt.clamp_min(1.0)
+    dev = s64.unsqueeze(1) - smean.unsqueeze(0)
     std = ((oh * dev * dev).sum(0) / (cnt - 1.0).clamp_min(1.0)).sqrt()
     own = cnt >= float(min_rows)
     if pooled is None:
         mean = torch.where(own, mean, a64.mean())
-        std = torch.where(own, std, a64.std())
+        std = torch.where(own, std, s64.std())
     else:
         mean = torch.where(own, mean, pooled[0].to(a64.dtype))
         std = torch.where(own, std, pooled[1].to(a64.dtype))
@@ -5588,13 +5596,16 @@ def main() -> None:
                          "linear and a quadratic term in the view's standardised deviation), "
                          "fitted with V by the paper's Eq. 13 over each env's segment: "
                          "sum_t (sum_{t'>=t} g^(t'-t) (r - A) + g^(T-t) V_old(s_T) - V(s_t))^2. "
-                         "Minibatches are whole envs; the PPO loss takes the head's A (per-map "
-                         "normalised, as the recipe's GAE advantage is) recomputed each "
-                         "minibatch. The value is the loss weight of that term in --vf's "
-                         "convention (0.5 x MSE): 1.5 = the authors' DAE/GAE critic ratio "
-                         "(1.5 vs 0.5) on this trainer's --vf 0.5. --vf and --gae then only "
-                         "shape the logged GAE diagnostics. Shape-changing (adv_head): ckpt "
-                         "restores, a mismatch is refused")
+                         "Minibatches are whole envs; the PPO loss takes the head's A recomputed "
+                         "each minibatch, centred per map and divided by the per-map std of the "
+                         "GAE advantage of the same rows, so the expected step is the control's "
+                         "(A alone has 5-6x less spread than GAE's estimate: standardised by "
+                         "its own std it collapsed the key heads in 55M steps, ue_3m). The value "
+                         "is the loss weight of that term in --vf's convention (0.5 x MSE): 1.5 "
+                         "= the authors' DAE/GAE critic ratio (1.5 vs 0.5) on this trainer's --vf "
+                         "0.5. --vf only shapes the logged GAE diagnostics; --gae also sets the "
+                         "GAE advantage whose spread scales the step. Shape-changing (adv_head): "
+                         "ckpt restores, a mismatch is refused")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
                          "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
@@ -12349,8 +12360,9 @@ def main() -> None:
               "the advantage head's output, centred under the behaviour policy (a joint key "
               "table + He1/He2 terms in the view), fitted with V by the paper's Eq. 13 over "
               "each env's segment at weight "
-              f"{DAE_COEF:g} x 0.5 MSE; minibatches are whole envs; the GAE advantage (--gae "
-              f"{float(args.gae):g}) and --vf {float(args.vf):g} are logged diagnostics only")
+              f"{DAE_COEF:g} x 0.5 MSE; minibatches are whole envs; the step is scaled by the "
+              "per-map std of the GAE advantage (--gae "
+              f"{float(args.gae):g}); --vf {float(args.vf):g} is a logged diagnostic only")
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -17912,7 +17924,7 @@ def main() -> None:
         # --dae, only when on: over the update's LAST minibatch (whole envs, every map), the
         # head's A of the taken actions before the normalisation (std, mean |A|), the DAE
         # target's mean, V's explained variance of it, and A's std per map
-        CSV_COLS += ["dae/adv_std", "dae/adv_abs", "dae/ret", "dae/ev"]
+        CSV_COLS += ["dae/adv_std", "dae/adv_abs", "dae/ret", "dae/ev", "dae/adv_vs_gae"]
         for _s in slots:
             CSV_COLS += [f"dae/adv_std.{_s.tag}"]
     #   dip/*  the SETBACK diagnostic (surfgym/dipmeter.py), LAST for the
@@ -21399,7 +21411,7 @@ def main() -> None:
     # the STORED behaviour distribution; V and the head are fitted together by L_A, whose
     # bootstrap is V_old(s_T) (`f_lastv`, the rollout's own value - the paper's V_target).
     def mb_step_dae(f_scal, f_img, f_act, f_logp, f_z, idx, ent_coef, envs,
-                    f_blsm, f_bmu, f_bls, f_rew, f_done, f_lastv, g_t,
+                    f_blsm, f_bmu, f_bls, f_rew, f_done, f_lastv, g_t, f_gae,
                     f_air=None, f_jblk=None, f_temp=None, f_tempv=None,
                     f_cct=None, f_ctv=None):
         if f_cct is not None:
@@ -21425,17 +21437,23 @@ def main() -> None:
         G = dae_targets((f_rew[idx] - A).view(T, B), f_done[idx].view(T, B),
                         f_lastv[envs], g_t)
         vl = 0.5 * (G - value.view(T, B)).pow(2).mean()
+        # the policy's step at GAE's SCALE: A minus its mean, over the std of the GAE advantage of
+        # the same rows (per map). A holds only the action-dependent part of the return, 5-6x
+        # smaller in std than GAE's estimate; standardised by its own std it made every policy
+        # step 5-6x the control's, and the key heads went deterministic within 55M steps (ue_3m,
+        # 2026-11-23). This way the expected step is the control's and DAE removes the noise.
         a = A.detach()
+        g_a = f_gae[idx]
         if ADV_MAP:
-            a = adv_norm_per_map(a, (idx % N) // PER, NMAPS)
+            a = adv_norm_per_map(a, (idx % N) // PER, NMAPS, scale_of=g_a)
         else:
-            a = (a - a.mean()) / (a.std() + 1e-8)
+            a = (a - a.mean()) / (g_a.std() + 1e-8)
         ratio = torch.exp(logp - f_logp[idx])
         pg = torch.max(-a * ratio,
                        -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
         el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())
         loss = pg + DAE_COEF * vl + ent_coef * el
-        return loss, pg, vl, el, logp, A.detach(), G.detach()
+        return loss, pg, vl, el, logp, A.detach(), G.detach(), g_a
 
     # ---- --rnn: the SEQUENCE minibatch step ---------------------------------
     # A minibatch is B = N/minibatches whole envs x all T decisions, in
@@ -21605,7 +21623,7 @@ def main() -> None:
                         _idx0, ent_t, torch.arange(_B, device=device),
                         b_blsm.reshape(T * N, NACT - N_VIEW, NPAD), b_bmu.reshape(T * N, NZ),
                         b_bls.reshape(T * N, NZ), b_rew.reshape(-1), b_done.reshape(-1),
-                        torch.zeros(N, device=device), dae_g_t,
+                        torch.zeros(N, device=device), dae_g_t, b_val.reshape(-1),
                         None if b_air is None else b_air.reshape(-1),
                         None if b_jblk is None else b_jblk.reshape(-1),
                         f_temp=temp_t, f_tempv=tempv_t,
@@ -22311,7 +22329,7 @@ def main() -> None:
     int_sync = args.int_sync_every if DDP_REP else 0
     int_row = []              # --int-split: this iteration's int/* values
     pay_row = []              # --critic-pay-d0: this iteration's pay/* values
-    dae_row = [float("nan")] * (4 + NMAPS)    # --dae: this iteration's dae/* values
+    dae_row = [float("nan")] * (5 + NMAPS)    # --dae: this iteration's dae/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
     best_stage_saved = -1.0           # --save-best on a --ramp-sequence run: best mean eval stage
@@ -24259,7 +24277,7 @@ def main() -> None:
             sub_pool = (on_policy if sub_pool is None
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
-        dae_last = None                # --dae: (idx, A, G, vl) of the update's last minibatch
+        dae_last = None                # --dae: (idx, A, G, vl, A_GAE) of the last minibatch
         last_pooled = None             # --ddp-maps shard: the last minibatch's union moments
         aug_sum, aug_n = None, 0       # --aug-*: DrAC's (G_pi, G_V) over this update
         env_np = None
@@ -24341,13 +24359,13 @@ def main() -> None:
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, envs=env_perm[_e], seg=plans[k_mb])
                 elif DAE:
-                    loss, pg, vl, el, logp, dae_a, dae_g = mb_step_dae(
+                    loss, pg, vl, el, logp, dae_a, dae_g, dae_ga = mb_step_dae(
                         f_scal, f_img, f_act, f_logp, f_z, idx, ent_t,
                         env_perm[k_mb * _B:(k_mb + 1) * _B],
-                        f_blsm, f_bmu, f_bls, f_rewd, f_doned, f_lastv, dae_g_t,
+                        f_blsm, f_bmu, f_bls, f_rewd, f_doned, f_lastv, dae_g_t, f_adv,
                         f_air, f_jblk, f_temp=temp_t, f_tempv=tempv_t,
                         f_cct=f_cct, f_ctv=f_ctv)
-                    dae_last = (idx, dae_a, dae_g, vl.detach())
+                    dae_last = (idx, dae_a, dae_g, vl.detach(), dae_ga)
                 else:
                     _mbo = mb_step(
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
@@ -24437,12 +24455,13 @@ def main() -> None:
                 if a_mean is not None:
                     last_pooled = (a_mean[k_mb], a_std[k_mb])
         if DAE and dae_last is not None:
-            # --dae: one (4 + NMAPS)-float read per iteration
-            _di, _da, _dg, _dvl = dae_last
+            # --dae: one (5 + NMAPS)-float read per iteration (adv_vs_gae: the head's A std over
+            # the GAE advantage's on the same rows - the share of GAE's spread the action explains)
+            _di, _da, _dg, _dvl, _dga = dae_last
             _dm = (_di % N) // PER
             dae_row = torch.stack(
                 [_da.std(), _da.abs().mean(), _dg.mean(),
-                 1.0 - 2.0 * _dvl / (_dg.var() + 1e-12)]
+                 1.0 - 2.0 * _dvl / (_dg.var() + 1e-12), _da.std() / (_dga.std() + 1e-12)]
                 + [_da[_dm == _k].std() for _k in range(NMAPS)]).tolist()
         if EMA:
             # --eval-ema: each average moves toward the updated weights by its half-life over
