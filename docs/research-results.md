@@ -52034,3 +52034,38 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   head's advantage sum (rho A) beside rho V and rho R - the user's question with a training
   that stays the control's. Watcher with probes + harvest, watchdog, kl guard (first hour).
 * Cost of the screens ~$1.2 (credit $23.79 at 19:12 UTC before them).
+
+## 2026-11-23 22:55 UTC: RESULT - DAE: unstable as the policy's advantage; its head ranks at chance
+
+* Program: PLAN d3e8a6fb, notes 39c729c1, bc8ff16d, 6ea8d2bc. Code mm/dae e4f6d79b (10 tests):
+  --dae (the paper), --dae-policy 0 (head as an auxiliary critic), --dae-pi-lr (policy lr).
+* As the policy's advantage (the paper's method) it does not work in this recipe: at lr 3e-4,
+  4 epochs, clip 0.2 it ran away twice (55M, 85M steps); a trust region froze learning (one
+  minibatch step already passes kl 0.045); 0.1x policy lr drifts; 0.03x and 0.1x + clip 0.1
+  are stable but learn 2-2.5x slower by 300M (ep reward 13-17 vs the control's 35). One seed.
+* Full run ue_auxfull (--dae-policy 0: the control's GAE policy and V, the head trained by Eq.
+  13 beside them; 20:25 UTC, same box): stable (kl 0.027-0.037) but behind the control. Petrus
+  reached 81.5% at 1.35B fleet steps, then its greedy died right after the spawn (5-6%) to the
+  last eval at 2.93B, never a finish (control first finish 1.13B, ud 0.68B); its first search
+  returned a partial line (d 13,903) where every other arm's was a full one. Cannonball best
+  28% (control 98% by 1.80B). Blue200 7-9/9 from 2.03B (a search line), best 13.62 s. Stopped
+  at 3.16B with the user's OK (22:31 UTC); box released 22:39.
+* The probe (4 sibling 0.5 s moves per root; Spearman with the actual outcome; A = the macro's
+  advantage sum from the head, V = R + g V, R = the macro's banked reward alone):
+
+  checkpoint  left_turn x4 mean A / V / R   blue100* A / V / R   training maps A
+  2B          0.03 / 0.20 / 0.52            0.01 / 0.11 / 0.17   -0.02 .. 0.06
+  3B          0.08 / 0.20 / 0.79            -0.02 / 0.15 / 0.12  -0.04 .. 0.01
+
+  The head ranks moves at chance on every map, the training maps included, and its sums do
+  not track the critic's own value change (r -0.11..0.13). Caveat: since it fails on the
+  training maps too, a mismatch between how the probe sums the head along a sampled 16-
+  decision macro and how the head was fitted is not ruled out. As measured, no.
+* Verdict: DAE is not adopted, as an estimator or as a move ranker. Across every critic tried
+  (100/d0, plain pay, d input, two heads, DAE) the best ranking of moves on a new map is the
+  reward the move banks; the open proposal stays a test-time search that ranks by banked
+  reward with no learned value at the leaves (7cbf9fe3).
+* Cost ~$2.6 for DAE (credit $24.10 -> $21.52). 5090 cap back to $0.60 in both configs, daemon
+  restarted (one). Files ~/ar_m2/runs/paytest/{ue_3m_try1, ue_3m_try2, ue_auxfull} (the last
+  with ckpt_3000582144.pt md5 a1f06ba7 and health/); the screens' and the 2B probe's logs in
+  the session scratchpad dae/.
