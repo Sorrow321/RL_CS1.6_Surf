@@ -51742,3 +51742,68 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   returns rank (what a search needs); test-time search there with each checkpoint, no training.
 * Budget ~$14 (credit $38.98). Watchdog + harvest per box, droplet watchers (floor $13),
   dashboards :8681 / :8682 / :8683.
+
+## 2026-11-23 02:55 UTC: RESULT - pay test: plain pay trains; no critic ranks moves on new maps
+
+* Ran as PLAN 5603310c: three arms, one policy each on cannonball + petrus + blue200, 8.0e9
+  steps (2.67e9 per map), seed 0, ended 02:16-02:45 UTC. The user raised the 5090 cap to $0.67
+  for these three boxes (ua $0.670 Florida, ub $0.497 Michigan, uc $0.628 Texas); restored to
+  $0.60 at 02:52 UTC in both configs, daemon restarted (one). Trainer eb9d0d99 (ua, ub) and
+  810e590a (uc; the same trainer code); the end-of-run search tools at mm/health 97653833.
+* Training, official grader (autoresearch/score.py, every eval, 36 per map per arm; own step =
+  fleet step / 3; "after" = greedy episodes finished from the first finish on):
+
+  map         what               ua control 100/d0   ub plain pay      uc plain pay + d in
+  petrus      first finish       0.376B own          0.301B            0.301B
+              after              221/279 (79%)       149/288 (52%)     163/288 (57%)
+              best               29.98 s             30.97 s           30.00 s
+  blue200     first finish       1.578B own          1.052B            1.052B
+              after              132/135 (98%)       188/198 (95%)     190/198 (96%)
+              best               13.26 s             13.78 s           13.94 s
+  cannonball  first finish       none                1.052B (1 of 198) none
+              last 5 evals best  2.5-8.3%            45-99%            20-44%
+
+* Blue200's order is a search draw, not the pay. All three first searches ended at the same
+  dead end (d 1,725). The second searches gave ub and uc beam+ge lines to d 65 / 110, flown
+  9/9 about 0.6B fleet steps later; ua's gave an mc line to another dead end (d 1,154), held
+  for 1.55B fleet steps; its third search (4.08B) gave the full line, 9/9 from 4.73B.
+* ua's cannonball REGRESSED: from 5.41B to the end no greedy episode passes 13.6% of the map
+  (last 5 evals 2.5-8.3%); at 7.89B all 9 end in the first stretch below the spawn (x -13,700
+  to -14,800, z 8,200-9,000), dead after 10-12 s or stalled for 38-96 s. At 4.28B it flew
+  39-74 s to 92-95% (best 98.8% at 3.16B). Its held line from 3.93B: an energy spine (search 3,
+  end d 62,226). ub's one finish (85.86 s at 3.156B) never repeated.
+* Verdict, pay: plain-unit pay (0.001 per unit on every map) TRAINS - first finishes no later
+  than the control on petrus and blue200. Petrus is less reliable after the first finish
+  (52-57% vs 79%) and plain pay without the d input flies it ~1 s slower. One seed; cannonball
+  undecided (no arm reliable in 2.67B own steps).
+* Critic probe (az_mcts --az-critic-probe 256: roots from the policy's own flights, 4 siblings
+  of one 0.5 s macro each, then 20 s of the greedy mode; rho = mean Spearman over roots of the
+  predicted value R + g V against the actual return; "R" = the macro's banked reward alone):
+  - held-out left_turn x4, rho V / rho R (mean of the 4 maps): ua -0.04 / 0.15, ub 0.14 / 0.43,
+    uc 0.06 / 0.19 - adding V makes the ranking WORSE on every map in every arm. 99-100% of
+    the children die; V says 0.8-9.1 where the actual return is -0.3..1.7; r(V,G) -0.46..0.20.
+  - held-out blue100 (the policies finish 86-99% of flights): V in the right UNITS under plain
+    pay (slope V vs G 0.91 ub, 0.96 uc; control 0.57), but rho V 0.12-0.15 vs R 0.17-0.20.
+  - training maps: rho V 0.03-0.24, about R's 0.06-0.23. ua's cannonball V says 45.5 where its
+    regressed greedy mode gets 1.1 (V is the stochastic policy's value, G the mode's).
+* Verdict, critic: plain pay makes the critic's units the same across maps (blue100); the d
+  input adds nothing to plain pay alone. NO critic can choose between 0.5 s moves on a map it
+  never saw - the user's dilemma, measured: the learned value does not know the new map.
+* Test-time search, no training (az_mcts: 0.5 s macro edges, a dying simulation gives back its
+  last 2 s, banked map reward with the critic at the leaves, 8 candidates, 256 simulations per
+  committed decision, 10 min budget): blue100 finished by all three (9.8-10.4 s; the policy
+  alone finishes it). left_turn x4: 12 of 12 searches DIED 3.2-7.6 s into the flight, after
+  3-6 s of wall time - the receding-horizon commit ends a search at its first committed death,
+  so the 10 min budget was never spent. Furthest 43-44% (ub sym and curve, uc curve). Same as
+  the 2026-11-22 overnight AlphaZero form (0/22), where Go-Explore (return to any archived
+  state) finished left_turn 6/6.
+* Next, not built or launched: (1) plain pay is safe for the next multi-map run, without the
+  d input; (2) a test-time search that keeps its tree rooted at the spawn and spends the whole
+  budget (no commit, or backtrack on death), node values from the map's banked reward with the
+  death give-back, the policy only as prior and rollout, V off - the user's "tree as memory";
+  close to the Go-Explore archive that finished left_turn.
+* Cost $10.62 (credit $38.98 -> $28.36). Files ~/ar_m2/runs/paytest/<run> (sync with health/:
+  probe_<map>/critic_probe.json + .npz, az_<map>/, status.txt; ckpt_final.pt md5 ua f63d5752,
+  ub 73aad8d3, uc 42d9a60d); tables scratchpad paytest/ana/{summary,evals,probe_table}.py.
+  Ops: the end-of-run checks took 2 min, not the 75 I planned; at 02:21 I stopped the ua/ub
+  watchers for a minute on that false alarm and restarted them unchanged - nothing lost.
