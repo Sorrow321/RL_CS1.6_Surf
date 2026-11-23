@@ -499,7 +499,7 @@ class Policy(nn.Module):
                  pitch_sigma_min: float = 0.0, yaw_sigma_max: float = 0.0,
                  conv_norm: bool = False, fp32_trunk: bool = False,
                  final_ln_affine: bool = True, mlp_act: str = "relu",
-                 pay_split: bool = False):
+                 pay_split: bool = False, dae: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -989,6 +989,26 @@ class Policy(nn.Module):
             nn.init.zeros_(self.prog_head.bias)
         else:
             self.prog_head = None
+        # ---- --dae: the ADVANTAGE head (Direct Advantage Estimation; the user, 2026-11-23) ----
+        # f(s, a) on the vf tower output, as the paper's shared network puts A beside V: per
+        # joint key bin one value, a linear and a quadratic coefficient per view head (dae_shape;
+        # dae_advantage centres it). The authors' init: orthogonal gain 0.1, zero bias.
+        # Registered LAST of all, so every other parameter keeps its index and its init draw.
+        # Off: no module, no draw, no key. The view must be continuous (a categorical view
+        # would multiply the joint table by 15 x 7 bins).
+        if dae:
+            if not self.view_continuous:
+                raise SystemExit("--dae needs --view-continuous (the centred advantage is "
+                                 "exact for categorical keys and a Gaussian view)")
+            if self.priv_dim > 0 or int_split or pay_split:
+                raise SystemExit("--dae is not implemented with --priv-critic, --int-split or "
+                                 "--critic-pay-d0 (one value column beside the advantage)")
+            self.dae_widths, self.dae_nj, _n = dae_shape(self.n_z)
+            self.adv_head = nn.Linear(hidden, _n)
+            nn.init.orthogonal_(self.adv_head.weight, 0.1)
+            nn.init.zeros_(self.adv_head.bias)
+        else:
+            self.adv_head = None
 
     def dropout_resample(self, gen) -> None:
         """--dropout: draw this rollout's sub-network (shared with its update)."""
@@ -1011,7 +1031,7 @@ class Policy(nn.Module):
         return self.forward_split(obs[:, :self.scal_dim],
                                   obs[:, self.scal_dim:], h, priv)
 
-    def forward_split(self, scal, img, h=None, priv=None):
+    def forward_split(self, scal, img, h=None, priv=None, adv=False):
         """Scalars and depth as separate tensors, so the PPO update can keep
         its depth buffer in bf16 (S3) without materialising a fused fp32 row.
         `scal` is indexed with feat_idx, whose entries are all < N_SCALAR, so
@@ -1024,8 +1044,9 @@ class Policy(nn.Module):
         if self.gru is None:
             if self.conv_v is not None:
                 # --split-trunk: the value tower reads its OWN image encoder
-                return self.heads(f, scal, priv=priv, f_v=self.features(scal, img, self.conv_v))
-            return self.heads(f, scal, priv=priv)
+                return self.heads(f, scal, priv=priv, f_v=self.features(scal, img, self.conv_v),
+                                  adv=adv)
+            return self.heads(f, scal, priv=priv, adv=adv)
         if h is None:
             raise ValueError("--rnn policy called without its hidden state")
         h1 = self.gru_step(f, h)
@@ -1127,10 +1148,12 @@ class Policy(nn.Module):
                 x = x * (1.0 + g[:, :, None, None].to(x.dtype))                     + b[:, :, None, None].to(x.dtype)
         return torch.cat([scal[:, self.feat_idx], x], dim=1)
 
-    def heads(self, f, scal, g=None, priv=None, f_v=None):
+    def heads(self, f, scal, g=None, priv=None, f_v=None, adv=False):
         """Towers + heads on the fused features. `g` (--rnn) is the GRU
         output for these rows, appended LAST to both tower inputs; `priv`
-        (--priv-critic) reaches the VALUE head only."""
+        (--priv-critic) reaches the VALUE head only. `adv` (--dae's update
+        step only): a third output, the advantage head's raw f on the same vf
+        tower output the value reads."""
         # --route: the lookahead fan feeds the critic always and the actor
         # unless --route-critic-only, which is the asymmetric-critic
         # arrangement (Vasco RLC 2024: "providing the critic with global
@@ -1156,6 +1179,16 @@ class Policy(nn.Module):
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
         # is None in flat mode, so this resolves to action_head at trace time.
         head = self.action_head if self.code_head is None else self.code_head
+        if adv:
+            # --dae: the vf tower runs ONCE for both critic outputs
+            if self.fp32_heads:
+                with torch.autocast(device_type="cuda", enabled=False):
+                    t_v = self.vf(f_vf).float()
+                    return (self._pi_out(head, self.pi(f_pi).float()),
+                            self._value(t_v, priv).squeeze(-1), self.adv_head(t_v))
+            t_v = self.vf(f_vf)
+            return (self._pi_out(head, self.pi(f_pi)), self._value(t_v, priv).squeeze(-1),
+                    self.adv_head(t_v))
         if self.fp32_heads:
             # the tower output arrives bf16 under autocast; .float() before
             # the disabled-autocast Linear is what makes the matmul and its
@@ -2299,6 +2332,70 @@ def gauss_logp(z, mu, log_std):
 def gauss_entropy(log_std):
     """Differential entropy of the factored Gaussian, summed over heads."""
     return (0.5 + 0.5 * LOG2PI + log_std).sum()
+
+
+# --------------------------------------------------------------------------
+# --dae: Direct Advantage Estimation (Pan, Guertler, Neitz, Schoelkopf, NeurIPS 2022; the
+# user, 2026-11-23). The advantage is a network OUTPUT, not a GAE sum: A(s, a) = f(s, a) -
+# E_{a' ~ mu} f(s, a'), centred under mu, the BEHAVIOUR policy the rollout drew from (the
+# paper's Algorithm 1, line 12), and fitted with V by the paper's Eq. 13 over each env's
+# T-decision segment:
+#   L_A = E sum_t ( sum_{t' >= t} g^{t'-t} (r_t' - A_t') + g^{T-t} V_target(s_T) - V(s_t) )^2
+# (an episode end cuts the sums; a truncation's bootstrap is already in r, as for GAE). f's
+# form makes the centring EXACT for this action space - four independent categorical key
+# heads and a Gaussian view: a table over the JOINT key bins (its mu-mean is a sum over the
+# product of the heads' probabilities) plus, per joint bin, a linear and a quadratic term in
+# the view's standardised deviation u = (z - m) / sigma (He1, He2: mean zero under mu
+# whatever the key bins, the heads being independent). No sampling.
+# --------------------------------------------------------------------------
+def dae_shape(n_z: int):
+    """(the live widths of the categorical heads, the joint bin count, the advantage head's
+    width) under the CURRENT NVEC - --keys-hold widens fwd/side/duck before Policy is built."""
+    widths = tuple(int(w) for w in NVEC[N_VIEW:])
+    nj = int(np.prod(widths))
+    return widths, nj, nj * (1 + 2 * int(n_z))
+
+
+def dae_advantage(gadv, blsm, act, u):
+    """The centred advantage of the TAKEN actions. ``gadv`` (B, nj (1 + 2 n_z)) the advantage
+    head's raw output; ``blsm`` (B, NACT - N_VIEW, NPAD) the behaviour policy's (tempered,
+    masked) log-probabilities of the categorical heads; ``act`` (B, NACT) the stored bins;
+    ``u`` (B, n_z) the view's standardised deviation under the behaviour Gaussian.
+    -> (B,) A = G[j] - sum_j' mu(j') G[j'] + W[j] . u + P[j] . (u^2 - 1), j the taken joint
+    bin (C order over the categorical heads, the first slowest)."""
+    B, n_z = u.shape
+    widths, nj, _ = dae_shape(n_z)
+    probs = blsm.exp()
+    pj = probs[:, 0, :widths[0]]
+    jidx = act[:, N_VIEW]
+    for h in range(1, len(widths)):
+        pj = (pj[:, :, None] * probs[:, h, None, :widths[h]]).reshape(B, -1)
+        jidx = jidx * widths[h] + act[:, N_VIEW + h]
+    G = gadv[:, :nj]
+    W = gadv[:, nj:nj * (1 + n_z)].reshape(B, nj, n_z)
+    P = gadv[:, nj * (1 + n_z):].reshape(B, nj, n_z)
+    j3 = jidx.view(B, 1, 1).expand(B, 1, n_z)
+    w = W.gather(1, j3).squeeze(1)
+    p = P.gather(1, j3).squeeze(1)
+    return (G.gather(1, jidx.unsqueeze(1)).squeeze(1) - (pj * G).sum(1)
+            + (w * u).sum(-1) + (p * (u * u - 1.0)).sum(-1))
+
+
+def dae_targets(d, done, vlast, g):
+    """The DAE regression targets of one minibatch of whole segments, time-major (T, B):
+    G_t = d_t + g (1 - done_t) G_{t+1}, G_T = vlast - with d = r - A, so G is differentiable in
+    A. One (T, T, B) contraction instead of a T-step Python loop: d_s enters G_t iff s >= t and
+    no episode ended in [t, s), i.e. the exclusive running count of ends is the same at t and
+    s. ``g`` a 0-d tensor (the per-decision discount moves with a tick ramp)."""
+    T = d.shape[0]
+    c = torch.cat([torch.zeros_like(done[:1]), done.cumsum(0)], 0)       # (T + 1, B)
+    t = torch.arange(T, device=d.device, dtype=d.dtype)
+    lag = t[None, :] - t[:, None]                                          # s - t
+    disc = torch.where(lag >= 0, g ** lag.clamp(min=0), torch.zeros_like(lag))
+    same = (c[:T, None, :] == c[None, :T, :]).to(d.dtype)                  # (t, s, B)
+    G = torch.einsum("tsb,sb->tb", disc[:, :, None] * same, d)
+    tail = (c[:T] == c[T:]).to(d.dtype) * (g ** (T - t))[:, None]
+    return G + tail * vlast[None, :]
 
 
 def sample_view(padded, mu, log_std, temp=None, temp_view=None):
@@ -5482,6 +5579,21 @@ def main() -> None:
                          "the network. Each head is fitted to its own stream's GAE return; "
                          "the policy's advantage is the combined one, so the agent's "
                          "objective is the control's. Shape-changing (prog_head): ckpt "
+                         "restores, a mismatch is refused")
+    ap.add_argument("--dae", type=float, default=None,   # 0 = off
+                    help="Direct Advantage Estimation (Pan et al., NeurIPS 2022; the user, "
+                         "2026-11-23): the policy's advantage is a NETWORK OUTPUT, not GAE - "
+                         "an advantage head beside V on the critic tower, centred under the "
+                         "behaviour policy (exact: a table over the joint key bins plus a "
+                         "linear and a quadratic term in the view's standardised deviation), "
+                         "fitted with V by the paper's Eq. 13 over each env's segment: "
+                         "sum_t (sum_{t'>=t} g^(t'-t) (r - A) + g^(T-t) V_old(s_T) - V(s_t))^2. "
+                         "Minibatches are whole envs; the PPO loss takes the head's A (per-map "
+                         "normalised, as the recipe's GAE advantage is) recomputed each "
+                         "minibatch. The value is the loss weight of that term in --vf's "
+                         "convention (0.5 x MSE): 1.5 = the authors' DAE/GAE critic ratio "
+                         "(1.5 vs 0.5) on this trainer's --vf 0.5. --vf and --gae then only "
+                         "shape the logged GAE diagnostics. Shape-changing (adv_head): ckpt "
                          "restores, a mismatch is refused")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
@@ -9236,6 +9348,11 @@ def main() -> None:
         if args.critic_pay_d0 is None and ck_cfg.get("critic_pay_d0") is not None:
             args.critic_pay_d0 = float(ck_cfg["critic_pay_d0"])
             restored.append(f"critic_pay_d0={args.critic_pay_d0:g}")
+        # --dae: the critic's SHAPE (adv_head) and what the policy's advantage is; the
+        # state_dict check below refuses either mismatch
+        if args.dae is None and ck_cfg.get("dae") is not None:
+            args.dae = float(ck_cfg["dae"])
+            restored.append(f"dae={args.dae:g}")
         # --race-dfloor changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it would
         # hand the policy a different objective than its weights were fitted
@@ -10924,6 +11041,10 @@ def main() -> None:
         args.critic_pay_d0 = 0.0
     if not (np.isfinite(float(args.critic_pay_d0)) and float(args.critic_pay_d0) >= 0.0):
         raise SystemExit(f"--critic-pay-d0 {args.critic_pay_d0:g}: a distance > 0, or 0 = off")
+    if args.dae is None:
+        args.dae = 0.0
+    if not (np.isfinite(float(args.dae)) and float(args.dae) >= 0.0):
+        raise SystemExit(f"--dae {args.dae:g}: a loss weight > 0, or 0 = off")
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
     if args.race_field_blur is None:
@@ -12185,6 +12306,51 @@ def main() -> None:
               "V = k_map V_P + V_R with k_map = the map's own rate / that one; each head is "
               "fitted to its own stream's GAE return, the policy's advantage is the "
               "combined one")
+    # --dae (the user, 2026-11-23): Direct Advantage Estimation. A Python constant like
+    # PAY_SPLIT: flag off, nothing is allocated, traced or written.
+    DAE = float(args.dae or 0.0) > 0.0
+    DAE_COEF = float(args.dae or 0.0)
+    if DAE:
+        for _flag, _on in (
+                ("a discrete view (--view-continuous is required)",
+                 not bool(args.view_continuous)),
+                ("--int-split", INT_SPLIT),
+                ("--critic-pay-d0", PAY_SPLIT),
+                ("--ret-norm", bool(args.ret_norm)),
+                ("--rnn", RNN),
+                ("--chunk/--codebook", H > 0 or bool(args.codebook)),
+                ("--ddp", D.enabled),
+                ("--reward-per-decision", bool(args.reward_per_decision)),
+                ("--curiosity-cond", bool(args.curiosity_cond)),
+                ("--crl", bool(args.crl)),
+                ("--priv-critic", bool(args.priv_critic)),
+                ("--exec-cut", EXEC_CUT),
+                ("--reset-critic", bool(args.reset_critic)),
+                ("--critic-warmup", int(args.critic_warmup or 0) > 0),
+                ("--tail-weight", float(args.tail_weight or 0.0) > 0.0),
+                ("--rnd-coef", float(args.rnd_coef or 0.0) > 0.0),
+                ("--bc-file", bool(args.bc_file)),
+                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                ("--frame-stack", int(args.frame_stack or 0) > 1),
+                ("--view-ou-sigma", float(getattr(args, "view_ou_sigma", 0.0) or 0.0) > 0.0),
+                ("--train-stride", int(args.train_stride or 1) > 1),
+                ("--ez-eps/--spawn-burst", float(args.ez_eps or 0.0) > 0.0
+                 or int(args.spawn_burst or 0) > 0),
+                ("--aug-*", any(float(getattr(args, _a) or 0.0) > 0.0
+                                for _a in ("aug_mirror", "aug_drop", "aug_noise",
+                                           "aug_shift")))):
+            if _on:
+                raise SystemExit(
+                    f"--dae is not implemented with {_flag}: the advantage head, the stored "
+                    "behaviour distribution and the whole-env DAE minibatch live in the flat "
+                    "single-process rollout and update paths of the continuous-view policy, "
+                    "with every sample drawn from the behaviour policy the head is centred on")
+        print(f"--dae {DAE_COEF:g}: Direct Advantage Estimation - the policy's advantage is "
+              "the advantage head's output, centred under the behaviour policy (a joint key "
+              "table + He1/He2 terms in the view), fitted with V by the paper's Eq. 13 over "
+              "each env's segment at weight "
+              f"{DAE_COEF:g} x 0.5 MSE; minibatches are whole envs; the GAE advantage (--gae "
+              f"{float(args.gae):g}) and --vf {float(args.vf):g} are logged diagnostics only")
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -15423,7 +15589,7 @@ def main() -> None:
                     fp32_trunk=bool(args.fp32_trunk),
                     final_ln_affine=bool(args.final_ln_affine),
                     mlp_act=str(args.mlp_act),
-                    pay_split=PAY_SPLIT).to(device)
+                    pay_split=PAY_SPLIT, dae=DAE).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -16168,6 +16334,19 @@ def main() -> None:
                 "--critic-pay-d0 cannot warm-start a ONE-HEAD checkpoint: its value_head fitted "
                 "the whole return, not the rest of it, and a fresh V_P would start from noise. "
                 "Start the arm from scratch, or resume a checkpoint trained with the flag.")
+        # --dae changes the SHAPE of the critic too (adv_head), in both directions
+        _has_adv = "adv_head.weight" in (ck.get("policy") or {})
+        if _has_adv and not DAE:
+            raise SystemExit(
+                "this checkpoint was trained with --dae (it carries adv_head, and its value "
+                "head was fitted by the DAE loss): resuming it without the flag would switch "
+                "the policy's advantage estimator. Pass --dae (the config restores it unless "
+                "--dae 0 was passed).")
+        if DAE and not _has_adv:
+            raise SystemExit(
+                "--dae cannot warm-start a checkpoint without adv_head: a fresh advantage head "
+                "would hand the policy noise for an advantage. Start the arm from scratch, or "
+                "resume a checkpoint trained with the flag.")
         _has_view = "view_head.weight" in (ck.get("policy") or {})
         if VIEWC and not _has_view:
             raise SystemExit(
@@ -17081,6 +17260,9 @@ def main() -> None:
     if PAY_SPLIT:
         # --critic-pay-d0, written ONLY when on (a control's config dump gains no key)
         meta["config"]["critic_pay_d0"] = float(args.critic_pay_d0)
+    if DAE:
+        # --dae, written ONLY when on (a control's config dump gains no key)
+        meta["config"]["dae"] = DAE_COEF
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
@@ -17726,6 +17908,13 @@ def main() -> None:
         CSV_COLS += ["pay/ret_q", "pay/v_q", "pay/ev_q", "pay/ev_r"]
         for _s in slots:
             CSV_COLS += [f"pay/ev_q.{_s.tag}", f"pay/ev_r.{_s.tag}"]
+    if DAE:
+        # --dae, only when on: over the update's LAST minibatch (whole envs, every map), the
+        # head's A of the taken actions before the normalisation (std, mean |A|), the DAE
+        # target's mean, V's explained variance of it, and A's std per map
+        CSV_COLS += ["dae/adv_std", "dae/adv_abs", "dae/ret", "dae/ev"]
+        for _s in slots:
+            CSV_COLS += [f"dae/adv_std.{_s.tag}"]
     #   dip/*  the SETBACK diagnostic (surfgym/dipmeter.py), LAST for the
     #          same strict-prefix header-migration rule as everything above
     #          and written by EVERY race arm (no flag; --no-dip-diag turns
@@ -19167,6 +19356,15 @@ def main() -> None:
     # K_ENV: each env's k (its map's pay rate over the critic's), a constant of the env.
     b_q = torch.zeros((T, N), device=device) if PAY_SPLIT else None
     b_vq = torch.zeros((T, N), device=device) if PAY_SPLIT else None
+    # --dae: the BEHAVIOUR distribution of every decision - the categorical heads' tempered,
+    # masked log-probabilities and the Gaussian's mean and tempered log sigma - which the
+    # advantage head is centred on in the update (the policy has moved by then)
+    b_blsm = (torch.zeros((T, N, NACT - N_VIEW, NPAD), device=device) if DAE else None)
+    b_bmu = torch.zeros((T, N, NZ), device=device) if DAE else None
+    b_bls = torch.zeros((T, N, NZ), device=device) if DAE else None
+    # the per-decision discount the targets use: a tensor (a tick ramp moves it per iteration;
+    # a Python float in the compiled signature would recompile every time it moved)
+    dae_g_t = torch.zeros((), device=device) if DAE else None
     if PAY_SPLIT:
         if len(PAY_K_NP) != N:
             raise SystemExit(f"--critic-pay-d0: {len(PAY_K_NP)} per-env pay rates for {N} "
@@ -19200,6 +19398,10 @@ def main() -> None:
     static_vint = torch.zeros(N, device=device) if INT_SPLIT else None
     # --critic-pay-d0: V_P of the decision, written inside the captured graph like static_val
     static_vq = torch.zeros(N, device=device) if PAY_SPLIT else None
+    # --dae: the decision's behaviour distribution, written inside the captured graph
+    static_blsm = (torch.zeros((N, NACT - N_VIEW, NPAD), device=device) if DAE else None)
+    static_bmu = torch.zeros((N, NZ), device=device) if DAE else None
+    static_bls = torch.zeros((N, NZ), device=device) if DAE else None
     # --view-continuous: the drawn z and the view command the core gets,
     # STATIC buffers written inside the captured graph like static_act
     static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
@@ -19839,6 +20041,15 @@ def main() -> None:
                 padded = ROLL_MASK(padded)
             act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
                                        tempv_t)
+            if DAE:
+                # sample_view's own two tempers, on the same masked slice: the measure the
+                # draw came from (a Python constant - the control's graph has no such copy)
+                static_blsm.copy_(F.log_softmax(_temper_logits(padded[:, N_VIEW:], temp_t),
+                                                dim=-1))
+                static_bmu.copy_(mu)
+                static_bls.copy_(torch.broadcast_to(
+                    _temper_log_std(policy.log_std(),
+                                    temp_t if tempv_t is None else tempv_t), (N, NZ)))
             static_act.copy_(act)
             # STORED z is the un-offset draw, so logp above is exactly the
             # behaviour policy's log-density of the EXECUTED action and the
@@ -21180,6 +21391,52 @@ def main() -> None:
                     torch.stack([aug_kl.detach(), aug_vm.detach()]))
         return loss, pg, vl, el, logp
 
+    # ---- --dae: the whole-env Direct Advantage Estimation step ------------------
+    # One minibatch of WHOLE envs, time-major (idx = t * N + env; `envs` the B columns), so each
+    # env's T decisions are one segment of the paper's Eq. 13. The ratio is scored exactly as
+    # mb_step scores it (the same tempered, masked measure); the advantage is the head's,
+    # recomputed from the CURRENT weights each minibatch (Algorithm 1, line 12) and centred on
+    # the STORED behaviour distribution; V and the head are fitted together by L_A, whose
+    # bootstrap is V_old(s_T) (`f_lastv`, the rollout's own value - the paper's V_target).
+    def mb_step_dae(f_scal, f_img, f_act, f_logp, f_z, idx, ent_coef, envs,
+                    f_blsm, f_bmu, f_bls, f_rew, f_done, f_lastv, g_t,
+                    f_air=None, f_jblk=None, f_temp=None, f_tempv=None,
+                    f_cct=None, f_ctv=None):
+        if f_cct is not None:
+            f_temp = f_cct[idx]
+        if f_ctv is not None:
+            f_tempv = f_ctv[idx]
+        with amp:
+            logits, value, gadv = policy.forward_split(f_scal[idx], f_img[idx], adv=True)
+            cat, mu = split_view(logits.float())
+            padded = packer.pad(cat)
+            if MASKS.on:
+                # PLACE 2 of 4, the --dae half (same argument as mb_step)
+                padded = MASKS.add_mask(
+                    padded, None if f_air is None else f_air[idx],
+                    None if f_jblk is None else f_jblk[idx])
+            logp, ent = logprob_entropy_view(
+                padded, f_act[idx], mu, policy.log_std(), f_z[idx],
+                PITCH_ENT, f_temp, f_tempv, yaw_ent=YAW_ENT_ARG)
+            value = value.float()
+        u = (f_z[idx] - f_bmu[idx]) * torch.exp(-f_bls[idx])
+        A = dae_advantage(gadv.float(), f_blsm[idx], f_act[idx], u)
+        B = envs.shape[0]
+        G = dae_targets((f_rew[idx] - A).view(T, B), f_done[idx].view(T, B),
+                        f_lastv[envs], g_t)
+        vl = 0.5 * (G - value.view(T, B)).pow(2).mean()
+        a = A.detach()
+        if ADV_MAP:
+            a = adv_norm_per_map(a, (idx % N) // PER, NMAPS)
+        else:
+            a = (a - a.mean()) / (a.std() + 1e-8)
+        ratio = torch.exp(logp - f_logp[idx])
+        pg = torch.max(-a * ratio,
+                       -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
+        el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())
+        loss = pg + DAE_COEF * vl + ent_coef * el
+        return loss, pg, vl, el, logp, A.detach(), G.detach()
+
     # ---- --rnn: the SEQUENCE minibatch step ---------------------------------
     # A minibatch is B = N/minibatches whole envs x all T decisions, in
     # time-major row order (idx = t*N + env), so every flat buffer is gathered
@@ -21332,6 +21589,40 @@ def main() -> None:
                 if D.is_main:
                     (out / "run.json").write_text(
                         json.dumps(meta, indent=2), encoding="utf-8")
+    elif use_compile and DAE and not FREEZE:
+        # --dae: the whole-env step is compiled the way mb_step is (mb_step never runs under
+        # the flag, so it is not compiled); the warm-up runs one minibatch's forward + backward
+        # on the zeroed buffers and drops the gradients - no opt.step(), no weight moves
+        eager_mb_step_dae = mb_step_dae
+        try:
+            t_c = time.perf_counter()
+            mb_step_dae = torch.compile(eager_mb_step_dae, mode="max-autotune-no-cudagraphs")
+            _B = N // args.minibatches
+            _idx0 = (torch.arange(T, device=device)[:, None] * N
+                     + torch.arange(_B, device=device)[None, :]).reshape(-1)
+            mb_step_dae(b_scal.reshape(T * N, SCAL), b_img.reshape((PRO + T) * N, FRAME),
+                        b_act.reshape(ACT_FLAT), b_logp.reshape(-1), b_z.reshape(T * N, NZ),
+                        _idx0, ent_t, torch.arange(_B, device=device),
+                        b_blsm.reshape(T * N, NACT - N_VIEW, NPAD), b_bmu.reshape(T * N, NZ),
+                        b_bls.reshape(T * N, NZ), b_rew.reshape(-1), b_done.reshape(-1),
+                        torch.zeros(N, device=device), dae_g_t,
+                        None if b_air is None else b_air.reshape(-1),
+                        None if b_jblk is None else b_jblk.reshape(-1),
+                        f_temp=temp_t, f_tempv=tempv_t,
+                        f_cct=(b_ftk.reshape(T * N, 1, 1) if FRONT else None),
+                        f_ctv=(b_ftv.reshape(T * N, NZ) if FRONT else None))[0].backward()
+            opt.zero_grad(set_to_none=True)
+            print(f"torch.compile: --dae minibatch step compiled in "
+                  f"{time.perf_counter() - t_c:.0f}s (max-autotune-no-cudagraphs)")
+        except Exception as exc:            # pragma: no cover
+            print(f"torch.compile failed ({exc!r}) — eager update")
+            mb_step_dae = eager_mb_step_dae
+            opt.zero_grad(set_to_none=True)
+            use_compile = False
+            meta["config"]["compile"] = False      # keep run.json honest
+            if D.is_main:
+                (out / "run.json").write_text(json.dumps(meta, indent=2),
+                                              encoding="utf-8")
     elif use_compile and not FREEZE:
         # max-autotune-no-cudagraphs, not reduce-overhead: measured 1.067x vs
         # 1.011x on the isolated step (tools/bench_update.py). The
@@ -21978,6 +22269,10 @@ def main() -> None:
         # --critic-pay-d0: the progress head is a critic tensor too (--critic-warmup is
         # refused with the flag today; this keeps the prefix honest if that lifts)
         CRITIC_PREFIX = CRITIC_PREFIX + ("prog_head.",)
+    if DAE:
+        # --dae: the advantage head is fitted by the critic's loss (--critic-warmup is refused
+        # with the flag today; this keeps the prefix honest if that lifts)
+        CRITIC_PREFIX = CRITIC_PREFIX + ("adv_head.",)
     warm_frozen = [q for n, q in policy.named_parameters()
                    if not n.startswith(CRITIC_PREFIX)]
     warm_trained = [n for n, _ in policy.named_parameters()
@@ -22016,6 +22311,7 @@ def main() -> None:
     int_sync = args.int_sync_every if DDP_REP else 0
     int_row = []              # --int-split: this iteration's int/* values
     pay_row = []              # --critic-pay-d0: this iteration's pay/* values
+    dae_row = [float("nan")] * (4 + NMAPS)    # --dae: this iteration's dae/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
     best_stage_saved = -1.0           # --save-best on a --ramp-sequence run: best mean eval stage
@@ -22501,6 +22797,10 @@ def main() -> None:
                     b_vint[t].copy_(static_vint)
                 if PAY_SPLIT:
                     b_vq[t].copy_(static_vq)
+                if DAE:
+                    b_blsm[t].copy_(static_blsm)
+                    b_bmu[t].copy_(static_bmu)
+                    b_bls[t].copy_(static_bls)
                 if CRL:
                     b_crl_logits[t].copy_(static_crl_logits)
                 if CC_TEMP:
@@ -23891,6 +24191,18 @@ def main() -> None:
         # --critic-pay-d0: the progress return, in the critic's one unit (V_P's target)
         f_retq = ret_q.reshape(-1) if PAY_SPLIT else None
         mb = MB
+        if DAE:
+            # --dae: the behaviour distributions, the raw rewards (a truncation's bootstrap
+            # inside, as GAE reads them), the episode ends and V_old(s_T) per env; a minibatch
+            # is T x (N // M) rows - whole envs
+            f_blsm = b_blsm.reshape(T * N, NACT - N_VIEW, NPAD)
+            f_bmu = b_bmu.reshape(T * N, NZ)
+            f_bls = b_bls.reshape(T * N, NZ)
+            f_rewd = b_rew.reshape(-1)
+            f_doned = b_done.reshape(-1)
+            f_lastv = last_val.float().reshape(-1)
+            dae_g_t.fill_(float(g_eff))
+            mb = T * (N // args.minibatches)
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
             ent_coef = args.ent + (args.ent_final - args.ent) * frac
@@ -23947,6 +24259,7 @@ def main() -> None:
             sub_pool = (on_policy if sub_pool is None
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
+        dae_last = None                # --dae: (idx, A, G, vl) of the update's last minibatch
         last_pooled = None             # --ddp-maps shard: the last minibatch's union moments
         aug_sum, aug_n = None, 0       # --aug-*: DrAC's (G_pi, G_V) over this update
         env_np = None
@@ -23980,6 +24293,16 @@ def main() -> None:
                 # cost one stall per epoch instead of one per minibatch
                 plans = [gru_segments(b_done_np[:, env_np[k * _B:(k + 1) * _B]],
                                       device) for k in range(n_mb)]
+            elif DAE:
+                # --dae: shuffle ENVS (the --rnn layout): minibatch k is _B whole segments,
+                # time-major; the N % M envs left over sit this epoch out, a fresh draw each
+                # epoch
+                _B = N // args.minibatches
+                env_perm = torch.randperm(N, device=device,
+                                          generator=perm_gen)[:args.minibatches * _B]
+                perm = (torch.arange(T, device=device)[None, :, None] * N
+                        + env_perm.view(args.minibatches, 1, _B)).reshape(-1)
+                n_mb = args.minibatches
             elif sub_pool is None:
                 perm = torch.randperm(T * N, device=device,
                                       generator=perm_gen)
@@ -24017,6 +24340,14 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, envs=env_perm[_e], seg=plans[k_mb])
+                elif DAE:
+                    loss, pg, vl, el, logp, dae_a, dae_g = mb_step_dae(
+                        f_scal, f_img, f_act, f_logp, f_z, idx, ent_t,
+                        env_perm[k_mb * _B:(k_mb + 1) * _B],
+                        f_blsm, f_bmu, f_bls, f_rewd, f_doned, f_lastv, dae_g_t,
+                        f_air, f_jblk, f_temp=temp_t, f_tempv=tempv_t,
+                        f_cct=f_cct, f_ctv=f_ctv)
+                    dae_last = (idx, dae_a, dae_g, vl.detach())
                 else:
                     _mbo = mb_step(
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
@@ -24105,6 +24436,14 @@ def main() -> None:
                 last_diag = (idx, logp, vl, pg, el)
                 if a_mean is not None:
                     last_pooled = (a_mean[k_mb], a_std[k_mb])
+        if DAE and dae_last is not None:
+            # --dae: one (4 + NMAPS)-float read per iteration
+            _di, _da, _dg, _dvl = dae_last
+            _dm = (_di % N) // PER
+            dae_row = torch.stack(
+                [_da.std(), _da.abs().mean(), _dg.mean(),
+                 1.0 - 2.0 * _dvl / (_dg.var() + 1e-12)]
+                + [_da[_dm == _k].std() for _k in range(NMAPS)]).tolist()
         if EMA:
             # --eval-ema: each average moves toward the updated weights by its half-life over
             # the steps this update consumed (buffers are copied, not averaged)
@@ -25538,6 +25877,9 @@ def main() -> None:
                            # pay/*, only under --critic-pay-d0 (the header's block above)
                            + ([round(_v, 5) if _v == _v else ""
                                for _v in pay_row] if PAY_SPLIT else [])
+                           # dae/*, only under --dae (the header's block above)
+                           + ([round(_v, 5) if _v == _v else ""
+                               for _v in dae_row] if DAE else [])
                            # dip/*, TRULY LAST (after the two conditional
                            # blocks, so an old header stays a strict prefix
                            # and migrates by padding). Blank where the

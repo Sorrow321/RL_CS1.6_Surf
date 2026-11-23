@@ -2342,6 +2342,9 @@ def main(argv=None, build_only: bool = False, device=None):
                     # prog_head (the progress value head) and the load below is
                     # STRICT; no action reads either value column.
                     pay_split=bool(cfg.get("critic_pay_d0")),
+                    # --dae is MIRRORED for the same reason: it adds adv_head (the
+                    # advantage head) and the load below is STRICT; no action reads it.
+                    dae=bool(cfg.get("dae")),
                     # --yaw-cond is MIRRORED for BOTH reasons at once: it
                     # adds a yaw_side.table tensor (shape, so the strict
                     # load below needs it) AND it changes what an action

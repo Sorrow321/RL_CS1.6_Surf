@@ -826,20 +826,35 @@ def run_critic_probe(ctx: dict, a) -> dict:
 
     -> per map: does R + gamma V rank the siblings as R + gamma G ranks them (Spearman per root,
     the top-1 hit rate), against R alone (no critic); and V against G over all children (Pearson,
-    Spearman, the slope of G on V: 1 = the critic is in the units of the return on this map)."""
+    Spearman, the slope of G on V: 1 = the critic is in the units of the return on this map).
+
+    A --dae checkpoint (the user, 2026-11-23) adds a third ranking: each child's ADVANTAGE SUM
+    over its macro, sum_t gamma^t A(s_t, a_t) from the advantage head at every decision of the
+    macro, centred on the policy's own distribution there - what the paper's identity makes equal
+    to the macro's reward + gamma^n V(s_n) - V(s_0) when A and V are exact, learned directly."""
     import torch
     from surfgym.core import STATE_DTYPE
-    from train_fast import N_VIEW, sample_view, split_view
+    from train_fast import N_VIEW, dae_advantage, sample_view, split_view
 
     AzPolicy = make_az_policy()
+    HAS_ADV = getattr(ctx["policy"], "adv_head", None) is not None
 
     class ProbePolicy(AzPolicy):
-        """AzPolicy whose decisions keep the value of the forward they were made from."""
+        """AzPolicy whose decisions keep the value of the forward they were made from (and, for a
+        --dae checkpoint, the advantage of the decision taken)."""
         last_v = None
+        last_a = None
 
         @torch.inference_mode()
         def _decide(self, obs):
-            logits, v = self._net(self._obs(obs))
+            x = self._obs(obs)
+            if HAS_ADV:
+                # --dae: one forward for all three outputs (--priv-critic and --rnn are refused
+                # with the flag, so _net's two extras have nothing to do)
+                logits, v, gadv = self.policy.forward_split(
+                    x[:, :self.policy.scal_dim], x[:, self.policy.scal_dim:], adv=True)
+            else:
+                logits, v = self._net(x)
             self.last_v = self._v1(v).cpu().numpy()
             cat, mu = split_view(logits.float())
             padded = self._mask_padded(self.packer.pad(cat), obs)
@@ -849,6 +864,10 @@ def run_critic_probe(ctx: dict, a) -> dict:
                 gi = torch.as_tensor(np.flatnonzero(g), device=act.device)
                 act[gi, N_VIEW:] = padded[gi, N_VIEW:].argmax(-1)
                 z[gi] = mu[gi]
+            if HAS_ADV:
+                u = (z - mu) * torch.exp(-self.policy.log_std().float())
+                self.last_a = dae_advantage(gadv.float(), torch.log_softmax(
+                    padded[:, N_VIEW:], dim=-1), act, u).double().cpu().numpy()
             return self._finish_view(act[:, N_VIEW:], z)
 
     t_all = time.time()
@@ -946,7 +965,7 @@ def run_critic_probe(ctx: dict, a) -> dict:
     TM = M_HOLD * K_ACT                         # ticks of the macro
     TT = TM + H_DEC * K_ACT                     # ticks of macro + continuation
     out = {k: [] for k in ("root", "k", "R", "R_eff", "R_eff2", "V", "G", "G2", "Gr", "died",
-                           "fin", "mac_dead")}
+                           "fin", "mac_dead", "A")}
     groups: dict = {}
     for ri, rt in enumerate(chosen):
         groups.setdefault(int(rt[1] % PL), []).append(ri)
@@ -977,6 +996,7 @@ def run_critic_probe(ctx: dict, a) -> dict:
             died = np.full(n, -1, np.int64)
             fin = np.full(n, -1, np.int64)
             V = np.zeros(n, np.float64)
+            asum = np.zeros(n, np.float64)          # --dae: sum_t gamma^t A over the macro
             alv = np.ones(n, bool)
             disc = 1.0
             for t in range(TT):
@@ -986,6 +1006,8 @@ def run_critic_probe(ctx: dict, a) -> dict:
                 if sub == 0 and dec > M_HOLD:
                     disc *= gamma_dec
                 act = np.ascontiguousarray(pol.act(obs), np.int32)
+                if HAS_ADV and sub == 0 and dec < M_HOLD:
+                    asum[alv] += (gamma_dec ** dec) * pol.last_a[:n][alv]
                 if sub == 0 and dec == M_HOLD:
                     V[alv] = pol.last_v[:n][alv]
                 disc_t[t] = disc
@@ -1045,7 +1067,7 @@ def run_critic_probe(ctx: dict, a) -> dict:
                              ("R_eff", seg(pe_full, 0, TM)), ("R_eff2", seg(pe_2, 0, TM)),
                              ("V", V), ("G", seg(pe_full, TM, TT)), ("G2", seg(pe_2, TM, T2)),
                              ("Gr", seg(ratg, TM, TT)), ("died", died), ("fin", fin),
-                             ("mac_dead", (died >= 0) & (died < TM))):
+                             ("mac_dead", (died >= 0) & (died < TM)), ("A", asum)):
                 out[key].append(np.asarray(val))
     res = {k: np.concatenate(v) for k, v in out.items()}
     root_V = np.asarray([r[2] for r in chosen])
@@ -1097,6 +1119,11 @@ def run_critic_probe(ctx: dict, a) -> dict:
         "siblings_no_critic": sib_stats(pred_n, tot_act),
         "siblings_critic_2s": sib_stats(pred_c, tot_act2),
         "siblings_no_critic_2s": sib_stats(pred_n, tot_act2),
+        # --dae: the children ranked by their macro's advantage sum alone
+        **({"siblings_adv": sib_stats(res["A"], tot_act),
+            "siblings_adv_2s": sib_stats(res["A"], tot_act2),
+            "adv_vs_v_edge": fit(res["A"][alive_m], (pred_c - root_V[res["root"]])[alive_m])}
+           if HAS_ADV else {}),
         "v_vs_g": fit(v, g),
         "v_vs_ratchet": fit(v, res["Gr"][alive_m]),
         "root_v_vs_greedy_g": fit(rv0, g0),

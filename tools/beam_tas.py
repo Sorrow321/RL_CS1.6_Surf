@@ -2699,7 +2699,10 @@ def main():
                     int_split=bool(cfg.get("int_split")),
                     # --critic-pay-d0: MIRRORED (record_ckpt) - prog_head, the progress value
                     # head; a reader of V combines k V_P + V_R itself (az_mcts.value_k)
-                    pay_split=bool(cfg.get("critic_pay_d0"))
+                    pay_split=bool(cfg.get("critic_pay_d0")),
+                    # --dae: MIRRORED (record_ckpt) - adv_head, the advantage head; only the
+                    # critic probe reads it (az_mcts, --az-critic-probe)
+                    dae=bool(cfg.get("dae"))
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
