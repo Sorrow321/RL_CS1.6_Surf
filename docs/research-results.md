@@ -51962,3 +51962,22 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Budget ~$4.3, ~7 h (credit $24.10). Watchdog with harvest, droplet watcher (floor $13),
   dashboard tunnel :8685. Known: a --wd-skip-norms checkpoint does not resume on this line
   (pre-existing), so the arm runs in one piece.
+
+## 2026-11-23 19:05 UTC: NOTE - DAE attempt 1 collapsed in 55M steps (my bug); fixed in 9b4fe177
+
+* ue_3m as PLAN d3e8a6fb (mm/dae 97c90219), launched 18:43 UTC on one RTX 5090 at $0.655/h
+  (Ontario; the user raised the 5090 cap to $0.70 at 18:34 UTC: no 5090 <= $0.60 passed the
+  filters for 45 min). Stopped by me at 18:46 UTC (99M steps), box released 18:52, ~$0.10.
+* What happened: approx_kl 0.015 (5M) -> 0.05 (19M) -> 0.14 (43M), then 120-318 per update from
+  ~55M; the key heads went deterministic (entropy below zero; the view sigma stayed 0.11/0.16),
+  episodes stalled (72%) and the return fell to ~0. The control at the same steps: approx_kl
+  median 0.025, max 0.05; ud the same.
+* Why: the advantage head's A holds only the action-dependent part of the return - its std was
+  0.10-0.15 against 0.6-0.9 for the GAE advantage of the same rows (petrus). Standardised by
+  its OWN std (as the authors' code does), every policy step was 5-6x the control's.
+* Fix (mm/dae 9b4fe177): A is centred per map and divided by the per-map std of the GAE
+  advantage of the same rows, so the expected policy step is the control's and DAE only
+  removes the noise; a new column dae/adv_vs_gae logs std A / std GAE. 10 tests; flag off
+  still bit-identical to b5e3fa62. A relaunch adds a divergence guard (stops the trainer when
+  the median approx_kl of 10 updates exceeds 0.1 twice, for the first hour); it needs the
+  user's OK.
