@@ -51807,3 +51807,33 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   ub 73aad8d3, uc 42d9a60d); tables scratchpad paytest/ana/{summary,evals,probe_table}.py.
   Ops: the end-of-run checks took 2 min, not the 75 I planned; at 02:21 I stopped the ua/ub
   watchers for a minute on that false alarm and restarted them unchanged - nothing lost.
+
+## 2026-11-23 09:45 UTC: PLAN - critic split: the pay unchanged, the critic predicts in one unit
+
+* The user (2026-11-23), on the pay test (7cbf9fe3): their idea was not plain pay but a critic
+  that predicts one map-free value which the map's scale turns into that map's value. Plain pay
+  changed the REWARD, so it also moved the mix of progress against the finish bonus (+50), the
+  time cost and the energy term on every map (against progress: petrus 2.8x, blue200 37x,
+  cannonball 0.5x) - a candidate cause of its petrus drop (52-57% finished after the first
+  finish against the control's 79%). "Yeah, let's try it."
+* Code: mm/split b5e3fa62 (off mm/health 97653833): --critic-pay-d0 D. The reward is the
+  control's (100/d0 per unit). The critic has two heads: V_P, the progress part of the return at
+  100/D per unit (the same on every map), and V_R, the rest; V = k V_P + V_R with k = D/d0
+  (cannonball 0.503, petrus 2.783, blue200 37.418), applied outside the network. Each head fits
+  its own stream's GAE return; the policy's advantage is the combined one, i.e. the control's.
+  The extra head is registered last, so the rest of the network starts from the control's init.
+  16 tests; flag off bit-identical to 97653833; mirrored in record_ckpt, beam_tas and az_mcts.
+* One arm, ud_3m: the control ua_3m's exact line (v14 + the seven-map extras + round 2's arch;
+  cannonball + petrus + blue200, 342 envs each; seed 0; 8e9 steps) + --critic-pay-d0 100000.
+  Compared with ua_3m (control) and ub_3m (plain pay) of 7cbf9fe3. One RTX 5090 <= $0.60/h.
+* Measured as in the pay test: per map, the official grader's first finish (own steps), the
+  share finished after it and the best time; the end-of-run critic probe on the held-out maps
+  (blue100, four left_turn versions: rho V against rho R, the slope of V on the actual return)
+  and the same test-time search. Expected: petrus nearer ua's 79% if the mix was the cause;
+  blue100 slope near plain pay's 0.91-0.96; no better move ranking on left_turn (the critic does
+  not know a new map, whatever its unit).
+* Known, not changed: a --wd-skip-norms checkpoint does not resume on mm/health or mm/split
+  (widen_for_route reads the AdamW state in parameters() order). The arm runs from scratch in
+  one piece, like the pay-test arms.
+* Budget ~$3.6 (credit $28.36). Watchdog with harvest, droplet watcher (floor $13), dashboard
+  tunnel :8684.
