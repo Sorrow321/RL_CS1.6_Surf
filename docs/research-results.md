@@ -51837,3 +51837,78 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   one piece, like the pay-test arms.
 * Budget ~$3.6 (credit $28.36). Watchdog with harvest, droplet watcher (floor $13), dashboard
   tunnel :8684.
+
+## 2026-11-23 17:00 UTC: RESULT - critic split trains like the control; V still cannot rank moves
+
+* Ran as PLAN 7c76fdd8: ud_3m = ua_3m + --critic-pay-d0 100000 (mm/split b5e3fa62), one RTX 5090
+  ($0.598/h, Texas), 8.0e9 steps (2.67e9 per map), seed 0, 10:10-16:35 UTC; box released 16:38
+  UTC (0 instances). ckpt_final.pt md5 b58f5a47. The trainer ran in one piece (no resume).
+* Both heads fit: explained variance per map at the end (7.7-8.0B) V_P 0.95-0.98, V_R 0.94-0.98
+  (cannonball 0.98 / 0.94, petrus 0.98 / 0.98, blue200 0.95 / 0.97); the same from 2B on.
+* Training, official grader (autoresearch/score.py, all 36 evals per map; own = fleet / 3):
+
+  map         what                 ua control  ub plain pay  uc pay + d in  ud two heads
+  petrus      first finish (own)   0.376B      0.301B        0.301B         0.226B
+              finished, 1.1-7.9B   79%         53%           58%            62%
+              finished, 4.0-7.9B   83%         62%           59%            67%
+              best                 29.98 s     30.97 s       30.00 s        30.21 s
+  blue200     first finish (own)   1.578B      1.052B        1.052B         0.601B
+              after                98%         95%           96%            95%
+              best                 13.26 s     13.78 s       13.94 s        13.16 s
+  cannonball  first finish         none        1 of 198      none           none
+              last 5 evals best    2.5-8.3%    45-99%        20-44%         28-93%
+
+  (petrus windows in fleet steps, the same evals for every arm: 279 and 162 greedy episodes)
+* Petrus: ud's first finish (0.677B fleet) came from training alone, before any search (the
+  search delay is 0.9B fleet) - the earliest of the four arms (ub and uc 0.902B, also before
+  their searches; ua 1.127B, after its search handed it a full line). Reliability: ud has the
+  control's exact reward and still finishes 62% / 67% against ua's 79% / 83%, so the reward mix
+  (the plan's candidate) does not explain plain pay's petrus drop; with one seed per arm the
+  gap is most likely run-to-run spread.
+* Blue200's early finish is a search draw: ud's first search (1.15B fleet) ran the Go-Explore
+  stage and handed back a full line; ua got one at its third search (4.08B), ub and uc at their
+  second (2.55B / 2.64B). In every arm the greedy flew it 0.52-0.66B fleet steps after the line
+  arrived (evals every 0.23B). Why ud's first search reached the GE stage: its greedy was
+  already deeper (frontier d 1,743 against 1,979-2,014), so the beam's line gained < 200 u and
+  the stages went on.
+* Cannonball: no finish. Best 92.2% at 3.61B, then 20-37% to 5.86B (the greedy dying at d
+  148-166k); the next searches came only from 6.95B (an energy spine to d 174k, then d 115k and
+  d 91k); 93.3% at the last eval. Like ua (no finish, regressed) and uc; ub's one finish never
+  repeated.
+* Critic probe (az_mcts --az-critic-probe, as 7cbf9fe3; ud's V = V_R + k V_P, k = 100,000 / the
+  probe's d0; * = held out, never trained on):
+
+  map          rho V  rho R  r(V,G)  slope  V mean  G mean    ua rho V/R  ub rho V/R  uc rho V/R
+  blue100*     0.16   0.19   0.68    0.66   69.1    80.9      0.12/0.20   0.15/0.17   0.13/0.20
+  left_turn*   0.14   0.18   0.45    0.16    7.8     0.8     -0.03/0.16   0.21/0.44   0.16/0.37
+  lt_wall*     0.06   0.44   0.12    0.01    6.6     0.3      0.02/0.20   0.22/0.62   0.00/0.12
+  lt_sym*      0.03   0.25   0.03    0.01    9.5     1.6     -0.14/0.06   0.07/0.37   0.03/0.09
+  lt_curve*    0.02   0.36   0.01    0.00   11.6     0.6     -0.01/0.18   0.05/0.28   0.03/0.17
+  cannonball   0.10   0.07   0.81    0.76   10.5     7.6
+  petrus       0.00   0.03   0.61    1.03   48.8    45.7
+  blue200      0.04   0.15   0.74    1.33   70.0    91.9
+
+  - left_turn x4: rho V 0.06 against R 0.31 (mean of the four): adding V makes the ranking
+    WORSE on all four maps, as in ua, ub and uc. V says 6.6-11.6 where the actual return is
+    0.3-1.6; 100% of the children die.
+  - blue100 (the policy finishes 211 of 256 flights): slope 0.66 (ua 0.57, ub 0.91, uc 0.96).
+  - the probe's d0 is d at the recorded flight's first row (blue200 2,506 u against the
+    trainer's 2,672 u at the spawn point; the same rule in every arm), so its k on blue200 is
+    39.9, not the trainer's 37.4.
+* Verdict: the user's form (the pay unchanged; the critic predicts progress in one map-free unit
+  plus the rest, and the map's known rate scales the first) TRAINS LIKE THE CONTROL - earliest
+  petrus finish, best blue200 time by 0.1 s, petrus reliability between control and plain pay,
+  no cannonball finish - one seed, no effect called. It does NOT fix the critic on a new map:
+  the unit was not what broke it. On the four left_turn maps V is 6-22x the actual return and ranks
+  0.5 s moves worse than the banked reward alone - it predicts the future of a policy that flies
+  the map, on a map where this policy dies within 5 s.
+* Test-time search (az_mcts, as 7cbf9fe3): blue100 finished (10.07 s; the policy alone does);
+  left_turn x4 died 4.0-12.6 s into the flight (banked 2.0-9.9%) after 3-9 s of wall time.
+  Unchanged: the commit ends the search at its first committed death.
+* Next (the user, 2026-11-23): Direct Advantage Estimation (Pan et al., NeurIPS 2022). Step 1, a
+  frozen-checkpoint check: a centred advantage head trained on the training maps' flights ranks
+  the probe's 4 siblings on the 5 held-out maps, against R + g V and R alone; step 2, a full
+  arm with DAE in place of GAE. Not built, not launched.
+* Cost $4.26 (credit $28.36 -> $24.10). Files ~/ar_m2/runs/paytest/ud_3m (sync with health/:
+  probe_<map>/critic_probe.json, az_<map>/, status.txt; ckpt_final.pt); tables in the session
+  scratchpad split/ana/ (summary.py, evals.py, window.py, probe_table.py).
