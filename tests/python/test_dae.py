@@ -332,9 +332,22 @@ def test_flag_on_trains_resumes_and_refuses():
         r4, d4 = V.run_line(V.ROOT, "dae_pd", _maps(), steps=2048,
                             extra=SM + ["--dae", "1.5", "--critic-pay-d0", "100000"])
         assert r4.returncode != 0 and "--critic-pay-d0" in r4.stdout + r4.stderr
+        # --dae-policy 0: the head as an auxiliary critic (the control's policy and value terms)
+        r5, d5 = V.run_line(V.ROOT, "dae_aux", _maps(), steps=8 * 64 * 12,
+                            extra=SM + ARCH + ["--dae", "1.5", "--dae-policy", "0"], timeout=5400)
+        assert r5.returncode == 0, (r5.stdout + r5.stderr)[-5000:]
+        assert "--dae-policy 0: the advantage head is an AUXILIARY critic" in r5.stdout + r5.stderr
+        c5 = json.loads((d5 / "run.json").read_text(encoding="utf-8"))["config"]
+        assert c5["dae"] == 1.5 and c5["dae_policy"] == 0
+        record_ckpt.audit_cfg(c5)
+        h5, rows5 = _csv(d5 / "progress.csv")
+        assert all(row[h5.index("dae/adv_std")] != "" for row in rows5)
+        r6, d6 = V.run_line(V.ROOT, "dae_pol0", _maps(), steps=2048,
+                            extra=SM + ["--dae-policy", "0"])
+        assert r6.returncode != 0 and "--dae-policy 0 is a mode of --dae" in r6.stdout + r6.stderr
     finally:
         os.environ.pop("SELF_STATES", None)
-        for name in ("dae_on", "dae_adam", "dae_re", "dae_off", "dae_pd"):
+        for name in ("dae_on", "dae_adam", "dae_re", "dae_off", "dae_pd", "dae_aux", "dae_pol0"):
             shutil.rmtree(V.ROOT / "runs" / name, ignore_errors=True)
 
 

@@ -5606,6 +5606,13 @@ def main() -> None:
                          "0.5. --vf only shapes the logged GAE diagnostics; --gae also sets the "
                          "GAE advantage whose spread scales the step. Shape-changing (adv_head): "
                          "ckpt restores, a mismatch is refused")
+    ap.add_argument("--dae-policy", type=int, default=None, choices=(0, 1),
+                    help="--dae: 1 (default) = the policy's advantage is the head's (the paper); "
+                         "0 = the head is an AUXILIARY critic only: the policy keeps the GAE "
+                         "advantage and V its GAE return target, exactly as without --dae, and "
+                         "the head is fitted by Eq. 13 against the current V (detached) - its "
+                         "gradient still shapes the shared trunk. The minibatches are whole envs "
+                         "either way. ckpt restores")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
                          "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
@@ -9364,6 +9371,9 @@ def main() -> None:
         if args.dae is None and ck_cfg.get("dae") is not None:
             args.dae = float(ck_cfg["dae"])
             restored.append(f"dae={args.dae:g}")
+        if args.dae_policy is None and ck_cfg.get("dae_policy") is not None:
+            args.dae_policy = int(ck_cfg["dae_policy"])
+            restored.append(f"dae_policy={args.dae_policy}")
         # --race-dfloor changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it would
         # hand the policy a different objective than its weights were fitted
@@ -11056,6 +11066,10 @@ def main() -> None:
         args.dae = 0.0
     if not (np.isfinite(float(args.dae)) and float(args.dae) >= 0.0):
         raise SystemExit(f"--dae {args.dae:g}: a loss weight > 0, or 0 = off")
+    if args.dae_policy is None:
+        args.dae_policy = 1
+    if int(args.dae_policy) == 0 and not float(args.dae) > 0.0:
+        raise SystemExit("--dae-policy 0 is a mode of --dae: pass --dae too")
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
     if args.race_field_blur is None:
@@ -12321,6 +12335,7 @@ def main() -> None:
     # PAY_SPLIT: flag off, nothing is allocated, traced or written.
     DAE = float(args.dae or 0.0) > 0.0
     DAE_COEF = float(args.dae or 0.0)
+    DAE_POLICY = bool(int(args.dae_policy))
     if DAE:
         for _flag, _on in (
                 ("a discrete view (--view-continuous is required)",
@@ -12356,6 +12371,10 @@ def main() -> None:
                     "behaviour distribution and the whole-env DAE minibatch live in the flat "
                     "single-process rollout and update paths of the continuous-view policy, "
                     "with every sample drawn from the behaviour policy the head is centred on")
+        if not DAE_POLICY:
+            print("--dae-policy 0: the advantage head is an AUXILIARY critic - the policy keeps "
+                  f"the GAE advantage and V its GAE return (--vf {float(args.vf):g}); the head "
+                  f"is fitted by Eq. 13 against V (detached) at {DAE_COEF:g} x 0.5 MSE")
         print(f"--dae {DAE_COEF:g}: Direct Advantage Estimation - the policy's advantage is "
               "the advantage head's output, centred under the behaviour policy (a joint key "
               "table + He1/He2 terms in the view), fitted with V by the paper's Eq. 13 over "
@@ -17275,6 +17294,8 @@ def main() -> None:
     if DAE:
         # --dae, written ONLY when on (a control's config dump gains no key)
         meta["config"]["dae"] = DAE_COEF
+        if not DAE_POLICY:
+            meta["config"]["dae_policy"] = 0
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
@@ -21411,7 +21432,7 @@ def main() -> None:
     # the STORED behaviour distribution; V and the head are fitted together by L_A, whose
     # bootstrap is V_old(s_T) (`f_lastv`, the rollout's own value - the paper's V_target).
     def mb_step_dae(f_scal, f_img, f_act, f_logp, f_z, idx, ent_coef, envs,
-                    f_blsm, f_bmu, f_bls, f_rew, f_done, f_lastv, g_t, f_gae,
+                    f_blsm, f_bmu, f_bls, f_rew, f_done, f_lastv, g_t, f_gae, f_gret,
                     f_air=None, f_jblk=None, f_temp=None, f_tempv=None,
                     f_cct=None, f_ctv=None):
         if f_cct is not None:
@@ -21436,7 +21457,23 @@ def main() -> None:
         B = envs.shape[0]
         G = dae_targets((f_rew[idx] - A).view(T, B), f_done[idx].view(T, B),
                         f_lastv[envs], g_t)
-        vl = 0.5 * (G - value.view(T, B)).pow(2).mean()
+        vl_dae = 0.5 * (G - value.view(T, B)).pow(2).mean()
+        if not DAE_POLICY:
+            # --dae-policy 0 (a Python constant): the control's policy and value terms - the GAE
+            # advantage, normalised as mb_step normalises it, and V on its GAE return; the head
+            # alone is fitted by Eq. 13, against V detached
+            g_a = f_gae[idx]
+            a = (adv_norm_per_map(g_a, (idx % N) // PER, NMAPS) if ADV_MAP
+                 else (g_a - g_a.mean()) / (g_a.std() + 1e-8))
+            vl = 0.5 * (value - f_gret[idx]).pow(2).mean()
+            vl_aux = 0.5 * (G - value.view(T, B).detach()).pow(2).mean()
+            ratio = torch.exp(logp - f_logp[idx])
+            pg = torch.max(-a * ratio,
+                           -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
+            el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())
+            loss = pg + args.vf * vl + DAE_COEF * vl_aux + ent_coef * el
+            return loss, pg, vl, el, logp, A.detach(), G.detach(), g_a, vl_dae.detach()
+        vl = vl_dae
         # the policy's step at GAE's SCALE: A minus its mean, over the std of the GAE advantage of
         # the same rows (per map). A holds only the action-dependent part of the return, 5-6x
         # smaller in std than GAE's estimate; standardised by its own std it made every policy
@@ -21453,7 +21490,7 @@ def main() -> None:
                        -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
         el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())
         loss = pg + DAE_COEF * vl + ent_coef * el
-        return loss, pg, vl, el, logp, A.detach(), G.detach(), g_a
+        return loss, pg, vl, el, logp, A.detach(), G.detach(), g_a, vl_dae.detach()
 
     # ---- --rnn: the SEQUENCE minibatch step ---------------------------------
     # A minibatch is B = N/minibatches whole envs x all T decisions, in
@@ -21624,6 +21661,7 @@ def main() -> None:
                         b_blsm.reshape(T * N, NACT - N_VIEW, NPAD), b_bmu.reshape(T * N, NZ),
                         b_bls.reshape(T * N, NZ), b_rew.reshape(-1), b_done.reshape(-1),
                         torch.zeros(N, device=device), dae_g_t, b_val.reshape(-1),
+                        b_rew.reshape(-1),
                         None if b_air is None else b_air.reshape(-1),
                         None if b_jblk is None else b_jblk.reshape(-1),
                         f_temp=temp_t, f_tempv=tempv_t,
@@ -24359,13 +24397,13 @@ def main() -> None:
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, envs=env_perm[_e], seg=plans[k_mb])
                 elif DAE:
-                    loss, pg, vl, el, logp, dae_a, dae_g, dae_ga = mb_step_dae(
+                    loss, pg, vl, el, logp, dae_a, dae_g, dae_ga, dae_vl = mb_step_dae(
                         f_scal, f_img, f_act, f_logp, f_z, idx, ent_t,
                         env_perm[k_mb * _B:(k_mb + 1) * _B],
                         f_blsm, f_bmu, f_bls, f_rewd, f_doned, f_lastv, dae_g_t, f_adv,
-                        f_air, f_jblk, f_temp=temp_t, f_tempv=tempv_t,
+                        f_ret, f_air, f_jblk, f_temp=temp_t, f_tempv=tempv_t,
                         f_cct=f_cct, f_ctv=f_ctv)
-                    dae_last = (idx, dae_a, dae_g, vl.detach(), dae_ga)
+                    dae_last = (idx, dae_a, dae_g, dae_vl, dae_ga)
                 else:
                     _mbo = mb_step(
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,

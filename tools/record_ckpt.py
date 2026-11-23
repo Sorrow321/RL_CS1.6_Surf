@@ -90,6 +90,9 @@ TRAIN_ONLY = frozenset({
     # --adv-norm-per-map: how the PPO update standardises a --maps run's advantages (per map
     # instead of pooled); a recording runs no update
     "adv_norm_per_map",
+    # --dae-policy: which advantage the PPO update uses (the DAE head's or GAE's); the network's
+    # shape is --dae's (mirrored below) - a recording runs no update
+    "dae_policy",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings
