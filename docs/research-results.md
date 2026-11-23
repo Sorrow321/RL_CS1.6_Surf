@@ -52069,3 +52069,26 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   restarted (one). Files ~/ar_m2/runs/paytest/{ue_3m_try1, ue_3m_try2, ue_auxfull} (the last
   with ckpt_3000582144.pt md5 a1f06ba7 and health/); the screens' and the 2B probe's logs in
   the session scratchpad dae/.
+
+## 2026-11-23 23:35 UTC: PLAN - algorithm comparison on one map: PPO vs V-MPO, SAC, TD3
+
+* The user (2026-11-23), before the large multi-map run: "we used PPO all the time... I'm not
+  entirely convinced that this is the only way to go... test basically all three of them [V-MPO,
+  SAC, TD3]. Start with the easiest one to implement... If it breaks, try to fix something. If
+  it's not showing like obviously stronger results, then give up and iterate... try with just one
+  map... then select the best one and try to go for multi-map." Overnight, operator-run.
+* Testbed: surf_petrus_lite alone, from scratch, 1e9 steps, the incumbent recipe (v14) + round
+  2's arch + --maxvel 4000 + the multimap launch's mcts args, 1024 envs, seed 0; only the
+  learning algorithm changes. One RTX 5090 (cap $0.70/h for this program, the user's earlier OK;
+  back to $0.60 at the end), kept between runs by a queue driver (agent al, runs al_<name>,
+  branch mm/algo off mm/dae e4f6d79b; the box pulls the branch head before each launch).
+* Arms: al_ppo (the control, no change); V-MPO (--vmpo, Song et al. 2019: top-50% advantages,
+  psi = softmax(A / eta) with a learned temperature (eps_eta 0.02), trust region KL(pi_old ||
+  pi) per part - keys 0.005, view mean 0.01, view sigma 1e-5 - with learned multipliers (init
+  5 / 1 / 1), pi_old = the stored behaviour distribution; value loss and entropy bonus kept);
+  then a hybrid SAC and TD3 (off-policy, replay buffer, twin critics), built while the earlier
+  arms train.
+* Judged by the official grader on petrus: the first greedy finish (steps), the share finished
+  after it, the best time; stability (no collapse). A method that breaks gets a fix and a
+  rerun; one not clearly stronger than PPO is dropped; the best goes to the three-map test.
+* Budget: credit $21.52, floor $13 -> ~13 box-hours; ~$0.6 per 1e9-step arm.
