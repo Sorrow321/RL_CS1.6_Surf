@@ -51912,3 +51912,53 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Cost $4.26 (credit $28.36 -> $24.10). Files ~/ar_m2/runs/paytest/ud_3m (sync with health/:
   probe_<map>/critic_probe.json, az_<map>/, status.txt; ckpt_final.pt); tables in the session
   scratchpad split/ana/ (summary.py, evals.py, window.py, probe_table.py).
+
+## 2026-11-23 17:30 UTC: PLAN - DAE: Direct Advantage Estimation in place of GAE, three maps
+
+* The user (2026-11-23), after the critic split (537c7307): "we implement the paper direct
+  advantage estimation". Their reason: V(s) depends on the map (its length, which a new map
+  does not tell), while the advantage - how much better one move is than the policy's average
+  move here - may be distributed alike on every map. The critic probe has failed on the four
+  held-out left_turn maps in every arm so far (adding V makes the 0.5 s move ranking worse
+  than the banked reward alone).
+* The paper: Pan, Guertler, Neitz, Schoelkopf, "Direct Advantage Estimation", NeurIPS 2022
+  (arXiv 2109.06093), Algorithm 1 and Eq. 13; details from the authors' code (hrpan/dae,
+  CustomPPO): A(s,a) = f(s,a) - E_mu f(s,.), centred on the SAMPLING policy mu; the loss
+  sum_t (sum_{t'>=t} g^(t'-t) (r_t' - A_t') + g^(T-t) V_old(s_T) - V(s_t))^2 per n-step segment
+  (a per-sample mean), V and A fitted together (vf_coef 1.5 against GAE's 0.5), the PPO loss
+  on A (normalised), A recomputed each minibatch, the advantage head's init gain 0.1.
+* Code: mm/dae 97c90219 (off mm/split b5e3fa62): --dae COEF. The advantage head sits on the
+  critic tower beside V (registered last; flag off bit-identical to b5e3fa62). The centring is
+  EXACT for this action space (four independent key heads, a Gaussian view): a table over the
+  96 joint key bins plus, per bin, a linear and a quadratic term in the view's standardised
+  deviation u (u and u^2 - 1 have mean zero under the Gaussian, whatever the keys) - no
+  sampling. The rollout stores each decision's sampling distribution (tempered, masked). Eq. 13
+  over each env's 128-decision segment as one (T, T, B) contraction; minibatches of 64 whole
+  envs (2 of 1026 sit out each epoch, drawn afresh); the PPO loss takes A per-map normalised,
+  as the recipe does with GAE. Weight 1.5 x 0.5 MSE = the authors' DAE/GAE critic ratio (3x)
+  on this trainer's --vf 0.5. Kept from the control, not the paper: 4 epochs (paper 6), clip
+  0.2 (0.1), constant lr 3e-4 (annealed). --gae and --vf only shape the logged GAE numbers.
+* Tests (tests/python/test_dae.py, 9): exact centring (enumerated over the 96 bins; Monte
+  Carlo with the view, masked bins included); the targets equal the recursion; on a synthetic
+  problem the loss recovers the true centred advantage (corr > 0.99) and V = E r; the head is
+  last and the rest is the flag-off model; trainer smokes (flag on trains, resumes, refuses
+  --dae 0 on a DAE checkpoint and --critic-pay-d0 with it); flag off bit-identical to
+  b5e3fa62 (config, every eval trajectory, progress.csv minus fps, the final weights). The
+  helpers compile (inductor, CPU) and match eager. The probe path ran on a DAE checkpoint.
+* The probe: az_mcts --az-critic-probe now ranks the 4 siblings also by their macro's
+  advantage sum, sum_t g^t A(s_t, a_t) at every decision of the macro (rho A), beside R + g V
+  (rho V) and R alone (rho R).
+* One arm, ue_3m: the control ua_3m's exact line (v14 + the seven-map extras + round 2's arch;
+  cannonball + petrus + blue200, 342 envs each; seed 0; 8e9 steps) + --dae 1.5. Compared with
+  ua_3m (control), ub_3m (plain pay) and ud_3m (critic split). One RTX 5090 <= $0.60/h.
+* Measured as before: per map the official grader's first finish (own steps), the share
+  finished over the same evals and the best time; the end-of-run probe on the five held-out
+  maps (blue100 and the four left_turn versions): rho A against rho V and rho R. The user's
+  question: does a learned advantage rank moves on a map it never saw, where V fails?
+* Expected (mine): training may start slower (the policy follows a head that learns from
+  zero; the authors report DAE >= GAE on MinAtar and Atari); on left_turn rho A above rho V
+  (the advantage has no map-level offset to get wrong), but whether it beats the banked reward
+  alone (mean 0.31 in ud) is open: A at a new map's state is still read off its features.
+* Budget ~$4.3, ~7 h (credit $24.10). Watchdog with harvest, droplet watcher (floor $13),
+  dashboard tunnel :8685. Known: a --wd-skip-norms checkpoint does not resume on this line
+  (pre-existing), so the arm runs in one piece.
