@@ -2398,6 +2398,19 @@ def dae_targets(d, done, vlast, g):
     return G + tail * vlast[None, :]
 
 
+def vmpo_kls(lsm_old, lsm_new, mu_old, mu, ls_old, ls_new):
+    """--vmpo's trust-region terms per row: KL(pi_old || pi) of the categorical heads (summed over
+    heads; a pad or masked bin has p_old 0 and adds 0) and the view Gaussian's KL split as the
+    paper's decoupled pair - the MEAN part with the old sigma, 1/2 sum (mu - mu_old)^2 / s_old^2,
+    and the SIGMA part with the old mean, 1/2 sum (s_old^2 / s^2 - 1 + 2 log(s / s_old)).
+    -> (kl_cat, kl_mu, kl_sigma), each (B,)."""
+    kl_cat = (lsm_old.exp() * (lsm_old - lsm_new)).sum((-1, -2))
+    var_old = torch.exp(2.0 * ls_old)
+    kl_mu = 0.5 * ((mu - mu_old).pow(2) / var_old).sum(-1)
+    kl_sig = 0.5 * (var_old * torch.exp(-2.0 * ls_new) - 1.0 + 2.0 * (ls_new - ls_old)).sum(-1)
+    return kl_cat, kl_mu, kl_sig
+
+
 def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     """The --view-continuous rollout draw (no grad): heads N_VIEW..5 by
     Gumbel-argmax on the padded slice (sample_padded, unchanged), the view
@@ -5622,6 +5635,29 @@ def main() -> None:
                          "moved ~lr per step coherently (ue_3m: one minibatch step pushed "
                          "approx_kl past 0.045; the control's whole 64-step update reaches "
                          "~0.025). ckpt restores")
+    ap.add_argument("--vmpo", type=int, default=None, choices=(0, 1),
+                    help="V-MPO (Song et al. 2019; the user, 2026-11-23: replace PPO) in place of "
+                         "PPO's clipped surrogate: per minibatch the top --vmpo-topk of the "
+                         "(per-map normalised) GAE advantages, weights psi = softmax(A / eta) "
+                         "over them, the loss - sum psi log pi(a|s); a learned temperature eta "
+                         "(L_eta = eta eps_eta + eta log mean exp(A / eta)) and a trust region "
+                         "KL(pi_old || pi) < eps per part (the key heads, the view mean, the view "
+                         "sigma) with learned Lagrange multipliers. pi_old = the stored behaviour "
+                         "distribution. The value loss and the entropy bonus stay the recipe's. "
+                         "ckpt restores")
+    ap.add_argument("--vmpo-eps-eta", type=float, default=None,
+                    help="--vmpo: the temperature constraint epsilon_eta (paper Atari 0.02)")
+    ap.add_argument("--vmpo-eps-alpha", type=float, default=None,
+                    help="--vmpo: the key heads' KL bound (paper Atari 0.005)")
+    ap.add_argument("--vmpo-eps-mu", type=float, default=None,
+                    help="--vmpo: the view mean's KL bound (paper continuous 0.005-0.5; 0.01)")
+    ap.add_argument("--vmpo-eps-sigma", type=float, default=None,
+                    help="--vmpo: the view sigma's KL bound (paper 5e-6 - 5e-5; 1e-5)")
+    ap.add_argument("--vmpo-topk", type=float, default=None,
+                    help="--vmpo: the share of each minibatch's advantages the E-step keeps (0.5)")
+    ap.add_argument("--vmpo-dual-lr", type=float, default=None,
+                    help="--vmpo: Adam lr of the temperature and the multipliers (softplus-"
+                         "parametrised; 3e-3)")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
                          "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
@@ -9386,6 +9422,12 @@ def main() -> None:
         if args.dae_pi_lr is None and ck_cfg.get("dae_pi_lr") is not None:
             args.dae_pi_lr = float(ck_cfg["dae_pi_lr"])
             restored.append(f"dae_pi_lr={args.dae_pi_lr:g}")
+        # --vmpo: the policy loss and its constraints (restored as a set)
+        for _k in ("vmpo", "vmpo_eps_eta", "vmpo_eps_alpha", "vmpo_eps_mu", "vmpo_eps_sigma",
+                   "vmpo_topk", "vmpo_dual_lr"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, type(ck_cfg[_k])(ck_cfg[_k]))
+                restored.append(f"{_k}={ck_cfg[_k]:g}")
         # --race-dfloor changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it would
         # hand the policy a different objective than its weights were fitted
@@ -11088,6 +11130,13 @@ def main() -> None:
         raise SystemExit(f"--dae-pi-lr {args.dae_pi_lr:g}: a factor > 0")
     if float(args.dae_pi_lr) != 1.0 and not float(args.dae) > 0.0:
         raise SystemExit("--dae-pi-lr is a setting of --dae: pass --dae too")
+    for _k, _d in (("vmpo", 0), ("vmpo_eps_eta", 0.02), ("vmpo_eps_alpha", 0.005),
+                   ("vmpo_eps_mu", 0.01), ("vmpo_eps_sigma", 1e-5), ("vmpo_topk", 0.5),
+                   ("vmpo_dual_lr", 3e-3)):
+        if getattr(args, _k) is None:
+            setattr(args, _k, _d)
+    if not 0.0 < float(args.vmpo_topk) <= 1.0:
+        raise SystemExit(f"--vmpo-topk {args.vmpo_topk:g}: a share in (0, 1]")
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
     if args.race_field_blur is None:
@@ -12400,6 +12449,34 @@ def main() -> None:
               f"{DAE_COEF:g} x 0.5 MSE; minibatches are whole envs; the step is scaled by the "
               "per-map std of the GAE advantage (--gae "
               f"{float(args.gae):g}); --vf {float(args.vf):g} is a logged diagnostic only")
+    # --vmpo (the user, 2026-11-23): V-MPO's policy loss in place of PPO's. A Python constant:
+    # flag off, nothing is allocated, traced or written.
+    VMPO = bool(int(args.vmpo))
+    VMPO_EPS = (float(args.vmpo_eps_eta), float(args.vmpo_eps_alpha), float(args.vmpo_eps_mu),
+                float(args.vmpo_eps_sigma))
+    if VMPO:
+        for _flag, _on in (
+                ("a discrete view (--view-continuous is required)",
+                 not bool(args.view_continuous)),
+                ("--dae", DAE),
+                ("--rnn", RNN),
+                ("--chunk/--codebook", H > 0 or bool(args.codebook)),
+                ("--ddp", D.enabled),
+                ("--curiosity-cond", bool(args.curiosity_cond)),
+                ("--crl", bool(args.crl)),
+                ("--ez-eps/--spawn-burst", float(args.ez_eps or 0.0) > 0.0
+                 or int(args.spawn_burst or 0) > 0),
+                ("--aug-*", any(float(getattr(args, _a) or 0.0) > 0.0
+                                for _a in ("aug_mirror", "aug_drop", "aug_noise",
+                                           "aug_shift")))):
+            if _on:
+                raise SystemExit(f"--vmpo is not implemented with {_flag}: its policy loss lives "
+                                 "in the flat single-process mb_step of the continuous-view policy, "
+                                 "every sample drawn from the behaviour policy it constrains to")
+        print(f"--vmpo: V-MPO's policy loss in place of PPO's - top {float(args.vmpo_topk):g} of "
+              f"each minibatch's advantages weighted softmax(A / eta), eps_eta {VMPO_EPS[0]:g}; "
+              f"KL(pi_old || pi) bounds keys {VMPO_EPS[1]:g}, view mean {VMPO_EPS[2]:g}, view "
+              f"sigma {VMPO_EPS[3]:g}; duals at Adam lr {float(args.vmpo_dual_lr):g}")
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -15747,6 +15824,14 @@ def main() -> None:
     else:
         opt = torch.optim.Adam(_pi_lr_groups([{"params": list(policy.parameters())}]),
                                lr=args.lr, eps=1e-5, fused=(device.type == "cuda"))
+    # --vmpo: the temperature eta and the three Lagrange multipliers (keys, view mean, view
+    # sigma), softplus-parametrised (always > 0) and initialised as the paper's Table 1 (eta 1,
+    # alpha 5 for the categorical part, 1 and 1 for the Gaussian's two); their own Adam
+    vmpo_raw = vmpo_opt = None
+    if VMPO:
+        _init = torch.tensor([1.0, 5.0, 1.0, 1.0], device=device)
+        vmpo_raw = nn.Parameter(torch.log(torch.expm1(_init)))
+        vmpo_opt = torch.optim.Adam([vmpo_raw], lr=float(args.vmpo_dual_lr), eps=1e-8)
     DROP_GEN = None
     if float(args.dropout) > 0.0:
         print(f"consistent dropout {float(args.dropout):g} after every tower "
@@ -16467,6 +16552,12 @@ def main() -> None:
             print(f"optimizer lr: {ck_lr:g} (ckpt state) -> {args.lr:g}")
         for g in opt.param_groups:
             g["lr"] = args.lr * float(g.get("lr_scale", 1.0))
+        if VMPO and ck.get("vmpo") is not None:
+            with torch.no_grad():
+                vmpo_raw.copy_(ck["vmpo"]["raw"].to(device))
+            vmpo_opt.load_state_dict(ck["vmpo"]["opt"])
+            print("--vmpo: restored the temperature and the multipliers "
+                  + "/".join(f"{v:.4g}" for v in (F.softplus(vmpo_raw) + 1e-8).tolist()))
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
         if (isinstance(reward_fn, RaceReward)
                 and ck.get("int_counts") is not None):
@@ -17337,6 +17428,12 @@ def main() -> None:
             meta["config"]["dae_policy"] = 0
         if float(args.dae_pi_lr) != 1.0:
             meta["config"]["dae_pi_lr"] = float(args.dae_pi_lr)
+    if VMPO:
+        # --vmpo, written ONLY when on (a control's config dump gains no key)
+        meta["config"]["vmpo"] = 1
+        for _k in ("vmpo_eps_eta", "vmpo_eps_alpha", "vmpo_eps_mu", "vmpo_eps_sigma",
+                   "vmpo_topk", "vmpo_dual_lr"):
+            meta["config"][_k] = float(getattr(args, _k))
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
@@ -17989,6 +18086,11 @@ def main() -> None:
         CSV_COLS += ["dae/adv_std", "dae/adv_abs", "dae/ret", "dae/ev", "dae/adv_vs_gae"]
         for _s in slots:
             CSV_COLS += [f"dae/adv_std.{_s.tag}"]
+    if VMPO:
+        # --vmpo, only when on: the last minibatch's temperature and multipliers (keys, view mean,
+        # view sigma), its three KL(pi_old || pi) and the largest E-step weight
+        CSV_COLS += ["vmpo/eta", "vmpo/alpha", "vmpo/alpha_mu", "vmpo/alpha_sigma", "vmpo/kl",
+                     "vmpo/kl_mu", "vmpo/kl_sigma", "vmpo/psi_max"]
     #   dip/*  the SETBACK diagnostic (surfgym/dipmeter.py), LAST for the
     #          same strict-prefix header-migration rule as everything above
     #          and written by EVERY race arm (no flag; --no-dip-diag turns
@@ -19433,9 +19535,11 @@ def main() -> None:
     # --dae: the BEHAVIOUR distribution of every decision - the categorical heads' tempered,
     # masked log-probabilities and the Gaussian's mean and tempered log sigma - which the
     # advantage head is centred on in the update (the policy has moved by then)
-    b_blsm = (torch.zeros((T, N, NACT - N_VIEW, NPAD), device=device) if DAE else None)
-    b_bmu = torch.zeros((T, N, NZ), device=device) if DAE else None
-    b_bls = torch.zeros((T, N, NZ), device=device) if DAE else None
+    # (--vmpo reads the same three as pi_old, the distribution its trust region is measured from)
+    BEHAV = DAE or VMPO
+    b_blsm = (torch.zeros((T, N, NACT - N_VIEW, NPAD), device=device) if BEHAV else None)
+    b_bmu = torch.zeros((T, N, NZ), device=device) if BEHAV else None
+    b_bls = torch.zeros((T, N, NZ), device=device) if BEHAV else None
     # the per-decision discount the targets use: a tensor (a tick ramp moves it per iteration;
     # a Python float in the compiled signature would recompile every time it moved)
     dae_g_t = torch.zeros((), device=device) if DAE else None
@@ -19473,9 +19577,9 @@ def main() -> None:
     # --critic-pay-d0: V_P of the decision, written inside the captured graph like static_val
     static_vq = torch.zeros(N, device=device) if PAY_SPLIT else None
     # --dae: the decision's behaviour distribution, written inside the captured graph
-    static_blsm = (torch.zeros((N, NACT - N_VIEW, NPAD), device=device) if DAE else None)
-    static_bmu = torch.zeros((N, NZ), device=device) if DAE else None
-    static_bls = torch.zeros((N, NZ), device=device) if DAE else None
+    static_blsm = (torch.zeros((N, NACT - N_VIEW, NPAD), device=device) if BEHAV else None)
+    static_bmu = torch.zeros((N, NZ), device=device) if BEHAV else None
+    static_bls = torch.zeros((N, NZ), device=device) if BEHAV else None
     # --view-continuous: the drawn z and the view command the core gets,
     # STATIC buffers written inside the captured graph like static_act
     static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
@@ -20115,7 +20219,7 @@ def main() -> None:
                 padded = ROLL_MASK(padded)
             act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
                                        tempv_t)
-            if DAE:
+            if BEHAV:
                 # sample_view's own two tempers, on the same masked slice: the measure the
                 # draw came from (a Python constant - the control's graph has no such copy)
                 static_blsm.copy_(F.log_softmax(_temper_logits(padded[:, N_VIEW:], temp_t),
@@ -21105,6 +21209,9 @@ def main() -> None:
         state = {"policy": policy.state_dict(),
                  "optimizer": contiguous_optimizer_state(opt.state_dict()),
                  "global_step": global_step, "config": meta["config"]}
+        if VMPO:
+            # --vmpo: the temperature and the multipliers (raw, pre-softplus) and their Adam
+            state["vmpo"] = {"raw": vmpo_raw.detach().cpu(), "opt": vmpo_opt.state_dict()}
         if EMA:
             # --eval-ema: the observed weight averages (a resume continues them)
             state["policy_ema"] = [{"half": float(_h), "policy": _m.state_dict()}
@@ -21290,7 +21397,8 @@ def main() -> None:
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
                 f_priv=None, f_z=None, f_temp=None, f_tempv=None,
-                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None, f_retq=None):
+                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None, f_retq=None,
+                f_blsm=None, f_bmu=None, f_bls=None, vmpo_raw=None):
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
@@ -21438,6 +21546,41 @@ def main() -> None:
             a = (a - adv_mean) / (adv_std + 1e-8)
         pg = torch.max(-a * ratio,
                        -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
+        if VMPO:
+            # --vmpo (a Python constant): V-MPO's policy loss replaces the surrogate above (its
+            # expression is dead code then). E-step on the top VMPO_TOPK of this minibatch's
+            # normalised advantages: psi = softmax(A / eta) over them; M-step: - sum psi log pi;
+            # eta's own loss; the trust region KL(pi_old || pi) per part with its multiplier
+            a_s = a.detach().float()
+            n_top = max(1, int(a_s.numel() * float(args.vmpo_topk)))
+            sel = a_s >= torch.topk(a_s, n_top).values.min()
+            duals = F.softplus(vmpo_raw) + 1e-8
+            eta = duals[0]
+            low = torch.full_like(a_s, -1e30)
+            psi = torch.softmax(torch.where(sel, a_s / eta.detach(), low), 0)
+            pg = -(psi * logp).sum()
+            n_sel = sel.sum().clamp_min(1).float()
+            l_eta = (eta * VMPO_EPS[0]
+                     + eta * (torch.logsumexp(torch.where(sel, a_s / eta, low), 0)
+                              - torch.log(n_sel)))
+            # pi_old: the stored behaviour distribution (tempered, masked); pi: the same tempers
+            _tk = f_temp
+            lsm_new = F.log_softmax(_temper_logits(padded[:, N_VIEW:], _tk), dim=-1)
+            lsm_old = f_blsm[idx]
+            _tv = _tk if f_tempv is None else f_tempv
+            if torch.is_tensor(_tv) and _tv.dim() == 3:
+                _tv = _tv.reshape(_tv.shape[0], 1)
+            ls_new = torch.broadcast_to(_temper_log_std(policy.log_std(), _tv), mu.shape)
+            kl_cat, kl_mu, kl_sig = vmpo_kls(lsm_old, lsm_new, f_bmu[idx], mu, f_bls[idx],
+                                             ls_new)
+            l_alpha = 0.0
+            for _j, _kl in ((1, kl_cat), (2, kl_mu), (3, kl_sig)):
+                _m = _kl.mean()
+                l_alpha = (l_alpha + duals[_j] * (VMPO_EPS[_j] - _m.detach())
+                           + duals[_j].detach() * _m)
+            vstats = torch.stack([eta, duals[1], duals[2], duals[3], kl_cat.mean(), kl_mu.mean(),
+                                  kl_sig.mean(), psi.max()]).detach()
+            pg = pg + l_eta + l_alpha
         vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
         if INT_SPLIT:
             # the intrinsic value loss rides inside `vl` at int_vf / vf, so
@@ -21463,6 +21606,10 @@ def main() -> None:
             loss = loss + AUG_COEF * (aug_kl + aug_vm)
             return (loss, pg, vl, el, logp,
                     torch.stack([aug_kl.detach(), aug_vm.detach()]))
+        if VMPO:
+            # --vmpo: eta, the three multipliers, the three KLs and psi's largest weight ride out
+            # for vmpo/* (--aug-* is refused with it, so _mbo[5] is never ambiguous)
+            return loss, pg, vl, el, logp, vstats
         return loss, pg, vl, el, logp
 
     # ---- --dae: the whole-env Direct Advantage Estimation step ------------------
@@ -21764,7 +21911,13 @@ def main() -> None:
                            if CC_BKT else None),
                     # --critic-pay-d0: the progress head's target rides in like f_ret
                     **({"f_retq": b_rew.reshape(-1)} if PAY_SPLIT else {}),
+                    # --vmpo: pi_old's buffers and the duals
+                    **({"f_blsm": b_blsm.reshape(T * N, NACT - N_VIEW, NPAD),
+                        "f_bmu": b_bmu.reshape(T * N, NZ), "f_bls": b_bls.reshape(T * N, NZ),
+                        "vmpo_raw": vmpo_raw} if VMPO else {}),
                     )[0].backward()
+            if VMPO:
+                vmpo_opt.zero_grad(set_to_none=True)
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
                   f"{time.perf_counter() - t_c:.0f}s "
@@ -22409,6 +22562,7 @@ def main() -> None:
     int_row = []              # --int-split: this iteration's int/* values
     pay_row = []              # --critic-pay-d0: this iteration's pay/* values
     dae_row = [float("nan")] * (5 + NMAPS)    # --dae: this iteration's dae/* values
+    vmpo_row = [float("nan")] * 8             # --vmpo: this iteration's vmpo/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
     best_stage_saved = -1.0           # --save-best on a --ramp-sequence run: best mean eval stage
@@ -22894,7 +23048,7 @@ def main() -> None:
                     b_vint[t].copy_(static_vint)
                 if PAY_SPLIT:
                     b_vq[t].copy_(static_vq)
-                if DAE:
+                if BEHAV:
                     b_blsm[t].copy_(static_blsm)
                     b_bmu[t].copy_(static_bmu)
                     b_bls[t].copy_(static_bls)
@@ -24288,6 +24442,11 @@ def main() -> None:
         # --critic-pay-d0: the progress return, in the critic's one unit (V_P's target)
         f_retq = ret_q.reshape(-1) if PAY_SPLIT else None
         mb = MB
+        if VMPO:
+            # --vmpo: pi_old, flattened like every other buffer (idx gathers the decision's row)
+            f_blsm = b_blsm.reshape(T * N, NACT - N_VIEW, NPAD)
+            f_bmu = b_bmu.reshape(T * N, NZ)
+            f_bls = b_bls.reshape(T * N, NZ)
         if DAE:
             # --dae: the behaviour distributions, the raw rewards (a truncation's bootstrap
             # inside, as GAE reads them), the episode ends and V_old(s_T) per env; a minibatch
@@ -24357,6 +24516,7 @@ def main() -> None:
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
         dae_last = None                # --dae: (idx, A, G, vl, A_GAE) of the last minibatch
+        vmpo_last = None               # --vmpo: the last minibatch's duals, KLs, psi max
         last_pooled = None             # --ddp-maps shard: the last minibatch's union moments
         aug_sum, aug_n = None, 0       # --aug-*: DrAC's (G_pi, G_V) over this update
         env_np = None
@@ -24454,8 +24614,12 @@ def main() -> None:
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
                         f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}),
-                        **({"f_retq": f_retq} if PAY_SPLIT else {}))
+                        **({"f_retq": f_retq} if PAY_SPLIT else {}),
+                        **({"f_blsm": f_blsm, "f_bmu": f_bmu, "f_bls": f_bls,
+                            "vmpo_raw": vmpo_raw} if VMPO else {}))
                     loss, pg, vl, el, logp = _mbo[:5]
+                    if VMPO:
+                        vmpo_last = _mbo[5]
                     if AUG_ON:
                         # --aug-*: (G_pi, G_V) summed over the update, one read per iteration
                         aug_sum = _mbo[5] if aug_sum is None else aug_sum + _mbo[5]
@@ -24507,6 +24671,8 @@ def main() -> None:
                         tkl_hit = (int(_ep), int(k_mb), _klv)
                         break
                 opt.zero_grad(set_to_none=True)
+                if VMPO:
+                    vmpo_opt.zero_grad(set_to_none=True)
                 loss.backward()
                 if warming:
                     # BEFORE the clip, so the grad norm the critic is
@@ -24519,6 +24685,8 @@ def main() -> None:
                 # local grads then averaging is a different algorithm
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
+                if VMPO:
+                    vmpo_opt.step()
                 if VIEW_ABS and not warming:
                     # keep the raw pitch log sigma under its cap so its
                     # gradient stays alive (Policy.project_log_std). Skipped
@@ -24533,6 +24701,8 @@ def main() -> None:
                 last_diag = (idx, logp, vl, pg, el)
                 if a_mean is not None:
                     last_pooled = (a_mean[k_mb], a_std[k_mb])
+        if VMPO and vmpo_last is not None:
+            vmpo_row = vmpo_last.tolist()      # --vmpo: one 8-float read per iteration
         if DAE and dae_last is not None:
             # --dae: one (5 + NMAPS)-float read per iteration (adv_vs_gae: the head's A std over
             # the GAE advantage's on the same rows - the share of GAE's spread the action explains)
@@ -25978,6 +26148,9 @@ def main() -> None:
                            # dae/*, only under --dae (the header's block above)
                            + ([round(_v, 5) if _v == _v else ""
                                for _v in dae_row] if DAE else [])
+                           # vmpo/*, only under --vmpo (the header's block above)
+                           + ([round(_v, 7) if _v == _v else ""
+                               for _v in vmpo_row] if VMPO else [])
                            # dip/*, TRULY LAST (after the two conditional
                            # blocks, so an old header stays a strict prefix
                            # and migrates by padding). Blank where the

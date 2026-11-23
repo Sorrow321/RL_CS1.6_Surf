@@ -95,6 +95,9 @@ TRAIN_ONLY = frozenset({
     "dae_policy",
     # --dae-pi-lr: the policy parameters' learning-rate factor - an optimizer setting
     "dae_pi_lr",
+    # --vmpo and its constants: the PPO update's policy loss (V-MPO); a recording runs no update
+    "vmpo", "vmpo_eps_eta", "vmpo_eps_alpha", "vmpo_eps_mu", "vmpo_eps_sigma", "vmpo_topk",
+    "vmpo_dual_lr",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings
