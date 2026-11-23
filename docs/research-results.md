@@ -52001,3 +52001,36 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   at the control's level, ~0.03), the paper's own clip 0.1, a lower actor lr; or DAE as a
   CRITIC only (the head trained by Eq. 13 beside the control's GAE update), which answers the
   held-out question (rho A against rho V) with the control's training.
+
+## 2026-11-23 20:35 UTC: NOTE - DAE variant screens (300M steps each, one box); full run: critic only
+
+* The user (19:15 UTC): "try different variants, don't release the box that fast". One RTX
+  5090 ($0.683/h, Germany, instance 62226284) kept from 19:22 UTC; each variant = ue_3m's line
+  (ua_3m + --dae 1.5, mm/dae e4f6d79b) + its flags for 3e8 steps, with the kl guard.
+* New flags (mm/dae): --dae-policy 0 (c656b7ac) = the head as an AUXILIARY critic only (the
+  policy keeps the GAE advantage and V its GAE return; the head fitted by Eq. 13 against V
+  detached; whole-env minibatches); --dae-pi-lr F (e4f6d79b) = the policy's own parameters (pi
+  tower, action and view heads, view log-std) at lr x F, the trunk and critic at --lr. 10 tests.
+* Results (entropy term / median approx_kl at 270-300M; ep reward at 300M; eval at 226M,
+  mean % of cannonball / petrus / blue200):
+
+  variant                        entropy  kl      ep rew  eval 226M        note
+  control ua_3m (reference)      -3.01    0.025   34.9    5.3/49.4/53.2
+  tkl  --target-kl 0.03          -        ~0      ~2      -                frozen: every update
+                                                                           stops after 1 of 64
+                                                                           steps (kl > 0.045)
+  aux  --dae-policy 0            -3.03    0.022   21.1    6.2/6.0/49.0     stable, like control
+  pilr10  --dae-pi-lr 0.1        -2.96    0.061   17.2    0.1/5.6/29.4     kl rising 0.010->0.061
+  pilr03  --dae-pi-lr 0.03       -3.94    0.020   14.8    1.7/1.6/24.8     stable, slow
+  pilrclip  pi-lr 0.1, clip 0.1  -3.81    0.027   13.3    2.9/0.4/29.9     stable, slow
+
+* Read: the runaway is DAE's advantage in the POLICY loss, not the whole-env minibatch (aux
+  has both the minibatch and the head and tracks the control). With the head's advantage, one
+  Adam step at the recipe's lr already moves the policy past kl 0.045 (tkl); a 10x smaller
+  policy lr slows the drift but does not stop it, and the stable settings (0.03x, or 0.1x with
+  the paper's clip 0.1) learn markedly slower than the control by 300M (one seed, early marks).
+* Full run (my choice, the box kept): ue_auxfull = ue_3m's line + --dae-policy 0, 8e9 steps,
+  launched 20:25 UTC on the same box; the end-of-run probe ranks the held-out siblings by the
+  head's advantage sum (rho A) beside rho V and rho R - the user's question with a training
+  that stays the control's. Watcher with probes + harvest, watchdog, kl guard (first hour).
+* Cost of the screens ~$1.2 (credit $23.79 at 19:12 UTC before them).
