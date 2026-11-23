@@ -93,6 +93,8 @@ TRAIN_ONLY = frozenset({
     # --dae-policy: which advantage the PPO update uses (the DAE head's or GAE's); the network's
     # shape is --dae's (mirrored below) - a recording runs no update
     "dae_policy",
+    # --dae-pi-lr: the policy parameters' learning-rate factor - an optimizer setting
+    "dae_pi_lr",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings

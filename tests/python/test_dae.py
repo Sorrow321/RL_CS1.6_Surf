@@ -345,9 +345,22 @@ def test_flag_on_trains_resumes_and_refuses():
         r6, d6 = V.run_line(V.ROOT, "dae_pol0", _maps(), steps=2048,
                             extra=SM + ["--dae-policy", "0"])
         assert r6.returncode != 0 and "--dae-policy 0 is a mode of --dae" in r6.stdout + r6.stderr
+        # --dae-pi-lr: the policy's own parameters in their own groups at lr x the factor
+        r7, d7 = V.run_line(V.ROOT, "dae_pilr", _maps(), steps=8 * 64 * 12,
+                            extra=SM + ARCH + ["--dae", "1.5", "--dae-pi-lr", "0.1"], timeout=5400)
+        o7 = r7.stdout + r7.stderr
+        assert r7.returncode == 0, o7[-5000:]
+        assert "--dae-pi-lr 0.1:" in o7 and "policy parameters at lr 3e-05" in o7
+        c7 = json.loads((d7 / "run.json").read_text(encoding="utf-8"))["config"]
+        assert c7["dae_pi_lr"] == 0.1
+        record_ckpt.audit_cfg(c7)
+        ck7 = torch.load(d7 / "ckpt_final.pt", map_location="cpu", weights_only=False)
+        lrs = sorted({(round(g["lr"], 9), g.get("lr_scale")) for g in ck7["optimizer"]["param_groups"]})
+        assert lrs == [(3e-05, 0.1), (0.0003, 1.0)], lrs
     finally:
         os.environ.pop("SELF_STATES", None)
-        for name in ("dae_on", "dae_adam", "dae_re", "dae_off", "dae_pd", "dae_aux", "dae_pol0"):
+        for name in ("dae_on", "dae_adam", "dae_re", "dae_off", "dae_pd", "dae_aux", "dae_pol0",
+                     "dae_pilr"):
             shutil.rmtree(V.ROOT / "runs" / name, ignore_errors=True)
 
 

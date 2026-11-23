@@ -5613,6 +5613,15 @@ def main() -> None:
                          "the head is fitted by Eq. 13 against the current V (detached) - its "
                          "gradient still shapes the shared trunk. The minibatches are whole envs "
                          "either way. ckpt restores")
+    ap.add_argument("--dae-pi-lr", type=float, default=None,
+                    help="--dae: the POLICY's own parameters (the pi tower, the action and view "
+                         "heads, the view log-std) at lr x this; the shared trunk and the critic "
+                         "keep --lr. 1 = one lr for all (default). Adam's per-parameter step "
+                         "follows the gradient's signal-to-noise, not its scale: the head's "
+                         "advantage is far cleaner than GAE's, so at --lr every policy parameter "
+                         "moved ~lr per step coherently (ue_3m: one minibatch step pushed "
+                         "approx_kl past 0.045; the control's whole 64-step update reaches "
+                         "~0.025). ckpt restores")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
                          "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
@@ -9374,6 +9383,9 @@ def main() -> None:
         if args.dae_policy is None and ck_cfg.get("dae_policy") is not None:
             args.dae_policy = int(ck_cfg["dae_policy"])
             restored.append(f"dae_policy={args.dae_policy}")
+        if args.dae_pi_lr is None and ck_cfg.get("dae_pi_lr") is not None:
+            args.dae_pi_lr = float(ck_cfg["dae_pi_lr"])
+            restored.append(f"dae_pi_lr={args.dae_pi_lr:g}")
         # --race-dfloor changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it would
         # hand the policy a different objective than its weights were fitted
@@ -11070,6 +11082,12 @@ def main() -> None:
         args.dae_policy = 1
     if int(args.dae_policy) == 0 and not float(args.dae) > 0.0:
         raise SystemExit("--dae-policy 0 is a mode of --dae: pass --dae too")
+    if args.dae_pi_lr is None:
+        args.dae_pi_lr = 1.0
+    if not (np.isfinite(float(args.dae_pi_lr)) and float(args.dae_pi_lr) > 0.0):
+        raise SystemExit(f"--dae-pi-lr {args.dae_pi_lr:g}: a factor > 0")
+    if float(args.dae_pi_lr) != 1.0 and not float(args.dae) > 0.0:
+        raise SystemExit("--dae-pi-lr is a setting of --dae: pass --dae too")
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
     if args.race_field_blur is None:
@@ -15684,6 +15702,27 @@ def main() -> None:
             print(f"decoder initialised from {cb_path.name} "
                   f"(+{args.codebook_bias:g} on {NCODES}x{H}x{NACT} fitted "
                   "indices; still fully trainable)")
+    PI_LR = float(args.dae_pi_lr)
+    _PI_PREFIX = ("pi.", "action_head.", "view_head.", "view_std.")
+
+    def _pi_lr_groups(groups):
+        """--dae-pi-lr: every group split in two - the policy's own parameters at lr x PI_LR, the
+        rest at lr - each carrying its factor as "lr_scale" (the resume paths re-derive lr from
+        it). PI_LR 1: the groups as given, untouched."""
+        if PI_LR == 1.0:
+            return groups
+        _pi_ids = {id(q) for n, q in policy.named_parameters() if n.startswith(_PI_PREFIX)}
+        out = []
+        for g in groups:
+            for _on in (True, False):
+                ps = [q for q in g["params"] if (id(q) in _pi_ids) == _on]
+                if ps:
+                    out.append(dict(g, params=ps, lr=float(args.lr) * (PI_LR if _on else 1.0),
+                                    lr_scale=(PI_LR if _on else 1.0)))
+        print(f"--dae-pi-lr {PI_LR:g}: {sum(q.numel() for q in policy.parameters() if id(q) in _pi_ids):,}"
+              f" policy parameters at lr {float(args.lr) * PI_LR:g}, the trunk and the critic at "
+              f"{float(args.lr):g}")
+        return out
     if float(args.wd) > 0.0 and int(args.wd_skip_norms):
         # --wd-skip-norms (mm/health): decay the weight MATRICES only (Linear / Conv kernels,
         # ndim >= 2); biases, LayerNorm / GroupNorm gains and shifts and the view log-std
@@ -15692,8 +15731,8 @@ def main() -> None:
         # all, ledger a47d36da), and a decayed log-std pulls the view noise towards sigma 1.
         _dec = [q for q in policy.parameters() if q.ndim >= 2]
         _nod = [q for q in policy.parameters() if q.ndim < 2]
-        opt = torch.optim.AdamW([{"params": _dec, "weight_decay": float(args.wd)},
-                                 {"params": _nod, "weight_decay": 0.0}],
+        opt = torch.optim.AdamW(_pi_lr_groups([{"params": _dec, "weight_decay": float(args.wd)},
+                                               {"params": _nod, "weight_decay": 0.0}]),
                                 lr=args.lr, eps=1e-5, fused=(device.type == "cuda"))
         print(f"AdamW: decoupled weight decay {float(args.wd):g} on {len(_dec)} weight "
               f"matrices ({sum(q.numel() for q in _dec):,} values); {len(_nod)} biases / norm "
@@ -15701,13 +15740,13 @@ def main() -> None:
     elif float(args.wd) > 0.0:
         # decoupled decay (Loshchilov & Hutter): the same Adam moments, the
         # weights shrink by lr * wd per step outside the gradient
-        opt = torch.optim.AdamW(policy.parameters(), lr=args.lr, eps=1e-5,
-                                weight_decay=float(args.wd),
+        opt = torch.optim.AdamW(_pi_lr_groups([{"params": list(policy.parameters())}]),
+                                lr=args.lr, eps=1e-5, weight_decay=float(args.wd),
                                 fused=(device.type == "cuda"))
         print(f"AdamW: decoupled weight decay {float(args.wd):g}")
     else:
-        opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
-                               fused=(device.type == "cuda"))
+        opt = torch.optim.Adam(_pi_lr_groups([{"params": list(policy.parameters())}]),
+                               lr=args.lr, eps=1e-5, fused=(device.type == "cuda"))
     DROP_GEN = None
     if float(args.dropout) > 0.0:
         print(f"consistent dropout {float(args.dropout):g} after every tower "
@@ -16427,7 +16466,7 @@ def main() -> None:
         if ck_lr != args.lr:
             print(f"optimizer lr: {ck_lr:g} (ckpt state) -> {args.lr:g}")
         for g in opt.param_groups:
-            g["lr"] = args.lr
+            g["lr"] = args.lr * float(g.get("lr_scale", 1.0))
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
         if (isinstance(reward_fn, RaceReward)
                 and ck.get("int_counts") is not None):
@@ -16527,7 +16566,7 @@ def main() -> None:
                              "this run's parameter list: " + str(_e)[:400])
         relayout_optimizer_state(opt)
         for g in opt.param_groups:
-            g["lr"] = args.lr
+            g["lr"] = args.lr * float(g.get("lr_scale", 1.0))
         _iw_retn = bool(RETN and _iw.get("ret_norm") is not None)
         if _iw_retn:
             retn.load_state_dict(_iw["ret_norm"])
@@ -17296,6 +17335,8 @@ def main() -> None:
         meta["config"]["dae"] = DAE_COEF
         if not DAE_POLICY:
             meta["config"]["dae_policy"] = 0
+        if float(args.dae_pi_lr) != 1.0:
+            meta["config"]["dae_pi_lr"] = float(args.dae_pi_lr)
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
