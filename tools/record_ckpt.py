@@ -2338,6 +2338,10 @@ def main(argv=None, build_only: bool = False, device=None):
                     # this file never reads the value. Old checkpoints have
                     # no key and one head.
                     int_split=bool(cfg.get("int_split")),
+                    # --critic-pay-d0 is MIRRORED for the same reason: it adds
+                    # prog_head (the progress value head) and the load below is
+                    # STRICT; no action reads either value column.
+                    pay_split=bool(cfg.get("critic_pay_d0")),
                     # --yaw-cond is MIRRORED for BOTH reasons at once: it
                     # adds a yaw_side.table tensor (shape, so the strict
                     # load below needs it) AND it changes what an action

@@ -2696,7 +2696,10 @@ def main():
                     # critic's value is NaN here unless a search feeds the block: az_mcts does)
                     priv_dim=(_tf.PRIV_DIM if cfg.get("priv_critic") else 0),
                     priv_hidden=int(cfg.get("priv_hidden") or 128),
-                    int_split=bool(cfg.get("int_split"))
+                    int_split=bool(cfg.get("int_split")),
+                    # --critic-pay-d0: MIRRORED (record_ckpt) - prog_head, the progress value
+                    # head; a reader of V combines k V_P + V_R itself (az_mcts.value_k)
+                    pay_split=bool(cfg.get("critic_pay_d0"))
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
@@ -3070,6 +3073,11 @@ def main():
             # the drawn view z next to the engine row: the BC targets plan_to_bc writes
             _w.record_policy_act = True
     value_fn = None
+    if (args.boundary_v or args.score in ("v", "dv")) and cfg.get("critic_pay_d0"):
+        # --critic-pay-d0: the critic's two columns are [V_R, V_P] in two units; this scorer reads
+        # V as one number and no search here uses it (az_mcts combines them with value_k)
+        raise SystemExit("--score v/dv and --boundary-v read V(s) as one number: a "
+                         "--critic-pay-d0 checkpoint's critic has two columns (use --az)")
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
             # one extra batched critic forward on the boundary obs. The

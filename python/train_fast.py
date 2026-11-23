@@ -498,7 +498,8 @@ class Policy(nn.Module):
                  simba: bool = False, split_trunk: bool = False,
                  pitch_sigma_min: float = 0.0, yaw_sigma_max: float = 0.0,
                  conv_norm: bool = False, fp32_trunk: bool = False,
-                 final_ln_affine: bool = True, mlp_act: str = "relu"):
+                 final_ln_affine: bool = True, mlp_act: str = "relu",
+                 pay_split: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -972,6 +973,22 @@ class Policy(nn.Module):
             nn.init.zeros_(self.film[2].bias)
         else:
             self.film = None
+        # ---- --critic-pay-d0: the PROGRESS value head (the user, 2026-11-23) --------------
+        # V(s) = k_map V_P(s) + V_R(s): value_head fits V_R, the part of the return no pay
+        # rate touches; prog_head fits V_P, the progress part paid at one fixed rate on every
+        # map (100 / D per unit); k_map = the map's own rate over that one is applied OUTSIDE
+        # the network (k = D / d0 under 100/d0 pay). Registered LAST of all, so every other
+        # parameter keeps its index and its init draw (the network the control starts from,
+        # plus this head); value_head's input block and init. Off: no module, no draw, no key.
+        if pay_split:
+            if int_split:
+                raise SystemExit("--critic-pay-d0 and --int-split both add the critic's "
+                                 "second column: pick one")
+            self.prog_head = nn.Linear(hidden + self.priv_hidden, 1)
+            nn.init.orthogonal_(self.prog_head.weight, 1.0)
+            nn.init.zeros_(self.prog_head.bias)
+        else:
+            self.prog_head = None
 
     def dropout_resample(self, gen) -> None:
         """--dropout: draw this rollout's sub-network (shared with its update)."""
@@ -1234,18 +1251,25 @@ class Policy(nn.Module):
         """
         if self.priv_dim == 0:
             if self.int_head is None:
-                return self.value_head(t)
+                if self.prog_head is None:
+                    return self.value_head(t)
+                # --critic-pay-d0: (B, 2) = [V_R, V_P], the two heads RAW; every consumer
+                # that wants V(s) in the map's reward units forms k_map V_P + V_R itself
+                return torch.cat([self.value_head(t), self.prog_head(t)], dim=1)
             # --int-split: (B, 2) = [V_E, V_I]. heads()' squeeze(-1) is a
             # no-op on a 2-wide row, so every consumer sees both columns
             # and picks its own (rollout, GAE, bootstrap, mb_step).
             return torch.cat([self.value_head(t), self.int_head(t)], dim=1)
         if priv is None:
-            return torch.full(t.shape[:-1] + (1 if self.int_head is None
+            return torch.full(t.shape[:-1] + (1 if (self.int_head is None
+                                                    and self.prog_head is None)
                                               else 2,), float("nan"),
                               dtype=t.dtype, device=t.device)
         x = torch.cat([t, self.priv_mlp(priv).to(t.dtype)], dim=1)
         if self.int_head is None:
-            return self.value_head(x)
+            if self.prog_head is None:
+                return self.value_head(x)
+            return torch.cat([self.value_head(x), self.prog_head(x)], dim=1)
         return torch.cat([self.value_head(x), self.int_head(x)], dim=1)
 
     def gru_step(self, f, h):
@@ -5447,6 +5471,18 @@ def main() -> None:
                          "the map the recipe's constants were tuned on. Map-relative MEASUREMENTS "
                          "(eval progress %%, the frontier bands, the novelty schedule) keep the "
                          "map's own d0. ckpt restores")
+    ap.add_argument("--critic-pay-d0", type=float, default=None,   # 0 = off
+                    help="race (the user, 2026-11-23): the PAY is unchanged and the CRITIC "
+                         "predicts in one unit on every map. Two value heads: V_P, the "
+                         "progress part of the return as --race-pay-d0 D would pay it "
+                         "(100/D per unit, the same on every map), and V_R, the rest (the "
+                         "finish bonus, the time cost, the energy term, the novelty - "
+                         "terms no pay rate touches); V(s) = k V_P + V_R with k = the map's "
+                         "own rate over 100/D (D/d0 under the default pay), applied outside "
+                         "the network. Each head is fitted to its own stream's GAE return; "
+                         "the policy's advantage is the combined one, so the agent's "
+                         "objective is the control's. Shape-changing (prog_head): ckpt "
+                         "restores, a mismatch is refused")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
                          "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
@@ -9195,6 +9231,11 @@ def main() -> None:
         if args.race_pay_d0 is None and ck_cfg.get("race_pay_d0") is not None:
             args.race_pay_d0 = float(ck_cfg["race_pay_d0"])
             restored.append(f"race_pay_d0={args.race_pay_d0:g}")
+        # --critic-pay-d0: the critic's SHAPE (prog_head) and what its two columns mean; the
+        # state_dict check below refuses either mismatch
+        if args.critic_pay_d0 is None and ck_cfg.get("critic_pay_d0") is not None:
+            args.critic_pay_d0 = float(ck_cfg["critic_pay_d0"])
+            restored.append(f"critic_pay_d0={args.critic_pay_d0:g}")
         # --race-dfloor changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it would
         # hand the policy a different objective than its weights were fitted
@@ -10879,6 +10920,10 @@ def main() -> None:
         args.race_pay_d0 = 0.0
     if float(args.race_pay_d0) < 0.0:
         raise SystemExit(f"--race-pay-d0 {args.race_pay_d0:g}: a distance > 0, or 0 = off")
+    if args.critic_pay_d0 is None:
+        args.critic_pay_d0 = 0.0
+    if not (np.isfinite(float(args.critic_pay_d0)) and float(args.critic_pay_d0) >= 0.0):
+        raise SystemExit(f"--critic-pay-d0 {args.critic_pay_d0:g}: a distance > 0, or 0 = off")
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
     if args.race_field_blur is None:
@@ -12086,6 +12131,60 @@ def main() -> None:
               f"per DECISION (~{_hz:,.0f} decisions = {_hz * KH:,.0f} ticks), "
               f"never cut at an episode end; the policy gradient sees A_E + "
               f"{INT_ADV_COEF:g} x A_I (docs/int_split.md)")
+    # --critic-pay-d0 (the user, 2026-11-23): the critic predicts one map-free progress value
+    # and the map's pay rate scales it (see the flag's help). A Python constant like
+    # INT_SPLIT: flag off, nothing is allocated, traced or written.
+    PAY_SPLIT = float(args.critic_pay_d0 or 0.0) > 0.0
+    # the one progress rate the critic's V_P is in: what --race-pay-d0 D would pay per unit
+    PAYC = (100.0 / float(args.critic_pay_d0) * float(args.race_shaping)
+            if PAY_SPLIT else 0.0)
+    if PAY_SPLIT:
+        if args.reward != "race":
+            raise SystemExit("--critic-pay-d0 splits the RACE reward's progress pay: it "
+                             "needs --reward race")
+        if not float(args.race_shaping) > 0.0:
+            raise SystemExit("--critic-pay-d0 needs --race-shaping > 0: with no progress pay "
+                             "there is nothing for the progress head to fit")
+        if float(args.vf) <= 0.0:
+            raise SystemExit("--critic-pay-d0 fits both value heads at --vf: --vf must be > 0")
+        for _flag, _on in (
+                ("--int-split", INT_SPLIT),
+                ("--race-pay-d0", float(args.race_pay_d0) > 0.0),
+                ("--ret-norm", bool(args.ret_norm)),
+                ("--rnn", RNN),
+                ("--chunk/--codebook", H > 0 or bool(args.codebook)),
+                ("--ddp", D.enabled),
+                ("--reward-per-decision", bool(args.reward_per_decision)),
+                ("--race-arc", bool(args.race_arc)),
+                ("--goals", bool(args.goals)),
+                ("--curiosity-cond", bool(args.curiosity_cond)),
+                ("--crl", bool(args.crl)),
+                ("--priv-critic", bool(args.priv_critic)),
+                ("--obs-reward", bool(args.obs_reward)),
+                ("--exec-cut", EXEC_CUT),
+                ("--reset-critic", bool(args.reset_critic)),
+                ("--critic-warmup", int(args.critic_warmup or 0) > 0),
+                ("--tail-weight", float(args.tail_weight or 0.0) > 0.0),
+                ("--rnd-coef", float(args.rnd_coef or 0.0) > 0.0),
+                ("--bc-file", bool(args.bc_file)),
+                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                ("--aug-*", any(float(getattr(args, _a) or 0.0) > 0.0
+                                for _a in ("aug_mirror", "aug_drop", "aug_noise",
+                                           "aug_shift")))):
+            if _on:
+                raise SystemExit(
+                    f"--critic-pay-d0 is not implemented with {_flag}: the 2-wide value "
+                    "output, the progress stream's GAE and its value loss live in the flat "
+                    "single-process rollout, GAE and mb_step paths of the geodesic race "
+                    "reward, with V(s) read as one number nowhere else (--race-pay-d0 would "
+                    "make every k 1: that is plain pay, its own arm)")
+        print(f"--critic-pay-d0 {float(args.critic_pay_d0):,.0f}: the PAY is unchanged; the "
+              f"critic has two heads - V_P, the progress part of the return at "
+              f"{PAYC:.6g} per unit on every map (what --race-pay-d0 "
+              f"{float(args.critic_pay_d0):,.0f} would pay), and V_R, the rest - and "
+              "V = k_map V_P + V_R with k_map = the map's own rate / that one; each head is "
+              "fitted to its own stream's GAE return, the policy's advantage is the "
+              "combined one")
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -15323,7 +15422,8 @@ def main() -> None:
                     conv_norm=bool(args.conv_norm),
                     fp32_trunk=bool(args.fp32_trunk),
                     final_ln_affine=bool(args.final_ln_affine),
-                    mlp_act=str(args.mlp_act)).to(device)
+                    mlp_act=str(args.mlp_act),
+                    pay_split=PAY_SPLIT).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -15544,6 +15644,7 @@ def main() -> None:
                 dip_speed_margin=args.dip_speed_margin,
                 dip_speed_cap=args.dip_speed_cap,
                 int_split=INT_SPLIT,
+                prog_split=PAY_SPLIT,
                 speed_equiv=args.speed_equiv,
                 fail_pen=args.fail_pen,
                 finish_k=args.finish_k,
@@ -15713,6 +15814,32 @@ def main() -> None:
         out = np.empty(fleet.n_envs, np.float32)
         for _s in slots:
             out[_s.sl] = _s.reward_fn.int_r
+        return out
+
+    # --critic-pay-d0: per env, k = its map's pay rate over the critic's one rate (PAYC), and
+    # the progress the reward functions reported on their LAST call in the critic's units
+    PAY_K_NP = None
+    if PAY_SPLIT:
+        PAY_K_NP = np.empty(fleet.n_envs, np.float64)
+        for _s in slots:
+            _rf = _s.reward_fn
+            if (not isinstance(_rf, RaceReward) or not _rf.prog_split
+                    or not float(_rf.scale) > 0.0):
+                raise SystemExit(f"--critic-pay-d0: map {_s.tag} has no split race reward "
+                                 "with a positive pay rate")
+            PAY_K_NP[_s.sl] = float(_rf.scale) / PAYC
+        print("--critic-pay-d0: k = map pay rate / critic rate: "
+              + ", ".join(f"{_s.tag} {float(_s.reward_fn.scale) / PAYC:.6g}" for _s in slots))
+
+    def _prog_q():
+        """--critic-pay-d0: this call's progress per env in slot order, in the critic's units
+        (RaceReward.prog_r x PAYC) - read right after each fleet.reward call, exactly where r
+        is, so the decision's sum and the truncation bootstrap follow r term for term."""
+        if len(slots) == 1:
+            return (reward_fn.prog_r * PAYC).astype(np.float32)
+        out = np.empty(fleet.n_envs, np.float32)
+        for _s in slots:
+            out[_s.sl] = _s.reward_fn.prog_r * PAYC
         return out
 
     # --ret-norm / --eval-stall. Both are args-derived, hence RANK-SYMMETRIC,
@@ -16028,6 +16155,19 @@ def main() -> None:
                 "would start from noise against a trained V_E. Start the "
                 "arm from scratch (the mechanism is a scratch recipe), or "
                 "resume a checkpoint trained with --int-split.")
+        # --critic-pay-d0 changes the SHAPE of the critic too (prog_head), in both directions
+        _has_prog = "prog_head.weight" in (ck.get("policy") or {})
+        if _has_prog and not PAY_SPLIT:
+            raise SystemExit(
+                "this checkpoint was trained with --critic-pay-d0 (it carries prog_head, the "
+                "progress value head, and its value_head fits only the REST of the return): "
+                "resuming it without the flag would read V_R as the whole value. Pass "
+                "--critic-pay-d0 (the config restores it unless --critic-pay-d0 0 was passed).")
+        if PAY_SPLIT and not _has_prog:
+            raise SystemExit(
+                "--critic-pay-d0 cannot warm-start a ONE-HEAD checkpoint: its value_head fitted "
+                "the whole return, not the rest of it, and a fresh V_P would start from noise. "
+                "Start the arm from scratch, or resume a checkpoint trained with the flag.")
         _has_view = "view_head.weight" in (ck.get("policy") or {})
         if VIEWC and not _has_view:
             raise SystemExit(
@@ -16938,6 +17078,9 @@ def main() -> None:
         meta["config"]["wd_skip_norms"] = 1
     if float(args.race_pay_d0) > 0.0:
         meta["config"]["race_pay_d0"] = float(args.race_pay_d0)
+    if PAY_SPLIT:
+        # --critic-pay-d0, written ONLY when on (a control's config dump gains no key)
+        meta["config"]["critic_pay_d0"] = float(args.critic_pay_d0)
     if float(args.target_kl or 0.0) > 0.0:
         # --target-kl: an optimizer setting, recorded for provenance (TRAIN_ONLY in record_ckpt)
         meta["config"]["target_kl"] = float(args.target_kl)
@@ -17576,6 +17719,13 @@ def main() -> None:
         # intrinsic return R_I, the mean V_I, the mean |A_I| (before
         # --int-adv-coef) and V_I's explained variance of R_I
         CSV_COLS += ["int/ret_mean", "int/v_mean", "int/adv_abs", "int/ev"]
+    if PAY_SPLIT:
+        # --critic-pay-d0, only when on: over the rollout buffer, the mean progress return
+        # R_P and mean V_P (the critic's one unit), V_P's explained variance of R_P and V_R's
+        # of R_R - pooled, then per map
+        CSV_COLS += ["pay/ret_q", "pay/v_q", "pay/ev_q", "pay/ev_r"]
+        for _s in slots:
+            CSV_COLS += [f"pay/ev_q.{_s.tag}", f"pay/ev_r.{_s.tag}"]
     #   dip/*  the SETBACK diagnostic (surfgym/dipmeter.py), LAST for the
     #          same strict-prefix header-migration rule as everything above
     #          and written by EVERY race arm (no flag; --no-dip-diag turns
@@ -19012,6 +19162,18 @@ def main() -> None:
     # flag-off: nothing allocated, nothing traced)
     b_rint = torch.zeros((T, N), device=device) if INT_SPLIT else None
     b_vint = torch.zeros((T, N), device=device) if INT_SPLIT else None
+    # --critic-pay-d0: the progress stream (critic units) and V_P per decision; b_val holds
+    # the COMBINED V = k V_P + V_R, so GAE, ret and every logged value stay in reward units.
+    # K_ENV: each env's k (its map's pay rate over the critic's), a constant of the env.
+    b_q = torch.zeros((T, N), device=device) if PAY_SPLIT else None
+    b_vq = torch.zeros((T, N), device=device) if PAY_SPLIT else None
+    if PAY_SPLIT:
+        if len(PAY_K_NP) != N:
+            raise SystemExit(f"--critic-pay-d0: {len(PAY_K_NP)} per-env pay rates for {N} "
+                             "rollout envs")
+        K_ENV = torch.as_tensor(PAY_K_NP, dtype=torch.float32, device=device)
+    else:
+        K_ENV = None
     # --mask-*: the two flags the rollout MASKED WITH, recorded per decision
     # so the update's log-prob recomputation replays exactly the same
     # distribution. b_air could be re-derived from b_scal slot 4 (it is the
@@ -19036,6 +19198,8 @@ def main() -> None:
     # --int-split: V_I of the decision, written inside the captured graph
     # exactly like static_val
     static_vint = torch.zeros(N, device=device) if INT_SPLIT else None
+    # --critic-pay-d0: V_P of the decision, written inside the captured graph like static_val
+    static_vq = torch.zeros(N, device=device) if PAY_SPLIT else None
     # --view-continuous: the drawn z and the view command the core gets,
     # STATIC buffers written inside the captured graph like static_act
     static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
@@ -19704,6 +19868,11 @@ def main() -> None:
             # went, the intrinsic one to its own static buffer
             static_val.copy_(value[:, 0].float())
             static_vint.copy_(value[:, 1].float())
+        elif PAY_SPLIT:
+            # (N, 2) = [V_R, V_P]: the combined V = k V_P + V_R in reward units where the
+            # value always went (K_ENV is a constant tensor of the graph), V_P to its own buffer
+            static_val.copy_(value[:, 0].float() + K_ENV * value[:, 1].float())
+            static_vq.copy_(value[:, 1].float())
         else:
             static_val.copy_(value.float())
 
@@ -20836,7 +21005,7 @@ def main() -> None:
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
                 f_priv=None, f_z=None, f_temp=None, f_tempv=None,
-                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None):
+                f_cct=None, f_bkt=None, f_reti=None, f_ctv=None, f_retq=None):
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
@@ -20951,6 +21120,12 @@ def main() -> None:
             # run traces the graph it always traced.
             value_i = value[:, 1]
             value = value[:, 0]
+        if PAY_SPLIT:
+            # (mb, 2) = [V_R, V_P]: V_R is fitted to R_R (f_ret), V_P to R_P (f_retq), each in
+            # its own unit; the advantage is the stored combined one. A Python constant: the
+            # control run traces the graph it always traced.
+            value_q = value[:, 1]
+            value = value[:, 0]
         if f_bkt is not None:
             # --cc-buckets: the moments per T bucket of this minibatch
             # (cc_bucket_normalize says why the families do not share one)
@@ -20985,6 +21160,10 @@ def main() -> None:
             # critic warmup optimises both heads, and the logged
             # train/value_loss stays the value term the loss weights
             vl = vl + INT_VF_RATIO * 0.5 * (value_i - f_reti[idx]).pow(2).mean()
+        if PAY_SPLIT:
+            # both heads at --vf, equal weight: `args.vf * vl` IS vf x (MSE_R + MSE_P), and
+            # train/value_loss reports that sum
+            vl = vl + 0.5 * (value_q - f_retq[idx]).pow(2).mean()
         el = (-(ent_w_env[idx % N] * ent).mean() if ENT_ROW else -ent.mean())
         loss = pg + args.vf * vl + ent_coef * el
         if H > 0:
@@ -21195,6 +21374,8 @@ def main() -> None:
                     f_ctv=(b_ftv.reshape(T * N, NZ) if FRONT else None),
                     f_bkt=(torch.zeros(T * N, dtype=torch.long, device=device)
                            if CC_BKT else None),
+                    # --critic-pay-d0: the progress head's target rides in like f_ret
+                    **({"f_retq": b_rew.reshape(-1)} if PAY_SPLIT else {}),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -21793,6 +21974,10 @@ def main() -> None:
         # --int-split: the intrinsic value head is a critic tensor too, so
         # the warmup fits both heads while the actor is held
         CRITIC_PREFIX = CRITIC_PREFIX + ("int_head.",)
+    if PAY_SPLIT:
+        # --critic-pay-d0: the progress head is a critic tensor too (--critic-warmup is
+        # refused with the flag today; this keeps the prefix honest if that lifts)
+        CRITIC_PREFIX = CRITIC_PREFIX + ("prog_head.",)
     warm_frozen = [q for n, q in policy.named_parameters()
                    if not n.startswith(CRITIC_PREFIX)]
     warm_trained = [n for n, _ in policy.named_parameters()
@@ -21830,6 +22015,7 @@ def main() -> None:
     # (--ddp-maps shard: a map's count table lives on its owner rank alone - nothing to sync)
     int_sync = args.int_sync_every if DDP_REP else 0
     int_row = []              # --int-split: this iteration's int/* values
+    pay_row = []              # --critic-pay-d0: this iteration's pay/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
     best_stage_saved = -1.0           # --save-best on a --ramp-sequence run: best mean eval stage
@@ -22313,6 +22499,8 @@ def main() -> None:
                 b_val[t].copy_(static_val)
                 if INT_SPLIT:
                     b_vint[t].copy_(static_vint)
+                if PAY_SPLIT:
+                    b_vq[t].copy_(static_vq)
                 if CRL:
                     b_crl_logits[t].copy_(static_crl_logits)
                 if CC_TEMP:
@@ -22376,6 +22564,7 @@ def main() -> None:
                 # next tick; the count is race/stall_frac's numerator
                 r_acc = np.zeros(N, np.float32)
                 rint_acc = np.zeros(N, np.float32) if INT_SPLIT else None
+                q_acc = np.zeros(N, np.float32) if PAY_SPLIT else None
                 ended_acc = np.zeros(N, bool)
                 if rpd:
                     done_acc = np.zeros(N, bool)
@@ -22439,6 +22628,9 @@ def main() -> None:
                     else:
                         r = fleet.reward(prev_obs, o2, term_obs, base_r, done,
                                          trunc)
+                    # --critic-pay-d0: this tick's progress in the critic's units, read right
+                    # after the reward call (--reward-per-decision is refused with the flag)
+                    q = _prog_q() if PAY_SPLIT else None
                     if RPASS and r is not None:
                         # --ramp-reward pass: +1 per target passed on this tick (the goal
                         # system advanced the windows just above; an ended row never shifts)
@@ -22778,6 +22970,13 @@ def main() -> None:
                                 # is non-episodic and crosses the truncation
                                 # on the next state's own V_I
                                 tv = tv[:, 0]
+                            if PAY_SPLIT:
+                                # [V_R, V_P] at s_T: V_P bootstraps the progress stream
+                                # and the combined k V_P + V_R the reward stream (as V
+                                # always did), so r - k q is bootstrapped by V_R exactly
+                                _tv = tv.to("cpu").numpy().astype(np.float64)
+                                q[ti] += (GAMMA_T * _tv[:, 1]).astype(np.float32)
+                                tv = torch.as_tensor(_tv[:, 0] + PAY_K_NP[ti] * _tv[:, 1])
                             if RETN:
                                 # V(s_T) is spliced into the REWARD stream,
                                 # so it has to come back into reward units
@@ -22984,6 +23183,8 @@ def main() -> None:
                                 ism_rsum += float(r.sum())
                         if INT_SPLIT:
                             rint_acc += _int_r()
+                        if PAY_SPLIT:
+                            q_acc += q
                     ended_acc |= ended
                     # the FLEET's consumption, not this rank's: every
                     # step-gated branch (loop bound, record, ckpt, anneal)
@@ -23050,6 +23251,8 @@ def main() -> None:
                 if INT_SPLIT:
                     b_rint[t].copy_(torch.from_numpy(rint_acc)
                                     .to(device, non_blocking=True))
+                if PAY_SPLIT:
+                    b_q[t].copy_(torch.from_numpy(q_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
                 if ou_c is not None:
@@ -23232,6 +23435,11 @@ def main() -> None:
                 # bootstraps its own stream below, raw (no RETN)
                 last_vint = last_val[:, 1]
                 last_val = last_val[:, 0]
+            if PAY_SPLIT:
+                # (N, 2) = [V_R, V_P]: V_P bootstraps the progress stream below, the combined
+                # k V_P + V_R the reward stream (b_val already holds combined values)
+                last_vq = last_val[:, 1].float()
+                last_val = last_val[:, 0].float() + K_ENV * last_vq
             if RETN:
                 # the head emits NORMALIZED returns; GAE, the advantages and
                 # every logged value live in reward units. De-normalize ONCE
@@ -23303,6 +23511,37 @@ def main() -> None:
                     _ri.mean(), _vi.mean(), adv_i.abs().mean().double(),
                     1.0 - (_ri - _vi).var(unbiased=False)
                     / (_ri.var(unbiased=False) + 1e-12)]).tolist()
+            if PAY_SPLIT:
+                # ---- --critic-pay-d0: the progress stream's GAE -------------------------
+                # EPISODIC, like the reward stream it is a part of: the same g_eff, lambda and
+                # nonterm mask, so by linearity adv == k adv_P + adv_R exactly and the combined
+                # `adv` above - the policy's advantage - is the control's estimator on the
+                # control's reward. V_P's target is its own return R_P; V_R's is the rest of
+                # the combined one, R_R = R - k R_P (= adv_R + V_R).
+                adv_q = torch.zeros_like(b_q)
+                lastgae_q = torch.zeros(N, device=device)
+                for t in reversed(range(T)):
+                    nextv_q = last_vq if t == T - 1 else b_vq[t + 1]
+                    nonterm = 1.0 - (b_done[t] if b_cut is None
+                                     else torch.maximum(b_done[t], b_cut[t]))
+                    delta_q = b_q[t] + g_eff * nextv_q * nonterm - b_vq[t]
+                    lastgae_q = delta_q + g_eff * args.gae * nonterm * lastgae_q
+                    adv_q[t] = lastgae_q
+                ret_q = adv_q + b_vq
+                ret_r = ret - K_ENV[None, :] * ret_q
+                # pay/*: mean R_P, mean V_P, V_P's explained variance of R_P and V_R's of R_R,
+                # pooled and then per map - one small read per iteration
+
+                def _ev(y, v):
+                    y, v = y.reshape(-1).double(), v.reshape(-1).double()
+                    return 1.0 - (y - v).var(unbiased=False) / (y.var(unbiased=False) + 1e-12)
+                _vr = b_val - K_ENV[None, :] * b_vq
+                _pay = [ret_q.double().mean(), b_vq.double().mean(), _ev(ret_q, b_vq),
+                        _ev(ret_r, _vr)]
+                for _s in slots:
+                    _pay += [_ev(ret_q[:, _s.lo:_s.hi], b_vq[:, _s.lo:_s.hi]),
+                             _ev(ret_r[:, _s.lo:_s.hi], _vr[:, _s.lo:_s.hi])]
+                pay_row = torch.stack(_pay).tolist()
             # ---- act/* key-use diagnostics, no flag ----------------------
             # Six SUMS off the tensors this rollout already holds - b_scal
             # slot 4 is the on-ground flag AT the decision and b_act is the
@@ -23633,6 +23872,10 @@ def main() -> None:
             _rn, _rsum, _rsq = _rs.tolist()
             retn.update(_rsum / _rn, _rsq / _rn)
             f_ret = ((ret - retn.mean) / retn.std).reshape(-1)
+        elif PAY_SPLIT:
+            # --critic-pay-d0: value_head's target is the REST of the return, R_R = R - k R_P
+            # (prog_head's is R_P, f_retq below); RETN is refused with the flag
+            f_ret = ret_r.reshape(-1)
         else:
             f_ret = ret.reshape(-1)
         if SIL is not None:
@@ -23645,6 +23888,8 @@ def main() -> None:
             sil_loss_t = None
         # --int-split: the intrinsic return, raw (V_I is never normalised)
         f_reti = ret_i.reshape(-1) if INT_SPLIT else None
+        # --critic-pay-d0: the progress return, in the critic's one unit (V_P's target)
+        f_retq = ret_q.reshape(-1) if PAY_SPLIT else None
         mb = MB
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
@@ -23780,7 +24025,8 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
-                        f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}))
+                        f_reti=f_reti, **({"f_ctv": f_ctv} if FRONT else {}),
+                        **({"f_retq": f_retq} if PAY_SPLIT else {}))
                     loss, pg, vl, el, logp = _mbo[:5]
                     if AUG_ON:
                         # --aug-*: (G_pi, G_V) summed over the update, one read per iteration
@@ -25289,6 +25535,9 @@ def main() -> None:
                            # int/*, only under --int-split
                            + ([round(_v, 5) if _v == _v else ""
                                for _v in int_row] if INT_SPLIT else [])
+                           # pay/*, only under --critic-pay-d0 (the header's block above)
+                           + ([round(_v, 5) if _v == _v else ""
+                               for _v in pay_row] if PAY_SPLIT else [])
                            # dip/*, TRULY LAST (after the two conditional
                            # blocks, so an old header stays a strict prefix
                            # and migrates by padding). Blank where the

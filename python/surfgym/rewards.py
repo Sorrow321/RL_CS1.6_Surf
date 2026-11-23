@@ -660,7 +660,7 @@ class RaceReward:
                  frontier_anchor_speed: float = 0.0,
                  int_split: bool = False,
                  sr: bool = False, sr_eps: float = 0.0,
-                 sr_select: bool = False) -> None:
+                 sr_select: bool = False, prog_split: bool = False) -> None:
         self.field = field
         # --race-sr: Sibling Rivalry (Trott et al. 2019). Envs (2k, 2k+1) are
         # siblings; an episode's anti-goal is the sibling's most recent
@@ -788,6 +788,9 @@ class RaceReward:
         # validated as its own arm); refuse loudly rather than run silently.
         self.arc = arc
         self.arc_scale = float(arc_scale)
+        if bool(prog_split) and arc is not None:
+            raise ValueError("--critic-pay-d0 splits the GEODESIC pay (scale); the arc pay "
+                             "(arc_scale) is not split")
         # --stall-arc: the stall detector's progress coordinate is -arc (a new record ALONG THE
         # ROUTE re-arms it), not the field distance; without an arc it is refused
         self.stall_arc = bool(stall_arc)
@@ -995,6 +998,15 @@ class RaceReward:
             raise ValueError("--int-split splits the count bonus into its own "
                              "stream: it needs --int-coef > 0")
         self.int_r: np.ndarray | None = None
+        # --critic-pay-d0 (the user, 2026-11-23): `prog_r` is this call's coefficient of
+        # `scale` in r, per env, in map units (u) - every term the map's pay rate multiplies
+        # (the potential / ratchet delta, the ng tax and charges, the death charge, the
+        # speed-equiv terms), after the curiosity-cond factor and the ended-row wipe exactly as
+        # r takes them. So r == scale * prog_r + (a part no pay rate touches) on every call, and
+        # the trainer fits the progress part in one unit on every map. r itself is unchanged.
+        # Off, prog_r is None and no line that touches r moves.
+        self.prog_split = bool(prog_split)
+        self.prog_r: np.ndarray | None = None
         # speed folded into the POTENTIAL (0 = off): d_eff = d - beta*s.
         # Unlike speed_coef (pays the speed LEVEL per tick, changes the
         # optimum), this stays potential-based — closed loops in position
@@ -1590,6 +1602,15 @@ class RaceReward:
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc,
                  core, goal=None):
+        pg = None
+        if self.prog_split:
+            # --critic-pay-d0: this call's progress coefficient, rebuilt from zero every call
+            # (the trainer reads it right after the call, like int_r)
+            if self.prog_r is None or len(self.prog_r) != len(done):
+                self.prog_r = np.zeros(len(done), np.float64)
+            else:
+                self.prog_r[:] = 0.0
+            pg = self.prog_r
         if self._d is None:
             self.on_reset(core)
             return np.zeros(len(done), np.float32)
@@ -1661,12 +1682,16 @@ class RaceReward:
                 delta[self._latched] = 0.0
             r = (delta * self.scale - self.time_pen * self.every) \
                 .astype(np.float32)
+            if pg is not None:
+                pg += delta
             if self.ng:
                 # conformant tax on the post-step potential; ended rows are
                 # wiped below and then charged their terminal potential
                 # instead
                 r -= ((1.0 - self._ng_g) * (self.ng_d0 - dc)
                       * self.scale).astype(np.float32)
+                if pg is not None:
+                    pg -= (1.0 - self._ng_g) * (self.ng_d0 - dc)
         else:
             # arc-length shaping. `advance` pays 0 and freezes its anchor
             # outside the corridor, so leaving the line stops the clock and
@@ -1791,6 +1816,8 @@ class RaceReward:
             # (post-autoreset) rows exactly like the distance term
             r += (self.scale * self.speed_equiv) * (s - self._s) \
                 .astype(np.float32)
+            if pg is not None:
+                pg += self.speed_equiv * (s - self._s)
         if self._cc_shape is not None:
             # --curiosity-cond: everything above this line is the SHAPING
             # side (the potential difference, the time penalty, the ng tax
@@ -1798,10 +1825,14 @@ class RaceReward:
             # outcome terms below (success bonus, fail penalty, the
             # terminal charges) are paid in full to every member.
             r *= self._cc_shape
+            if pg is not None:
+                pg *= self._cc_shape
         # ended rows: states are already the NEW episode's spawn — the final
         # approach tick's shaping is forfeited (<= ~35u, noise next to the
         # bonus); outcome pays instead
         r[ended] = 0.0
+        if pg is not None:
+            pg[ended] = 0.0
         r[goal] += self.success_bonus
         if self.finish_k > 0.0 and goal.any():
             tsec = (self._ticks[goal].astype(np.float64)
@@ -1827,6 +1858,11 @@ class RaceReward:
             r[dead] -= phi_prev[dead]
             if self.ng == 1:
                 r[goal] -= phi_prev[goal]
+            if pg is not None:
+                _raw = np.asarray(self.ng_d0 - self._dc, np.float64)
+                pg[dead] -= _raw[dead]
+                if self.ng == 1:
+                    pg[goal] -= _raw[goal]
         if self.arc_death_charge > 0.0 and self.arc is not None:
             dead = done.astype(bool) & ~goal
             r[dead] -= (self.arc_death_charge * self.arc_scale
@@ -1859,6 +1895,15 @@ class RaceReward:
                 phi_prev = np.maximum((_base - self._rec_boot) * self.scale,
                                       0.0).astype(np.float32)
             r[dead] -= self.death_charge * phi_prev[dead]
+            if pg is not None:
+                # the same bank in map units (scale > 0, so max(x * scale, 0) = scale max(x, 0))
+                if self.ratchet:
+                    _raw = np.maximum(np.asarray(_base - self._rec_boot, np.float64), 0.0)
+                elif self._d0 is not None:
+                    _raw = np.asarray(self._d0 - self._dc, np.float64)
+                else:
+                    _raw = np.asarray(self.ng_d0 - self._dc, np.float64)
+                pg[dead] -= self.death_charge * _raw[dead]
         if self.speed_equiv > 0.0:
             # death refund — load-bearing: without it "accelerate and die"
             # farms the speed credit. Cached self._s, NOT s: ended rows'
@@ -1868,6 +1913,8 @@ class RaceReward:
             dead = done.astype(bool) & ~goal
             r[dead] -= (self.scale * self.speed_equiv
                         * self._s[dead]).astype(np.float32)
+            if pg is not None:
+                pg[dead] -= self.speed_equiv * self._s[dead]
             self._s = s
         if self.int_coef > 0.0 and self.int_mode == "edge":
             st = _states(core)

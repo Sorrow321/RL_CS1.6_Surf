@@ -102,6 +102,19 @@ def make_az_policy():
         force_idx = None
         force_act = None
         force_z = None
+        # --critic-pay-d0: this map's k (value_k); None for a one-head critic
+        pay_k = None
+
+        def _v1(self, v):
+            """V(s) per env in this map's reward units: a --critic-pay-d0 critic's [V_R, V_P]
+            row as V_R + k V_P (k = pay_k), a one-head critic's value as is."""
+            v = v.float()
+            if v.dim() == 2 and v.shape[1] == 2:
+                if self.pay_k is None:
+                    raise RuntimeError("a two-column critic and no pay_k: set it from "
+                                       "az_mcts.value_k(cfg, d0)")
+                return v[:, 0] + float(self.pay_k) * v[:, 1]
+            return v.reshape(-1)
 
         @torch.inference_mode()
         def _decide(self, obs):
@@ -144,7 +157,7 @@ def make_az_policy():
                                           temp=float(keys_temp), temp_view=tv)
                 acts.append(a_s[:, N_VIEW:].reshape(n, k - 1, -1))
                 zs.append(z_s.reshape(n, k - 1, -1))
-            val = v.float().reshape(n)
+            val = self._v1(v).reshape(n)
             A = torch.cat(acts, 1)
             Z = torch.cat(zs, 1)
             lsm = torch.log_softmax(padded[:, N_VIEW:], dim=-1)
@@ -189,6 +202,20 @@ def pay_scale(cfg: dict, d0: float) -> float:
     if float(cfg.get("race_pay_d0") or 0.0) > 0.0:
         return 100.0 / float(cfg["race_pay_d0"])
     return 100.0 / d0 if np.isfinite(d0) and d0 > 0 else 0.0
+
+
+def value_k(cfg: dict, d0: float):
+    """--critic-pay-d0 D: the critic's two columns [V_R, V_P] give V(s) = V_R + k V_P on this map,
+    k = this map's progress pay (pay_scale) over the critic's one rate 100 / D (D / d0 under the
+    default pay). None for a one-head critic. A map with no start distance has no k: refused."""
+    D = float(cfg.get("critic_pay_d0") or 0.0)
+    if not D > 0.0:
+        return None
+    s = pay_scale(cfg, d0)
+    if not s > 0.0:
+        raise SystemExit("a --critic-pay-d0 checkpoint on a map with no start distance: "
+                         "its progress head has no exchange rate here")
+    return s * D / 100.0
 
 
 def ranks(x) -> np.ndarray:
@@ -341,6 +368,7 @@ def run_az(ctx: dict, a) -> dict:
                        keys_hold=ctx["KEYS"], **xkw)
         pol.spawn_duck = ctx["SPAWN_DUCK"]
         pol.greedy = np.zeros(core.num_envs, bool)
+        pol.pay_k = value_k(cfg, d0)
         if priv_fn is not None:
             pol.priv_fn = priv_fn
         return pol, SideState(pol, xfe, fstate, lf)
@@ -763,7 +791,7 @@ def run_az(ctx: dict, a) -> dict:
                "view_temp": float(a.az_view_temp), "novelty": beta, "widen": widen,
                "prior": prior_mode, "prior_temp": prior_temp, "rollout": H_roll,
                "hold": M_HOLD, "death_window_s": dwin, "priv_critic": _pmode,
-               "pay_scale_per_u": scale,
+               "pay_scale_per_u": scale, "critic_pay_k": value_k(cfg, d0),
                "blank_pot": bool(getattr(a, "az_blank_pot", False)),
                "rollouts": n_roll,
                "depth_mean": float(np.mean(dep_means)) if dep_means else None,
@@ -812,7 +840,7 @@ def run_critic_probe(ctx: dict, a) -> dict:
         @torch.inference_mode()
         def _decide(self, obs):
             logits, v = self._net(self._obs(obs))
-            self.last_v = v.float().reshape(-1).cpu().numpy()
+            self.last_v = self._v1(v).cpu().numpy()
             cat, mu = split_view(logits.float())
             padded = self._mask_padded(self.packer.pad(cat), obs)
             act, z, _ = sample_view(padded, mu, self.policy.log_std())
@@ -861,6 +889,7 @@ def run_critic_probe(ctx: dict, a) -> dict:
                       cc_fn=(ctx["cc_fn1"] if core.num_envs == 1 else ctx["cc_fnN"]),
                       keys_hold=ctx["KEYS"], **xkw)
     pol.spawn_duck = ctx["SPAWN_DUCK"]
+    pol.pay_k = value_k(cfg, d0)
     if priv_fn is not None:
         pol.priv_fn = priv_fn
     side = SideState(pol, xfe, fstate, lf)
@@ -1072,6 +1101,7 @@ def run_critic_probe(ctx: dict, a) -> dict:
         "v_vs_ratchet": fit(v, res["Gr"][alive_m]),
         "root_v_vs_greedy_g": fit(rv0, g0),
         "priv_critic": int(cfg.get("priv_critic") or 0),
+        "critic_pay_k": pol.pay_k,
         "wall_s": time.time() - t_all}
     od = getattr(a, "out_dir", None)
     if od:
