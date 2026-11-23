@@ -98,6 +98,11 @@ TRAIN_ONLY = frozenset({
     # --vmpo and its constants: the PPO update's policy loss (V-MPO); a recording runs no update
     "vmpo", "vmpo_eps_eta", "vmpo_eps_alpha", "vmpo_eps_mu", "vmpo_eps_sigma", "vmpo_topk",
     "vmpo_dual_lr",
+    # --offpolicy and its constants: the update (SAC / TD3 on a replay ring); the actor is the
+    # Policy as always - a recording runs no update
+    "offpolicy", "op_buffer", "op_updates", "op_batch", "op_nstep", "op_tau", "op_critic_lr",
+    "op_alpha_lr", "op_ent_keys", "op_ent_view", "op_td3_noise", "op_td3_smooth", "op_td3_delay",
+    "op_key_ent",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings

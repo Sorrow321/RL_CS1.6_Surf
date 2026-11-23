@@ -2411,6 +2411,92 @@ def vmpo_kls(lsm_old, lsm_new, mu_old, mu, ls_old, ls_new):
     return kl_cat, kl_mu, kl_sig
 
 
+# --------------------------------------------------------------------------
+# --offpolicy sac|td3 (the user, 2026-11-23: replace PPO): a hybrid off-policy actor-critic.
+# The actor is the Policy (its key heads and view Gaussian, unchanged for every tool); the critic
+# is a separate encoder (a copy of the Policy's trunk) and TWIN Q heads that take the view action
+# u = tanh(z) and output one value per JOINT key bin, so the actor's expectation over the keys is
+# exact (the hybrid-SAC design for games, Delalleau et al. 2019); a GPU replay ring of decisions.
+# --------------------------------------------------------------------------
+class OffReplay:
+    """The replay ring, per env with one cursor (every env advances in lockstep): slot k holds
+    decision k's observation (scalars, image), the key bins and the view z acted, and the
+    transition's reward and episode end. Decision k's successor is slot k + 1 (after an end that
+    is the autoreset's new spawn, which the end masks). An n-step sample needs k + n written."""
+
+    def __init__(self, slots, n_env, scal_dim, frame, img_dtype, n_cat, n_z, device):
+        self.C, self.N = int(slots), int(n_env)
+        self.scal = torch.zeros((self.C, self.N, scal_dim), device=device)
+        self.img = torch.zeros((self.C, self.N, frame), device=device, dtype=img_dtype)
+        self.keys = torch.zeros((self.C, self.N, n_cat), device=device, dtype=torch.uint8)
+        self.z = torch.zeros((self.C, self.N, n_z), device=device)
+        self.rew = torch.zeros((self.C, self.N), device=device)
+        self.done = torch.zeros((self.C, self.N), device=device)
+        self.w = 0
+
+    def add(self, scal, img, keys, z, rew, done):
+        T = int(scal.shape[0])
+        if T > self.C:
+            raise SystemExit(f"--op-buffer {self.C} slots < one rollout's {T} decisions")
+        pos = (self.w + torch.arange(T, device=scal.device)) % self.C
+        self.scal[pos] = scal
+        self.img[pos] = img.to(self.img.dtype)
+        self.keys[pos] = keys.to(torch.uint8)
+        self.z[pos] = z
+        self.rew[pos] = rew
+        self.done[pos] = done
+        self.w += T
+
+    def sample(self, B, n, gamma):
+        """-> None (not enough written) or (scal, img, keys, z, R_n, alive_n, gamma^n, scal_n,
+        img_n): the n-step return R_n = sum_i gamma^i r_{k+i} up to the first end, alive_n = no
+        end inside the n steps (the bootstrap's mask), and decision k + n's observation."""
+        lo, hi = max(0, self.w - self.C), self.w - 1 - int(n)
+        if hi < lo:
+            return None
+        dev = self.rew.device
+        k = torch.randint(lo, hi + 1, (int(B),), device=dev)
+        e = torch.randint(0, self.N, (int(B),), device=dev)
+        R = torch.zeros(int(B), device=dev)
+        alive = torch.ones(int(B), device=dev)
+        disc = 1.0
+        for i in range(int(n)):
+            ki = (k + i) % self.C
+            R = R + alive * disc * self.rew[ki, e]
+            alive = alive * (1.0 - self.done[ki, e])
+            disc = disc * gamma
+        k0, kn = k % self.C, (k + int(n)) % self.C
+        return (self.scal[k0, e], self.img[k0, e], self.keys[k0, e].long(), self.z[k0, e], R,
+                alive, disc, self.scal[kn, e], self.img[kn, e])
+
+
+class TwinQ(nn.Module):
+    """Two Q heads over the critic encoder's features and u = tanh(z): each (B, nj), one value
+    per joint key bin. LayerNorm in the heads (the stabiliser of the 2024-25 parallel Q methods)."""
+
+    def __init__(self, f_dim, n_z, nj, hidden=512):
+        super().__init__()
+
+        def head():
+            return nn.Sequential(nn.Linear(f_dim + n_z, hidden), nn.LayerNorm(hidden), nn.ReLU(),
+                                 nn.Linear(hidden, hidden), nn.LayerNorm(hidden), nn.ReLU(),
+                                 nn.Linear(hidden, nj))
+        self.q1, self.q2 = head(), head()
+
+    def forward(self, f, u):
+        x = torch.cat([f, u], 1)
+        return self.q1(x), self.q2(x)
+
+
+def joint_logp(lsm, widths):
+    """(B, heads, NPAD) per-head log-probabilities -> (B, prod widths) joint log-probabilities of
+    the independent heads, C order (the first head slowest: dae_advantage's joint index)."""
+    lj = lsm[:, 0, :widths[0]]
+    for h in range(1, len(widths)):
+        lj = (lj[:, :, None] + lsm[:, h, None, :widths[h]]).reshape(lj.shape[0], -1)
+    return lj
+
+
 def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     """The --view-continuous rollout draw (no grad): heads N_VIEW..5 by
     Gumbel-argmax on the padded slice (sample_padded, unchanged), the view
@@ -5658,6 +5744,41 @@ def main() -> None:
     ap.add_argument("--vmpo-dual-lr", type=float, default=None,
                     help="--vmpo: Adam lr of the temperature and the multipliers (softplus-"
                          "parametrised; 3e-3)")
+    ap.add_argument("--offpolicy", default=None, choices=("none", "sac", "td3"),
+                    help="the user, 2026-11-23 (replace PPO): a hybrid OFF-POLICY actor-critic "
+                         "in place of the PPO update. The actor is the Policy (key heads + view "
+                         "Gaussian); a separate critic (a copy of the trunk + twin Q heads taking "
+                         "u = tanh(z) and giving one value per joint key bin, so the expectation "
+                         "over the keys is exact); a GPU replay ring of decisions; n-step targets. "
+                         "sac: learned temperatures for the keys and the view. td3: a "
+                         "deterministic view (fixed exploration sigma), target smoothing, delayed "
+                         "actor and target updates, keys with a fixed entropy bonus. The PPO value "
+                         "head keeps learning on the rollouts' GAE returns over DETACHED trunk "
+                         "features (the in-training searches read it). From scratch only")
+    ap.add_argument("--op-buffer", type=int, default=None, help="--offpolicy: ring slots per env (1024)")
+    ap.add_argument("--op-updates", type=int, default=None,
+                    help="--offpolicy: gradient steps per rollout (16)")
+    ap.add_argument("--op-batch", type=int, default=None, help="--offpolicy: batch (8192)")
+    ap.add_argument("--op-nstep", type=int, default=None, help="--offpolicy: n-step targets (8)")
+    ap.add_argument("--op-tau", type=float, default=None, help="--offpolicy: Polyak rate (0.01)")
+    ap.add_argument("--op-critic-lr", type=float, default=None,
+                    help="--offpolicy: the critic's Adam lr (3e-4; the actor keeps --lr)")
+    ap.add_argument("--op-alpha-lr", type=float, default=None,
+                    help="--offpolicy sac: the temperatures' Adam lr (3e-4)")
+    ap.add_argument("--op-ent-keys", type=float, default=None,
+                    help="--offpolicy sac: the keys' target entropy as a share of its maximum "
+                         "log(96) (0.2)")
+    ap.add_argument("--op-ent-view", type=float, default=None,
+                    help="--offpolicy sac: the view's target entropy per head (-1.0)")
+    ap.add_argument("--op-td3-noise", type=float, default=None,
+                    help="--offpolicy td3: the view's exploration sigma (pre-tanh; 0.15)")
+    ap.add_argument("--op-td3-smooth", type=float, default=None,
+                    help="--offpolicy td3: the target smoothing sigma (0.2, clipped at 0.5)")
+    ap.add_argument("--op-td3-delay", type=int, default=None,
+                    help="--offpolicy td3: critic steps per actor / target step (2)")
+    ap.add_argument("--op-key-ent", type=float, default=None,
+                    help="--offpolicy td3: the keys' fixed entropy bonus (0.005, the recipe's "
+                         "--ent)")
     ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
                     help="race: FLOOR the shaping potential at this geodesic "
                          "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
@@ -11137,6 +11258,13 @@ def main() -> None:
             setattr(args, _k, _d)
     if not 0.0 < float(args.vmpo_topk) <= 1.0:
         raise SystemExit(f"--vmpo-topk {args.vmpo_topk:g}: a share in (0, 1]")
+    for _k, _d in (("offpolicy", "none"), ("op_buffer", 1024), ("op_updates", 16),
+                   ("op_batch", 8192), ("op_nstep", 8), ("op_tau", 0.01), ("op_critic_lr", 3e-4),
+                   ("op_alpha_lr", 3e-4), ("op_ent_keys", 0.2), ("op_ent_view", -1.0),
+                   ("op_td3_noise", 0.15), ("op_td3_smooth", 0.2), ("op_td3_delay", 2),
+                   ("op_key_ent", 0.005)):
+        if getattr(args, _k) is None:
+            setattr(args, _k, _d)
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
     if args.race_field_blur is None:
@@ -12477,6 +12605,41 @@ def main() -> None:
               f"each minibatch's advantages weighted softmax(A / eta), eps_eta {VMPO_EPS[0]:g}; "
               f"KL(pi_old || pi) bounds keys {VMPO_EPS[1]:g}, view mean {VMPO_EPS[2]:g}, view "
               f"sigma {VMPO_EPS[3]:g}; duals at Adam lr {float(args.vmpo_dual_lr):g}")
+    # --offpolicy (the user, 2026-11-23): SAC / TD3 in place of the PPO update. A Python constant:
+    # "none" allocates, traces and writes nothing.
+    OFFP = str(args.offpolicy) if str(args.offpolicy) != "none" else None
+    if OFFP:
+        for _flag, _on in (
+                ("a discrete view (--view-continuous is required)",
+                 not bool(args.view_continuous)),
+                ("a resume (--ckpt): off-policy arms run from scratch", bool(args.ckpt)),
+                ("--dae", DAE), ("--vmpo", VMPO), ("--rnn", RNN),
+                ("--chunk/--codebook", H > 0 or bool(args.codebook)),
+                ("--ddp", D.enabled), ("--priv-critic", bool(args.priv_critic)),
+                ("--int-split", INT_SPLIT), ("--critic-pay-d0", PAY_SPLIT),
+                ("--ret-norm", bool(args.ret_norm)),
+                ("--frame-stack", int(args.frame_stack or 0) > 1),
+                ("--mask-*", bool(getattr(args, "mask_forward_air", 0))
+                 or int(getattr(args, "jump_cooldown", 0) or 0) > 0
+                 or bool(getattr(args, "duck_air_mask", 0))),
+                ("--curiosity-cond", bool(args.curiosity_cond)), ("--crl", bool(args.crl)),
+                ("--bc-file", bool(args.bc_file)),
+                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                ("--aug-*", any(float(getattr(args, _a) or 0.0) > 0.0
+                                for _a in ("aug_mirror", "aug_drop", "aug_noise",
+                                           "aug_shift")))):
+            if _on:
+                raise SystemExit(f"--offpolicy is not implemented with {_flag}")
+        print(f"--offpolicy {OFFP}: a hybrid off-policy actor-critic in place of PPO - twin Q "
+              f"heads per joint key bin over u = tanh(z) on their own encoder, a replay ring of "
+              f"{int(args.op_buffer)} decisions per env, {int(args.op_nstep)}-step targets, "
+              f"{int(args.op_updates)} steps of {int(args.op_batch)} per rollout, tau "
+              f"{float(args.op_tau):g}, critic lr {float(args.op_critic_lr):g}; "
+              + (f"temperatures learned (keys target {float(args.op_ent_keys):g} x log 96, view "
+                 f"{float(args.op_ent_view):g} per head)" if OFFP == "sac" else
+                 f"view sigma fixed {float(args.op_td3_noise):g}, smoothing "
+                 f"{float(args.op_td3_smooth):g}, delay {int(args.op_td3_delay)}, keys entropy "
+                 f"{float(args.op_key_ent):g}"))
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -17428,6 +17591,13 @@ def main() -> None:
             meta["config"]["dae_policy"] = 0
         if float(args.dae_pi_lr) != 1.0:
             meta["config"]["dae_pi_lr"] = float(args.dae_pi_lr)
+    if OFFP:
+        # --offpolicy, written ONLY when on
+        meta["config"]["offpolicy"] = OFFP
+        for _k in ("op_buffer", "op_updates", "op_batch", "op_nstep", "op_tau", "op_critic_lr",
+                   "op_alpha_lr", "op_ent_keys", "op_ent_view", "op_td3_noise", "op_td3_smooth",
+                   "op_td3_delay", "op_key_ent"):
+            meta["config"][_k] = getattr(args, _k)
     if VMPO:
         # --vmpo, written ONLY when on (a control's config dump gains no key)
         meta["config"]["vmpo"] = 1
@@ -18086,6 +18256,12 @@ def main() -> None:
         CSV_COLS += ["dae/adv_std", "dae/adv_abs", "dae/ret", "dae/ev", "dae/adv_vs_gae"]
         for _s in slots:
             CSV_COLS += [f"dae/adv_std.{_s.tag}"]
+    if OFFP:
+        # --offpolicy, only when on: the update's mean Q of the acted bin, critic loss, actor
+        # loss, the temperatures (sac; td3: the keys' fixed bonus and 0), the actor's key and view
+        # entropies, the value head's loss, the gradient steps so far and the decisions written
+        CSV_COLS += ["op/q", "op/critic_loss", "op/actor_loss", "op/alpha_keys", "op/alpha_view",
+                     "op/ent_keys", "op/ent_view", "op/value_loss", "op/updates", "op/replay"]
     if VMPO:
         # --vmpo, only when on: the last minibatch's temperature and multipliers (keys, view mean,
         # view sigma), its three KL(pi_old || pi) and the largest E-step weight
@@ -19543,6 +19719,40 @@ def main() -> None:
     # the per-decision discount the targets use: a tensor (a tick ramp moves it per iteration;
     # a Python float in the compiled signature would recompile every time it moved)
     dae_g_t = torch.zeros((), device=device) if DAE else None
+    # --offpolicy: the critic (a copy of the trunk + twin Q heads), its target, the replay ring,
+    # the temperatures (sac) or the target actor and the fixed view sigma (td3)
+    offp = None
+    if OFFP:
+        import copy as _copy
+        _W, _NJ, _ = dae_shape(NZ)
+        _cenc = _copy.deepcopy(policy)
+        with torch.no_grad():
+            _fd = _cenc.features(torch.zeros(2, SCAL, device=device),
+                                 torch.zeros(2, FRAME, device=device)).shape[1]
+        _q = TwinQ(int(_fd), NZ, _NJ).to(device)
+        offp = {"W": _W, "NJ": _NJ, "cenc": _cenc, "q": _q,
+                "cenc_t": _copy.deepcopy(_cenc).requires_grad_(False),
+                "q_t": _copy.deepcopy(_q).requires_grad_(False),
+                "copt": torch.optim.Adam(list(_cenc.parameters()) + list(_q.parameters()),
+                                         lr=float(args.op_critic_lr), eps=1e-5),
+                "replay": OffReplay(int(args.op_buffer), N, SCAL, FRAME, b_img.dtype,
+                                    NACT - N_VIEW, NZ, device),
+                "n_upd": 0}
+        if OFFP == "sac":
+            offp["log_alpha"] = nn.Parameter(torch.full((2,), math.log(0.1), device=device))
+            offp["aopt"] = torch.optim.Adam([offp["log_alpha"]], lr=float(args.op_alpha_lr))
+            offp["h_keys"] = float(args.op_ent_keys) * math.log(_NJ)
+            offp["h_view"] = float(args.op_ent_view) * NZ
+        else:
+            offp["pol_t"] = _copy.deepcopy(policy).requires_grad_(False)
+            with torch.no_grad():
+                policy.view_std.log_std.fill_(math.log(float(args.op_td3_noise)))
+            policy.view_std.log_std.requires_grad_(False)
+        print(f"--offpolicy {OFFP}: critic encoder {sum(q.numel() for q in _cenc.parameters()):,} "
+              f"+ heads {sum(q.numel() for q in _q.parameters()):,} parameters; replay "
+              f"{offp['replay'].C} x {N} decisions "
+              f"({offp['replay'].img.numel() * offp['replay'].img.element_size() / 1e9:.1f} GB "
+              "of images)")
     if PAY_SPLIT:
         if len(PAY_K_NP) != N:
             raise SystemExit(f"--critic-pay-d0: {len(PAY_K_NP)} per-env pay rates for {N} "
@@ -21209,6 +21419,12 @@ def main() -> None:
         state = {"policy": policy.state_dict(),
                  "optimizer": contiguous_optimizer_state(opt.state_dict()),
                  "global_step": global_step, "config": meta["config"]}
+        if OFFP:
+            # --offpolicy: the critic, its target and the temperatures (no resume: analysis only)
+            state["offp"] = {"cenc": offp["cenc"].state_dict(), "q": offp["q"].state_dict(),
+                             "q_t": offp["q_t"].state_dict(), "n_upd": offp["n_upd"],
+                             **({"log_alpha": offp["log_alpha"].detach().cpu()}
+                                if OFFP == "sac" else {})}
         if VMPO:
             # --vmpo: the temperature and the multipliers (raw, pre-softplus) and their Adam
             state["vmpo"] = {"raw": vmpo_raw.detach().cpu(), "opt": vmpo_opt.state_dict()}
@@ -21680,6 +21896,129 @@ def main() -> None:
         loss = pg + DAE_COEF * vl + ent_coef * el
         return loss, pg, vl, el, logp, A.detach(), G.detach(), g_a, vl_dae.detach()
 
+    # ---- --offpolicy: the SAC / TD3 update on replay batches ---------------------------------
+    def offp_actor(net, scal, img):
+        """The actor's (joint key log-probabilities (B, NJ), view mean (B, NZ)), untempered (the
+        TARGET policy; the rollout's tempers only shape the behaviour, which off-policy is free)."""
+        with amp:
+            logits, _ = net.forward_split(scal, img)
+        cat, mu = split_view(logits.float())
+        return joint_logp(F.log_softmax(packer.pad(cat)[:, N_VIEW:], dim=-1), offp["W"]), mu
+
+    def offp_update(f_scal, f_img, f_ret):
+        """--op-updates gradient steps: the twin critics on n-step targets (sac: soft values with
+        the learned temperatures; td3: the smoothed target actor's view), the actor (td3: every
+        --op-td3-delay steps, view deterministic), the temperatures (sac), Polyak targets; then
+        the PPO value head on the rollout's GAE returns over DETACHED trunk features (the
+        in-training searches read it). -> the op/* row."""
+        rp = offp["replay"]
+        g = float(GAMMA_T ** KH)
+        n = int(args.op_nstep)
+        tau = float(args.op_tau)
+        W = offp["W"]
+        st = []
+        for u_i in range(int(args.op_updates)):
+            bt = rp.sample(int(args.op_batch), n, g)
+            if bt is None:
+                break
+            sc, im, keys, z, Rn, alive, gn, sc2, im2 = bt
+            j = keys[:, 0]
+            for h in range(1, len(W)):
+                j = j * W[h] + keys[:, h]
+            with torch.no_grad():
+                if OFFP == "sac":
+                    al = offp["log_alpha"].exp()
+                    lj2, mu2 = offp_actor(policy, sc2, im2)
+                    ls = policy.log_std().float()
+                    z2 = mu2 + ls.exp() * torch.randn_like(mu2)
+                    with amp:
+                        f2 = offp["cenc_t"].features(sc2, im2)
+                    q1t, q2t = offp["q_t"](f2.float(), torch.tanh(z2))
+                    v2 = ((lj2.exp() * (torch.minimum(q1t, q2t) - al[0] * lj2)).sum(-1)
+                          - al[1] * gauss_logp(z2, mu2, ls))
+                else:
+                    lj2, mu2 = offp_actor(offp["pol_t"], sc2, im2)
+                    _c = 2.5 * float(args.op_td3_smooth)
+                    z2 = mu2 + (float(args.op_td3_smooth)
+                                * torch.randn_like(mu2)).clamp(-_c, _c)
+                    with amp:
+                        f2 = offp["cenc_t"].features(sc2, im2)
+                    q1t, q2t = offp["q_t"](f2.float(), torch.tanh(z2))
+                    v2 = (lj2.exp() * (torch.minimum(q1t, q2t)
+                                       - float(args.op_key_ent) * lj2)).sum(-1)
+                y = Rn + gn * alive * v2
+            with amp:
+                f = offp["cenc"].features(sc, im)
+            f = f.float()
+            q1, q2 = offp["q"](f, torch.tanh(z))
+            q1a = q1.gather(1, j[:, None]).squeeze(1)
+            q2a = q2.gather(1, j[:, None]).squeeze(1)
+            lc = 0.5 * ((q1a - y).pow(2) + (q2a - y).pow(2)).mean()
+            offp["copt"].zero_grad(set_to_none=True)
+            lc.backward()
+            nn.utils.clip_grad_norm_(list(offp["cenc"].parameters())
+                                     + list(offp["q"].parameters()), 10.0)
+            offp["copt"].step()
+            la = ent_k = ent_v = torch.zeros((), device=device)
+            if OFFP == "sac" or u_i % int(args.op_td3_delay) == 0:
+                lj, mu = offp_actor(policy, sc, im)
+                pj = lj.exp()
+                fd = f.detach()
+                if OFFP == "sac":
+                    al = offp["log_alpha"].exp().detach()
+                    ls = policy.log_std().float()
+                    zn = mu + ls.exp() * torch.randn_like(mu)
+                    lpz = gauss_logp(zn, mu, ls)
+                    q1n, q2n = offp["q"](fd, torch.tanh(zn))
+                    la = ((pj * (al[0] * lj - torch.minimum(q1n, q2n))).sum(-1)
+                          + al[1] * lpz).mean()
+                else:
+                    q1n, _ = offp["q"](fd, torch.tanh(mu))
+                    la = (pj * (float(args.op_key_ent) * lj - q1n)).sum(-1).mean()
+                opt.zero_grad(set_to_none=True)
+                la.backward()
+                nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+                opt.step()
+                if VIEW_ABS:
+                    policy.project_log_std(count=False)
+                ent_k = -(pj * lj).sum(-1).mean().detach()
+                if OFFP == "sac":
+                    ent_v = -lpz.mean().detach()
+                    lal = (offp["log_alpha"][0] * (ent_k - offp["h_keys"])
+                           + offp["log_alpha"][1] * (ent_v - offp["h_view"]))
+                    offp["aopt"].zero_grad(set_to_none=True)
+                    lal.backward()
+                    offp["aopt"].step()
+                with torch.no_grad():
+                    torch._foreach_lerp_(list(offp["cenc_t"].parameters()),
+                                         list(offp["cenc"].parameters()), tau)
+                    torch._foreach_lerp_(list(offp["q_t"].parameters()),
+                                         list(offp["q"].parameters()), tau)
+                    if OFFP == "td3":
+                        torch._foreach_lerp_(list(offp["pol_t"].parameters()),
+                                             list(policy.parameters()), tau)
+            offp["n_upd"] += 1
+            st.append(torch.stack([q1a.mean().detach(), lc.detach(), la.detach(), ent_k, ent_v]))
+        # the PPO value head on the rollout's GAE returns, the trunk DETACHED: the actor's
+        # features are the actor loss's alone, and the searches get a fitted V(s)
+        lv = torch.zeros((), device=device)
+        for _ in range(4):
+            vi = torch.randint(0, T * N, (int(args.op_batch),), device=device)
+            with amp:
+                _, vv = policy.heads(policy.features(f_scal[vi], f_img[vi]).detach(), f_scal[vi])
+            lv = 0.5 * (vv.float() - f_ret[vi]).pow(2).mean()
+            opt.zero_grad(set_to_none=True)
+            (args.vf * lv).backward()
+            nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+            opt.step()
+        al = (offp["log_alpha"].exp().tolist() if OFFP == "sac"
+              else [float(args.op_key_ent), 0.0])
+        if not st:
+            return ([float("nan")] * 3 + al + [float("nan")] * 2
+                    + [float(lv), float(offp["n_upd"]), float(rp.w)])
+        m = torch.stack(st).mean(0).tolist()
+        return m[:3] + al + m[3:] + [float(lv), float(offp["n_upd"]), float(rp.w)]
+
     # ---- --rnn: the SEQUENCE minibatch step ---------------------------------
     # A minibatch is B = N/minibatches whole envs x all T decisions, in
     # time-major row order (idx = t*N + env), so every flat buffer is gathered
@@ -21867,7 +22206,7 @@ def main() -> None:
             if D.is_main:
                 (out / "run.json").write_text(json.dumps(meta, indent=2),
                                               encoding="utf-8")
-    elif use_compile and not FREEZE:
+    elif use_compile and not FREEZE and not OFFP:
         # max-autotune-no-cudagraphs, not reduce-overhead: measured 1.067x vs
         # 1.011x on the isolated step (tools/bench_update.py). The
         # no-cudagraphs part matters — the rollout already owns a CUDA graph,
@@ -22563,6 +22902,7 @@ def main() -> None:
     pay_row = []              # --critic-pay-d0: this iteration's pay/* values
     dae_row = [float("nan")] * (5 + NMAPS)    # --dae: this iteration's dae/* values
     vmpo_row = [float("nan")] * 8             # --vmpo: this iteration's vmpo/* values
+    op_row = [float("nan")] * 10              # --offpolicy: this iteration's op/* values
     it_no = 0
     best_fin_saved = float("inf")     # --save-best: this launch's best greedy finish (s)
     best_stage_saved = -1.0           # --save-best on a --ramp-sequence run: best mean eval stage
@@ -23534,7 +23874,10 @@ def main() -> None:
                                 # first - the one place a missed
                                 # de-normalization would be invisible
                                 tv = retn.denormalize(tv)
-                            bv = GAMMA_T * tv.to("cpu").numpy()
+                            # --offpolicy: a truncation is an end (the replay's targets bootstrap
+                            # from their own critic, never from the PPO value head)
+                            bv = (0.0 * tv.to("cpu").numpy() if OFFP
+                                  else GAMMA_T * tv.to("cpu").numpy())
                             if rpd:
                                 r_acc[ti] += bv
                             else:
@@ -24529,7 +24872,13 @@ def main() -> None:
         # state stay bit-identical to the resumed checkpoint (kl / losses
         # log 0)
         tkl_hit = None                 # --target-kl: (epoch, minibatch, kl) of an early stop
-        for _ep in range(0 if FREEZE else args.epochs):
+        if OFFP:
+            # --offpolicy: this rollout into the replay ring, then the off-policy update; the PPO
+            # epochs below run zero times (their logged losses stay blank, as under
+            # --freeze-policy)
+            offp["replay"].add(b_scal, b_img[PRO:], b_act[:, :, N_VIEW:], b_z, b_rew, b_done)
+            op_row = offp_update(f_scal, f_img, f_ret)
+        for _ep in range(0 if (FREEZE or OFFP) else args.epochs):
             if tkl_hit is not None:
                 break
             if RNN:
@@ -26148,6 +26497,9 @@ def main() -> None:
                            # dae/*, only under --dae (the header's block above)
                            + ([round(_v, 5) if _v == _v else ""
                                for _v in dae_row] if DAE else [])
+                           # op/*, only under --offpolicy (the header's block above)
+                           + ([round(_v, 6) if _v == _v else ""
+                               for _v in op_row] if OFFP else [])
                            # vmpo/*, only under --vmpo (the header's block above)
                            + ([round(_v, 7) if _v == _v else ""
                                for _v in vmpo_row] if VMPO else [])
