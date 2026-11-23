@@ -51981,3 +51981,23 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   still bit-identical to b5e3fa62. A relaunch adds a divergence guard (stops the trainer when
   the median approx_kl of 10 updates exceeds 0.1 twice, for the first hour); it needs the
   user's OK.
+
+## 2026-11-23 19:25 UTC: NOTE - DAE attempt 2 also ran away; stopped by its guard at 85M steps
+
+* ue_3m with mm/dae 9b4fe177 (A centred per map, scaled by the GAE advantage's per-map std),
+  relaunched with the user's OK on one RTX 5090 at $0.683/h (Germany), training from ~19:01
+  UTC; the divergence guard (median approx_kl of 10 updates > 0.1 twice) stopped it at 85.1M
+  steps (19:05 UTC); box released 19:11. Attempts 1 + 2 cost ~$0.25 (credit ~$23.8).
+* Matched steps (entropy term / approx_kl): control ua_3m 10M -4.04/0.013, 40M -3.43/0.022,
+  80M -2.52/0.034; attempt 2 10M -3.62/0.025, 40M -2.08/0.055, 80M -1.03/0.147 (one update at
+  14.3 at 84.6M); attempt 1 40M -1.03/0.086, collapsed at 55M. Scaling A to GAE's spread
+  slowed the runaway; it did not stop it. dae/adv_vs_gae (std A / std GAE) 0.27 -> 0.08-0.18.
+* Likely mechanism (not yet measured): Adam divides each parameter's step by the RMS of its
+  gradient, so for the actor's own parameters the advantage's SCALE cancels and what sets the
+  step is the gradient's signal-to-noise. GAE's advantage is mostly noise (its std 5-12x A's),
+  so the control's policy moves slowly per update; DAE's A is a clean function of the action,
+  so the same lr 3e-4 and 4 epochs move the policy several times further per update - faster
+  entropy loss, rising KL, then a spike. Candidates, none built: a trust region (--target-kl
+  at the control's level, ~0.03), the paper's own clip 0.1, a lower actor lr; or DAE as a
+  CRITIC only (the head trained by Eq. 13 beside the control's GAE update), which answers the
+  held-out question (rho A against rho V) with the control's training.
