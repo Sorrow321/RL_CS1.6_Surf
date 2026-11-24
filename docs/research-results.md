@@ -52092,3 +52092,42 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   after it, the best time; stability (no collapse). A method that breaks gets a fix and a
   rerun; one not clearly stronger than PPO is dropped; the best goes to the three-map test.
 * Budget: credit $21.52, floor $13 -> ~13 box-hours; ~$0.6 per 1e9-step arm.
+
+## 2026-11-24 01:10 UTC: RESULT - PPO stays: V-MPO, SAC and TD3 all far behind on petrus
+
+* Ran as PLAN aaa27eb4: surf_petrus_lite alone from scratch, 1024 envs, the incumbent recipe +
+  round 2's arch, seed 0, one RTX 5090 ($0.683/h, Germany, instance 62258900) kept through a run
+  queue 23:25-00:59 UTC, then released (0 instances). Code mm/algo b8630650 (--vmpo b6034dea,
+  --offpolicy b8630650; tests/python/test_vmpo.py, test_offpolicy.py; flags off bit-identical).
+* Official grader, best greedy progress % on petrus per eval (9 episodes each):
+
+  run                                    76M     152M    227M    first finish  note
+  al_ppo   PPO (control)                 45.6    59.3    99.9    303M (8/9)    64% after, 30.56 s
+  al_vmpo  V-MPO, paper's Atari eps      6.6     13.4    18.5    -             stopped 277M
+  al_vmpo2 V-MPO, eps_eta 0.1, keys      6.3     6.8     8.9     -             stopped 275M
+           0.02, mean 0.03, sigma 1e-4
+  al_sac   SAC, 16 updates/rollout       1.4     0.1     0.1     -             stopped 240M
+  al_td3   TD3, 64 updates, critic 1e-3  0.2     -       -       -             stopped 113M
+  al_sac2  SAC, 64 updates, critic 1e-3  0.7     -       -       -             stopped 99M
+
+  PPO's first finish came from training alone (its first search ran at 529M); 58 of 90 greedy
+  episodes finished from 303M on, best 30.56 s, 503k steps/s.
+* V-MPO: the trust region held (KLs at their bounds) but the policy improved ~5x slower than
+  PPO and its entropy fell faster; with looser bounds and a sharper E-step (vmpo2) the entropy
+  collapsed by ~100M (entropy term > 0) and progress was worse. Its M-step only raises the
+  likelihood of the better half of its own samples, which narrows the policy every update; PPO
+  also pushes the worse actions down. Two runs, both far behind: dropped.
+* SAC / TD3 (hybrid: twin critics per joint key bin over tanh(z), replay ring, 8-step targets):
+  the critic never ranked the key combinations. SAC kept the keys uniform (entropy 4.5 of
+  4.56) while its temperature was high and collapsed them to one choice (entropy 0.002) once
+  the temperature fell below ~0.006; TD3 committed by 50M and stalled (reward ~ -0.7, 93%
+  stall kills). 4x more updates (64 per rollout, critic lr 1e-3) did not change it and cost
+  2.5-3x the throughput (150-190k vs 500k steps/s). Read: one 30 ms decision moves the return
+  very little against its noise (the same reason DAE's head ranked at chance), so per-action Q
+  values are noise; PPO learns from sampled returns averaged over 500k steps/s. Dropped.
+* Not tried (ideas, not built): V-MPO with a stronger entropy term or all samples weighted;
+  off-policy with coarser decisions (act_every 8-16) so a key choice matters more per step.
+* Verdict: no algorithm is stronger than PPO here; the multi-map run keeps PPO. Cost ~$1.4
+  (credit $45.43 after the user's top-up). 5090 cap back to $0.60 in both configs, daemon
+  restarted (one). Logs and evals in the session scratchpad algo/runs/<name>/ (progress.csv,
+  run.json, launch.txt, traj.tgz); grader script algo/ana/grade.py.
