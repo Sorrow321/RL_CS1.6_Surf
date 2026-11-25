@@ -103,6 +103,9 @@ TRAIN_ONLY = frozenset({
     "offpolicy", "op_buffer", "op_updates", "op_batch", "op_nstep", "op_tau", "op_critic_lr",
     "op_alpha_lr", "op_ent_keys", "op_ent_view", "op_td3_noise", "op_td3_smooth", "op_td3_delay",
     "op_key_ent",
+    # --update-stats: the PPO update's health columns (clip share, grad norm, the bf16
+    # check at zero update); logging only - a recording runs no update
+    "update_stats",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings

@@ -1419,6 +1419,121 @@ def gru_segments(done, device):
                    torch.as_tensor(env, device=device))
 
 
+#: --dae-pi-lr's "policy's own parameters" (the trainer's _pi_lr_groups splits on these prefixes)
+OPT_PI_PREFIX = ("pi.", "action_head.", "view_head.", "view_std.")
+
+
+def opt_group_rule(named, wd, skip_norms, pi_lr=1.0):
+    """The trainer's optimizer parameter groups as NAME lists, in the order it builds them.
+
+    ``named`` is [(name, ndim)] in model order. One group in model order, unless --wd-skip-norms
+    (with --wd > 0): the weight matrices (ndim >= 2), then the biases / norm parameters / log-std;
+    --dae-pi-lr != 1 then splits each group again, the policy's own parameters first, empty
+    groups dropped. Only re-derives the numbering of a checkpoint written before "opt_names"."""
+    if float(wd) > 0.0 and int(skip_norms):
+        groups = [[n for n, d in named if d >= 2], [n for n, d in named if d < 2]]
+    else:
+        groups = [[n for n, _ in named]]
+    if float(pi_lr) != 1.0:
+        groups = [[n for n in g if n.startswith(OPT_PI_PREFIX) == on]
+                  for g in groups for on in (True, False)]
+        groups = [g for g in groups if g]
+    return groups
+
+
+def opt_saved_groups(ck, policy):
+    """A checkpoint's optimizer groups by parameter NAME: [(hyperparameters, [names])].
+
+    torch numbers a saved optimizer's parameters 0..N-1 in param_groups order. With ONE group
+    built from policy.parameters() that is model order, which is how every warm-start helper
+    below reads ck["optimizer"]["state"]; --wd-skip-norms (two groups) and --dae-pi-lr number
+    them otherwise. A checkpoint written since 2026-11-24 names them ("opt_names"); an older one
+    is re-derived from its own config by opt_group_rule, and the group sizes must agree. None:
+    a one-group checkpoint whose sizes do not agree - left to the pre-name path, untouched."""
+    groups = (ck.get("optimizer") or {}).get("param_groups") or []
+    names = ck.get("opt_names")
+    if not groups:
+        return []
+    if names is None:
+        cfg = ck.get("config") or {}
+        sd = ck.get("policy") or {}
+        named = [(n, int(sd[n].dim())) for n, _ in policy.named_parameters() if n in sd]
+        rule = opt_group_rule(named, float(cfg.get("wd") or 0.0),
+                              int(cfg.get("wd_skip_norms") or 0),
+                              float(cfg.get("dae_pi_lr") or 1.0))
+        if [len(g) for g in rule] != [len(g.get("params") or []) for g in groups]:
+            if len(groups) == 1:
+                return None
+            raise SystemExit(
+                "this checkpoint's optimizer groups hold "
+                f"{[len(g.get('params') or []) for g in groups]} parameters and its config "
+                f"(wd / wd_skip_norms / dae_pi_lr) says {[len(g) for g in rule]}: its moments "
+                "cannot be matched to parameters by name")
+        names = [n for g in rule for n in g]
+    names = list(names)
+    return [({k: v for k, v in g.items() if k != "params"},
+             [names[int(i)] for i in (g.get("params") or [])]) for g in groups]
+
+
+def opt_state_to_model_order(ck, policy, saved):
+    """Re-key a grouped checkpoint's optimizer state to MODEL order, as ONE group, so the
+    warm-start helpers below (all index-based) read each parameter's own moments.
+
+    ``saved`` is opt_saved_groups(ck, policy). Before 2026-11-24 a --wd-skip-norms checkpoint
+    did not resume at all: widen_for_route compared conv.2.weight's moments with conv.0.bias's
+    shape and refused (ledger, "known, not changed"). A one-group model-order checkpoint is left
+    exactly as it was. opt_state_to_run() regroups the result into the run's own groups.
+    -> True when the state was re-keyed."""
+    order = [n for n, _ in policy.named_parameters() if n in (ck.get("policy") or {})]
+    if len(saved) <= 1 and (not saved or saved[0][1] == order):
+        return False
+    pos = {n: j for j, n in enumerate(order)}
+    idx = [n for _, names in saved for n in names]
+    missing = [n for n in idx if n not in pos]
+    if missing:
+        raise SystemExit(f"this checkpoint's optimizer holds {len(missing)} parameter(s) this "
+                         f"run's network does not have ({', '.join(missing[:4])}): its moments "
+                         "cannot be matched by name")
+    sopt = ck["optimizer"]
+    sopt["state"] = {pos[idx[int(i)]]: st for i, st in (sopt.get("state") or {}).items()}
+    sopt["param_groups"] = [dict(saved[0][0], params=list(range(len(order))))]
+    return True
+
+
+def opt_state_to_run(ck, policy, opt, saved):
+    """Regroup a MODEL-order optimizer state (index = position in policy.named_parameters(),
+    which is what the warm-start helpers leave behind) into ``opt``'s own param_groups by name,
+    so opt.load_state_dict pairs every parameter with its own moments. A parameter the
+    checkpoint never had (a widened run's fresh module) gets none, as before.
+
+    The checkpoint's group hyperparameters are kept when it grouped its parameters as this run
+    does (what load_state_dict does with a matching checkpoint); otherwise this run's own flags
+    apply (its weight decay per group). -> a line for the log."""
+    pos = {id(q): j for j, (_, q) in enumerate(policy.named_parameters())}
+    name = {id(q): n for n, q in policy.named_parameters()}
+    run = [[name[id(q)] for q in g["params"]] for g in opt.param_groups]
+    same = len(saved) == len(run) and all(set(s) <= set(r) for (_, s), r in zip(saved, run))
+    sopt = ck["optimizer"]
+    state = sopt.get("state") or {}
+    new_state, groups, k = {}, [], 0
+    for gi, g in enumerate(opt.param_groups):
+        ids = []
+        for q in g["params"]:
+            j = pos[id(q)]
+            st = state.get(j, state.get(str(j)))
+            if st is not None:
+                new_state[k] = st
+            ids.append(k)
+            k += 1
+        hyper = saved[gi][0] if same else {kk: v for kk, v in g.items() if kk != "params"}
+        groups.append(dict(hyper, params=ids))
+    ck["optimizer"] = {"state": new_state, "param_groups": groups}
+    return (f"optimizer state matched to this run's parameters BY NAME ({len(new_state)} of "
+            f"{k} carry moments; the checkpoint's {len(saved)} group(s) -> this run's "
+            f"{len(run)}" + ("" if same else ", grouped differently: this run's own group "
+                             "hyperparameters apply") + ")")
+
+
 def widen_for_route(ck, policy, flag="--route"):
     """Zero-pad a pre-route checkpoint onto a route-widened Policy.
 
@@ -9186,6 +9301,17 @@ def main() -> None:
                          "autocast disabled in training, as every recording runs it (mm/health: "
                          "bf16 flipped 1.4-3.7%% of the seven-map agent's key choices against "
                          "fp32, ledger a47d36da). No tensor changes; ckpt restores. 0 = today")
+    ap.add_argument("--update-stats", type=int, default=None, choices=(0, 1),
+                    help="log the PPO update's health (2026-11-24 code review): train/clip_frac "
+                         "(share of rows with |ratio - 1| > --clip, every minibatch), "
+                         "train/grad_norm (the gradient norm BEFORE the 0.5 clip) and "
+                         "train/grad_clipped (share of steps it clipped), and, at epoch 0's "
+                         "first minibatch, where the weights are still the rollout's, "
+                         "train/noise0_logp (mean |log-prob - behaviour log-prob|: pure "
+                         "numerics, e.g. bf16 heads), train/noise0_logp_max and "
+                         "train/noise0_clip (share of rows outside the clip at ZERO update). "
+                         "Logging only (no extra sync: one read per iteration); ckpt restores. "
+                         "0 = today")
     args = ap.parse_args()
     # --maxvel V1,V2,...: one sv_maxvelocity per map (_maxvel_arg returns a tuple only for a list).
     # args.maxvel becomes the FIRST map's value, so every single-value reader is unchanged, and
@@ -10410,6 +10536,10 @@ def main() -> None:
         if args.fp32_trunk is None and ck_cfg.get("fp32_trunk") is not None:
             args.fp32_trunk = int(ck_cfg["fp32_trunk"])
             restored.append(f"fp32_trunk={args.fp32_trunk}")
+        # --update-stats: logging only, restored so a resumed run keeps its progress.csv columns
+        if args.update_stats is None and ck_cfg.get("update_stats") is not None:
+            args.update_stats = int(ck_cfg["update_stats"])
+            restored.append(f"update_stats={args.update_stats}")
         if (args.fix_pitch is None and not args.free_pitch
                 and ck_cfg.get("fix_pitch") is not None):
             args.fix_pitch = float(ck_cfg["fix_pitch"])
@@ -12212,6 +12342,8 @@ def main() -> None:
         args.fp32_heads = 0           # heads inside autocast, as they were
     if args.fp32_trunk is None:
         args.fp32_trunk = 0           # the image trunk inside autocast, as it was
+    if args.update_stats is None:
+        args.update_stats = 0         # no update-health columns, as before
     if args.priv_critic is None:
         args.priv_critic = 0          # symmetric critic, as it was
     if args.priv_hidden is None:
@@ -15943,7 +16075,7 @@ def main() -> None:
                   f"(+{args.codebook_bias:g} on {NCODES}x{H}x{NACT} fitted "
                   "indices; still fully trainable)")
     PI_LR = float(args.dae_pi_lr)
-    _PI_PREFIX = ("pi.", "action_head.", "view_head.", "view_std.")
+    _PI_PREFIX = OPT_PI_PREFIX
 
     def _pi_lr_groups(groups):
         """--dae-pi-lr: every group split in two - the policy's own parameters at lr x PI_LR, the
@@ -16504,6 +16636,12 @@ def main() -> None:
                 "--conv-mult / --trunk / --lidar-w / --lidar-h and the "
                 "scalar mask, all of which are restored from the checkpoint "
                 "when their flag is absent - drop the flag that shrank it")
+        # every helper below reads the optimizer state in MODEL order (one group); a grouped
+        # checkpoint (--wd-skip-norms, --dae-pi-lr) is re-keyed to it by name first, and
+        # opt_state_to_run() regroups it into this run's groups before opt.load_state_dict
+        _opt_saved = opt_saved_groups(ck, policy)
+        _opt_rekeyed = (_opt_saved is not None
+                        and opt_state_to_model_order(ck, policy, _opt_saved))
         if RPLAN:
             # --goal-planner ramps onto a checkpoint trained WITHOUT the target channel: the
             # conv's first layer gains ONE zero input slice (the channel is last), its Adam
@@ -16704,6 +16842,15 @@ def main() -> None:
                       + " - projected onto it; sig now "
                       + "/".join(f"{v:.3f}" for v in
                                  policy.log_std().exp().tolist()))
+        _run_order = [id(q) for g in opt.param_groups for q in g["params"]]
+        if _opt_rekeyed or len(opt.param_groups) > 1 or _run_order != [
+                id(q) for q in policy.parameters()]:
+            if _opt_saved is None:
+                raise SystemExit("this checkpoint's one optimizer group does not hold its "
+                                 "network's parameters one for one, and this run groups them "
+                                 "(--wd-skip-norms / --dae-pi-lr): its moments cannot be "
+                                 "matched by name")
+            print(opt_state_to_run(ck, policy, opt, _opt_saved))
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
         if n_re:
@@ -17577,6 +17724,9 @@ def main() -> None:
         meta["config"]["mlp_act"] = str(args.mlp_act)
     if args.fp32_trunk:
         meta["config"]["fp32_trunk"] = 1
+    if args.update_stats:
+        # --update-stats, written ONLY when on (a control's config dump gains no key)
+        meta["config"]["update_stats"] = 1
     if args.wd_skip_norms:
         meta["config"]["wd_skip_norms"] = 1
     if float(args.race_pay_d0) > 0.0:
@@ -18637,6 +18787,12 @@ def main() -> None:
         # one; an older --maps file migrates by padding) - advmap_diag says what each column is
         for _s in SLOTS_ALL:
             CSV_COLS += [f"train/{_c}.{_s.tag}" for _c in ADVMAP_COLS]
+    UPD_STATS = bool(args.update_stats)
+    if UPD_STATS:
+        # --update-stats: AFTER the per-map block, so a run launched without the flag and
+        # resumed with it migrates by padding like every other extension
+        CSV_COLS += ["train/clip_frac", "train/grad_norm", "train/grad_clipped",
+                     "train/noise0_logp", "train/noise0_logp_max", "train/noise0_clip"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -21416,8 +21572,11 @@ def main() -> None:
         D.barrier()
 
     def _ckpt_state():
+        _nm = {id(q): n for n, q in policy.named_parameters()}
         state = {"policy": policy.state_dict(),
                  "optimizer": contiguous_optimizer_state(opt.state_dict()),
+                 # the parameter NAME of each saved optimizer index (opt_saved_groups)
+                 "opt_names": [_nm[id(q)] for g in opt.param_groups for q in g["params"]],
                  "global_step": global_step, "config": meta["config"]}
         if OFFP:
             # --offpolicy: the critic, its target and the temperatures (no resume: analysis only)
@@ -24820,6 +24979,11 @@ def main() -> None:
         # compiled signature is baked in as a constant, so an --ent-final
         # schedule would recompile the whole region every iteration
         kl = loss_v = loss_pi = loss_ent = 0.0
+        # --update-stats: [sum clip_frac, sum grad norm, steps clipped] over the update's
+        # minibatches, and [mean, max |dlogp|, clip_frac] at epoch 0's first one (on the GPU)
+        upd_acc = torch.zeros(3, device=device) if UPD_STATS else None
+        upd_zero = upd_n = None
+        upd_row = [float("nan")] * 6
         bc_last = None
         bc_stats = None
         if bc is not None:
@@ -25032,7 +25196,7 @@ def main() -> None:
                         _q.grad = None
                 sync_grads()          # MUST sit before the clip: clipping
                 # local grads then averaging is a different algorithm
-                nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+                _gn = nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
                 if VMPO:
                     vmpo_opt.step()
@@ -25048,6 +25212,18 @@ def main() -> None:
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 last_diag = (idx, logp, vl, pg, el)
+                if UPD_STATS:
+                    # --update-stats: summed on the GPU, read once with the diagnostics below
+                    with torch.no_grad():
+                        _dlp = logp.detach().float() - f_logp[idx]
+                        _cut = ((_dlp.exp() - 1.0).abs() > args.clip).float().mean()
+                        upd_acc += torch.stack([_cut, _gn.float(), (_gn > 0.5).float()])
+                        if upd_zero is None:
+                            # epoch 0's first minibatch ran on the ROLLOUT's weights: what
+                            # differs from the stored log-prob here is numerics, not learning
+                            _adl = _dlp.abs()
+                            upd_zero = torch.stack([_adl.mean(), _adl.max(), _cut])
+                    upd_n = (upd_n or 0) + 1
                 if a_mean is not None:
                     last_pooled = (a_mean[k_mb], a_std[k_mb])
         if VMPO and vmpo_last is not None:
@@ -25103,12 +25279,26 @@ def main() -> None:
             with torch.no_grad():
                 diag = torch.stack([(f_logp[idx] - logp).mean(),
                                     vl.detach(), pg.detach(), el.detach()])
+                if UPD_STATS and upd_zero is not None:
+                    # the update's means + the zero-update numerics, in the same one read
+                    # (under --ddp-maps shard noise0_logp_max is the ranks' row-weighted mean)
+                    diag = torch.cat([diag, upd_acc / float(upd_n), upd_zero])
                 if DDP_SHARD:
                     diag.mul_(float(mb) / float(MB_ALL))   # the union's means (unequal rows)
                     D.all_reduce_sum_(diag)
                 else:
                     D.all_reduce_mean_(diag)
-                kl, loss_v, loss_pi, loss_ent = diag.tolist()
+                _dg = diag.tolist()
+                kl, loss_v, loss_pi, loss_ent = _dg[:4]
+                if len(_dg) > 4:
+                    # clip_frac, grad_norm, grad_clipped, noise0_logp, noise0_logp_max,
+                    # noise0_clip (CSV_COLS order)
+                    upd_row = [_dg[4], _dg[5], _dg[6], _dg[7], _dg[8], _dg[9]]
+            if UPD_STATS and D.is_main and (it_no <= 3 or it_no % 50 == 1):
+                print(f"update: clip_frac {upd_row[0]:.4f}  grad_norm {upd_row[1]:.4g} "
+                      f"(clipped at 0.5 in {upd_row[2]:.0%} of steps)  |  at zero update: "
+                      f"|logp - logp_old| mean {upd_row[3]:.2e} max {upd_row[4]:.2e}, "
+                      f"outside the clip {upd_row[5]:.2%}", flush=True)
         advmap_row = []
         advmap_e2 = []                 # --ddp-maps shard: each local map's sum (G - V)^2
         if MULTI:
@@ -26532,9 +26722,12 @@ def main() -> None:
                            + (novel_row if novel_row is not None else [])
                            # fpert/*, after those (only under --respawn-front-perturb)
                            + (fpert_row if fpert_row is not None else [])
-                           # train/<name>.<tag>, --maps only, TRULY LAST
+                           # train/<name>.<tag>, --maps only
                            + ([(float(f"{_v:.6g}") if _v == _v else "")
-                               for _v in advmap_row] if MULTI else []))
+                               for _v in advmap_row] if MULTI else [])
+                           # --update-stats, after everything (only when on)
+                           + ([(float(f"{_v:.6g}") if _v == _v else "")
+                               for _v in upd_row] if UPD_STATS else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
