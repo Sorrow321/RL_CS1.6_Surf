@@ -52173,3 +52173,33 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   noise0_clip >= 1% AND --fp32-heads 1 cuts both by >= 3x at <= 5% fps; a bigger fps cost goes
   to the user. Below both thresholds: bf16 heads stay.
 * Watchdog with harvest, dashboard tunnel :8687, credit $45.43 (floor $13).
+
+## 2026-11-25 00:36 UTC: PLAN - three pre-launch tests on the 3-map set: unstuck cap, floor, per-map V
+
+* The user (2026-11-25), on the Fable review's open items: "ok, test those" - the unstuck heat
+  cap 0.2 vs 0.5, a floor share for finished maps (their compute moves to unfinished maps, a
+  floor keeps them from being forgotten), and per-map return normalisation (the critic's error:
+  blue200 ~60% of the 7-map run's value loss for its first half, pb and sidistic ~1% each).
+* Three arms, each = the pay-test control ua_3m's exact line (PLAN 5603310c: recipe v14 + the
+  seven-map extras + round 2's arch; cannonball + petrus + blue200, 342 envs each; from scratch,
+  seed 0, 8e9 steps; config, run_arm.sh and box.py identical to ua_3m's eb9d0d99) + --update-stats
+  1 (logging only) + ONE change, branch mm/prelaunch, one RTX 5090 <= $0.60/h each:
+  - uk_3m: --unstuck-max 0.2 (ua: 0.5; the keytemp group's other three parts unchanged).
+  - pn_3m: --ret-norm 2 (to build): the critic's targets standardised PER MAP (one PopArt-lite
+    pair per map, as --ret-norm 1's one pair; V read back in each map's own units).
+  - fs_3m: --map-floor 0.25 (to build): a map finished in 2 evals in a row (>= 8 of 9) keeps a
+    quarter of an even share of the envs, the rest go to the unfinished maps; a floored map that
+    slips (2 evals <= 5 of 9) gets its share back. Each re-split = checkpoint + the trainer
+    re-executed in place on it (same pid) with the new split.
+* Measured as the pay test (official grader, every eval): per map the first finish, the share
+  finished after it, the best time; cannonball's last-5-eval best (ua: no finish, regressed to
+  2.5-8.3% from 5.41B). Own steps = fleet / 3 for uk and pn; fs is read in FLEET steps (its claim
+  is the compute split). Mechanism: uk unstuck/T per map; pn train/vloss_share and EV per map;
+  fs the split over time and the floored maps' evals.
+* Rule (one seed per arm, against ua_3m): BETTER = cannonball finishes or ends with its
+  last-5-eval best >= 50%, with petrus and blue200 each >= 60% finished after their first finish
+  (ua 79% / 98%); WORSE = petrus or blue200 finishes > 2x later than ua (0.376B / 1.578B own) or
+  < 50% after it; anything else = no clear difference.
+* uk_3m launches now; pn_3m and fs_3m when built and CPU-tested (a NOTE names each commit).
+  Budget ~$12 (credit $45.43, floor $13); watchdog + harvest per box, droplet watchers,
+  dashboards :8688 (uk) / :8689 (pn) / :8690 (fs).
