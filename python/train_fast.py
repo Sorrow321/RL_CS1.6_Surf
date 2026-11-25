@@ -8370,7 +8370,11 @@ def main() -> None:
                          "read outside the value loss - GAE, the truncation "
                          "bootstrap - is de-normalized back into reward "
                          "units. Advantage normalization is unchanged. "
-                         "ckpt restores")
+                         "2 = the same PER MAP (--maps, 2026-11-25): one "
+                         "statistics pair per map, every env's V read back "
+                         "with its own map's pair (in the seven-map run "
+                         "blue200 held ~60%% of the critic's error, pb and "
+                         "sidistic ~1%% each). ckpt restores")
     ap.add_argument("--adv-norm-per-map", type=int, default=None, choices=(0, 1),
                     help="--maps only (refused with one map): 1 = standardise the PPO "
                          "advantages PER MAP inside every minibatch - each map's rows by "
@@ -11163,6 +11167,8 @@ def main() -> None:
         args.max_step = 100.0                 # RaceReward's own default
     if args.ret_norm is None:
         args.ret_norm = 0
+    if int(args.ret_norm) not in (0, 1, 2):
+        raise SystemExit(f"--ret-norm {args.ret_norm}: 0 (off), 1 (one pair) or 2 (one per map)")
     if args.adv_norm_per_map is None:
         args.adv_norm_per_map = 0
     if args.int_coef is None:
@@ -16481,7 +16487,38 @@ def main() -> None:
               f"cumulative) re-arms the training stall kill"
               + (" and the eval patience clock" if EVAL_PATIENCE else ""))
     retn = ReturnNorm()
-    if RETN:
+    # --ret-norm 2: ONE pair per map (slot order), each env's pair as (N,) tensors for GAE and the
+    # value targets and as numpy rows for the truncation bootstrap (V(s_T) is spliced in on the
+    # host). The single pair `retn` stays at 0 / 1, unused.
+    RETN_MAP = int(args.ret_norm) == 2
+    if RETN_MAP and not MULTI:
+        raise SystemExit("--ret-norm 2 normalises the critic's targets PER MAP: it needs --maps "
+                         "(one map: --ret-norm 1)")
+    if RETN_MAP and D.enabled:
+        raise SystemExit("--ret-norm 2 is not implemented with DDP (the per-map statistics are "
+                         "single-process): run it on one GPU")
+    if RETN_MAP and args.bc_file and float(args.bc_value_coef or 0.0) > 0.0:
+        raise SystemExit("--ret-norm 2 with a --bc-file value target is not implemented (the BC "
+                         "value term reads the one pair)")
+    retn_map = [ReturnNorm() for _ in slots] if RETN_MAP else []
+    RN_MU_NP = np.zeros(N) if RETN_MAP else None
+    RN_SD_NP = np.ones(N) if RETN_MAP else None
+    rn_mu_env = torch.zeros(N, device=device) if RETN_MAP else None
+    rn_sd_env = torch.ones(N, device=device) if RETN_MAP else None
+
+    def rn_refresh():
+        """--ret-norm 2: every env's (mu, sigma) from its map's pair, on the host and the GPU."""
+        for _k, _s in enumerate(slots):
+            RN_MU_NP[_s.lo:_s.hi] = retn_map[_k].mean
+            RN_SD_NP[_s.lo:_s.hi] = retn_map[_k].std
+        rn_mu_env.copy_(torch.as_tensor(RN_MU_NP, dtype=torch.float32))
+        rn_sd_env.copy_(torch.as_tensor(RN_SD_NP, dtype=torch.float32))
+
+    if RETN_MAP:
+        print(f"--ret-norm 2: the critic predicts returns NORMALIZED PER MAP (one debiased EMA "
+              f"pair per map, beta {retn.beta:g}); every V(s) read outside the value loss - GAE, "
+              f"the truncation bootstrap - is de-normalized with its env's own map's pair")
+    elif RETN:
         print(f"--ret-norm: the critic predicts NORMALIZED returns "
               f"(debiased EMA, beta {retn.beta:g}, eps {retn.eps:g}); every "
               f"V(s) read outside the value loss - GAE, the truncation "
@@ -16890,7 +16927,19 @@ def main() -> None:
                     _s.reward_fn.restore_counts(arr)
                     n_visits += int(np.asarray(arr).sum(dtype=np.int64))
                 print(f"restored novelty counts ({n_visits:,} visits)")
-        if RETN and ck.get("ret_norm") is not None:
+        if RETN_MAP and (ck.get("ret_norm_map") is not None or ck.get("ret_norm") is not None):
+            # --ret-norm 2: each map's pair by tag; a one-pair checkpoint seeds every map with it
+            _rm = ck.get("ret_norm_map") or {}
+            for _k, _s in enumerate(slots):
+                _st = _rm.get(_s.tag, ck.get("ret_norm"))
+                if _st is not None:
+                    retn_map[_k].load_state_dict(_st)
+            rn_refresh()
+            print("restored the per-map return normalizers"
+                  + ("" if _rm else " (seeded from the checkpoint's one pair)") + ": "
+                  + "; ".join(f"{_s.tag} mean {retn_map[_k].mean:,.4f} std "
+                              f"{retn_map[_k].std:,.4f}" for _k, _s in enumerate(slots)))
+        elif RETN and ck.get("ret_norm") is not None:
             # the critic's outputs are only meaningful against the (mu,
             # sigma) they were fitted under: resuming with a fresh EMA would
             # read every V(s) in the wrong frame for the ~100 iterations the
@@ -16968,9 +17017,19 @@ def main() -> None:
         relayout_optimizer_state(opt)
         for g in opt.param_groups:
             g["lr"] = args.lr * float(g.get("lr_scale", 1.0))
-        _iw_retn = bool(RETN and _iw.get("ret_norm") is not None)
-        if _iw_retn:
-            retn.load_state_dict(_iw["ret_norm"])
+        if RETN_MAP:
+            # --ret-norm 2: each map's pair by tag (a one-pair source seeds every map)
+            _rm = _iw.get("ret_norm_map") or {}
+            _iw_retn = bool(_rm) or _iw.get("ret_norm") is not None
+            for _k, _s in enumerate(slots):
+                _st = _rm.get(_s.tag, _iw.get("ret_norm"))
+                if _st is not None:
+                    retn_map[_k].load_state_dict(_st)
+            rn_refresh()
+        else:
+            _iw_retn = bool(RETN and _iw.get("ret_norm") is not None)
+            if _iw_retn:
+                retn.load_state_dict(_iw["ret_norm"])
         INIT_W = {"init_weights": _iw_path.name,
                   "init_weights_md5": _iw_md5.hexdigest(),
                   "init_weights_step": int(_iw.get("global_step", 0)),
@@ -18793,6 +18852,9 @@ def main() -> None:
         # resumed with it migrates by padding like every other extension
         CSV_COLS += ["train/clip_frac", "train/grad_norm", "train/grad_clipped",
                      "train/noise0_logp", "train/noise0_logp_max", "train/noise0_clip"]
+    if int(args.ret_norm) == 2:
+        # --ret-norm 2: each map's running (mean, std) of the return, after those
+        CSV_COLS += [f"train/ret_{_c}.{_s.tag}" for _s in slots for _c in ("mean", "std")]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -21671,7 +21733,11 @@ def main() -> None:
             # --respawn-greedy: the last eval's greedy-line states (rebuilt at the next eval)
             state["respawn_greedy"] = ({_gs.tag: GREEDY_S[_gs.tag].state_dict()
                                         for _gs in slots} if MULTI else GREEDY.state_dict())
-        if RETN:
+        if RETN_MAP:
+            # --ret-norm 2: each map's pair, keyed by its tag
+            state["ret_norm_map"] = {_s.tag: retn_map[_k].state_dict()
+                                     for _k, _s in enumerate(slots)}
+        elif RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
             # scale. Written only when the flag is on, so a control run's
@@ -24027,7 +24093,13 @@ def main() -> None:
                                 _tv = tv.to("cpu").numpy().astype(np.float64)
                                 q[ti] += (GAMMA_T * _tv[:, 1]).astype(np.float32)
                                 tv = torch.as_tensor(_tv[:, 0] + PAY_K_NP[ti] * _tv[:, 1])
-                            if RETN:
+                            if RETN_MAP:
+                                # --ret-norm 2: each truncated env's own map's pair
+                                tv = (tv.float() * torch.as_tensor(RN_SD_NP[ti], dtype=torch.float32,
+                                                                   device=tv.device)
+                                      + torch.as_tensor(RN_MU_NP[ti], dtype=torch.float32,
+                                                        device=tv.device))
+                            elif RETN:
                                 # V(s_T) is spliced into the REWARD stream,
                                 # so it has to come back into reward units
                                 # first - the one place a missed
@@ -24493,7 +24565,11 @@ def main() -> None:
                 # k V_P + V_R the reward stream (b_val already holds combined values)
                 last_vq = last_val[:, 1].float()
                 last_val = last_val[:, 0].float() + K_ENV * last_vq
-            if RETN:
+            if RETN_MAP:
+                # --ret-norm 2: the same, each env column with its own map's pair (N,)
+                b_val.mul_(rn_sd_env).add_(rn_mu_env)
+                last_val = last_val.float() * rn_sd_env + rn_mu_env
+            elif RETN:
                 # the head emits NORMALIZED returns; GAE, the advantages and
                 # every logged value live in reward units. De-normalize ONCE
                 # here, on the whole buffer, OUTSIDE the captured CUDA graph
@@ -24910,7 +24986,18 @@ def main() -> None:
             f_ctv = b_ftv.reshape(T * N, NZ)
         f_bkt = (torch.bucketize(f_scal[:, CC_COL].contiguous(), CC_EDGES_T,
                                  right=True) if CC_BKT else None)
-        if RETN and not FREEZE:
+        if RETN_MAP and not FREEZE:
+            # --ret-norm 2: the same update-then-use, ONE pair PER MAP from its own envs' columns
+            # of the return (fp64 sums, as ev_stat's); one (NMAPS, 3) read per iteration
+            _r64 = ret.double()
+            _rs = torch.stack([torch.stack([_r.new_tensor(float(_r.numel())), _r.sum(),
+                                            (_r * _r).sum()])
+                               for _r in (_r64[:, _s.lo:_s.hi] for _s in slots)])
+            for _k, (_rn, _rsum, _rsq) in enumerate(_rs.tolist()):
+                retn_map[_k].update(_rsum / _rn, _rsq / _rn)
+            rn_refresh()
+            f_ret = ((ret - rn_mu_env) / rn_sd_env).reshape(-1)
+        elif RETN and not FREEZE:
             # (--freeze-policy: the return statistic belongs to the frozen
             # critic's frame and does not move either)
             # PopArt-lite, UPDATE-THEN-USE: fold this rollout's return
@@ -26642,7 +26729,9 @@ def main() -> None:
                               if stall_frac == stall_frac else "",
                               round(crawl_frac, 4)
                               if crawl_frac == crawl_frac else "",
-                              round(retn.mean, 5), round(retn.std, 6)]
+                              # (--ret-norm 2: the one pair is unused - its maps' are LAST)
+                              "" if RETN_MAP else round(retn.mean, 5),
+                              "" if RETN_MAP else round(retn.std, 6)]
                            # --heldout-maps, LAST (heldout_columns order)
                            + heldout_csv_values(heldout, eval_per_map,
                                                 held_corr)
@@ -26727,7 +26816,11 @@ def main() -> None:
                                for _v in advmap_row] if MULTI else [])
                            # --update-stats, after everything (only when on)
                            + ([(float(f"{_v:.6g}") if _v == _v else "")
-                               for _v in upd_row] if UPD_STATS else []))
+                               for _v in upd_row] if UPD_STATS else [])
+                           # --ret-norm 2: each map's (mean, std), after those
+                           + ([_v for _m in retn_map
+                               for _v in (round(_m.mean, 5), round(_m.std, 6))]
+                              if RETN_MAP else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -26793,7 +26886,9 @@ def main() -> None:
             # exactly this wrong off ep_len_mean alone.
             hyg_note += (f"  tr/st/cr {trunc_frac:.0%}/{stall_frac:.0%}"
                          f"/{crawl_frac:.0%}")
-        if RETN:
+        if RETN_MAP:
+            hyg_note += "  ret " + " ".join(f"{_m.mean:+.2f}+-{_m.std:.2f}" for _m in retn_map)
+        elif RETN:
             hyg_note += f"  ret {retn.mean:+.2f}+-{retn.std:.2f}"
         if VIEWC:
             # the two learned sigmas, in z: the one number that says whether

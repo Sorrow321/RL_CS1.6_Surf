@@ -104,6 +104,8 @@ def make_az_policy():
         force_z = None
         # --critic-pay-d0: this map's k (value_k); None for a one-head critic
         pay_k = None
+        # --ret-norm: this map's (mu, sigma) (value_norm); None without the flag
+        vnorm = None
 
         def _v1(self, v):
             """V(s) per env in this map's reward units: a --critic-pay-d0 critic's [V_R, V_P]
@@ -114,6 +116,8 @@ def make_az_policy():
                     raise RuntimeError("a two-column critic and no pay_k: set it from "
                                        "az_mcts.value_k(cfg, d0)")
                 return v[:, 0] + float(self.pay_k) * v[:, 1]
+            if self.vnorm is not None:
+                return v.reshape(-1) * float(self.vnorm[1]) + float(self.vnorm[0])
             return v.reshape(-1)
 
         @torch.inference_mode()
@@ -216,6 +220,25 @@ def value_k(cfg: dict, d0: float):
         raise SystemExit("a --critic-pay-d0 checkpoint on a map with no start distance: "
                          "its progress head has no exchange rate here")
     return s * D / 100.0
+
+
+def value_norm(ck: dict, map_path):
+    """--ret-norm: the (mu, sigma) a checkpoint's critic output is read back with on this map,
+    V(s) = raw * sigma + mu - its one pair (--ret-norm 1) or this map's own (--ret-norm 2,
+    "ret_norm_map" keyed by the map's tag or, when tags collided, its stem). None without
+    the flag. Before 2026-11-25 a --ret-norm checkpoint's V was read here un-normalised."""
+    from surfgym.mapfleet import map_tag
+    from train_fast import ReturnNorm
+    stem = Path(str(map_path)).stem
+    rm = ck.get("ret_norm_map") or {}
+    st = rm.get(map_tag(stem), rm.get(stem)) if rm else ck.get("ret_norm")
+    if st is None:
+        if int((ck.get("config") or {}).get("ret_norm") or 0):
+            raise SystemExit(f"a --ret-norm checkpoint with no return statistics for {stem}")
+        return None
+    r = ReturnNorm()
+    r.load_state_dict(st)
+    return float(r.mean), float(r.std)
 
 
 def ranks(x) -> np.ndarray:
@@ -369,6 +392,7 @@ def run_az(ctx: dict, a) -> dict:
         pol.spawn_duck = ctx["SPAWN_DUCK"]
         pol.greedy = np.zeros(core.num_envs, bool)
         pol.pay_k = value_k(cfg, d0)
+        pol.vnorm = ctx.get("vnorm")
         if priv_fn is not None:
             pol.priv_fn = priv_fn
         return pol, SideState(pol, xfe, fstate, lf)
@@ -909,6 +933,7 @@ def run_critic_probe(ctx: dict, a) -> dict:
                       keys_hold=ctx["KEYS"], **xkw)
     pol.spawn_duck = ctx["SPAWN_DUCK"]
     pol.pay_k = value_k(cfg, d0)
+    pol.vnorm = ctx.get("vnorm")
     if priv_fn is not None:
         pol.priv_fn = priv_fn
     side = SideState(pol, xfe, fstate, lf)

@@ -2905,8 +2905,9 @@ def main():
 
     if args.az:
         # ---- --az: AlphaZero-style test-time search, one decision per edge (az_mcts.py) ---
-        from az_mcts import run_az
+        from az_mcts import run_az, value_norm
         ctx = dict(policy=policy, packer=packer, device=device, lidar=lidar, K=K, stack=stack,
+                   vnorm=value_norm(ck, map_path),
                    KEYS=KEYS, SPAWN_DUCK=SPAWN_DUCK, VIEWC=VIEWC, VIEW_ABS=VIEW_ABS,
                    mk_feed=mk_feed, XF=XF, cc_fn1=cc_fn1, cc_fnN=cc_fnN, build_sim=build_sim,
                    cfg=cfg, map_path=map_path, ep_cap=ep_cap, TICK=TICK, arm=arm, row0=row0,

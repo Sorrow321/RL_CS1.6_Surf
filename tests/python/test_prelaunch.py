@@ -340,3 +340,82 @@ def test_flags_off_are_bit_identical_to_the_parent_commit(tmp_path):
         shutil.rmtree(d1, ignore_errors=True)
         if not os.environ.get("PRELAUNCH_PARENT_TREE"):
             shutil.rmtree(d0, ignore_errors=True)
+
+
+# ==========================================================================
+# (d) --ret-norm 2: the critic's targets standardised PER MAP (2026-11-25)
+# ==========================================================================
+def test_value_norm_reads_the_maps_own_pair():
+    """tools/az_mcts.value_norm: V(s) = raw * sigma + mu with this map's pair (by tag, else stem),
+    the one pair under --ret-norm 1, None without the flag, refused when the stats are missing"""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import az_mcts
+    a, b = tf.ReturnNorm(), tf.ReturnNorm()
+    a.update(10.0, 136.0)                       # mean 10, std 6
+    b.update(-2.0, 8.0)                         # mean -2, std 2
+    ck = {"config": {"ret_norm": 2},
+          "ret_norm_map": {"cannonball": a.state_dict(), "surf_petrus_lite": b.state_dict()}}
+    mu, sd = az_mcts.value_norm(ck, "maps/surf_src_cannonball.bsp")
+    assert mu == pytest.approx(10.0) and sd == pytest.approx(6.0, rel=1e-6)
+    mu, sd = az_mcts.value_norm(ck, "/x/surf_petrus_lite.bsp")       # the stem key
+    assert mu == pytest.approx(-2.0) and sd == pytest.approx(2.0, rel=1e-6)
+    with pytest.raises(SystemExit, match="no return statistics"):
+        az_mcts.value_norm(ck, "maps/surf_edgeflow_blue200.bsp")
+    one = {"config": {"ret_norm": 1}, "ret_norm": a.state_dict()}
+    assert az_mcts.value_norm(one, "maps/surf_edgeflow_blue200.bsp")[0] == pytest.approx(10.0)
+    assert az_mcts.value_norm({"config": {}}, "maps/surf_src_cannonball.bsp") is None
+
+
+@needs_two
+def test_ret_norm_per_map_trains_records_and_resumes():
+    r, d = V.run_line(V.ROOT, "pre_rn", _maps(), steps=8 * 64 * 12,
+                      extra=SM + ARCH + ["--ret-norm", "2"], timeout=5400)
+    out = r.stdout + r.stderr
+    try:
+        assert r.returncode == 0, out[-5000:]
+        assert "--ret-norm 2: the critic predicts returns NORMALIZED PER MAP" in out
+        cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+        assert cfg["ret_norm"] == 2
+        sys.path.insert(0, str(V.ROOT / "tools"))
+        import record_ckpt
+        record_ckpt.audit_cfg(cfg)
+        ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+        assert "ret_norm" not in ck
+        tags = list(ck["ret_norm_map"])
+        assert len(tags) == 2
+        pairs = []
+        for t in tags:
+            n = tf.ReturnNorm()
+            n.load_state_dict(ck["ret_norm_map"][t])
+            assert n.count >= 3 and np.isfinite(n.mean) and n.std > 0.0, (t, n.mean, n.std)
+            pairs.append((n.mean, n.std))
+        assert pairs[0] != pairs[1]                # each map its own statistics
+        head, rows = _csv(d / "progress.csv")
+        assert head[-4:] == [f"train/ret_{c}.{t}" for t in tags for c in ("mean", "std")]
+        for row in rows:
+            assert row[head.index("train/ret_mean")] == "" == row[head.index("train/ret_std")]
+            assert all(np.isfinite(float(row[head.index(c)])) for c in head[-4:])
+        os.environ["SELF_STATES"] = "1"
+        r2, d2 = V.run_line(V.ROOT, "pre_rn_re", _maps(), steps=8 * 64 * 16,
+                            extra=SM + ["--ckpt", str(d / "ckpt_final.pt")], timeout=5400)
+        o2 = r2.stdout + r2.stderr
+        assert r2.returncode == 0, o2[-5000:]
+        assert "ret_norm=2" in o2 and "restored the per-map return normalizers: " in o2
+    finally:
+        os.environ.pop("SELF_STATES", None)
+        for name in (() if os.environ.get("PRELAUNCH_KEEP") else ("pre_rn", "pre_rn_re")):
+            shutil.rmtree(V.ROOT / "runs" / name, ignore_errors=True)
+
+
+@needs_two
+def test_ret_norm_2_needs_maps_and_3_is_no_value():
+    one = ["--map", str(MAPS[0])]
+    r, d = V.run_line(V.ROOT, "pre_rn_one", one, steps=2048, extra=SM + ["--ret-norm", "2"])
+    try:
+        assert r.returncode != 0 and "--ret-norm 2 normalises the critic's targets PER MAP" in (
+            r.stdout + r.stderr)
+        r3, _ = V.run_line(V.ROOT, "pre_rn_one", _maps(), steps=2048, extra=SM + ["--ret-norm", "3"])
+        assert r3.returncode != 0 and "--ret-norm 3: 0 (off), 1 (one pair) or 2" in (
+            r3.stdout + r3.stderr)
+    finally:
+        shutil.rmtree(V.ROOT / "runs" / "pre_rn_one", ignore_errors=True)
