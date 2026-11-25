@@ -52463,3 +52463,41 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   net at a 20-30-map pilot, a Fable 5.2 review rerun), and a resume rule for the long run: today
   any resume re-arms --auto-spine-delay (3e8 own steps with no search) and restarts the patience,
   and restores held spines with neutral keys.
+
+## 2026-11-25 14:40 UTC: NOTE - the world-record metric (mm/m20 fc94586e); on our simulator the seven-map agent is under 2 of the 5 comparable records
+
+* The user (2026-11-25), ordering the 20-map run: "keep world record timers somewhere and have a
+  metric something like which % of maps in training beaten the WR".
+* Records: docs/leaderboards/<stem>.json (speedrun.eu, top 100 per map). Refreshed 2026-11-25 for
+  the 20-map candidates; one record moved since 2026-09-12 (kei_luupy 14.48 -> 14.20 s).
+  tools/leaderboard.py snapshot freezes one run's set into a single json.
+* Clock: a human run is timed from the start trigger, ours from spawn. surfgym.wrclock: the record
+  clock is (n - i_s) ticks, i_s = the last row whose origin is inside the start trigger (the
+  engine's brush-trigger rule; a plain box = its bounds grown by the standing hull). It counts from
+  the last touch, so it is one tick longer than counting from leaving the trigger: never in our
+  favour. Spawn -> start-trigger time on the seven-map agent's last eval: cannonball 1.08-1.10 s
+  (the WR demo's 0.96 s), celestial 1.08-1.10, petrus 0.55, sidistic 1.31-1.34, uf2 0.77-0.79,
+  blue200 0.64-1.42. Princessburglar's hand-labelled start is never touched; it has no record on
+  speedrun.eu anyway.
+* Where the metric is computed:
+  - score.py reports best_record_s per eval (the score is unchanged).
+  - autoresearch/wr_metric.py tabulates every eval: maps finished; comparable maps beaten (now
+    and ever); median best time / record.
+  - train_fast --wr-file logs race/maps_wr, race/maps_wr_ever, race/wr_ratio_med and
+    race/eval_rec_s.<tag> (logging only; the flags off are bit-identical).
+  - Comparable = a record exists AND both the start and the finish are triggers.
+* mmg_S1c (the seven-map agent), raw weights, its last 20 harvested evals (70.0-80.0B fleet):
+  - 5 comparable maps (blue200 and princessburglar have no record).
+  - At the last eval, 2 of 5 under the record:
+    - petrus_lite 26.98 s on the record clock (27.54 s from spawn) vs 27.74 s (50 records);
+    - sidistic 112.04 s vs 115.99 s (a single record).
+  - Best ever: petrus 26.64 s and sidistic 111.40 s (0.960 x record each); cannonball 73.26 s
+    (1.068 x), uf2 38.77 s (1.102 x), celestial 40.34 s (1.161 x).
+  - Median time / record 1.07-1.10 over the 20 evals.
+* The 4000 cap these two maps trained at does not change these lines: the fastest axis component
+  in any episode is 1,851 u/s on petrus and 2,317 u/s on sidistic, under the record servers'
+  sv_maxvelocity 3500. Our 7.667 ms tick (130.4 Hz) against the records' ~131 fps gives fewer
+  air-accelerate impulses: in the records' favour.
+* Not a world record yet. Our physics is the C core and neither line has been replayed in the
+  game engine. petrus_lite's record is tightly contested (27.74 / 27.75 / 27.76 s), so an agent
+  0.2-0.8 s under it is a flag to verify in the game, not a claim. Sidistic's record is one run.
