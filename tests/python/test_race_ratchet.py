@@ -52,12 +52,16 @@ D0 = 198380.0
 
 
 class FakeCore:
-    """Only what RaceReward reads: the states view, goal_hits, map_bounds."""
+    """Only what RaceReward reads: the states view, goal_hits, map_bounds, the gravity."""
 
     def __init__(self, n: int = 1, bounds=((-3e4, -3e4, -3e4), (3e4, 3e4, 3e4))):
         self.num_envs = n
         self.states_view = np.zeros(n, dtype=STATE_DTYPE)
         self.goal_hits = np.zeros(n, np.uint8)
+        # RaceReward.on_reset reads core.config.phys.sv_gravity (the free-fall step of
+        # --surf-bonus / --dive-pen / --energy-pot); the fixture predates that read
+        from types import SimpleNamespace
+        self.config = SimpleNamespace(phys=SimpleNamespace(sv_gravity=800.0))
         self._bounds = (np.asarray(bounds[0], np.float32),
                         np.asarray(bounds[1], np.float32))
 
@@ -452,11 +456,15 @@ def test_the_flag_exists_defaults_off_and_is_recorded():
     assert "args.race_ratchet = False" in src                 # default off
     assert '"race_ratchet": bool(args.race_ratchet)' in src   # saved
     assert 'ck_cfg.get("race_ratchet")' in src                # restored
-    assert "ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0" in src
+    # the column's normaliser is the map's own d0 unless --race-pay-d0 (mm/health e61deff1)
+    assert "ratchet=bool(args.race_ratchet), ratchet_d0=_pay_d0(_s)" in src
+    assert ("return float(args.race_pay_d0) if float(args.race_pay_d0) > 0.0 "
+            "else _s.rf_d0") in src
     assert "N_RATCHET = 1 if args.race_ratchet else 0" in src
-    # the ratchet is LAST unless --ramp-obs-pass puts its flag after it (N_PASS = 0 by default)
-    assert "RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1" in src
-    assert "PASS_COL = N_SCALAR + N_ROUTE - 1" in src
+    # the ratchet is LAST unless a column added after it follows it, each a trailing widen:
+    # --ramp-obs-pass, --ramp-obs-vec (4), --obs-surf, --obs-pot-rate (all 0 by default)
+    assert "RATCHET_COL = N_SCALAR + N_ROUTE - N_PRATE - N_SURF - N_RVEC - N_PASS - 1" in src
+    assert "PASS_COL = N_SCALAR + N_ROUTE - N_PRATE - N_SURF - N_RVEC - 1" in src
     assert "ratchet_fn=_s.eval_ratchet_feed" in src           # and the evals
     assert "fleet.terminal_ratchet(ti, pos_np)" in src        # and the boot
 

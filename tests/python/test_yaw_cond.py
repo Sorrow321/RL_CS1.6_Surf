@@ -365,8 +365,13 @@ def test_the_conditioning_is_applied_in_all_four_places():
     # 4 the recorder rebuilds it from the ckpt config
     assert 'yaw_cond=bool(cfg.get("yaw_cond"))' in rc
     # the masks are still applied in exactly the three trainer sites
-    # test_air_masks.py counts (the rollout's is now a hoisted closure)
-    assert tf.count("MASKS.add_mask(") == 3, tf.count("MASKS.add_mask(")
+    # test_air_masks.py counts (the rollout's is now a hoisted closure), plus the --dae
+    # half of PLACE 2 (mm/dae 97c90219), which never meets --yaw-cond: --dae requires
+    # --view-continuous and --view-continuous excludes --yaw-cond
+    assert tf.count("MASKS.add_mask(") == 4, tf.count("MASKS.add_mask(")
+    assert "PLACE 2 of 4, the --dae half" in tf
+    assert '("a discrete view (--view-continuous is required)",' in tf
+    assert "--view-continuous excludes --yaw-cond" in tf
 
 
 def test_the_neutral_indices_match_the_core():
@@ -379,7 +384,9 @@ def test_the_neutral_indices_match_the_core():
     assert NEUTRAL_SIDE == 1           # a[3] = {-400, 0, +400}[i]
     env_c = (ROOT / "src" / "env.c").read_text(encoding="utf-8")
     # the sign convention act/yaw_side_agree is written against
-    assert "float smove = (a[3] <= 0) ? -400.0f : (a[3] >= 2 ? 400.0f" in env_c
+    # (since --side-hold, 612732a6, the bin goes through sb; the convention is unchanged)
+    assert "int sb = a[3] <= 0 ? 0 : (a[3] >= 2 ? 2 : 1);" in env_c
+    assert "float smove = (sb == 0) ? -400.0f : (sb == 2 ? 400.0f : 0.0f);" in env_c
     assert "st->yaw = wrap_yaw(st->yaw + yd);" in env_c
 
 

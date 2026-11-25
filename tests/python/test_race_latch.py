@@ -54,12 +54,16 @@ LATCH = 6996.0
 
 
 class FakeCore:
-    """Only what RaceReward reads: the states view, goal_hits, map_bounds."""
+    """Only what RaceReward reads: the states view, goal_hits, map_bounds, the gravity."""
 
     def __init__(self, n: int = 1, bounds=((-3e4, -3e4, -3e4), (3e4, 3e4, 3e4))):
         self.num_envs = n
         self.states_view = np.zeros(n, dtype=STATE_DTYPE)
         self.goal_hits = np.zeros(n, np.uint8)
+        # RaceReward.on_reset reads core.config.phys.sv_gravity (the free-fall step of
+        # --surf-bonus / --dive-pen / --energy-pot); the fixture predates that read
+        from types import SimpleNamespace
+        self.config = SimpleNamespace(phys=SimpleNamespace(sv_gravity=800.0))
         self._bounds = (np.asarray(bounds[0], np.float32),
                         np.asarray(bounds[1], np.float32))
 

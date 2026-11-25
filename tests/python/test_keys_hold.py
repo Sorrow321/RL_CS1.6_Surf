@@ -319,16 +319,17 @@ def test_boot_features_selects_rows():
 # --------------------------------------------------------------------------
 def test_the_obs_block_is_seven_columns_at_the_tail():
     assert "N_KEYS = keyshold.N_FEATURES if args.keys_hold else 0" in SRC
-    assert ("N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET"
+    assert ("N_ROUTE = (N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET + N_PASS + N_RVEC"
             in SRC)
     assert "KEYS0 = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC" in SRC
     # --race-ratchet keeps the trailing slot: it CAN be grown onto a
     # checkpoint by widen_for_obs' zero-pad and --keys-hold never can, so the
     # one block that needs the tail keeps it (and the ratchet arm's own
     # pinned test stays green)
-    # the ratchet is LAST unless --ramp-obs-pass puts its flag after it (N_PASS = 0 by default)
-    assert "RATCHET_COL = N_SCALAR + N_ROUTE - N_PASS - 1" in SRC
-    assert "PASS_COL = N_SCALAR + N_ROUTE - 1" in SRC
+    # the ratchet is LAST unless a column added after it follows it, each a trailing widen:
+    # --ramp-obs-pass, --ramp-obs-vec (4), --obs-surf, --obs-pot-rate (all 0 by default)
+    assert "RATCHET_COL = N_SCALAR + N_ROUTE - N_PRATE - N_SURF - N_RVEC - N_PASS - 1" in SRC
+    assert "PASS_COL = N_SCALAR + N_ROUTE - N_PRATE - N_SURF - N_RVEC - 1" in SRC
     # ... and the three writers agree on that order
     for txt in (SRC, SRC):
         i_k = txt.index("dst[:, KEYS0:KEYS0 + N_KEYS].copy_(keys_pin")
@@ -367,7 +368,8 @@ def test_the_incompatible_flags_are_refused():
         assert frag in SRC, frag
     # --bc-file is SUPPORTED under --keys-hold since 2026-10-04 (skate_laby's expert loop): the
     # file carries POLICY-space targets + the held-key columns and BCDataset checks the mode
-    assert "keys_hold=bool(args.keys_hold))" in SRC
+    # (the call has gained kwargs after it: xlayout, the compass / ratchet / surf / rate block)
+    assert "keys_hold=bool(args.keys_hold)," in SRC
     assert "--keys-hold with --bc-file" not in SRC
 
 

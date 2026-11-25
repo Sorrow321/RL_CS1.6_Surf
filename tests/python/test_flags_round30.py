@@ -332,6 +332,10 @@ class _FakeCore:
         self.states_view = np.zeros(len(pts), dtype=STATE_DTYPE)
         self.states_view["origin"] = pts
         self.goal_hits = np.zeros(len(pts), np.uint8)
+        # RaceReward.on_reset reads core.config.phys.sv_gravity (the free-fall step of
+        # --surf-bonus / --dive-pen / --energy-pot); the fixture predates that read
+        from types import SimpleNamespace
+        self.config = SimpleNamespace(phys=SimpleNamespace(sv_gravity=800.0))
 
     def map_bounds(self):
         return (np.full(3, -3e4, np.float32), np.full(3, 3e4, np.float32))
