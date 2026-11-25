@@ -52239,3 +52239,12 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * fs_3m's rent loop starts now (dashboard :8690). The three rent loops (and the bf16 check's)
   have found no RTX 5090 <= $0.60/h since 00:01 UTC: with the 60 GB disk, 6 offers pass every
   other filter up to $0.80/h, the cheapest $0.638.
+
+## 2026-11-25 01:42 UTC: NOTE - the 5090 cap raised to $0.80 for the four pre-launch test boxes
+
+* The user (01:38 UTC): "up to 0.8 is fine". No RTX 5090 <= $0.60/h had passed the filters since
+  00:01 UTC (60 GB disk priced in; 6 passed up to $0.80, the cheapest $0.638, then $0.71).
+* RTX_5090 0.60 -> 0.80 in the daemon policy (RL_Surf_pb autoresearch/config.json, dated in its
+  _max_dph_doc) and in mm/prelaunch's box.py config (local, not committed); the fleet watchdog
+  daemon restarted to read it (one: PID 615754). Restore both to 0.60, and restart the daemon,
+  when uk_3m, pn_3m, fs_3m and the bf16 check are released.
