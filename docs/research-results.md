@@ -52275,3 +52275,22 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   spines (runs/uk_3m/auto, policy-derived by construction).
 * Grader at 1.578B fleet steps: petrus first finish 0.677B in all three arms (ua 1.127B);
   cannonball and blue200 no finish anywhere yet. Too early to read.
+
+## 2026-11-25 03:55 UTC: NOTE - fs_3m re-split twice at 3.16B: 854/86/86; the critic takes the step
+
+* fs_3m at 3,155,549,184 fleet steps: petrus floored (evals 100% / 89%) -> 470/86/470, ckpt +
+  in-place re-exec (same pid 3051; "SELF_STATES=1 declared for this run's own files:
+  runs/fs_3m/auto/cannonball/spine0.npy"; optimizer state "matched BY NAME (39 of 39 ...; 2
+  group(s) -> 2)": the resume fix on a real --wd-skip-norms GPU checkpoint). The re-executed
+  process's opening eval (one iteration later) gave blue200 a second 100% in a row -> floored
+  -> 854/86/86 (re-split 2). Weakness of the rule as built: a resume's opening eval of the same
+  weights counts as "the next eval in a row"; the hysteresis still applies. Not changed mid-arm.
+* After the second split: per-map advantage standardisation exact (adv_std_norm 1.00 on every
+  map), critic EV cannonball 0.97-0.98 / petrus 0.93-0.97 / blue200 0.87-0.93 (from ~0.95), but
+  cannonball's raw advantage spread doubled (5 -> 10-12; it now flies further) and with 83% of
+  the rows it holds 94-97% of the value loss: value loss 5 -> 30-50, grad norm 10-20 -> 70-145
+  (uk_3m / pn_3m stay 6-9), clip_frac 0.22 -> 0.10. The 0.5 global clip now spends most of each
+  step on the critic: a side effect of concentrating rows without per-map return scaling
+  (pn_3m's change), a reason to read fs_3m and pn_3m together.
+* Grader to 2.93B: blue200 first finish 1.803B in uk_3m and pn_3m (52/54 after; ua 4.73B, a
+  search draw there); petrus first 0.677B in all three (after 50-69%, ua 77%); cannonball none.
