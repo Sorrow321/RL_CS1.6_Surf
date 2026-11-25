@@ -1,8 +1,8 @@
 {
  "map": "surf_petrus_lite",
  "url": "https://speedrun.eu/maps/surf_petrus_lite/records",
- "fetched_at": "2026-09-12T01:08:46Z",
- "total_records": 48,
+ "fetched_at": "2026-11-25T14:33:23Z",
+ "total_records": 50,
  "wr_s": 27.74,
  "wr_player": "SHALL WE?",
  "status": "ok",
@@ -243,54 +243,66 @@
   },
   {
    "rank": 40,
+   "player": "dawg",
+   "time_s": 33.35,
+   "date": "2026-11-23"
+  },
+  {
+   "rank": 41,
    "player": "[STONED] *TopKleare*",
    "time_s": 33.48,
    "date": "2024-07-07"
   },
   {
-   "rank": 41,
+   "rank": 42,
    "player": "MOON",
    "time_s": 33.5,
    "date": "2026-03-06"
   },
   {
-   "rank": 42,
+   "rank": 43,
+   "player": "lubie",
+   "time_s": 33.55,
+   "date": "2026-09-12"
+  },
+  {
+   "rank": 44,
    "player": "ratamen",
    "time_s": 34.12,
    "date": "2023-11-15"
   },
   {
-   "rank": 43,
+   "rank": 45,
    "player": "korra",
    "time_s": 34.73,
    "date": "2025-03-04"
   },
   {
-   "rank": 44,
+   "rank": 46,
    "player": "agaiN",
    "time_s": 35.42,
    "date": "2024-01-25"
   },
   {
-   "rank": 45,
+   "rank": 47,
    "player": "AsTrA",
    "time_s": 35.67,
    "date": "2022-11-08"
   },
   {
-   "rank": 46,
+   "rank": 48,
    "player": ".::EA7 | JIoXMaTblu |::.",
    "time_s": 35.97,
    "date": "2023-12-06"
   },
   {
-   "rank": 47,
+   "rank": 49,
    "player": "DEBIL",
    "time_s": 38.16,
    "date": "2022-10-06"
   },
   {
-   "rank": 48,
+   "rank": 50,
    "player": "XxXLukasXxX x)",
    "time_s": 38.21,
    "date": "2024-05-12"

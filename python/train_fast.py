@@ -5782,6 +5782,17 @@ def main() -> None:
     ap.add_argument("--clip", type=float, default=None)    # 0.2; ckpt restores
     ap.add_argument("--ent", type=float, default=None)     # 0.005; ckpt restores
     ap.add_argument("--ent-final", type=float, default=None)
+    ap.add_argument("--lr-final", type=float, default=None,
+                    help="a LINEAR learning-rate schedule (the 2026-11-24 review's A3, the user's "
+                         "late lr + entropy anneal): lr moves from --lr to this value between "
+                         "--anneal-start and --steps, then holds; every param group keeps its "
+                         "lr_scale. Logs train/lr and train/ent_coef. None = a constant lr "
+                         "(today); ckpt restores")
+    ap.add_argument("--anneal-start", type=float, default=None,
+                    help="the global step where the --lr-final and --ent-final schedules START "
+                         "(both reach their final values at --steps). 0 = from step 0, which is "
+                         "what --ent-final has always done; a fork of a run passes the step it "
+                         "forks at, so its schedules begin there. ckpt restores")
     ap.add_argument("--vf", type=float, default=None)      # 0.5; ckpt restores
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
     ap.add_argument("--drop-frac", type=float, default=0.5,
@@ -9406,6 +9417,16 @@ def main() -> None:
                          "(same pid and arguments + --ckpt; the counts come back from the "
                          "checkpoint's floor state). Logs floor/envs.<tag> and floor/steps.<tag> "
                          "(each map's own env steps). 0 = off (today); ckpt restores")
+    ap.add_argument("--wr-file", default=None,
+                    help="a records snapshot (tools/leaderboard.py snapshot: {'maps': {stem: "
+                         "{'wr_s': ...}}}). At every greedy eval each map's best finish on the "
+                         "RECORD clock - from the last touch of the start trigger, as a human "
+                         "record is timed (surfgym.wrclock), counted as autoresearch/score.py "
+                         "counts a finish - is logged as race/eval_rec_s.<tag>, with "
+                         "race/maps_wr (share of the maps with a comparable record - a trigger "
+                         "start and finish - beaten at this eval), race/maps_wr_ever (beaten at "
+                         "any eval so far) and race/wr_ratio_med (median best time / record over "
+                         "the comparable maps that finished). Logging only; ckpt restores")
     args = ap.parse_args()
     # --maxvel V1,V2,...: one sv_maxvelocity per map (_maxvel_arg returns a tuple only for a list).
     # args.maxvel becomes the FIRST map's value, so every single-value reader is unchanged, and
@@ -10638,6 +10659,15 @@ def main() -> None:
         if args.map_floor is None and ck_cfg.get("map_floor") is not None:
             args.map_floor = float(ck_cfg["map_floor"])
             restored.append(f"map_floor={args.map_floor:g}")
+        # --lr-final / --anneal-start: run state, so a bare resume continues the schedules
+        for _k in ("lr_final", "anneal_start"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, float(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k):g}")
+        # --wr-file: logging only, restored so a resumed run keeps its progress.csv columns
+        if args.wr_file is None and ck_cfg.get("wr_file"):
+            args.wr_file = str(ck_cfg["wr_file"])
+            restored.append(f"wr_file={args.wr_file}")
         if (args.fix_pitch is None and not args.free_pitch
                 and ck_cfg.get("fix_pitch") is not None):
             args.fix_pitch = float(ck_cfg["fix_pitch"])
@@ -12449,6 +12479,14 @@ def main() -> None:
     if not 0.0 <= float(args.map_floor) < 1.0:
         raise SystemExit(f"--map-floor {args.map_floor}: a fraction of the even share in "
                          "(0, 1); 0 = off")
+    if args.anneal_start is None:
+        args.anneal_start = 0.0       # the schedules start at step 0, as --ent-final always did
+    if ((args.lr_final is not None or args.ent_final is not None)
+            and not 0.0 <= float(args.anneal_start) < float(args.steps)):
+        raise SystemExit(f"--anneal-start {args.anneal_start:g}: must lie in [0, --steps "
+                         f"{float(args.steps):g})")
+    if args.wr_file and not Path(args.wr_file).exists():
+        raise SystemExit(f"--wr-file {args.wr_file}: no such file")
     if args.priv_critic is None:
         args.priv_critic = 0          # symmetric critic, as it was
     if args.priv_hidden is None:
@@ -17920,6 +17958,13 @@ def main() -> None:
     if float(args.map_floor) > 0.0:
         # --map-floor, written ONLY when on
         meta["config"]["map_floor"] = float(args.map_floor)
+    if args.lr_final is not None:
+        # --lr-final / --anneal-start / --wr-file, written ONLY when on
+        meta["config"]["lr_final"] = float(args.lr_final)
+    if float(args.anneal_start) > 0.0:
+        meta["config"]["anneal_start"] = float(args.anneal_start)
+    if args.wr_file:
+        meta["config"]["wr_file"] = str(args.wr_file)
     if args.wd_skip_norms:
         meta["config"]["wd_skip_norms"] = 1
     if float(args.race_pay_d0) > 0.0:
@@ -18993,6 +19038,15 @@ def main() -> None:
     if float(args.map_floor) > 0.0:
         # --map-floor: each map's env count and its own env steps so far, after those
         CSV_COLS += [f"floor/{_c}.{_s.tag}" for _s in slots for _c in ("envs", "steps")]
+    WR_ON = bool(args.wr_file)
+    if WR_ON:
+        # --wr-file: the world-record metric, after those (every map of the run)
+        CSV_COLS += (["race/maps_wr", "race/maps_wr_ever", "race/wr_ratio_med"]
+                     + [f"race/eval_rec_s.{_s.tag}" for _s in SLOTS_ALL])
+    ANNEAL_LOG = args.lr_final is not None or args.ent_final is not None
+    if ANNEAL_LOG:
+        # --lr-final / --ent-final: the scheduled values, after those
+        CSV_COLS += ["train/lr", "train/ent_coef"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -21748,6 +21802,33 @@ def main() -> None:
     # --maps: (eval_progress, eval_finish_s, box finishes, % covered) per map
     # tag, carried between evals exactly like the aggregates above
     eval_per_map = {s.tag: (float("nan"),) * 4 for s in list(SLOTS_ALL) + list(heldout)}
+    # --wr-file: each map's record, start trigger and finish test (surfgym.wrclock), and the best
+    # record-clock time it has posted at any eval (run state: in the checkpoint)
+    WR_SL, WR_BEST = {}, {}
+    wr_vals = [float("nan")] * (3 + len(SLOTS_ALL)) if WR_ON else []
+    if WR_ON:
+        from surfgym.wrclock import (StartZone as _WrStart, load_records as _wr_load,
+                                     _is_button as _wr_button)
+        from surfgym.goalhull import for_zone as _wr_goal
+        _wr_rec = _wr_load(args.wr_file)
+        for _s in SLOTS_ALL:
+            _wb = Path(_s.bsp)
+            _wz = load_zones(str(_wb), create=False)
+            _wst = _WrStart.for_map(_wb)
+            _wtrig = (bool(_wz.get("end")) and not _wr_button(_wz["end"], _wz)
+                      and _wst is not None and _wst.trigger)
+            WR_SL[_s.tag] = {"stem": _wb.stem, "wr": _wr_rec.get(_wb.stem), "start": _wst,
+                             "goal": _wr_goal(_wb, _wz["end"]) if _wz.get("end") else None,
+                             "comparable": bool(_wtrig and _wb.stem in _wr_rec)}
+            WR_BEST[_s.tag] = None
+        if ck is not None and ck.get("wr_best"):
+            for _t, _v in ck["wr_best"].items():
+                if _t in WR_BEST and _v is not None:
+                    WR_BEST[_t] = float(_v)
+        print("--wr-file: " + ", ".join(
+            f"{_t} " + (f"{_w['wr']:.2f}s" if _w["wr"] is not None else "no record")
+            + ("" if _w["comparable"] or _w["wr"] is None else " (not comparable)")
+            for _t, _w in WR_SL.items()), flush=True)
     # --heldout-maps: the order-only corridor MAX per held-out map that has
     # a route file, carried between evals like the rest
     held_corr = {s.tag: float("nan") for s in heldout if s.route is not None}
@@ -21918,6 +21999,9 @@ def main() -> None:
             if FLOOR.get("clocks"):
                 # (written by the re-split only: a later checkpoint's resume sets them up anew)
                 state["map_floor"]["clocks"] = FLOOR["clocks"]
+        if WR_ON:
+            # --wr-file: each map's best record-clock time at any eval
+            state["wr_best"] = dict(WR_BEST)
         if RETN_MAP:
             # --ret-norm 2: each map's pair, keyed by its tag
             state["ret_norm_map"] = {_s.tag: retn_map[_k].state_dict()
@@ -25235,11 +25319,21 @@ def main() -> None:
             f_lastv = last_val.float().reshape(-1)
             dae_g_t.fill_(float(g_eff))
             mb = T * (N // args.minibatches)
+        if ANNEAL_LOG:
+            # --ent-final / --lr-final: linear from --anneal-start (0: from step 0, as --ent-final
+            # always ran) to --steps, then held
+            _a0 = float(args.anneal_start)
+            ann_frac = min(1.0, max(0.0, global_step - _a0) / max(1.0, float(args.steps) - _a0))
         if args.ent_final is not None:
-            frac = min(1.0, global_step / max(1.0, float(args.steps)))
-            ent_coef = args.ent + (args.ent_final - args.ent) * frac
+            ent_coef = args.ent + (args.ent_final - args.ent) * ann_frac
         else:
             ent_coef = args.ent
+        if args.lr_final is not None:
+            lr_now = float(args.lr) + (float(args.lr_final) - float(args.lr)) * ann_frac
+            for g in opt.param_groups:
+                g["lr"] = lr_now * float(g.get("lr_scale", 1.0))
+        elif ANNEAL_LOG:
+            lr_now = float(args.lr)
         if ENT_ROW:
             # --unstuck (b) per map (D4): each row's entropy bonus x (1 + its map's T)
             ent_w_env.copy_(torch.as_tensor(np.concatenate(
@@ -26218,6 +26312,10 @@ def main() -> None:
             # the table has every map's row on every rank after the SUM)
             ev_tab = torch.zeros((NMAPS_ALL + NHELD, EVAL_K), dtype=torch.float64,
                                  device=device)
+            # --wr-file: per map [best record-clock s, has one (1/0), verified finishes], written by
+            # the owning rank, SUM-reduced like ev_tab
+            wr_tab = (torch.zeros((NMAPS_ALL, 3), dtype=torch.float64, device=device)
+                      if WR_ON else None)
             # --heldout-maps: rows NMAPS.. of ev_tab are the held-out maps
             # (never in an aggregate), and hc_tab carries their order-only
             # corridor MAX where a route file exists. Both are written by
@@ -26374,6 +26472,19 @@ def main() -> None:
                 ev_tab[_row, 7] = _p
                 ev_tab[_row, 8] = _v
                 ev_tab[_row, 9] = 1.0
+                if WR_ON and not _s.heldout:
+                    # --wr-file: this eval's finishes on the record clock (score.py's count)
+                    try:
+                        from surfgym.wrclock import grade as _wr_grade, read_episodes as _wr_eps
+                        _wsl = WR_SL[_s.tag]
+                        _wg = _wr_grade(_wr_eps(path), _wsl["start"], _wsl["goal"])
+                        if _wg["best_record_s"] is not None:
+                            wr_tab[_row, 0] = float(_wg["best_record_s"])
+                            wr_tab[_row, 1] = 1.0
+                        wr_tab[_row, 2] = float(_wg["verified"])
+                    except Exception as _wexc:    # logging only: never stop a run
+                        print(f"[{global_step:>13,d}] --wr-file: {_s.tag} not graded "
+                              f"({_wexc!r})")
                 prog_note = ""
                 p_prog = p_fin = float("nan")
                 p_nfin = 0
@@ -26582,6 +26693,32 @@ def main() -> None:
             # gate: rig one map solved and one at zero and the aggregate
             # must read the same everywhere.
             D.all_reduce_sum_(ev_tab)
+            if WR_ON:
+                from surfgym.wrclock import summarise as _wr_sum
+                D.all_reduce_sum_(wr_tab)
+                _wt = wr_tab.cpu().numpy()
+                _wnow = {}
+                for _i, _s in enumerate(SLOTS_ALL):
+                    _t = float(_wt[_i, 0]) if _wt[_i, 1] > 0 else None
+                    _wnow[_s.tag] = _t
+                    if _t is not None and (WR_BEST[_s.tag] is None or _t < WR_BEST[_s.tag]):
+                        WR_BEST[_s.tag] = _t
+                _wrs = {_t: _w["wr"] for _t, _w in WR_SL.items() if _w["wr"] is not None}
+                _wcm = {_t: _w["comparable"] for _t, _w in WR_SL.items()}
+                _wn, _we = _wr_sum(_wnow, _wrs, _wcm), _wr_sum(dict(WR_BEST), _wrs, _wcm)
+                _wd = float(_wn["n_comparable"]) or float("nan")
+                wr_vals = ([_wn["n_beat"] / _wd, _we["n_beat"] / _wd, _wn["ratio_median"]]
+                           + [(_wnow[_s.tag] if _wnow[_s.tag] is not None else float("nan"))
+                              for _s in SLOTS_ALL])
+                if D.is_main:
+                    _wrat = sorted((_wnow[_t] / _wrs[_t], _t) for _t in _wrs
+                                   if _wcm.get(_t) and _wnow.get(_t) is not None)
+                    print(f"[{global_step:>13,d}] WR: {_wn['n_beat']}/{_wn['n_comparable']} "
+                          f"maps beat the record at this eval (ever {_we['n_beat']}); "
+                          + (f"median time/record {_wn['ratio_median']:.3f} over "
+                             f"{_wn['n_finished']} finished: "
+                             + ", ".join(f"{_t} {_r:.3f}" for _r, _t in _wrat)
+                             if _wrat else "no comparable map finished"), flush=True)
             if NHELD:
                 D.all_reduce_sum_(hc_tab)
             ev_all = ev_tab.cpu().numpy()
@@ -27028,7 +27165,13 @@ def main() -> None:
                            # --map-floor: each map's env count and own env steps, after those
                            + ([_v for _k, _s in enumerate(slots)
                                for _v in (int(COUNTS[_k]), int(_own_step(_k)))]
-                              if MAP_FLOOR > 0.0 else []))
+                              if MAP_FLOOR > 0.0 else [])
+                           # --wr-file: the world-record metric, after those
+                           + ([(float(f"{_v:.6g}") if _v == _v else "") for _v in wr_vals]
+                              if WR_ON else [])
+                           # --lr-final / --ent-final: the scheduled values, after those
+                           + ([float(f"{lr_now:.6g}"), float(f"{ent_coef:.6g}")]
+                              if ANNEAL_LOG else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:

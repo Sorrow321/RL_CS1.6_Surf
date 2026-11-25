@@ -1,8 +1,8 @@
 {
  "map": "surf_src_cannonball",
  "url": "https://speedrun.eu/maps/surf_src_cannonball/records",
- "fetched_at": "2026-09-12T01:12:13Z",
- "total_records": 86,
+ "fetched_at": "2026-11-25T14:33:17Z",
+ "total_records": 92,
  "wr_s": 68.6,
  "wr_player": "sharLo",
  "status": "ok",
@@ -261,264 +261,300 @@
   },
   {
    "rank": 43,
+   "player": "excentials",
+   "time_s": 74.75,
+   "date": "2026-09-14"
+  },
+  {
+   "rank": 44,
    "player": "methmxphetmx",
    "time_s": 74.89,
    "date": "2026-02-03"
   },
   {
-   "rank": 44,
+   "rank": 45,
    "player": "BAEO",
    "time_s": 75.15,
    "date": "2026-01-29"
   },
   {
-   "rank": 45,
+   "rank": 46,
    "player": "toni",
    "time_s": 75.45,
    "date": "2026-01-25"
   },
   {
-   "rank": 46,
+   "rank": 47,
    "player": "Manoly",
    "time_s": 75.66,
    "date": "2026-09-02"
   },
   {
-   "rank": 47,
+   "rank": 48,
    "player": "top1 surfer worldwide",
    "time_s": 75.78,
    "date": "2026-05-26"
   },
   {
-   "rank": 48,
+   "rank": 49,
    "player": "Ponik",
    "time_s": 75.89,
    "date": "2026-02-02"
   },
   {
-   "rank": 49,
+   "rank": 50,
    "player": "moon",
    "time_s": 75.91,
    "date": "2026-01-25"
   },
   {
-   "rank": 50,
+   "rank": 51,
    "player": "ubivayu nozhom,trahayu huem",
    "time_s": 75.93,
    "date": "2026-01-27"
   },
   {
-   "rank": 51,
+   "rank": 52,
    "player": "宫城志绪理",
    "time_s": 75.94,
    "date": "2026-06-11"
   },
   {
-   "rank": 52,
+   "rank": 53,
    "player": "enf kebab",
    "time_s": 76.02,
    "date": "2026-01-26"
   },
   {
-   "rank": 53,
+   "rank": 54,
    "player": "Ari G",
    "time_s": 76.03,
    "date": "2026-01-28"
   },
   {
-   "rank": 54,
+   "rank": 55,
    "player": "< blank >",
    "time_s": 76.19,
    "date": "2026-01-24"
   },
   {
-   "rank": 55,
+   "rank": 56,
    "player": "Богохуйник",
    "time_s": 76.37,
    "date": "2026-07-19"
   },
   {
-   "rank": 56,
+   "rank": 57,
    "player": "CH ^_*",
    "time_s": 76.51,
    "date": "2026-01-23"
   },
   {
-   "rank": 57,
+   "rank": 58,
    "player": "lubie",
    "time_s": 76.58,
    "date": "2026-07-20"
   },
   {
-   "rank": 58,
+   "rank": 59,
    "player": "FURUNCULO ESCROTAL",
    "time_s": 76.8,
    "date": "2026-02-01"
   },
   {
-   "rank": 59,
+   "rank": 60,
    "player": "Erasus",
    "time_s": 76.84,
    "date": "2026-04-14"
   },
   {
-   "rank": 60,
+   "rank": 61,
    "player": "AsTraTaTaTa",
    "time_s": 76.89,
    "date": "2026-01-29"
   },
   {
-   "rank": 61,
+   "rank": 62,
    "player": "Acidulante_x",
    "time_s": 77.31,
    "date": "2026-01-25"
   },
   {
-   "rank": 62,
+   "rank": 63,
    "player": "бездарность`",
    "time_s": 77.41,
    "date": "2026-01-24"
   },
   {
-   "rank": 63,
+   "rank": 64,
    "player": "Sayt",
    "time_s": 77.51,
    "date": "2026-06-30"
   },
   {
-   "rank": 64,
+   "rank": 65,
    "player": "User.",
    "time_s": 77.57,
    "date": "2026-04-13"
   },
   {
-   "rank": 65,
+   "rank": 66,
    "player": "MeNtAlIcIoUz",
    "time_s": 77.59,
    "date": "2026-02-19"
   },
   {
-   "rank": 66,
+   "rank": 67,
    "player": "Unikov",
    "time_s": 77.59,
    "date": "2026-05-17"
   },
   {
-   "rank": 67,
+   "rank": 68,
    "player": "ScottyIsDead",
    "time_s": 77.73,
    "date": "2026-02-12"
   },
   {
-   "rank": 68,
+   "rank": 69,
+   "player": "20",
+   "time_s": 77.83,
+   "date": "2026-11-12"
+  },
+  {
+   "rank": 70,
    "player": "cavs",
    "time_s": 77.95,
    "date": "2026-01-31"
   },
   {
-   "rank": 69,
+   "rank": 71,
    "player": "pipty pour dahlers",
    "time_s": 77.96000000000001,
    "date": "2026-06-22"
   },
   {
-   "rank": 70,
+   "rank": 72,
    "player": "halymist",
    "time_s": 77.99,
    "date": "2026-01-23"
   },
   {
-   "rank": 71,
+   "rank": 73,
    "player": "yoko",
    "time_s": 78.08,
    "date": "2026-04-20"
   },
   {
-   "rank": 72,
+   "rank": 74,
    "player": "nao",
    "time_s": 78.74,
    "date": "2026-08-05"
   },
   {
-   "rank": 73,
+   "rank": 75,
    "player": "ark0r",
    "time_s": 78.76,
    "date": "2026-07-12"
   },
   {
-   "rank": 74,
+   "rank": 76,
    "player": "Jono",
    "time_s": 78.99,
    "date": "2026-06-29"
   },
   {
-   "rank": 75,
+   "rank": 77,
    "player": "boatshoess",
    "time_s": 79.08,
    "date": "2026-01-30"
   },
   {
-   "rank": 76,
+   "rank": 78,
+   "player": "DIVAA",
+   "time_s": 79.16,
+   "date": "2026-11-04"
+  },
+  {
+   "rank": 79,
+   "player": "AaAAaaaaA МЯДЗВЕЕЕДЗ",
+   "time_s": 79.23,
+   "date": "2026-10-06"
+  },
+  {
+   "rank": 80,
    "player": "trdb",
    "time_s": 79.37,
    "date": "2026-01-31"
   },
   {
-   "rank": 77,
+   "rank": 81,
    "player": "GG",
    "time_s": 79.55,
    "date": "2026-01-25"
   },
   {
-   "rank": 78,
+   "rank": 82,
+   "player": "Fissur3 [!] Display_XD",
+   "time_s": 79.65,
+   "date": "2026-10-07"
+  },
+  {
+   "rank": 83,
    "player": "kennyS",
    "time_s": 79.81,
    "date": "2026-01-25"
   },
   {
-   "rank": 79,
+   "rank": 84,
    "player": "teriyakigod",
    "time_s": 80.01,
    "date": "2026-02-01"
   },
   {
-   "rank": 80,
+   "rank": 85,
    "player": "IcemaN ;D",
    "time_s": 80.42,
    "date": "2026-01-25"
   },
   {
-   "rank": 81,
+   "rank": 86,
    "player": "xBOMBAx",
    "time_s": 80.47,
    "date": "2026-04-13"
   },
   {
-   "rank": 82,
+   "rank": 87,
    "player": "BorzDAUN",
    "time_s": 81.09,
    "date": "2026-03-18"
   },
   {
-   "rank": 83,
+   "rank": 88,
+   "player": "Portarto",
+   "time_s": 82.26,
+   "date": "2026-11-12"
+  },
+  {
+   "rank": 89,
    "player": "Sattva",
    "time_s": 83.0,
    "date": "2026-02-03"
   },
   {
-   "rank": 84,
+   "rank": 90,
    "player": "kitkat",
    "time_s": 83.17,
    "date": "2026-01-27"
   },
   {
-   "rank": 85,
+   "rank": 91,
    "player": "viva la zvezd",
    "time_s": 83.63,
    "date": "2026-01-28"
   },
   {
-   "rank": 86,
+   "rank": 92,
    "player": "AG.Impa[CT] ＃UncoGn1T0",
    "time_s": 90.3,
    "date": "2026-03-18"

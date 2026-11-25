@@ -1,8 +1,8 @@
 {
  "map": "surf_src_celestial",
  "url": "https://speedrun.eu/maps/surf_src_celestial/records",
- "fetched_at": "2026-09-12T01:12:18Z",
- "total_records": 36,
+ "fetched_at": "2026-11-25T14:33:28Z",
+ "total_records": 38,
  "wr_s": 34.76,
  "wr_player": "spriggan",
  "status": "ok",
@@ -201,24 +201,36 @@
   },
   {
    "rank": 33,
+   "player": "20",
+   "time_s": 45.77,
+   "date": "2026-09-28"
+  },
+  {
+   "rank": 34,
+   "player": "GG",
+   "time_s": 46.59,
+   "date": "2026-11-11"
+  },
+  {
+   "rank": 35,
    "player": "lubie",
    "time_s": 47.24,
    "date": "2026-04-26"
   },
   {
-   "rank": 34,
+   "rank": 36,
    "player": "yoko",
    "time_s": 48.71,
    "date": "2026-05-19"
   },
   {
-   "rank": 35,
+   "rank": 37,
    "player": "AG.Impa[CT] ＃GEORGIA N1",
    "time_s": 50.28,
    "date": "2026-05-20"
   },
   {
-   "rank": 36,
+   "rank": 38,
    "player": "Богохуйник",
    "time_s": 50.59,
    "date": "2026-07-19"

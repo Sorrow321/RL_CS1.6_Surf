@@ -34,7 +34,9 @@ Validation - an eval that fails it scores None and is never selected:
 * at least 5 episodes.
 
 Also reported per eval: the furthest checkpoint curtain (sgcp_N) any episode entered, the
-median progress, and the per-episode ends.
+median progress, the per-episode ends, and best_record_s - the best finish on the RECORD clock,
+from the last touch of the start trigger instead of the spawn (surfgym.wrclock: a human record
+starts there; None when no finish touched the start zone). The score itself is unchanged.
 
     python autoresearch/score.py runs/x/traj_0755499008.jsonl [more ...]
     python autoresearch/score.py --best runs/x/                # the best eval in a directory
@@ -67,6 +69,7 @@ MAPS_ROOT = REPO          # what config.map / config.field are relative to
 _FIELD = None
 _CPS = None
 _GOAL = None
+_START = None
 
 
 def use_config(cfg, root=None) -> None:
@@ -75,6 +78,7 @@ def use_config(cfg, root=None) -> None:
     ``root`` is what its relative map / field paths resolve against (default the repo).
     The cached field, curtains and finish hull are dropped."""
     global CFG, START_D, START_SPAN, SCORE_EPISODES, EP_CAP_S, MAPS_ROOT, _FIELD, _CPS, _GOAL
+    global _START
     if not isinstance(cfg, dict):
         cfg = json.loads(Path(cfg).read_text(encoding="utf-8"))
     CFG = cfg
@@ -83,7 +87,7 @@ def use_config(cfg, root=None) -> None:
     SCORE_EPISODES = int(CFG.get("score_episodes") or 0)
     EP_CAP_S = float(CFG.get("time_cap_s") or 300.0)
     MAPS_ROOT = Path(root) if root is not None else REPO
-    _FIELD = _CPS = _GOAL = None
+    _FIELD = _CPS = _GOAL = _START = None
 
 
 def _in_root(rel) -> Path:
@@ -190,8 +194,8 @@ def score_file(path: Path) -> dict:
     if len(eps) < 5:
         out["error"] = f"{len(eps)} episodes (< 5)"
         return out
-    f, cps, gh = field(), curtains(), goal_hull()
-    prog, cp_max, fins, ends, box_only = [], 0, [], [], 0
+    f, cps, gh, sz = field(), curtains(), goal_hull(), start_zone()
+    prog, cp_max, fins, ends, box_only, recs = [], 0, [], [], 0, []
     for hdr, r, tr in eps:
         if hdr.get("map") != want_map:
             out["error"] = f"map {hdr.get('map')!r} is not {want_map!r}"
@@ -225,6 +229,9 @@ def score_file(path: Path) -> dict:
                 cp_max = max(cp_max, n)
         if done:
             fins.append(len(r) * float(hdr.get("tick_ms", 10.0)) / 1000.0)
+            rt = sz.record_ticks(r) if sz is not None else None
+            if rt is not None:
+                recs.append(rt * float(hdr.get("tick_ms", 10.0)) / 1000.0)
         ends.append(tr.get("end"))
     best = max(prog)
     frac = len(fins) / len(eps)
@@ -235,8 +242,19 @@ def score_file(path: Path) -> dict:
                 "median_progress_pct": round(float(np.median(prog)), 2),
                 "finishes": len(fins), "episodes": len(eps),
                 "best_finish_s": round(min(fins), 2) if fins else None,
-                "max_cp": cp_max, "ends": ends, "box_only": box_only})
+                "max_cp": cp_max, "ends": ends, "box_only": box_only,
+                "best_record_s": round(min(recs), 2) if recs else None})
     return out
+
+
+def start_zone():
+    """surfgym.wrclock.StartZone of the map's start trigger (the record clock's origin), else
+    None."""
+    global _START
+    if _START is None:
+        from surfgym.wrclock import StartZone
+        _START = StartZone.for_map(_in_root(CFG["map"])) or False
+    return _START or None
 
 
 def eval_files(paths, tag=None) -> list:
@@ -301,7 +319,9 @@ def main(argv=None):
                 print(f"{x.name}: score {s['score']:7.3f}  best {s['best_progress_pct']:5.1f}%  "
                       f"median {s['median_progress_pct']:5.1f}%  CP{s['max_cp']}  "
                       f"finishes {s['finishes']}/{s['episodes']}"
-                      + (f" best {s['best_finish_s']:.2f} s" if s['finishes'] else ""))
+                      + (f" best {s['best_finish_s']:.2f} s" if s['finishes'] else "")
+                      + (f" (record clock {s['best_record_s']:.2f} s)"
+                         if s.get('best_record_s') is not None else ""))
 
 
 if __name__ == "__main__":

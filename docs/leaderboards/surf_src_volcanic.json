@@ -1,8 +1,8 @@
 {
  "map": "surf_src_volcanic",
  "url": "https://speedrun.eu/maps/surf_src_volcanic/records",
- "fetched_at": "2026-09-12T01:14:15Z",
- "total_records": 34,
+ "fetched_at": "2026-11-25T14:35:21Z",
+ "total_records": 36,
  "wr_s": 44.41,
  "wr_player": "Fizz",
  "status": "ok",
@@ -159,54 +159,66 @@
   },
   {
    "rank": 26,
+   "player": "GG",
+   "time_s": 53.27,
+   "date": "2026-10-31"
+  },
+  {
+   "rank": 27,
    "player": "pyanui kowak",
    "time_s": 53.68,
    "date": "2025-01-04"
   },
   {
-   "rank": 27,
+   "rank": 28,
    "player": "des",
    "time_s": 54.57,
    "date": "2024-02-23"
   },
   {
-   "rank": 28,
+   "rank": 29,
    "player": "d`",
    "time_s": 54.97,
    "date": "2024-02-23"
   },
   {
-   "rank": 29,
+   "rank": 30,
    "player": "Vince Masuka",
    "time_s": 56.1,
    "date": "2025-09-11"
   },
   {
-   "rank": 30,
+   "rank": 31,
    "player": "D!eVo",
    "time_s": 56.75,
    "date": "2024-03-04"
   },
   {
-   "rank": 31,
+   "rank": 32,
    "player": "tipi",
    "time_s": 57.54,
    "date": "2025-11-16"
   },
   {
-   "rank": 32,
+   "rank": 33,
    "player": "Erasus",
    "time_s": 59.77,
    "date": "2026-06-07"
   },
   {
-   "rank": 33,
+   "rank": 34,
+   "player": "20",
+   "time_s": 60.0,
+   "date": "2026-10-14"
+  },
+  {
+   "rank": 35,
    "player": "[STONED] *TopKleare*",
    "time_s": 60.76,
    "date": "2024-04-04"
   },
   {
-   "rank": 34,
+   "rank": 36,
    "player": ".::EA7 | JIoXMaTblu | ::.",
    "time_s": 64.56,
    "date": "2024-11-22"

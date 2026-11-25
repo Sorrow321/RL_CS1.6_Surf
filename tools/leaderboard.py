@@ -9,6 +9,9 @@ Three subcommands:
     run     read a training run's OWN logs (``run.json`` + ``progress.csv``)
             and print, per map, our best and last eval finish time against
             the human record, with a rank estimate
+    snapshot  freeze the records of a run's maps into ONE json (the trainer's
+            ``--wr-file`` and ``autoresearch/wr_metric.py --records``), so a
+            refresh of the boards mid-run cannot move the target
 
 THE COMPARABILITY CAVEATS ARE LOAD-BEARING, not decoration:
 
@@ -584,6 +587,31 @@ def cmd_run(args):
     return 0
 
 
+def cmd_snapshot(args):
+    stems = [s.strip() for s in args.maps.split(",") if s.strip()]
+    board_dir = Path(args.board_dir)
+    out = {"source": "speedrun.eu via docs/leaderboards (tools/leaderboard.py)",
+           "made_at": _now(), "maps": {}}
+    for stem in stems:
+        b = load_board(stem, board_dir)
+        ok = bool(b and b.get("status") == "ok" and b.get("wr_s") is not None)
+        out["maps"][stem] = {
+            "wr_s": b.get("wr_s") if ok else None,
+            "wr_player": b.get("wr_player") if ok else None,
+            "total_records": b.get("total_records") if b else 0,
+            "fetched_at": b.get("fetched_at") if b else None,
+            "url": b.get("url") if b else None,
+            "finish_kind": finish_kind(stem, REPO)}
+        print("%-28s %s" % (stem, ("%.2f s  %s records  (%s)"
+                                   % (b["wr_s"], b.get("total_records"),
+                                      b.get("fetched_at"))) if ok
+                            else "no record"))
+    Path(args.out).write_text(json.dumps(out, indent=1, ensure_ascii=False) + "\n",
+                              encoding="utf-8")
+    print("-> %s" % args.out)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="human record leaderboards and where our runs would rank")
@@ -618,6 +646,12 @@ def main(argv=None):
     u.add_argument("--spawn-offset", type=float, default=0.0)
     u.add_argument("--board-dir", default=str(BOARD_DIR))
     u.set_defaults(func=cmd_run)
+
+    n = sub.add_parser("snapshot", help="freeze a run's records into one json")
+    n.add_argument("--maps", required=True, help="comma-separated stems")
+    n.add_argument("--out", required=True)
+    n.add_argument("--board-dir", default=str(BOARD_DIR))
+    n.set_defaults(func=cmd_snapshot)
 
     args = ap.parse_args(argv)
     return args.func(args)

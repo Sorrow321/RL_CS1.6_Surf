@@ -91,7 +91,7 @@ _RECORDS: dict = {}
 # bucket draws a ramp where the run had a jump and 6.75 where it had 9;
 # they are sampled (last of the bucket) instead. Rates and losses stay means.
 _STEP_LIKE = ("race/eval_", "race/map_pct", "race/maps_finished", "front/",
-              "back/", "race/heldout_", "held/")
+              "back/", "race/heldout_", "held/", "race/maps_wr", "race/wr_")
 
 
 def _is_step_like(key: str) -> bool:

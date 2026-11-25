@@ -158,7 +158,7 @@
  "surf_gi_rino": {
   "wr_s": 29.08,
   "n_entries": 100,
-  "total_records": 420,
+  "total_records": 437,
   "status": "ok"
  },
  "surf_gi_zelda_final": {
@@ -199,8 +199,8 @@
  },
  "surf_hollow_lite": {
   "wr_s": 23.9,
-  "n_entries": 10,
-  "total_records": 10,
+  "n_entries": 11,
+  "total_records": 11,
   "status": "ok"
  },
  "surf_hopee_v2": {
@@ -216,9 +216,9 @@
   "status": "ok"
  },
  "surf_kei_luupy": {
-  "wr_s": 14.48,
-  "n_entries": 89,
-  "total_records": 89,
+  "wr_s": 14.2,
+  "n_entries": 99,
+  "total_records": 99,
   "status": "ok"
  },
  "surf_kns": {
@@ -265,8 +265,8 @@
  },
  "surf_lowestbidder": {
   "wr_s": 26.91,
-  "n_entries": 61,
-  "total_records": 61,
+  "n_entries": 62,
+  "total_records": 62,
   "status": "ok"
  },
  "surf_mini": {
@@ -301,8 +301,8 @@
  },
  "surf_petrus_lite": {
   "wr_s": 27.74,
-  "n_entries": 48,
-  "total_records": 48,
+  "n_entries": 50,
+  "total_records": 50,
   "status": "ok"
  },
  "surf_ph_18": {
@@ -350,7 +350,7 @@
  "surf_prechasm": {
   "wr_s": 15.54,
   "n_entries": 100,
-  "total_records": 223,
+  "total_records": 238,
   "status": "ok"
  },
  "surf_pyk_yougi": {
@@ -410,7 +410,7 @@
  "surf_sg_guater": {
   "wr_s": 23.36,
   "n_entries": 100,
-  "total_records": 133,
+  "total_records": 137,
   "status": "ok"
  },
  "surf_sg_impossibru": {
@@ -427,8 +427,8 @@
  },
  "surf_simulatedway": {
   "wr_s": 23.48,
-  "n_entries": 97,
-  "total_records": 97,
+  "n_entries": 99,
+  "total_records": 99,
   "status": "ok"
  },
  "surf_ski_2": {
@@ -457,14 +457,14 @@
  },
  "surf_src_cannonball": {
   "wr_s": 68.6,
-  "n_entries": 86,
-  "total_records": 86,
+  "n_entries": 92,
+  "total_records": 92,
   "status": "ok"
  },
  "surf_src_celestial": {
   "wr_s": 34.76,
-  "n_entries": 36,
-  "total_records": 36,
+  "n_entries": 38,
+  "total_records": 38,
   "status": "ok"
  },
  "surf_src_celestial_b2": {
@@ -493,8 +493,8 @@
  },
  "surf_src_hollow": {
   "wr_s": 36.77,
-  "n_entries": 41,
-  "total_records": 41,
+  "n_entries": 43,
+  "total_records": 43,
   "status": "ok"
  },
  "surf_src_inferno_b1": {
@@ -505,8 +505,8 @@
  },
  "surf_src_ing": {
   "wr_s": 61.75,
-  "n_entries": 92,
-  "total_records": 92,
+  "n_entries": 100,
+  "total_records": 103,
   "status": "ok"
  },
  "surf_src_ing_b1": {
@@ -548,7 +548,7 @@
  "surf_src_mellow": {
   "wr_s": 26.66,
   "n_entries": 100,
-  "total_records": 165,
+  "total_records": 172,
   "status": "ok"
  },
  "surf_src_petrus": {
@@ -583,8 +583,8 @@
  },
  "surf_src_volcanic": {
   "wr_s": 44.41,
-  "n_entries": 34,
-  "total_records": 34,
+  "n_entries": 36,
+  "total_records": 36,
   "status": "ok"
  },
  "surf_src_yellow": {

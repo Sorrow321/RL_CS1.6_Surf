@@ -108,6 +108,11 @@ TRAIN_ONLY = frozenset({
     "update_stats",
     # --map-floor: how the training envs were split over the maps; a recording is one map
     "map_floor",
+    # --lr-final / --anneal-start: the optimizer's learning-rate schedule (and where it and
+    # --ent-final's start); a recording runs no update
+    "lr_final", "anneal_start",
+    # --wr-file: the records the trainer's evals were compared against; logging only
+    "wr_file",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings
