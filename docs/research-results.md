@@ -52260,3 +52260,18 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   train/noise0_logp / noise0_clip are measured on GPU every iteration for 8B steps as the
   policy sharpens. If they cross the rule (>= 0.02 or >= 1%), the --fp32-heads 1 comparison
   runs on that arm's own final checkpoint on its own box (its spines present) before release.
+
+## 2026-11-25 03:05 UTC: NOTE - first hour of the three arms; the bf16 check is set on uk_3m's end
+
+* Running since 01:46 (fs_3m, Greece $0.710), 01:49 (uk_3m, Maryland $0.724, 24 threads) and
+  01:54 UTC (pn_3m, Idaho $0.624); 412-426k steps/s; 1.6-1.9B fleet steps at 02:57 UTC.
+* --update-stats on all three (bf16 heads, from scratch): noise0_logp mean rose from 0.004-0.008
+  (first minutes) to 0.014-0.019 (~1.7B), max 0.18-0.45, noise0_clip 0.00-0.10%; the gradient is
+  clipped on 100% of the steps (norm 3-13 against 0.5); clip_frac 0.24-0.36 per update.
+* The --fp32-heads comparison (PLAN c8606341's rule) now runs on uk_3m's own final checkpoint
+  before its box is released (scratchpad t3/fp32_ab.sh via the watcher): two +100M resumes with
+  the run's exact launch arguments (saved from /proc) + --update-stats 1, the search held off -
+  as trained, then --fp32-heads 1. SELF_STATES=1 declares the run's own --auto-spine-scratch
+  spines (runs/uk_3m/auto, policy-derived by construction).
+* Grader at 1.578B fleet steps: petrus first finish 0.677B in all three arms (ua 1.127B);
+  cannonball and blue200 no finish anywhere yet. Too early to read.
