@@ -52352,3 +52352,114 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * For the verdict: fs_3m is graded by the PLAN's rule as it ran, but it measured "a quarter-share
   floor + no heat on floored blue200 + searches held off for every map", not the floor alone.
   A floor-share retest needs the fixed code. The running boxes keep their own checkout (62c82de1).
+
+## 2026-11-25 07:23 UTC: RESULT - uk_3m (--unstuck-max 0.2): BETTER by the PLAN's rule, on timing alone
+
+* PLAN b8000189: ua_3m's exact line + --update-stats 1 + --unstuck-max 0.2 (ua 0.5), mm/prelaunch
+  62c82de1, from scratch, seed 0; RTX 5090 instance 62443528 (Maryland, $0.724/h, 24 threads),
+  01:45-07:18 UTC; 8,000,501,760 steps at 427k steps/s.
+* Official grader, every eval to 7.888B fleet steps (36 evals each), uk_3m vs ua_3m:
+  - petrus: first finish 0.677B vs 1.127B; finished after it 209/297 = 70% vs 221/279 = 79%;
+    best 29.79 s vs 29.98 s.
+  - blue200: first finish 1.803B vs 4.733B; 245/252 = 97% vs 132/135 = 98%; best 12.24 s vs
+    13.26 s.
+  - cannonball: no finish in either; last-5-eval best 72.0% vs 8.3%. The rule: BETTER.
+* What it is worth: little. uk_3m's own last two evals fell to 6% and 13% (last five 69, 72, 29,
+  6, 13): the 72% is inside the window by timing. Over the run both reached >= 50% in 11 of 36
+  evals, and the control's best (98.8% at 3.16B) is above uk_3m's (72.0% at 7.21B) - CLAUDE.md's
+  late single-seed mark. The early petrus and blue200 finishes are shared with pn_3m to the eval
+  (0.677B, 1.803B): this seed's search draws, not the cap.
+* Mechanism: the --unstuck temperature sat AT ITS CAP on every map for the whole run (uk 0.2;
+  ua 0.5 from ~1B), finished maps included - a finished map's reservoir reach cannot improve and
+  the patience is 2e7 steps. So --unstuck-max works as a constant key-head temperature here, and
+  0.2 against 0.5 changed nothing measurable.
+* For the long run: no evidence either way; the seven-map recipe's 0.5 stays.
+
+## 2026-11-25 07:23 UTC: RESULT - pn_3m (--ret-norm 2): no clear difference; petrus finished least often
+
+* PLAN b8000189: ua_3m's line + --update-stats 1 + --ret-norm 2 (one PopArt-lite pair per map),
+  mm/prelaunch 62c82de1; instance 62443864 (Idaho, $0.624/h), 01:50-07:11 UTC; 8,000,501,760
+  steps at 428k steps/s.
+* Grader, 36 evals to 7.888B, pn_3m vs ua_3m: petrus first 0.677B vs 1.127B, after 152/297 = 51%
+  vs 79% (the lowest of the four runs, just above the rule's 50% WORSE line), best 30.54 s;
+  blue200 first 1.803B vs 4.733B, 245/252 = 97% vs 98%, best 14.32 s; cannonball no finish,
+  last-5 best 69.9% (last five 64, 59, 70, 53, 65 - the steadiest end of the four), >= 50% in
+  11 of 36 evals as ua, best 78.1% at 1.127B. Rule: no clear difference (petrus 51% < 60%).
+* Mechanism, as built: in the units the critic trains on (raw share / the map's sd^2,
+  renormalised) cannonball held 14-20% of the value loss from 1B on (raw-unit share 2-17%; in
+  uk_3m, same seed, 2-13%), blue200 25-52% (raw 50-68%), petrus 31-51%. Normaliser sd per map:
+  cannonball 6-24, petrus 11-16, blue200 16-28. Per-map explained variance as in uk_3m
+  (cannonball 0.96-0.98; petrus and blue200 0.94-0.95 from 2B on).
+* So the per-map scaling moved the critic's weight onto cannonball as designed; cannonball got
+  no further for it and petrus finished less often. Not adopted.
+* Data: pn_3m's progress.csv holds each train/ret_std.<tag> twice (the rollout's std(G), then
+  the normaliser's sd); renamed train/retn_* in f0c8193c. Read this run's by column index.
+
+## 2026-11-25 07:23 UTC: RESULT - fs_3m (--map-floor 0.25): no clear difference; the floor did not hold
+
+* PLAN b8000189: ua_3m's line + --update-stats 1 + --map-floor 0.25, mm/prelaunch 62c82de1;
+  instance 62443345 (Greece, $0.710/h), 01:43-06:57 UTC; 8,000,501,760 fleet steps at 439k
+  steps/s; read in FLEET steps.
+* Grader, 45 evals to 7.893B: petrus first 0.677B vs 1.127B, after 226/378 = 59.8% (one finish
+  short of the 60% bar) vs 79%, best 30.00 s; blue200 first 3.156B vs 4.733B, 231/279 = 83% vs
+  98%, best 13.95 s; cannonball no finish, last-5 best 98.3% (last five 47, 97, 85, 98, 98: the
+  deepest end of any run; ua's best was 98.8% at 3.16B), >= 50% in 14 of 45 evals. Rule: no
+  clear difference.
+* The split: 9 re-splits (3.16B-7.44B), all clean in-place re-executions (same pid, optimizer
+  state by name). Fleet steps per split: even 48%, 470/470/86 46%, 854/86/86 6%. Own steps at
+  the end: cannonball 3.36B, petrus 3.02B, blue200 1.63B (2.67B each in the other runs).
+* The floor did not keep a finished map finished: petrus 9/9 -> 0/9 within 0.23B fleet steps on
+  86 envs (~19M own steps; 3.16-3.38B), and 8/9 twice -> 3/9, 2/9 within 0.23B (7.22-7.44B, the
+  trainer's win test);
+  blue200 9/9 -> 5-6/9 over 1.8B (3.83-5.64B). Each slip gave the envs back; blue200 recovered
+  at its full share within 0.23-0.45B and was floored again (three floors in all), petrus stayed
+  unsteady until 7.22B. A quarter share (86 of 1,026 envs) is below what holds a finished map in
+  this recipe.
+* Confounded (NOTE a85a408b; fixed in f0c8193c): floored blue200 lost its --unstuck heat (0.5 ->
+  0.003, the clock bug); each re-split re-armed the search delay and patience (cannonball
+  searched at 0.90B and 6.54B only, against 5 searches in uk_3m and 4 in pn_3m); each
+  re-execution restored the held spines with neutral keys (any resume does; the policies
+  override held keys at their first decision, ledger 2026-11-14 05:30 UTC, ablation wave 3).
+  The 6.54B search reused auto/cannonball/k01 (a resume's count restarts at 1) and found a new
+  line (7,516 states): it replaced the held line's file and was itself held, so the curriculum
+  stayed consistent; the first search's archives were overwritten.
+* Not adopted. A retest would need the fixed code and a larger floor (or no floor: at a quarter
+  share forgetting set in within ~20M own steps).
+
+## 2026-11-25 07:23 UTC: RESULT - the bf16 check: fp32 heads do not remove the update noise; bf16 stays
+
+* PLAN c8606341, as changed by NOTE 314104e5. On bf16 heads from scratch, the zero-update noise
+  |logp - logp_old| (epoch 0, minibatch 0: the rollout's own weights) rose with training in all
+  three arms: mean 0.013-0.014 (0-2B) -> 0.024-0.027 (6B to the end); share of rows outside the
+  clip 0 -> 0.13-0.43%. It passed the rule's 0.02 at ~3-4.5B.
+* A/B on uk_3m's final checkpoint (8.0005B) with its exact launch arguments + --update-stats 1,
+  the search held off, SELF_STATES=1 for its own spines, +100M steps each, same box, one after
+  the other: bf16 heads (as trained) noise mean 0.0263 (median 0.0264), outside the clip 0.30%;
+  --fp32-heads 1: 0.0222 (0.0224), 0.19%. fp32 heads cut them 1.18x and 1.6x, at 438.7k ->
+  358.6k steps/s steady (-18%) plus a 73 s first compile.
+* The rule (fp32 heads only if they cut both >= 3x at <= 5% fps): NO. The long run keeps bf16
+  heads. Most of the noise is not in the heads (the trunk runs bf16 autocast in both); at 0.2-0.4%
+  of rows outside the clip it is small next to the update's own clip fraction (0.23-0.27).
+* Also seen on all three arms: the gradient norm before the 0.5 global clip had medians of 5.6-12
+  per 1B (fs_3m 18 in 3-4B, peaks of 70-145 right after its 854/86/86 split): the clip binds on
+  every step.
+
+## 2026-11-25 07:23 UTC: NOTE - pre-launch tests done: boxes released, cap restored, nothing adopted
+
+* All four boxes released by 07:18 UTC; vastai show instances: 0; the fleet registry empty.
+  RTX_5090 back to 0.60 in both configs (the daemon's policy and the mmpre worktree's); the
+  daemon restarted on it (one, pid 748922).
+* Cost at the listed prices: $3.72 (fs) + $4.02 (uk, with the bf16 check) + $3.34 (pn) = ~$11.1;
+  credit $45.43 -> $34.17 (-$11.26, with the refused hg_cb attempt).
+* Harvest: ~/ar_m2/runs/t3/<run>/ (ckpt_final.pt md5 6ebb0d5b uk_3m, dff4dd32 pn_3m, 55f58947
+  fs_3m; small files in sync/; uk_3m also progress_b16/f32.csv, launch_b16/f32.txt,
+  fp32_ab.out). The auto/ spine folders were not pulled (policy-derived, not needed here).
+* Outcome of the user's "ok, test those" (and "lets test" for bf16): none of the three changes
+  is a clear gain on this 3-map set at one seed, and bf16 heads stay. The incumbent (v14 + round
+  2's arch, unstuck cap 0.5, one return normaliser, the even split) goes into the long run as it
+  is. The fixes the tests produced stay on mm/prelaunch (f0c8193c): optimizer resume by name,
+  the --map-floor clocks, the search numbering after a resume.
+* Open for the user: the remaining review items (a late lr / exploration anneal fork, the wider
+  net at a 20-30-map pilot, a Fable 5.2 review rerun), and a resume rule for the long run: today
+  any resume re-arms --auto-spine-delay (3e8 own steps with no search) and restarts the patience,
+  and restores held spines with neutral keys.
