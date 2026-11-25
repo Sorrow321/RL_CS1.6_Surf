@@ -68,6 +68,10 @@ class FakeCore:
         self.base = float(base)
         self.states_view = np.zeros(n, dtype=STATE_DTYPE)
         self.goal_hits = np.zeros(n, np.uint8)
+        # RaceReward.on_reset reads core.config.phys.sv_gravity (the free-fall step of
+        # --surf-bonus / --dive-pen / --energy-pot); the fixture predates that read
+        from types import SimpleNamespace
+        self.config = SimpleNamespace(phys=SimpleNamespace(sv_gravity=800.0))
         self.seen = None            # last action block, as given
         self.reset_seed = None
         self.failed = None

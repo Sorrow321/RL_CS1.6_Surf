@@ -4473,7 +4473,7 @@ ADVMAP_COLS = ("adv_std", "adv_std_norm", "explained_var", "vf_err", "ret_std", 
 
 
 def advmap_diag(adv, ret, val, ranges, n_envs: int, per: int, f_adv=None, mb_idx=None,
-                per_map: bool = False, pooled=None) -> list:
+                per_map: bool = False, pooled=None, env_map=None) -> list:
     """Per map (``ranges`` = each slot's env range [lo, hi)), over its rows of the rollout
     buffer ((T, N) tensors; ``adv`` the advantages the update standardises, ``ret`` the value
     target, ``val`` the value the rollout predicted, both in reward units):
@@ -4507,7 +4507,8 @@ def advmap_diag(adv, ret, val, ranges, n_envs: int, per: int, f_adv=None, mb_idx
     norm_sd = [nan] * m
     if f_adv is not None and mb_idx is not None:
         am = f_adv.detach()[mb_idx]
-        sl = (mb_idx % n_envs) // per
+        # (env_map: each env's map when --map-floor splits the envs unevenly)
+        sl = (mb_idx % n_envs) // per if env_map is None else env_map[mb_idx % n_envs]
         if pooled is None:
             an = (adv_norm_per_map(am, sl, m) if per_map
                   else (am - am.mean()) / (am.std() + 1e-8)).double()
@@ -5167,6 +5168,71 @@ EVAL_ROW = ("prog_u_sum", "finish_s_sum", "n_finish_geo", "pct_sum",
             "n_eps", "n_finish_box", "fwd_sum", "path_sum", "speed_sum",
             "evaluated")
 EVAL_K = len(EVAL_ROW)
+
+#: --map-floor's hysteresis, set once for every map: a map FLOORS after MAP_FLOOR_RUN greedy evals
+#: in a row with >= MAP_FLOOR_IN of its episodes finished (8 of 9) and comes back after as many
+#: with <= MAP_FLOOR_OUT (5 of 9)
+MAP_FLOOR_IN, MAP_FLOOR_OUT, MAP_FLOOR_RUN = 0.85, 0.60, 2
+
+
+def map_floor_counts(n_envs: int, floored, frac: float) -> list:
+    """--map-floor: the per-map env counts. A floored (finished) map keeps max(8, round(frac x
+    the even share)); the unfinished maps split the rest evenly (the remainder one each, first
+    maps first). Nobody floored, or everybody: the even split (n_envs divides by the maps)."""
+    m = len(floored)
+    even = int(n_envs) // m
+    if not any(floored) or all(floored):
+        return [even] * m
+    f = max(8, int(round(float(frac) * even)))
+    live = [i for i in range(m) if not floored[i]]
+    base, rem = divmod(int(n_envs) - f * (m - len(live)), len(live))
+    out = [f] * m
+    for j, i in enumerate(live):
+        out[i] = base + (1 if j < rem else 0)
+    return out
+
+
+def map_floor_step(state: dict, tags, fracs) -> list:
+    """--map-floor: fold one eval's per-map finish fraction into ``state`` ({"hist": {tag: [..]},
+    "floored": {tag: bool}}) and return the floored flags in ``tags`` order. A map with no eval
+    episodes this time (NaN) is left as it was."""
+    hist, fl = state.setdefault("hist", {}), state.setdefault("floored", {})
+    for t, f in zip(tags, fracs):
+        if not f == f:
+            continue
+        h = hist.setdefault(t, [])
+        h.append(float(f))
+        del h[:-MAP_FLOOR_RUN]
+        if len(h) == MAP_FLOOR_RUN:
+            if not fl.get(t) and min(h) >= MAP_FLOOR_IN:
+                fl[t] = True
+            elif fl.get(t) and max(h) <= MAP_FLOOR_OUT:
+                fl[t] = False
+    return [bool(fl.get(t)) for t in tags]
+
+
+#: the config keys a resume restores as spawn / imitation / route sources (CLAUDE.md section
+#: 0: each needs the operator's SELF_STATES=1 declaration at startup)
+SOURCE_KEYS = ("demo_file", "bc_file", "route", "goal_route", "codebook", "spawn_states",
+               "finish_line")
+
+
+def reexec_env(env, cfg: dict, run_dir) -> tuple:
+    """--map-floor's in-place re-execution: the environment it runs with. The new process
+    restores the run's sources from the checkpoint, so section 0's guard needs SELF_STATES=1.
+    An operator's declaration is inherited as it was. Without one, it is declared ONLY when
+    every source is a file this run wrote itself, under its own run directory
+    (--auto-spine-scratch's spawn spine, its own searches' lines: no demo by construction);
+    anything else stays undeclared and the guard refuses it. -> (env, note)."""
+    env = dict(env)
+    src = [str(cfg.get(k)) for k in SOURCE_KEYS if cfg.get(k)]
+    if not src or env.get("SELF_STATES") == "1":
+        return env, ""
+    root = Path(run_dir).resolve()
+    if all(Path(p).resolve().is_relative_to(root) for p in src):
+        env["SELF_STATES"] = "1"
+        return env, "SELF_STATES=1 declared for this run's own files: " + ", ".join(src)
+    return env, ""
 
 
 def eval_aggregate(ev, finish_kinds, n_rec: int) -> dict:
@@ -9316,6 +9382,16 @@ def main() -> None:
                          "train/noise0_clip (share of rows outside the clip at ZERO update). "
                          "Logging only (no extra sync: one read per iteration); ckpt restores. "
                          "0 = today")
+    ap.add_argument("--map-floor", type=float, default=None,
+                    help="--maps (the user, 2026-11-25: move compute off finished maps, keep a "
+                         "floor so they are not forgotten): F in (0, 1). A map FINISHED in 2 "
+                         "greedy evals in a row (>= 85%% of its episodes) keeps F x the even "
+                         "share of the envs, the unfinished maps split the rest; a floored map "
+                         "that slips (2 evals <= 60%%) gets its share back. Each change of the "
+                         "split saves ckpt_latest and re-executes the trainer IN PLACE on it "
+                         "(same pid and arguments + --ckpt; the counts come back from the "
+                         "checkpoint's floor state). Logs floor/envs.<tag> and floor/steps.<tag> "
+                         "(each map's own env steps). 0 = off (today); ckpt restores")
     args = ap.parse_args()
     # --maxvel V1,V2,...: one sv_maxvelocity per map (_maxvel_arg returns a tuple only for a list).
     # args.maxvel becomes the FIRST map's value, so every single-value reader is unchanged, and
@@ -10544,6 +10620,10 @@ def main() -> None:
         if args.update_stats is None and ck_cfg.get("update_stats") is not None:
             args.update_stats = int(ck_cfg["update_stats"])
             restored.append(f"update_stats={args.update_stats}")
+        # --map-floor: run state (the split re-derives from the checkpoint's floor state)
+        if args.map_floor is None and ck_cfg.get("map_floor") is not None:
+            args.map_floor = float(ck_cfg["map_floor"])
+            restored.append(f"map_floor={args.map_floor:g}")
         if (args.fix_pitch is None and not args.free_pitch
                 and ck_cfg.get("fix_pitch") is not None):
             args.fix_pitch = float(ck_cfg["fix_pitch"])
@@ -12350,6 +12430,11 @@ def main() -> None:
         args.fp32_trunk = 0           # the image trunk inside autocast, as it was
     if args.update_stats is None:
         args.update_stats = 0         # no update-health columns, as before
+    if args.map_floor is None:
+        args.map_floor = 0.0          # the even split, as before
+    if not 0.0 <= float(args.map_floor) < 1.0:
+        raise SystemExit(f"--map-floor {args.map_floor}: a fraction of the even share in "
+                         "(0, 1); 0 = off")
     if args.priv_critic is None:
         args.priv_critic = 0          # symmetric critic, as it was
     if args.priv_hidden is None:
@@ -12868,9 +12953,7 @@ def main() -> None:
     # (SELF_STATES=1). The launcher's shell guard alone was bypassable
     # (abbreviations, unguarded flags, checkpoint restores; GPT cross-review
     # 2026-09-13), so the trainer checks the resolved configuration itself.
-    _src = [(k, getattr(args, k, None))
-            for k in ("demo_file", "bc_file", "route", "goal_route", "codebook",
-                      "spawn_states", "finish_line")]
+    _src = [(k, getattr(args, k, None)) for k in SOURCE_KEYS]
     _src = [(k, v) for k, v in _src if v]
     if _src and os.environ.get("SELF_STATES") != "1":
         raise SystemExit(
@@ -13520,6 +13603,35 @@ def main() -> None:
                 f"{D.world_size * NMAPS} - silently truncating would leave "
                 "one map with fewer envs than its logs claim")
     PER = N // NMAPS
+    # --map-floor: the per-map env counts - the even split unless the checkpoint's floor state
+    # floors a map (a re-split re-executes on the checkpoint it has just written, so the counts
+    # always come back from there). UNEQUAL is a Python constant: the even split traces today's
+    # graphs and indexes maps as (env // PER), exactly as before
+    MAP_FLOOR = float(args.map_floor)
+    FLOOR = {"hist": {}, "floored": {}, "own": {}, "resplits": 0}
+    if MAP_FLOOR > 0.0:
+        for _flag, _on in (("one map (--maps is required)", not MULTI), ("DDP", D.enabled),
+                           ("--dae", DAE), ("--rnn", RNN), ("--race-sr", bool(args.race_sr))):
+            if _on:
+                raise SystemExit(f"--map-floor is not implemented with {_flag}: unequal maps "
+                                 "need the flat single-process rollout and update")
+        if ck is not None and ck.get("map_floor"):
+            _mf = ck["map_floor"]
+            FLOOR = {"hist": {_t: list(_v) for _t, _v in (_mf.get("hist") or {}).items()},
+                     "floored": {_t: bool(_v) for _t, _v in (_mf.get("floored") or {}).items()},
+                     "own": {_t: int(_v) for _t, _v in (_mf.get("own") or {}).items()},
+                     "resplits": int(_mf.get("resplits") or 0)}
+    TAGS0 = map_tags(STEMS)
+    COUNTS = (map_floor_counts(N, [bool(FLOOR["floored"].get(_t)) for _t in TAGS0], MAP_FLOOR)
+              if MAP_FLOOR > 0.0 else [PER] * NMAPS)
+    UNEQUAL = COUNTS != [PER] * NMAPS
+    OFFS = [int(_x) for _x in np.concatenate([[0], np.cumsum(COUNTS)])]
+    if MAP_FLOOR > 0.0:
+        print(f"--map-floor {MAP_FLOOR:g}: envs per map "
+              + ", ".join(f"{_t} {_c}" for _t, _c in zip(TAGS0, COUNTS))
+              + (" (floored: " + ", ".join(_t for _t in TAGS0 if FLOOR["floored"].get(_t)) + ")"
+                 if UNEQUAL else " (the even split)")
+              + f"; re-splits so far {FLOOR['resplits']}", flush=True)
     # --adv-norm-per-map: a Python constant, so mb_step's graph is the shipped one without it
     ADV_MAP = bool(args.adv_norm_per_map)
     if ADV_MAP:
@@ -13726,7 +13838,7 @@ def main() -> None:
     slots = []
     START_ORIGINS = {}          # slot index -> the map's spawn points (race only)
     for _i, _bsp in enumerate(BSPS):
-        cfg = default_config(num_envs=PER, spawn_mode=2,
+        cfg = default_config(num_envs=COUNTS[_i], spawn_mode=2,
                              max_episode_ticks=args.ep_ticks,
                              water_fail=1, yaw_jitter_deg=args.yaw_jitter,
                              yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
@@ -13737,7 +13849,7 @@ def main() -> None:
                              pitch_rate_max_deg=pitch_rate_core, **_tick_env,
                              **_view_env)
         core = SurfCore(str(_bsp), cfg, tick_ms=args.tick_ms)
-        slot = MapSlot(_bsp.stem, str(_bsp), core, _i * PER, (_i + 1) * PER)
+        slot = MapSlot(_bsp.stem, str(_bsp), core, OFFS[_i], OFFS[_i + 1])
         # the vision voxel size is a property of the MAP (pick_cell reads its
         # bounds), so a 5x smaller map gets its own, finer grid unless
         # --lidar-cell pins one globally
@@ -13992,10 +14104,15 @@ def main() -> None:
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
           f"omp={os.environ['OMP_NUM_THREADS']} | "
           f"graphs={use_graphs} bf16={use_bf16}"
-          + (f" | maps {NMAPS} x {PER} envs" if MULTI else "")
+          + ((f" | maps {NMAPS}: " + "/".join(str(_c) for _c in COUNTS) + " envs")
+             if UNEQUAL else f" | maps {NMAPS} x {PER} envs" if MULTI else "")
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else "")
           + (f" | pitch PINNED {args.pitch_fixed:g} deg every render"
              if args.pitch_fixed is not None else ""))
+    # --map-floor with an uneven split: each env's map (slot order), the lookup the per-map
+    # advantage normalisation and its diagnostics use in place of (env // PER)
+    ENV_MAP_T = (torch.as_tensor(np.repeat(np.arange(NMAPS), COUNTS), dtype=torch.long,
+                                 device=device) if UNEQUAL else None)
     if args.respawn_random:
         # --respawn-random REPLACES the reservoir (a spawn SOURCE, not a
         # curriculum): no snapshots are harvested, so reservoir min-depth
@@ -17786,6 +17903,9 @@ def main() -> None:
     if args.update_stats:
         # --update-stats, written ONLY when on (a control's config dump gains no key)
         meta["config"]["update_stats"] = 1
+    if float(args.map_floor) > 0.0:
+        # --map-floor, written ONLY when on
+        meta["config"]["map_floor"] = float(args.map_floor)
     if args.wd_skip_norms:
         meta["config"]["wd_skip_norms"] = 1
     if float(args.race_pay_d0) > 0.0:
@@ -18855,6 +18975,9 @@ def main() -> None:
     if int(args.ret_norm) == 2:
         # --ret-norm 2: each map's running (mean, std) of the return, after those
         CSV_COLS += [f"train/ret_{_c}.{_s.tag}" for _s in slots for _c in ("mean", "std")]
+    if float(args.map_floor) > 0.0:
+        # --map-floor: each map's env count and its own env steps so far, after those
+        CSV_COLS += [f"floor/{_c}.{_s.tag}" for _s in slots for _c in ("envs", "steps")]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -21733,6 +21856,14 @@ def main() -> None:
             # --respawn-greedy: the last eval's greedy-line states (rebuilt at the next eval)
             state["respawn_greedy"] = ({_gs.tag: GREEDY_S[_gs.tag].state_dict()
                                         for _gs in slots} if MULTI else GREEDY.state_dict())
+        if MAP_FLOOR > 0.0:
+            # --map-floor: the split's state - each map's last evals, floored or not, its own
+            # env steps, this checkpoint's counts; a resume (or a re-split) derives the split
+            state["map_floor"] = {
+                "hist": {_t: list(_v) for _t, _v in FLOOR["hist"].items()},
+                "floored": dict(FLOOR["floored"]), "own": dict(FLOOR["own"]),
+                "resplits": int(FLOOR["resplits"]),
+                "counts": {_s.tag: int(_c) for _s, _c in zip(slots, COUNTS)}}
         if RETN_MAP:
             # --ret-norm 2: each map's pair, keyed by its tag
             state["ret_norm_map"] = {_s.tag: retn_map[_k].state_dict()
@@ -21971,7 +22102,8 @@ def main() -> None:
             # --ddp-maps shard: a map's rows are all on its owner rank, so its moments are
             # these; only the under-ADV_MAP_MIN_ROWS fallback needs the union's (adv_mean /
             # adv_std, all-reduced), which is None - the shipped call - on one process
-            a = adv_norm_per_map(a, (idx % N) // PER, NMAPS,
+            a = adv_norm_per_map(a, (ENV_MAP_T[idx % N] if UNEQUAL else (idx % N) // PER),
+                                 NMAPS,
                                  pooled=(None if (adv_mean is None or not DDP_SHARD)
                                          else (adv_mean, adv_std)))
         elif adv_mean is None:
@@ -23137,6 +23269,8 @@ def main() -> None:
     if TKL > 0.0:
         print(f"--target-kl {TKL:g}: an update stops once its approx KL exceeds {1.5 * TKL:g}")
     tkl_acc = [0, 0, [], 0]           # updates, stops, the stops' (epoch, mb, kl), stops ever
+    floor_next = None                 # --map-floor: the split to re-execute with, once decided
+    floor_step = global_step          # --map-floor: the step its own-steps counters reached
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -25399,7 +25533,7 @@ def main() -> None:
                 advmap_row = advmap_diag(
                     adv, ret, b_val, [(_s.lo, _s.hi) for _s in slots], N, PER, f_adv,
                     (None if (last_diag is None or DDP_REP or CC_BKT) else last_diag[0]),
-                    ADV_MAP, pooled=(last_pooled if DDP_SHARD else None))
+                    ADV_MAP, pooled=(last_pooled if DDP_SHARD else None), env_map=ENV_MAP_T)
                 if DDP_SHARD:
                     _e2 = (ret - b_val).double()
                     advmap_e2 = [float((_e2[:, _s.lo:_s.hi] ** 2).sum()) for _s in slots]
@@ -26415,6 +26549,23 @@ def main() -> None:
                     ev[_i, 1] / ev[_i, 2] if ev[_i, 2] else float("nan"),
                     float(nbox[_i]),
                     float(pct[_i]))
+            if MAP_FLOOR > 0.0:
+                # --map-floor: this eval's finished share per map (the env's own win test,
+                # nbox of n_eps) into the hysteresis; a new split is applied at the end of this
+                # iteration (checkpoint + re-exec), after the row is written
+                _fl = map_floor_step(FLOOR, [_s.tag for _s in slots],
+                                     [float(nbox[_i] / n_ep[_i]) if n_ep[_i] > 0 else float("nan")
+                                      for _i in range(NMAPS)])
+                _nc = map_floor_counts(N, _fl, MAP_FLOOR)
+                if _nc != COUNTS:
+                    floor_next = _nc
+                    print(f"[{global_step:>13,d}] --map-floor: "
+                          + ", ".join(f"{_s.tag} {'FLOORED' if _f else 'open'} "
+                                      f"({'/'.join(f'{_h:.0%}' for _h in FLOOR['hist'].get(_s.tag, []))})"
+                                      for _s, _f in zip(slots, _fl))
+                          + f" -> envs {'/'.join(str(_c) for _c in COUNTS)} -> "
+                          f"{'/'.join(str(_c) for _c in _nc)} at the end of this iteration",
+                          flush=True)
             eval_fwd = AGG["eval_fwd"]
             eval_path = AGG["eval_path"]
             eval_speed = AGG["eval_speed"]
@@ -26820,7 +26971,13 @@ def main() -> None:
                            # --ret-norm 2: each map's (mean, std), after those
                            + ([_v for _m in retn_map
                                for _v in (round(_m.mean, 5), round(_m.std, 6))]
-                              if RETN_MAP else []))
+                              if RETN_MAP else [])
+                           # --map-floor: each map's env count and own env steps, after those
+                           + ([_v for _k, _s in enumerate(slots)
+                               for _v in (int(COUNTS[_k]),
+                                          int(FLOOR["own"].get(_s.tag, 0))
+                                          + (global_step - floor_step) // N * COUNTS[_k])]
+                              if MAP_FLOOR > 0.0 else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -26886,6 +27043,8 @@ def main() -> None:
             # exactly this wrong off ep_len_mean alone.
             hyg_note += (f"  tr/st/cr {trunc_frac:.0%}/{stall_frac:.0%}"
                          f"/{crawl_frac:.0%}")
+        if MAP_FLOOR > 0.0:
+            hyg_note += "  floor " + "/".join(str(_c) for _c in COUNTS)
         if RETN_MAP:
             hyg_note += "  ret " + " ".join(f"{_m.mean:+.2f}+-{_m.std:.2f}" for _m in retn_map)
         elif RETN:
@@ -26945,6 +27104,44 @@ def main() -> None:
         tm.mark("search_on", 1.0 if (AUTO.get("proc") is not None
                                      or AFIN.get("proc") is not None) else 0.0)
         tm.flush(it_no)
+        if MAP_FLOOR > 0.0:
+            # each map's own env steps: the fleet's steps since the last count x its share
+            for _k, _s in enumerate(slots):
+                FLOOR["own"][_s.tag] = (int(FLOOR["own"].get(_s.tag, 0))
+                                        + (global_step - floor_step) // N * COUNTS[_k])
+            floor_step = global_step
+        if floor_next is not None and global_step < int(args.steps):
+            # --map-floor re-split: checkpoint (floor state included), stop the searches
+            # beside the training, then re-execute THIS process on that checkpoint with the
+            # same arguments - the pid (the watchdog's pid file) and the log stay; the new
+            # image builds its cores with the counts the floor state gives
+            FLOOR["resplits"] += 1
+            save_ckpt("latest")
+            if AUTO_SPINE and args.auto_spine_async:
+                _auto_spine_kill()
+            if args.auto_finish:
+                _auto_finish_kill()
+            _argv = list(getattr(sys, "orig_argv", [sys.executable] + sys.argv))
+            _keep, _i = [], 0
+            while _i < len(_argv):
+                if _argv[_i] == "--ckpt":
+                    _i += 2
+                    continue
+                if not _argv[_i].startswith("--ckpt="):
+                    _keep.append(_argv[_i])
+                _i += 1
+            _keep += ["--ckpt", str(out / "ckpt_latest.pt")]
+            print(f"[{global_step:>13,d}] --map-floor: re-split {COUNTS} -> {floor_next} "
+                  f"(re-split {FLOOR['resplits']}): ckpt_latest saved, re-executing in place",
+                  flush=True)
+            if D.is_main:
+                csv_f.flush()
+            _env, _note = reexec_env(os.environ, meta["config"], out)
+            if _note:
+                print(f"[{global_step:>13,d}] --map-floor: {_note}", flush=True)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.execve(sys.executable, _keep, _env)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,
             # and they catch the silent bugs. Cadences are rank-identical.

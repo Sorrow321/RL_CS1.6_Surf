@@ -106,6 +106,8 @@ TRAIN_ONLY = frozenset({
     # --update-stats: the PPO update's health columns (clip share, grad norm, the bf16
     # check at zero update); logging only - a recording runs no update
     "update_stats",
+    # --map-floor: how the training envs were split over the maps; a recording is one map
+    "map_floor",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings

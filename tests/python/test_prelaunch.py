@@ -419,3 +419,107 @@ def test_ret_norm_2_needs_maps_and_3_is_no_value():
             r3.stdout + r3.stderr)
     finally:
         shutil.rmtree(V.ROOT / "runs" / "pre_rn_one", ignore_errors=True)
+
+
+# ==========================================================================
+# (e) --map-floor: finished maps keep a floor share, the rest goes to unfinished ones
+# ==========================================================================
+def test_map_floor_counts():
+    assert tf.map_floor_counts(1026, [False] * 3, 0.25) == [342] * 3       # nobody floored
+    assert tf.map_floor_counts(1026, [True] * 3, 0.25) == [342] * 3        # everybody
+    assert tf.map_floor_counts(1026, [True, False, False], 0.25) == [86, 470, 470]
+    assert tf.map_floor_counts(1026, [False, True, True], 0.25) == [854, 86, 86]
+    assert tf.map_floor_counts(64, [True, False], 0.25) == [8, 56]
+    c = tf.map_floor_counts(1029, [True, False, False, False, False, False, False], 0.25)
+    assert sum(c) == 1029 and c[0] == 37 and max(c[1:]) - min(c[1:]) <= 1
+    assert tf.map_floor_counts(16, [True, False], 0.25) == [8, 8]          # the 8-env minimum
+
+
+def test_map_floor_step_hysteresis():
+    st = {}
+    tags = ["a", "b"]
+    assert tf.map_floor_step(st, tags, [1.0, 0.5]) == [False, False]       # one eval: not yet
+    assert tf.map_floor_step(st, tags, [8 / 9, 0.9]) == [True, False]      # a: two >= 0.85
+    assert tf.map_floor_step(st, tags, [0.4, 0.9]) == [True, True]         # one bad: stays
+    assert tf.map_floor_step(st, tags, [float("nan"), 0.0]) == [True, True]  # NaN: as it was
+    # a: 0.40 then (NaN skipped) 0.56, both <= 0.60 -> back; b: 0.0, 0.0 -> back
+    assert tf.map_floor_step(st, tags, [5 / 9, 0.0]) == [False, False]
+    assert st["hist"]["a"] == [0.4, 5 / 9]
+    st2 = {}
+    tf.map_floor_step(st2, ["a"], [1.0])
+    tf.map_floor_step(st2, ["a"], [1.0])
+    assert tf.map_floor_step(st2, ["a"], [0.6]) == [True]                  # 1.0, 0.6: max > 0.6
+    assert tf.map_floor_step(st2, ["a"], [0.6]) == [False]                 # 0.6, 0.6: back
+
+
+def test_reexec_env_declares_only_the_runs_own_files(tmp_path):
+    """the in-place re-execution restores the run's sources from its checkpoint: SELF_STATES=1
+    is declared only for files under the run's own directory (its scratch spine, its searches'
+    lines); an operator's declaration is inherited; anything else stays undeclared"""
+    run = tmp_path / "runs" / "fs"
+    own = run / "auto" / "cannonball" / "spine0.npy"
+    env, note = tf.reexec_env({"X": "1"}, {"demo_file": str(own)}, run)
+    assert env == {"X": "1", "SELF_STATES": "1"} and "own files" in note
+    env, note = tf.reexec_env({}, {"demo_file": str(own),
+                                   "spawn_states": str(tmp_path / "other" / "s.npy")}, run)
+    assert "SELF_STATES" not in env and note == ""
+    env, note = tf.reexec_env({"SELF_STATES": "1"}, {"demo_file": "/x/y.npy"}, run)
+    assert env["SELF_STATES"] == "1" and note == ""                       # inherited
+    env, note = tf.reexec_env({}, {"demo_file": None}, run)
+    assert "SELF_STATES" not in env and note == ""                        # no source
+    assert tf.SOURCE_KEYS == ("demo_file", "bc_file", "route", "goal_route", "codebook",
+                              "spawn_states", "finish_line")
+
+
+@needs_two
+def test_map_floor_splits_unevenly_and_resplits_in_place():
+    """a checkpoint whose floor state floors map 0 resumes at 8 / 56 envs; map 0's first eval
+    (no finish on CPU) is its second in a row <= 60%, so the trainer checkpoints and re-executes
+    itself in place and goes on at 32 / 32"""
+    names = ("pre_fl", "pre_fl_re")
+    r, d = V.run_line(V.ROOT, "pre_fl", _maps(), steps=2048 * 4,
+                      extra=SM + ARCH + ["--map-floor", "0.25", "--adv-norm-per-map", "1"],
+                      timeout=5400)
+    out = r.stdout + r.stderr
+    try:
+        assert r.returncode == 0, out[-5000:]
+        assert "envs per map" in out and "(the even split); re-splits so far 0" in out
+        cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+        assert cfg["map_floor"] == 0.25
+        sys.path.insert(0, str(V.ROOT / "tools"))
+        import record_ckpt
+        record_ckpt.audit_cfg(cfg)
+        ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+        tags = list(ck["map_floor"]["counts"])
+        assert list(ck["map_floor"]["counts"].values()) == [32, 32]
+        ck["map_floor"].update(floored={tags[0]: True, tags[1]: False},
+                               hist={tags[0]: [0.0], tags[1]: []})
+        src = d / "ckpt_floored.pt"
+        torch.save(ck, src)
+        os.environ["SELF_STATES"] = "1"
+        r2, d2 = V.run_line(V.ROOT, "pre_fl_re", _maps(), steps=2048 * 9,
+                            extra=SM + ["--ckpt", str(src)], timeout=5400)
+        o2 = r2.stdout + r2.stderr
+        assert r2.returncode == 0, o2[-6000:]
+        assert "map_floor=0.25" in o2
+        assert f"envs per map {tags[0]} 8, {tags[1]} 56 (floored: {tags[0]})" in o2
+        assert "re-split [8, 56] -> [32, 32] (re-split 1): ckpt_latest saved" in o2
+        assert (f"envs per map {tags[0]} 32, {tags[1]} 32 (the even split); "
+                "re-splits so far 1") in o2
+        head, rows = _csv(d2 / "progress.csv")
+        steps = [int(float(row[head.index("time/total_timesteps")])) for row in rows]
+        assert steps == sorted(steps) and len(set(steps)) == len(steps)
+        env0 = [int(float(row[head.index(f"floor/envs.{tags[0]}")])) for row in rows]
+        assert env0[0] == 8 and env0[-1] == 32
+        own = [[int(float(row[head.index(f"floor/steps.{t}")])) for row in rows] for t in tags]
+        for o in own:
+            assert o == sorted(o)
+        ck2 = torch.load(d2 / "ckpt_final.pt", map_location="cpu", weights_only=False)
+        assert ck2["map_floor"]["resplits"] == 1
+        assert list(ck2["map_floor"]["counts"].values()) == [32, 32]
+        # the 8 / 56 stretch gave map 1 seven times map 0's steps
+        assert own[1][-1] > own[0][-1]
+    finally:
+        os.environ.pop("SELF_STATES", None)
+        for name in (() if os.environ.get("PRELAUNCH_KEEP") else names):
+            shutil.rmtree(V.ROOT / "runs" / name, ignore_errors=True)
