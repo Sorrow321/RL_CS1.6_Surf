@@ -24,6 +24,7 @@ import copy
 import csv
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -240,6 +241,8 @@ def _maps():
 def _csv(path):
     with open(path, newline="", encoding="utf-8") as fh:
         rows = list(csv.reader(fh))
+    dup = sorted({h for h in rows[0] if rows[0].count(h) > 1})
+    assert not dup, f"duplicate CSV columns (a DictReader keeps the last): {dup}"
     return rows[0], rows[1:]
 
 
@@ -391,7 +394,7 @@ def test_ret_norm_per_map_trains_records_and_resumes():
             pairs.append((n.mean, n.std))
         assert pairs[0] != pairs[1]                # each map its own statistics
         head, rows = _csv(d / "progress.csv")
-        assert head[-4:] == [f"train/ret_{c}.{t}" for t in tags for c in ("mean", "std")]
+        assert head[-4:] == [f"train/retn_{c}.{t}" for t in tags for c in ("mean", "std")]
         for row in rows:
             assert row[head.index("train/ret_mean")] == "" == row[head.index("train/ret_std")]
             assert all(np.isfinite(float(row[head.index(c)])) for c in head[-4:])
@@ -471,6 +474,17 @@ def test_reexec_env_declares_only_the_runs_own_files(tmp_path):
                               "spawn_states", "finish_line")
 
 
+def test_search_k_max_numbers_after_the_runs_own_folders(tmp_path):
+    """a resume numbers its next search after the run's existing k folders (auto_spine.py writes
+    into an existing --out: restarting at k01 lands on the first search's line)"""
+    assert tf.search_k_max(tmp_path / "none") == 0
+    for name in ("k01", "k03", "kx", "spine0"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "k07").write_text("")                                     # a file, not a search
+    assert tf.search_k_max(tmp_path) == 3
+    assert tf.AUTO_CLOCKS == ("last", "retry_at", "t_hold", "tau_low")
+
+
 @needs_two
 def test_map_floor_splits_unevenly_and_resplits_in_place():
     """a checkpoint whose floor state floors map 0 resumes at 8 / 56 envs; map 0's first eval
@@ -494,6 +508,10 @@ def test_map_floor_splits_unevenly_and_resplits_in_place():
         assert list(ck["map_floor"]["counts"].values()) == [32, 32]
         ck["map_floor"].update(floored={tags[0]: True, tags[1]: False},
                                hist={tags[0]: [0.0], tags[1]: []})
+        # map 0 improved at the checkpoint's step (as fs_3m's blue200 had before its floor):
+        # its stuck time restarts there, so a clock that ran backwards shows below 0
+        ck["unstuck"][tags[0]].update(best_step=ck["unstuck"][tags[0]]["last_step"],
+                                      stuck_steps=0)
         src = d / "ckpt_floored.pt"
         torch.save(ck, src)
         os.environ["SELF_STATES"] = "1"
@@ -506,6 +524,16 @@ def test_map_floor_splits_unevenly_and_resplits_in_place():
         assert "re-split [8, 56] -> [32, 32] (re-split 1): ckpt_latest saved" in o2
         assert (f"envs per map {tags[0]} 32, {tags[1]} 32 (the even split); "
                 "re-splits so far 1") in o2
+        # the search clocks go across the re-split: the re-executed process restores what run
+        # 2's first process set at its start (--auto-spine-delay 1e12 from each map's own
+        # steps then), not the delay re-armed from the re-split's step
+        line = [ln for ln in o2.splitlines()
+                if ln.startswith("--map-floor: the search clocks carried across the re-split")]
+        assert len(line) == 1, o2[-4000:]
+        for t in tags:
+            got = re.search(rf"{t} retry_at ([\d,]+),", line[0])
+            assert got and int(got.group(1).replace(",", "")) == int(
+                ck["map_floor"]["own"][t] + 1e12), (t, line[0])
         head, rows = _csv(d2 / "progress.csv")
         steps = [int(float(row[head.index("time/total_timesteps")])) for row in rows]
         assert steps == sorted(steps) and len(set(steps)) == len(steps)
@@ -514,6 +542,12 @@ def test_map_floor_splits_unevenly_and_resplits_in_place():
         own = [[int(float(row[head.index(f"floor/steps.{t}")])) for row in rows] for t in tags]
         for o in own:
             assert o == sorted(o)
+        # every per-map clock reads the floor's counter: --unstuck's stuck time never runs
+        # backwards over the resume at 8 / 56 or the re-split (the share formula jumped there)
+        for t in tags:
+            ss = [int(float(row[head.index(f"unstuck/stuck_steps.{t}")])) for row in rows
+                  if row[head.index(f"unstuck/stuck_steps.{t}")] != ""]
+            assert ss and min(ss) >= 0, (t, ss)
         ck2 = torch.load(d2 / "ckpt_final.pt", map_location="cpu", weights_only=False)
         assert ck2["map_floor"]["resplits"] == 1
         assert list(ck2["map_floor"]["counts"].values()) == [32, 32]

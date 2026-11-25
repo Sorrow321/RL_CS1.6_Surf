@@ -4927,6 +4927,20 @@ def live_dead_ends(ends, greedy_d, gain):
     return live, [e for e in ends if not float(e[3]) < float(greedy_d) - float(gain)]
 
 
+#: the search loop's clocks (each map's AUTO dict, own steps): a --map-floor re-split carries
+#: them across its re-execution, which would otherwise re-arm --auto-spine-delay and restart
+#: the patience clocks like any resume
+AUTO_CLOCKS = ("last", "retry_at", "t_hold", "tau_low")
+
+
+def search_k_max(adir) -> int:
+    """the highest search number with a folder under ``adir`` (k01, k02, ...; 0 = none). A
+    resume numbers its next search after it: auto_spine.py writes into an existing --out, so a
+    count restarted at 0 would put the next search in the folder of a line the run may hold."""
+    ks = [int(q.name[1:]) for q in Path(adir).glob("k*") if q.is_dir() and q.name[1:].isdigit()]
+    return max(ks, default=0)
+
+
 def auto_failed_state(auto: dict, held_end) -> dict:
     """--auto-spine-archive-bar: what the search loop learned from its failed lines (the d-bar, the
     ban's end positions, the dead ends) and the source of the line it holds, for the checkpoint."""
@@ -18973,8 +18987,9 @@ def main() -> None:
         CSV_COLS += ["train/clip_frac", "train/grad_norm", "train/grad_clipped",
                      "train/noise0_logp", "train/noise0_logp_max", "train/noise0_clip"]
     if int(args.ret_norm) == 2:
-        # --ret-norm 2: each map's running (mean, std) of the return, after those
-        CSV_COLS += [f"train/ret_{_c}.{_s.tag}" for _s in slots for _c in ("mean", "std")]
+        # --ret-norm 2: each map's running (mean, std) of the return, after those (retn_: the
+        # per-map block above already owns train/ret_std.<tag>, the rollout's std(G))
+        CSV_COLS += [f"train/retn_{_c}.{_s.tag}" for _s in slots for _c in ("mean", "std")]
     if float(args.map_floor) > 0.0:
         # --map-floor: each map's env count and its own env steps so far, after those
         CSV_COLS += [f"floor/{_c}.{_s.tag}" for _s in slots for _c in ("envs", "steps")]
@@ -19174,11 +19189,25 @@ def main() -> None:
     DSI = [0]
     OWN_W = "its own step" if MULTI else "step"   # how the loop's step clocks are printed
 
+    if MAP_FLOOR > 0.0:
+        # --map-floor: each map's own env steps are counted in FLOOR["own"] up to step
+        # FLOOR["at"]; a map the checkpoint holds no counter for ran the even split, so it
+        # starts from the share formula's value (what every per-map clock was set from)
+        for _s in slots:
+            FLOOR["own"].setdefault(_s.tag, (int(global_step) * PER) // N)
+        FLOOR["at"] = int(global_step)
+
     def _own_step(si=0):
         """slot ``si``'s OWN env steps: the fleet's global_step on a single-map run; under
         --maps its share (D2: every per-map clock counts the map's own experience). The share
         is of the GLOBAL fleet: --ddp-maps shard holds a map's envs on one rank, so it divides by
-        N_GLOBAL, not by this rank's N (one process: N == N_GLOBAL, the same number)"""
+        N_GLOBAL, not by this rank's N (one process: N == N_GLOBAL, the same number). Under
+        --map-floor the share formula would jump at every re-split (the counts change: a
+        floored map's clock ran BACKWARDS and its --unstuck heat cooled to 0, fs_3m 2026-11-25),
+        so it is the floor's own counter brought up to this step"""
+        if MAP_FLOOR > 0.0:
+            return (int(FLOOR["own"][slots[si].tag])
+                    + (int(global_step) - int(FLOOR["at"])) // N * int(COUNTS[si]))
         return global_step if not MULTI else (int(global_step) * slots[si].n) // (
             N_GLOBAL if DDP_SHARD else N)
     fin_idx = np.full(N, -1, np.int64)    # --finish-line index of each env's start
@@ -19388,6 +19417,26 @@ def main() -> None:
                 if _af is not None:
                     restore_auto_failed(DSL[_k]["auto"], _af, DSL[_k]["demo"].S[-1]["origin"])
                     print(f"auto-spine[{_sk.tag}]: failed-line state restored from the checkpoint")
+    if AUTO_SPINE:
+        # a resume numbers its searches after the run's own (it restarted at k01, the folder
+        # of the first search's line - the line fs_3m held for cannonball, 2026-11-25)
+        for _k, _b in enumerate(DSL):
+            _b["auto"]["k"] = max(int(_b["auto"]["k"]), search_k_max(
+                (out / "auto" / slots[_k].tag) if MULTI else (out / "auto")))
+        _fc = ((ck.get("map_floor") or {}).get("clocks") if ck is not None else None) or {}
+        if MAP_FLOOR > 0.0 and _fc:
+            # --map-floor re-split: the search clocks as the process left them, over the
+            # delay and patience a resume sets up (seven re-splits held fs_3m's cannonball at
+            # one search, uk_3m's searched five times)
+            for _k, _s in enumerate(slots):
+                _c = _fc.get(_s.tag) or {}
+                DSL[_k]["auto"].update({_n: _c[_n] for _n in AUTO_CLOCKS if _n in _c})
+                DSL[_k]["auto"]["k"] = max(int(DSL[_k]["auto"]["k"]), int(_c.get("k") or 0))
+            print("--map-floor: the search clocks carried across the re-split: " + "; ".join(
+                f"{_s.tag} retry_at {int(DSL[_k]['auto']['retry_at']):,}, patience from "
+                + (f"{int(DSL[_k]['auto']['last']):,}" if DSL[_k]["auto"].get("last") is not None
+                   else "its next eval") + f", k {int(DSL[_k]['auto']['k'])}"
+                for _k, _s in enumerate(slots)), flush=True)
 
     def _use_dslot(k):
         """--maps: load map k's curriculum / loop state into the names the loop code reads,
@@ -19734,6 +19783,7 @@ def main() -> None:
     # beside the training after a greedy eval that finishes fewer than the quorum; the first line
     # found becomes the --finish-line curriculum. AFIN["eval"] is set by the greedy eval below.
     AFIN = {"eval": None, "proc": None, "retry_at": 0, "k": 0, "field": None}
+    AFIN["k"] = search_k_max(out / "fin")     # (a resume numbers after the run's own, as above)
     if args.auto_finish and float(args.auto_finish_delay) > 0:
         AFIN["retry_at"] = int(global_step + float(args.auto_finish_delay))
         print(f"--auto-finish-delay: no search before step {AFIN['retry_at']:,}")
@@ -21861,9 +21911,13 @@ def main() -> None:
             # env steps, this checkpoint's counts; a resume (or a re-split) derives the split
             state["map_floor"] = {
                 "hist": {_t: list(_v) for _t, _v in FLOOR["hist"].items()},
-                "floored": dict(FLOOR["floored"]), "own": dict(FLOOR["own"]),
+                "floored": dict(FLOOR["floored"]),
+                "own": {_s.tag: int(_own_step(_k)) for _k, _s in enumerate(slots)},
                 "resplits": int(FLOOR["resplits"]),
                 "counts": {_s.tag: int(_c) for _s, _c in zip(slots, COUNTS)}}
+            if FLOOR.get("clocks"):
+                # (written by the re-split only: a later checkpoint's resume sets them up anew)
+                state["map_floor"]["clocks"] = FLOOR["clocks"]
         if RETN_MAP:
             # --ret-norm 2: each map's pair, keyed by its tag
             state["ret_norm_map"] = {_s.tag: retn_map[_k].state_dict()
@@ -23270,7 +23324,6 @@ def main() -> None:
         print(f"--target-kl {TKL:g}: an update stops once its approx KL exceeds {1.5 * TKL:g}")
     tkl_acc = [0, 0, [], 0]           # updates, stops, the stops' (epoch, mb, kl), stops ever
     floor_next = None                 # --map-floor: the split to re-execute with, once decided
-    floor_step = global_step          # --map-floor: the step its own-steps counters reached
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
@@ -26974,9 +27027,7 @@ def main() -> None:
                               if RETN_MAP else [])
                            # --map-floor: each map's env count and own env steps, after those
                            + ([_v for _k, _s in enumerate(slots)
-                               for _v in (int(COUNTS[_k]),
-                                          int(FLOOR["own"].get(_s.tag, 0))
-                                          + (global_step - floor_step) // N * COUNTS[_k])]
+                               for _v in (int(COUNTS[_k]), int(_own_step(_k)))]
                               if MAP_FLOOR > 0.0 else []))
             csv_f.flush()
         race_note = ""
@@ -27105,17 +27156,22 @@ def main() -> None:
                                      or AFIN.get("proc") is not None) else 0.0)
         tm.flush(it_no)
         if MAP_FLOOR > 0.0:
-            # each map's own env steps: the fleet's steps since the last count x its share
+            # each map's own env steps: the counters brought up to this step
             for _k, _s in enumerate(slots):
-                FLOOR["own"][_s.tag] = (int(FLOOR["own"].get(_s.tag, 0))
-                                        + (global_step - floor_step) // N * COUNTS[_k])
-            floor_step = global_step
+                FLOOR["own"][_s.tag] = _own_step(_k)
+            FLOOR["at"] = int(global_step)
         if floor_next is not None and global_step < int(args.steps):
             # --map-floor re-split: checkpoint (floor state included), stop the searches
             # beside the training, then re-execute THIS process on that checkpoint with the
             # same arguments - the pid (the watchdog's pid file) and the log stay; the new
             # image builds its cores with the counts the floor state gives
             FLOOR["resplits"] += 1
+            if AUTO_SPINE:
+                # the search loop's clocks go across the re-execution
+                FLOOR["clocks"] = {_s.tag: dict({_n: DSL[_k]["auto"].get(_n)
+                                                 for _n in AUTO_CLOCKS},
+                                                k=int(DSL[_k]["auto"]["k"]))
+                                   for _k, _s in enumerate(slots)}
             save_ckpt("latest")
             if AUTO_SPINE and args.auto_spine_async:
                 _auto_spine_kill()
