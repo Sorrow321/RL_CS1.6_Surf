@@ -52203,3 +52203,14 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * uk_3m launches now; pn_3m and fs_3m when built and CPU-tested (a NOTE names each commit).
   Budget ~$12 (credit $45.43, floor $13); watchdog + harvest per box, droplet watchers,
   dashboards :8688 (uk) / :8689 (pn) / :8690 (fs).
+
+## 2026-11-25 01:00 UTC: NOTE - pn_3m's code is built: --ret-norm 2 (mm/prelaunch 29c86e9a)
+
+* As PLAN b8000189: one PopArt-lite pair per map (update-then-use from each map's own env
+  columns of the return); GAE's buffer, its bootstrap and the truncation bootstrap read V back
+  with the env's own map's pair; checkpoint ret_norm_map {tag: state}; CSV train/ret_mean.<tag>
+  and train/ret_std.<tag>. CPU smokes (two maps): trains, both pairs written and distinct,
+  resumes; refused without --maps / with DDP; flags off bit-identical to b8630650.
+* Also fixed: tools/az_mcts read a --ret-norm checkpoint's V un-normalised (value_norm now); the
+  training loop's search scores by rollouts and never read V, so no earlier result is affected.
+* pn_3m's rent loop starts now (dashboard :8689); uk_3m's has found no 5090 <= $0.60/h yet.
