@@ -52248,3 +52248,15 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   _max_dph_doc) and in mm/prelaunch's box.py config (local, not committed); the fleet watchdog
   daemon restarted to read it (one: PID 615754). Restore both to 0.60, and restart the daemon,
   when uk_3m, pn_3m, fs_3m and the bf16 check are released.
+
+## 2026-11-25 01:49 UTC: NOTE - the bf16 check's resume refused at startup; the arms measure it
+
+* PLAN c8606341's resume of hg_cb (box 62443787, Czechia, $0.711/h, ~3 min, ~$0.04, released):
+  both runs stopped at startup on section 0's guard - hg_cb's config restores its own scratch
+  spine (demo_file runs/hg_cb/auto/spine0.npy) and my driver passed no SELF_STATES declaration.
+  The guard was right to stop it. hg_cb's later search spine (10,271 rows) was never harvested,
+  so that checkpoint's curriculum cannot be resumed on a fresh box either.
+* Changed plan, same rule: the three arms run --update-stats 1 on bf16 heads from scratch, so
+  train/noise0_logp / noise0_clip are measured on GPU every iteration for 8B steps as the
+  policy sharpens. If they cross the rule (>= 0.02 or >= 1%), the --fp32-heads 1 comparison
+  runs on that arm's own final checkpoint on its own box (its spines present) before release.
