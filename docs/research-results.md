@@ -52214,3 +52214,28 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Also fixed: tools/az_mcts read a --ret-norm checkpoint's V un-normalised (value_norm now); the
   training loop's search scores by rollouts and never read V, so no earlier result is affected.
 * pn_3m's rent loop starts now (dashboard :8689); uk_3m's has found no 5090 <= $0.60/h yet.
+
+## 2026-11-25 01:01 UTC: NOTE - fs_3m's code is built: --map-floor (mm/prelaunch 62c82de1)
+
+* As PLAN b8000189. (Correction: the NOTE above headed 01:00 UTC was written at 00:46 UTC.)
+* --map-floor F: per-map env counts (map_floor_counts: a finished map keeps max(8, round(F x the
+  even share)), the unfinished maps split the rest); FINISHED = 2 greedy evals in a row with
+  >= 85% of the map's episodes in the finish box (the env's own win test), back after 2 in a
+  row <= 60% (map_floor_step). A change of split: ckpt_latest (floor state: the last evals, the
+  floored flags, each map's own env steps, the counts), the searches beside the training
+  stopped, the trainer re-executed IN PLACE on it (same pid, log and arguments + --ckpt); the
+  counts come back from the checkpoint. Uneven splits refused with DDP, --dae, --rnn, --race-sr.
+* Section 0: the re-executed process restores the run's spine from the checkpoint, and the
+  guard needs SELF_STATES=1. It is declared there ONLY when every restored source is a file under
+  the run's own directory (its scratch spawn spine, its searches' lines; reexec_env); an
+  operator's declaration is inherited; anything else is refused as before.
+* CSV floor/envs.<tag> and floor/steps.<tag> (each map's own env steps). With F 0.25 on 1,026
+  envs: one map floored -> 86/470/470, two -> 86/86/854. fs_3m is read in FLEET steps.
+* CPU tests: the counts, the hysteresis, the declaration rule; a checkpoint flooring map 0
+  resumes at 8/56 envs, map 0's next eval (no finish) un-floors it, the trainer re-executes
+  itself and goes on at 32/32 (own steps sum to the fleet's); flags off bit-identical to
+  b8630650; regression 15 files: 276 passed, 13 skipped (test_multimap's FakeCore
+  fixed too: 3 tests failing on b8630650).
+* fs_3m's rent loop starts now (dashboard :8690). The three rent loops (and the bf16 check's)
+  have found no RTX 5090 <= $0.60/h since 00:01 UTC: with the 60 GB disk, 6 offers pass every
+  other filter up to $0.80/h, the cheapest $0.638.
