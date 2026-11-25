@@ -52312,3 +52312,43 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   separated here. The arm runs on (whether it oscillates and what cannonball gets overall).
 * bf16 heads: fs_3m's noise0_logp mean is now 0.021-0.022 (past the rule's 0.02), noise0_clip
   0.07%; the --fp32-heads comparison on uk_3m's final checkpoint decides the long run.
+
+## 2026-11-25 05:50 UTC: NOTE - fs_3m measured more than the floor: two --map-floor defects (fixed)
+
+* Defect 1 (my --map-floor code): every per-map clock under --maps (the --unstuck schedule, the
+  search retry and patience) reads the map's own steps as fleet steps x (its envs / all envs).
+  --map-floor changes the counts at each re-split, so that clock JUMPED: backwards for a map that
+  lost envs (blue200 at 3.157B: 1.45B -> 0.26B against its real own steps 1.05B; --unstuck stuck
+  time -544M), forwards for a map that gained them. Effect in fs_3m: a floored map whose last
+  --unstuck improvement was recent saw its stuck time drop under the 2e7 patience and its heat
+  (the key heads' temperature, at the 0.5 cap on every map in ua_3m, pn_3m and here otherwise)
+  cooled - blue200 0.5 -> 0.26 (3.16-3.38B) and 0.5 -> 0.003 (3.83-5.64B). Petrus, floored at
+  3.16-3.38B, kept 0.5 (its clock jumped back too, stuck time 909M -> 122M, but stayed above the
+  patience). So floored blue200 trained with fewer envs AND, most of that time, without its heat.
+* Defect 2 (the in-place re-execution): a resume re-arms --auto-spine-delay (3e8 own steps) and
+  restarts the patience clocks (patience 3e8, patience-max 1e9, patience-tau), and a re-split is
+  a resume. Seven re-splits so far: cannonball searched ONCE in fs_3m (0.90B fleet), against 5
+  times in uk_3m (0.90, 3.83, 4.73, 4.96, 5.63B) and 4 in pn_3m (0.90, 2.93, 3.83, 4.73B); the
+  arms agreed until fs_3m's first re-split (3.16B). After re-split 7 (5.86B) its trainer prints
+  "no search before step 2,985,783,040" (own steps; ~6.5B fleet).
+* Pre-existing, every resume (not only --map-floor): the search count restarts at 0, so the
+  first search after a resume is k01 again, and tools/auto_spine.py writes into an existing
+  --out (exist_ok): it shares the first search's folder and overwrites its beam / GE archives.
+  spine.npy is only written for a found line, which is then held, so the held line stays
+  consistent. Not hit in fs_3m yet (no search since its first re-split).
+* Fixed on mm/prelaunch (f0c8193c): under --map-floor every per-map clock reads the floor's own
+  counter (floor/steps, monotone, saved live in the checkpoint); a re-split carries each map's
+  search clocks (last, retry_at, t_hold, tau_low and the count) across its re-execution; any
+  resume numbers its searches (auto/<map>/kNN and fin/kNN) after the run's existing folders.
+  Also: --ret-norm 2's per-map columns are now train/retn_mean.<tag> / train/retn_std.<tag> -
+  train/ret_std.<tag> already named the rollout's std(G), so pn_3m's progress.csv has each
+  train/ret_std.<tag> TWICE (a csv.DictReader keeps the second, the normaliser's); read it by
+  column index.
+* Tests: the floor smoke now plants a recent --unstuck improvement in its checkpoint (the old
+  code drives that map's stuck time to -2,816; the fix keeps it >= 0) and checks that the
+  re-executed process restores the search clocks; search_k_max; every smoke's CSV header is
+  checked for duplicate names. test_prelaunch + test_multimap 42 passed; 18 more files 265
+  passed, 25 skipped (the princessburglar search smokes need that map's fields).
+* For the verdict: fs_3m is graded by the PLAN's rule as it ran, but it measured "a quarter-share
+  floor + no heat on floored blue200 + searches held off for every map", not the floor alone.
+  A floor-share retest needs the fixed code. The running boxes keep their own checkout (62c82de1).
