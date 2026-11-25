@@ -52294,3 +52294,21 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   (pn_3m's change), a reason to read fs_3m and pn_3m together.
 * Grader to 2.93B: blue200 first finish 1.803B in uk_3m and pn_3m (52/54 after; ua 4.73B, a
   search draw there); petrus first 0.677B in all three (after 50-69%, ua 77%); cannonball none.
+
+## 2026-11-25 04:05 UTC: NOTE - fs_3m: the floored maps collapsed in 0.22B fleet steps; split back
+
+* Official grader, fs_3m: petrus 9/9, 8/9, 9/9 (2.93-3.16B) -> 0/9 at 3.382B (episodes end at
+  45-49% of the route); blue200 9/9 x3 at 3.156-3.157B -> 3/9, 4/9, 3/9 at 3.382B; cannonball,
+  the map the envs went to, 6% -> 13%, no finish. In those 0.226B fleet steps petrus had ~19M own
+  steps (86 envs) and every update was ~83% cannonball rows with the critic holding 94-97% of the
+  value loss (previous NOTE).
+* The rule's hysteresis undid it: petrus open (56% / 0%) and blue200 still floored -> 470/470/86
+  (re-split 3), the next process's opening eval put blue200 at 33% / 33% -> 342/342/342 (re-split
+  4) at 3.38B; grad norm back to ~14, clip_frac ~0.25. Four in-place re-executions, all clean
+  (same pid 3051, optimizer state matched by name each time).
+* Reading (one seed, mechanism only; the arm's verdict stays the PLAN's end-of-run rule): a
+  floor of a quarter share did NOT keep finished maps finished in this recipe - forgetting set in
+  within ~19M own steps - and fewer own samples and the critic-dominated shared updates are not
+  separated here. The arm runs on (whether it oscillates and what cannonball gets overall).
+* bf16 heads: fs_3m's noise0_logp mean is now 0.021-0.022 (past the rule's 0.02), noise0_clip
+  0.07%; the --fp32-heads comparison on uk_3m's final checkpoint decides the long run.
