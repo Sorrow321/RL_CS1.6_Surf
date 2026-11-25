@@ -52131,3 +52131,45 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   (credit $45.43 after the user's top-up). 5090 cap back to $0.60 in both configs, daemon
   restarted (one). Logs and evals in the session scratchpad algo/runs/<name>/ (progress.csv,
   run.json, launch.txt, traj.tgz); grader script algo/ana/grade.py.
+
+## 2026-11-25 00:01 UTC: PLAN - pre-launch fixes (mm/prelaunch) and the bf16 check on one 5090
+
+* The user's orders (2026-11-24) on the Fable 5.1 review (reports ~/ar_m2/reviews/2026-11-24):
+  "Fix it" (a --wd-skip-norms checkpoint does not resume, 51835 "known, not changed"), "lets fix
+  it" (the stale ratchet tests), "lets add them" (the PPO clip share and the gradient norm),
+  "lets test" (bf16 heads may put noise under the PPO ratio).
+* Code: branch mm/prelaunch off mm/algo b8630650, commit 33fedb3a:
+  - Resume: torch numbers a saved optimizer's parameters in param_groups order (matrices first,
+    then biases / norms / log-std under --wd-skip-norms); every warm-start helper read them in
+    model order, and widen_for_route refused conv.2.weight's moments against conv.0.bias. Now
+    opt_saved_groups names each saved index (new checkpoints carry "opt_names"; older ones are
+    re-derived from their own config and checked against the group sizes),
+    opt_state_to_model_order re-keys before the helpers, opt_state_to_run regroups by name
+    before opt.load_state_dict. A one-group checkpoint is left exactly as before.
+  - --update-stats 1 (default off; logging only; restored on resume): train/clip_frac (share of
+    rows with |ratio - 1| > clip, every minibatch), train/grad_norm (before the 0.5 clip),
+    train/grad_clipped (share of steps clipped), and at epoch 0's first minibatch, where the
+    weights are still the rollout's: train/noise0_logp (mean |logp - logp_old|),
+    train/noise0_logp_max, train/noise0_clip (rows outside the clip at ZERO update). One read
+    per iteration, appended after every other column; record_ckpt TRAIN_ONLY.
+  - Stale tests repaired (all fail identically on b8630650): test_race_ratchet 17 of 24 and
+    test_race_latch 13 (the FakeCore had no config.phys.sv_gravity), test_flags_round30 1 (same),
+    test_keys_hold 2 and test_yaw_cond 2 (source pins behind the new trailing columns, the --dae
+    mask site and --side-hold's sb in env.c).
+  - tests/python/test_prelaunch.py: 8 unit (every moment on its own parameter, derived and named;
+    one-group untouched; a widened --priv-critic resume onto a grouped checkpoint; Adam into a
+    grouped run; refusals) + 2 trainer smokes (CPU, two maps): round 2's arch + --update-stats
+    trains and resumes from its own checkpoint and from one without opt_names (fp32 on CPU:
+    noise0_logp exactly 0); flags off bit-identical to b8630650 (config, eval trajectories,
+    progress.csv minus fps, weights). Regression: 14 files, 245 passed, 13 skipped.
+  - Found, not changed: --priv-critic cannot warm-start a --view-continuous checkpoint (the view
+    head is registered after the priv MLP and widen_for_priv appends), with or without groups.
+* GPU check, one RTX 5090 <= $0.60/h, ~45 min, ~$0.45: hg_cb's ckpt_final.pt (round 2's arch on
+  cannonball, 4.0B steps, md5 52c209da, written before the fix; copied as a file, md5 on the box)
+  resumed twice for +100M steps with --update-stats 1 --auto-spine-delay 1e12: (1) as trained
+  (bf16 heads), (2) --fp32-heads 1. Read: the resume runs; noise0_logp / noise0_clip; clip_frac,
+  grad_norm, grad_clipped; fps.
+* Rule, set now: the long run takes --fp32-heads 1 if the bf16 arm reads noise0_logp >= 0.02 or
+  noise0_clip >= 1% AND --fp32-heads 1 cuts both by >= 3x at <= 5% fps; a bigger fps cost goes
+  to the user. Below both thresholds: bf16 heads stay.
+* Watchdog with harvest, dashboard tunnel :8687, credit $45.43 (floor $13).
