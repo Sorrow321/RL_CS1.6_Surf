@@ -52501,3 +52501,55 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Not a world record yet. Our physics is the C core and neither line has been replayed in the
   game engine. petrus_lite's record is tightly contested (27.74 / 27.75 / 27.76 s), so an agent
   0.2-0.8 s under it is a flag to verify in the game, not a claim. Sidistic's record is one run.
+
+## 2026-11-26 11:32 UTC: PLAN - the 20-map run: control + floor share / per-map return norm / 2x net / late anneal fork
+
+* The user, 2026-11-25: "Let's try these ideas on 20 map run. One additional thing: ideally we want
+  to keep world record timers somewhere and have metric something like 'which % of maps in training
+  beaten the WR'". All four ideas get an arm, one arm (one seed) each; the unstuck cap is left out.
+  2026-11-26: 5090s up to $0.80/h ("Up to $0.80/h"); the fork resumes with --resume-search-state 1.
+* Maps (20): the seven (princessburglar_b26, src_sidistic, unitfarmer2, src_cannonball,
+  edgeflow_blue200, src_celestial, petrus_lite) + 13 picked without opening a map: round 20's
+  verified trigger-finish maps with a speedrun.eu record, the 13 with the most records (gi_rino,
+  prechasm, src_mellow, sg_guater, simulatedway, src_ing, kei_luupy, latebra, lowestbidder,
+  freeland_uncapped, src_hollow, src_volcanic, secret_passage). Files: speedrun.eu's downloads,
+  delivered by the user 2026-11-26 (md5 list ~/ar_m2/maps20/README_incoming.txt). Intake on the
+  droplet: all 13 (and 3 spares) load in today's core (512-entity tables), start and finish are
+  triggers, tools/verify_maps.py at cell 32 passes every one (finish reachable from every spawn).
+* Line, every arm: recipe v14 + the round-2 arch (--wd 0.01 --wd-skip-norms 1 --conv-norm 1
+  --final-ln-affine 0 --mlp-act leaky) + --update-stats 1 (= ua_3m's line), --maps of the 20,
+  --envs 1020 (51 per map), --maxvel 3500 on every map (the record servers' sv_maxvelocity; five of
+  the seven trained at 4000 before), --tick-ms 7.63, the search mix + --adv-norm-per-map 1,
+  --wr-file autoresearch/records_m20.json (18 records frozen 2026-11-25; pb and blue200 have
+  none), from scratch, seed 0, 2e10 fleet steps (1e9 own per map), an eval every 37.5e6 own steps
+  (0.75e9 fleet). Branch mm/m20 7466b394. The 13 new maps' grids are baked once on the control's
+  box (--warm-caches), pulled back and packed (mm20_maps.tar.gz) for the other boxes.
+* Arms, one RTX 5090 each:
+  - m20c_1: the control.
+  - m20f_1: + --map-floor 0.5 (finished maps keep half an even share of the envs, the rest goes
+    to unfinished maps; the fixed code of f0c8193c).
+  - m20n_1: + --ret-norm 2 (per-map return normalisation).
+  - m20w_1: + --conv-mult 2 --emb 1024 --hidden 896 (every width doubled, ~4.8M -> ~19M weights).
+  - m20a_1: a fork of m20c_1 at ~13.3e9 fleet steps (two thirds): its checkpoint and its search
+    lines copied box to box (md5), resumed with --lr-final 1e-4 --ent-final 0.001 --anneal-start
+    <fork step> (lr 3e-4 -> 1e-4 and entropy 0.005 -> 0.001, linear to 2e10) and
+    --resume-search-state 1 (7466b394: the search clocks and the held lines' keys continue, so the
+    fork differs from the control only by the anneal).
+* Metrics, from the official grader (score.py / score_maps.py / wr_metric.py on the harvested
+  evals; never the trainer's own counts):
+  - PRIMARY: maps held at the end = maps with a verified finish in at least 2 of the last 3 evals
+    (of 20).
+  - Secondary: each map's first finish (own steps); retention (maps that finished once and stopped
+    finishing); the record metric (comparable maps under the record on the record clock, at the
+    last eval and ever, of 18; median best time / record).
+* Rule, each arm vs m20c_1 at matched fleet steps (one seed: single-map marks are noisy, the gate
+  ladder is binary): BETTER = maps held >= control + 3; WORSE = maps held <= control - 3; else no
+  clear difference. The fork (m20a_1 vs m20c_1 over 13.3e9..2e10): BETTER = maps held >= the
+  control's AND median time / record <= 0.97 x the control's; WORSE = maps held <= control - 2;
+  else no clear difference. The wide arm runs slower per step (0.86x on seven maps): read it by
+  steps, not by hours.
+* Ops: one box per arm, <= $0.80/h, fast desktop CPUs (config cpu_exclude); the fleet watchdog
+  (cap 5 boxes) registered with a harvest per box; a droplet watcher per arm syncs the small files
+  every 3 min (only what changed), deletes finished searches' archives on the box (a 60 GB disk),
+  extends the deadline 2 h at a time and stops the trainer below the $13 credit floor. Cost
+  estimate ~$50-55 (four arms ~17-20 h, the fork ~6 h).
