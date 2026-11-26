@@ -1,0 +1,166 @@
+{
+ "source": "speedrun.eu via docs/leaderboards (tools/leaderboard.py)",
+ "made_at": "2026-11-26T11:13:57Z",
+ "maps": {
+  "surf_princessburglar_b26": {
+   "wr_s": null,
+   "wr_player": null,
+   "total_records": 0,
+   "fetched_at": null,
+   "url": null,
+   "finish_kind": "trigger"
+  },
+  "surf_src_sidistic": {
+   "wr_s": 115.99000000000001,
+   "wr_player": "krs",
+   "total_records": 1,
+   "fetched_at": "2026-11-25T14:33:31Z",
+   "url": "https://speedrun.eu/maps/surf_src_sidistic/records",
+   "finish_kind": "trigger"
+  },
+  "surf_unitfarmer2": {
+   "wr_s": 35.17,
+   "wr_player": "Fizz",
+   "total_records": 12,
+   "fetched_at": "2026-11-25T14:33:34Z",
+   "url": "https://speedrun.eu/maps/surf_unitfarmer2/records",
+   "finish_kind": "trigger"
+  },
+  "surf_src_cannonball": {
+   "wr_s": 68.6,
+   "wr_player": "sharLo",
+   "total_records": 92,
+   "fetched_at": "2026-11-25T14:33:17Z",
+   "url": "https://speedrun.eu/maps/surf_src_cannonball/records",
+   "finish_kind": "trigger"
+  },
+  "surf_edgeflow_blue200": {
+   "wr_s": null,
+   "wr_player": null,
+   "total_records": 0,
+   "fetched_at": null,
+   "url": null,
+   "finish_kind": "trigger"
+  },
+  "surf_src_celestial": {
+   "wr_s": 34.76,
+   "wr_player": "spriggan",
+   "total_records": 38,
+   "fetched_at": "2026-11-25T14:33:28Z",
+   "url": "https://speedrun.eu/maps/surf_src_celestial/records",
+   "finish_kind": "trigger"
+  },
+  "surf_petrus_lite": {
+   "wr_s": 27.74,
+   "wr_player": "SHALL WE?",
+   "total_records": 50,
+   "fetched_at": "2026-11-25T14:33:23Z",
+   "url": "https://speedrun.eu/maps/surf_petrus_lite/records",
+   "finish_kind": "trigger"
+  },
+  "surf_gi_rino": {
+   "wr_s": 29.08,
+   "wr_player": "sharLo",
+   "total_records": 437,
+   "fetched_at": "2026-11-25T14:33:45Z",
+   "url": "https://speedrun.eu/maps/surf_gi_rino/records",
+   "finish_kind": "unknown"
+  },
+  "surf_prechasm": {
+   "wr_s": 15.54,
+   "wr_player": "JiZz",
+   "total_records": 238,
+   "fetched_at": "2026-11-25T14:33:56Z",
+   "url": "https://speedrun.eu/maps/surf_prechasm/records",
+   "finish_kind": "unknown"
+  },
+  "surf_src_mellow": {
+   "wr_s": 26.66,
+   "wr_player": "манго",
+   "total_records": 172,
+   "fetched_at": "2026-11-25T14:34:07Z",
+   "url": "https://speedrun.eu/maps/surf_src_mellow/records",
+   "finish_kind": "unknown"
+  },
+  "surf_sg_guater": {
+   "wr_s": 23.36,
+   "wr_player": "FiZz",
+   "total_records": 137,
+   "fetched_at": "2026-11-25T14:34:18Z",
+   "url": "https://speedrun.eu/maps/surf_sg_guater/records",
+   "finish_kind": "unknown"
+  },
+  "surf_simulatedway": {
+   "wr_s": 23.48,
+   "wr_player": "shrL",
+   "total_records": 99,
+   "fetched_at": "2026-11-25T14:34:29Z",
+   "url": "https://speedrun.eu/maps/surf_simulatedway/records",
+   "finish_kind": "unknown"
+  },
+  "surf_src_ing": {
+   "wr_s": 61.75,
+   "wr_player": "sharLo",
+   "total_records": 103,
+   "fetched_at": "2026-11-25T14:34:40Z",
+   "url": "https://speedrun.eu/maps/surf_src_ing/records",
+   "finish_kind": "unknown"
+  },
+  "surf_kei_luupy": {
+   "wr_s": 14.2,
+   "wr_player": "beru",
+   "total_records": 99,
+   "fetched_at": "2026-11-25T14:34:51Z",
+   "url": "https://speedrun.eu/maps/surf_kei_luupy/records",
+   "finish_kind": "unknown"
+  },
+  "surf_latebra": {
+   "wr_s": 32.69,
+   "wr_player": "dawsonn",
+   "total_records": 65,
+   "fetched_at": "2026-11-25T14:34:59Z",
+   "url": "https://speedrun.eu/maps/surf_latebra/records",
+   "finish_kind": "unknown"
+  },
+  "surf_lowestbidder": {
+   "wr_s": 26.91,
+   "wr_player": "FiZz",
+   "total_records": 62,
+   "fetched_at": "2026-11-25T14:35:07Z",
+   "url": "https://speedrun.eu/maps/surf_lowestbidder/records",
+   "finish_kind": "unknown"
+  },
+  "surf_freeland_uncapped": {
+   "wr_s": 31.89,
+   "wr_player": "FiZz",
+   "total_records": 42,
+   "fetched_at": "2026-11-25T14:35:11Z",
+   "url": "https://speedrun.eu/maps/surf_freeland_uncapped/records",
+   "finish_kind": "unknown"
+  },
+  "surf_src_hollow": {
+   "wr_s": 36.77,
+   "wr_player": "sharLo",
+   "total_records": 43,
+   "fetched_at": "2026-11-25T14:35:16Z",
+   "url": "https://speedrun.eu/maps/surf_src_hollow/records",
+   "finish_kind": "unknown"
+  },
+  "surf_src_volcanic": {
+   "wr_s": 44.41,
+   "wr_player": "Fizz",
+   "total_records": 36,
+   "fetched_at": "2026-11-25T14:35:21Z",
+   "url": "https://speedrun.eu/maps/surf_src_volcanic/records",
+   "finish_kind": "unknown"
+  },
+  "surf_secret_passage": {
+   "wr_s": 33.82,
+   "wr_player": "манго",
+   "total_records": 11,
+   "fetched_at": "2026-11-25T14:35:24Z",
+   "url": "https://speedrun.eu/maps/surf_secret_passage/records",
+   "finish_kind": "unknown"
+  }
+ }
+}
