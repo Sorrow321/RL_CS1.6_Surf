@@ -52575,3 +52575,27 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   lines, the boxes are released, and the user then decides whether to continue to 2e10 (each arm
   resumed from its 10B milestone with --resume-search-state 1). The PLAN's rule is read at 10B (last
   three evals at 8.25, 9.0 and 9.75e9). The anneal fork waits for that decision.
+
+## 2026-11-26 23:40 UTC: RESULT - m20n_1 (--ret-norm 2 on 20 maps): stopped at 5.57B by the user, behind the control at every eval
+
+* PLAN 7cbcfd60, NOTE 30d7544c. m20n_1 = the control's line + --ret-norm 2 (one return normaliser
+  per map), instance 62696268 (Japan, $0.739/h), 13:19-23:34 UTC, 5.57e9 fleet steps. The user,
+  23:3x UTC: "Let's destroy return norm, because it's clearly behind". The trainer was stopped, the
+  watcher pulled the evals, the search lines, ckpt_latest.pt (md5 c4c7fcb2) and the milestone
+  ckpt_5000448000.pt (md5 6672f7e7) to ~/ar_m2/runs/m20/m20n_1, and released the box. The PLAN's
+  rule (maps held at 10B) was not reached; this is the user's early stop on the evidence below.
+* Official grader, every common eval, m20n_1 vs the control m20c_1 (maps with a verified finish /
+  median over the 20 maps of the best episode's progress):
+  - 0.75B: 0 / 18.2% vs 0 / 30.1%
+  - 1.50B: 0 / 26.1% vs 1 / 36.1%
+  - 2.25B: 0 / 25.8% vs 1 / 47.7%
+  - 3.00B: 0 / 28.0% vs 2 / 51.9%
+  - 3.75B: 0 / 34.6% vs 2 / 48.4%
+  - 4.50B: 0 / 38.3% vs 2 / 46.5%
+  - 5.25B: 0 / 28.1% vs 3 / 46.6% (wide m20w_1: 5 / 57.6%)
+  - not one verified finish in 8 evals x 180 episodes.
+* Training signals against the control at matched steps (1.5-2.4B): episodes shorter (929-1,060 vs
+  1,160-1,460 ticks), training reward lower (15-17 vs 21-24), approx_kl higher (0.046-0.060 vs
+  0.026-0.041). The normalisers were finite and sensible (per-map sd 0.5 on princessburglar to 22 on
+  gi_rino at 2.5B). The 3-map pre-launch test pointed the same way (pn_3m finished petrus least
+  often; RESULT 47600529). One seed. --ret-norm 2 is not adopted.
