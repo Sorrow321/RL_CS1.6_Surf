@@ -1,0 +1,12 @@
+{
+ "map": "maps/surf_freeland_uncapped.bsp",
+ "field": "maps/surf_freeland_uncapped.goalc_32.npz",
+ "start_d": 74228.2,
+ "start_d_span": [
+  73965.4,
+  74512.6
+ ],
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "mm/m20 (2026-11-26): d on the goalc_32 baked for the 20-map run, sampled at the map's 29 spawn point(s) as score.py samples the first row; start_d = their median, start_d_span = [min, max]"
+}

@@ -1,0 +1,12 @@
+{
+ "map": "maps/surf_gi_rino.bsp",
+ "field": "maps/surf_gi_rino.goalc_32.npz",
+ "start_d": 75499.1,
+ "start_d_span": [
+  75231.6,
+  75768.0
+ ],
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "mm/m20 (2026-11-26): d on the goalc_32 baked for the 20-map run, sampled at the map's 16 spawn point(s) as score.py samples the first row; start_d = their median, start_d_span = [min, max]"
+}

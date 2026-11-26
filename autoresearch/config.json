@@ -253,7 +253,7 @@
   "_incumbent_recipe_doc": "RECIPE v14, 160 tokens, exactly wt/ab14p's (md5 6e2a72ca over the 158 tokens without --maxvel, ledger c1d4d88e). box.py launch --multimap replaces its --envs and --maxvel with config multimap's and appends multimap.extra, v14's launch extra (-- --auto-spine-mcts-args '--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2'); a resume (--multimap --resume) passes the same tokens with --envs and --maxvel from the pushed checkpoint.",
   "agent_prefix": "mm",
   "_agent_prefix_doc": "Multi-map pilots: box owners mm<pilot>, run names <owner>_<n>.",
-  "maps_tarball": "mm20pre_maps.tar.gz",
+  "maps_tarball": "mm20_maps.tar.gz",
   "_budget_doc": "No budget_rate_usd_h: box.py's pacer. The reserve is held by extend's burn x hours check and by the box deadlines.",
   "time_cap_s": 300.0,
   "_time_cap_s_doc": "score.py's time term is 10 * (1 - best_finish_s / time_cap_s): 300 s, the episode cap.",

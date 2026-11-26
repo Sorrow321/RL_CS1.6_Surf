@@ -1,0 +1,12 @@
+{
+ "map": "maps/surf_simulatedway.bsp",
+ "field": "maps/surf_simulatedway.goalc_32.npz",
+ "start_d": 33982.7,
+ "start_d_span": [
+  33801.8,
+  34154.7
+ ],
+ "score_episodes": 9,
+ "time_cap_s": 300.0,
+ "_source": "mm/m20 (2026-11-26): d on the goalc_32 baked for the 20-map run, sampled at the map's 11 spawn point(s) as score.py samples the first row; start_d = their median, start_d_span = [min, max]"
+}
