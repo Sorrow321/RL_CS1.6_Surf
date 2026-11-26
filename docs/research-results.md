@@ -52553,3 +52553,25 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   every 3 min (only what changed), deletes finished searches' archives on the box (a 60 GB disk),
   extends the deadline 2 h at a time and stops the trainer below the $13 credit floor. Cost
   estimate ~$50-55 (four arms ~17-20 h, the fork ~6 h).
+
+## 2026-11-26 13:32 UTC: NOTE - the 20-map arms are running at half the assumed speed; the user: run to 10B and decide there
+
+* PLAN 7cbcfd60. All four arms launched from scratch on mm/m20 946dd1d5 (pack mm20_maps.tar.gz,
+  md5 8ae1f67c), one RTX 5090 each: m20c_1 instance 62695619 (Japan, $0.683/h, Ryzen 9 7945HX),
+  m20f_1 62696012 (Argentina, $0.683/h, Ryzen 9 9950X), m20n_1 62696268 (Japan, $0.739/h), m20w_1
+  62696706 (Maryland, $0.698/h); launched 13:14-13:20 UTC, record gates 80 recordings in 276-360 s.
+* The 13 new maps' grids were baked once on a first box (62686796, Nevada): its HOST rebooted 45 min
+  into the bake (uptime reset inside the container); the bake finished in place (every written cache
+  matched), the machine is blocklisted (unreliable) and the box was released. Map buffers on the GPU:
+  9.34 GiB for the 20 maps (src_ing 1.79, gi_rino 0.80, cannonball 3.78).
+* Speed: 162-209k fleet steps/s per arm (45 s samples at ~0.1B), against 409k for the seven-map run
+  and 427-439k for the 3-map tests, with the GPU 11-21% busy and ~7 of 32 CPU threads in use. The map
+  fleet steps, rewards and renders the maps one after another (surfgym/mapfleet.py: one core.step of
+  51 envs per map per tick), so at 20 maps the per-call overhead dominates. Stepping the maps
+  concurrently is the fix to build before a 100-map run; not changed under running arms.
+* At this speed 2e10 steps is ~30 h per arm (~$92 for the four arms and the fork). The user chose
+  "Decide at 10B": every arm stops at its first milestone checkpoint at or past 1e10 fleet steps
+  (droplet watcher STOP_AT), the milestone and ckpt_latest are pulled (md5) with the run's search
+  lines, the boxes are released, and the user then decides whether to continue to 2e10 (each arm
+  resumed from its 10B milestone with --resume-search-state 1). The PLAN's rule is read at 10B (last
+  three evals at 8.25, 9.0 and 9.75e9). The anneal fork waits for that decision.
