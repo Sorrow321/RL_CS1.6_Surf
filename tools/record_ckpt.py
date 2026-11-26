@@ -113,6 +113,8 @@ TRAIN_ONLY = frozenset({
     "lr_final", "anneal_start",
     # --wr-file: the records the trainer's evals were compared against; logging only
     "wr_file",
+    # --resume-search-state: a resume continued the search loops' clocks; a recording runs none
+    "resume_search_state",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings

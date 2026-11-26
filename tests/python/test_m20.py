@@ -249,3 +249,71 @@ def test_flags_off_and_ent_final_are_bit_identical_to_the_parent(tmp_path, extra
         shutil.rmtree(d1, ignore_errors=True)
         if not os.environ.get("M20_PARENT_TREE"):
             shutil.rmtree(d0, ignore_errors=True)
+
+
+# ==========================================================================
+# (d) --resume-search-state: a resume (or a fork) goes on with every map's search loop
+# ==========================================================================
+@needs_two
+def test_resume_search_state_keeps_the_clocks_and_the_held_keys(tmp_path):
+    """every --maps --auto-spine checkpoint stores each map's search clocks; a resume with
+    --resume-search-state 1 under another run name (a fork) takes them back - the delay is NOT
+    re-armed - and the held spine's spawns hold its own keys (<spine>.keys.npy); a plain resume
+    re-arms the delay from the resume step, as it always did"""
+    import torch
+    delay = ["--auto-spine-delay", "1e9"]
+    r, d = V.run_line(V.ROOT, "m20_cl", _maps(), steps=STEPS, extra=SM + delay, timeout=5400)
+    out = r.stdout + r.stderr
+    names = ("m20_cl", "m20_rs", "m20_rp")
+    try:
+        assert r.returncode == 0, out[-5000:]
+        ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+        tags = [_tag(m) for m in MAPS]
+        clocks = ck["auto_search_clocks"]
+        assert set(clocks) == set(tags)
+        for t in tags:
+            assert clocks[t]["retry_at"] == int(1e9) and clocks[t]["k"] == 0, clocks[t]
+            assert set(clocks[t]) == {"last", "retry_at", "t_hold", "tau_low", "k"}
+        # the held spines (each map's spawn spine) get keys of their own: a fork must spawn on them
+        held = ck["auto_spine_spines"]
+        for t in tags:
+            sp = Path(held[t])
+            assert sp.exists(), sp
+            n = len(np.load(sp, mmap_mode="r"))
+            np.save(sp.with_suffix(".keys.npy"), np.tile(np.array([2, 0, 1], np.int64), (n, 1)))
+        os.environ["SELF_STATES"] = "1"            # the run's own spine is policy-derived
+        more = STEPS + 8 * 64 * 4
+        r2, d2 = V.run_line(V.ROOT, "m20_rs", _maps(), steps=more,
+                            extra=SM + delay + ["--ckpt", str(d / "ckpt_final.pt"),
+                                                "--resume-search-state", "1"], timeout=5400)
+        o2 = r2.stdout + r2.stderr
+        assert r2.returncode == 0, o2[-5000:]
+        line = next(x for x in o2.splitlines() if x.startswith("--resume-search-state: "))
+        for t in tags:
+            assert f"{t} retry_at 1,000,000,000" in line and "held keys" in line, line
+        assert o2.count("its spawns hold their rows' keys (spine0.keys.npy)") == len(tags)
+        cfg2 = json.loads((d2 / "run.json").read_text(encoding="utf-8"))["config"]
+        assert cfg2["resume_search_state"] == 1
+        import record_ckpt
+        record_ckpt.audit_cfg(cfg2)
+        ck2 = torch.load(d2 / "ckpt_final.pt", map_location="cpu", weights_only=False)
+        assert all(ck2["auto_search_clocks"][t]["retry_at"] == int(1e9) for t in tags)
+        # a plain resume: the delay re-armed from the resume step, neutral keys, no config key
+        r3, d3 = V.run_line(V.ROOT, "m20_rp", _maps(), steps=more,
+                            extra=SM + delay + ["--ckpt", str(d / "ckpt_final.pt")],
+                            timeout=5400)
+        o3 = r3.stdout + r3.stderr
+        assert r3.returncode == 0, o3[-5000:]
+        assert "--resume-search-state: " not in o3 and "spine0.keys.npy" not in o3
+        rearm = [x for x in o3.splitlines() if x.startswith("--auto-spine-delay: no search before")]
+        assert rearm and "1,000,000,000 " not in rearm[0] + " ", rearm
+        cfg3 = json.loads((d3 / "run.json").read_text(encoding="utf-8"))["config"]
+        assert "resume_search_state" not in cfg3
+        # and the flag refuses a run that is not a resume
+        r4, _ = V.run_line(V.ROOT, "m20_rx", _maps(), steps=STEPS,
+                           extra=SM + ["--resume-search-state", "1"], timeout=600)
+        assert r4.returncode != 0 and "give --ckpt" in (r4.stdout + r4.stderr)
+    finally:
+        os.environ.pop("SELF_STATES", None)
+        for name in (() if os.environ.get("M20_KEEP") else names + ("m20_rx",)):
+            shutil.rmtree(V.ROOT / "runs" / name, ignore_errors=True)

@@ -6336,6 +6336,18 @@ def main() -> None:
                          "<spine>.keys.npy gives its spawns their held keys (--auto-spine-keys). "
                          "The other maps keep their held spines. Off = byte-identical; never "
                          "restored")
+    ap.add_argument("--resume-search-state", type=int, default=0, choices=(0, 1),
+                    help="--maps + --auto-spine-scratch, a RESUME: every map's search loop "
+                         "goes on where the checkpoint left it - its clocks (the "
+                         "--auto-spine-delay wait, the patience and hold clocks: retry_at, last, "
+                         "t_hold, tau_low, and the search count; every --maps --auto-spine "
+                         "checkpoint since mm/m20 stores them) and its held spine's own keys "
+                         "(<spine>.keys.npy, as --resume-spines gives a given spine) - instead "
+                         "of re-arming the delay, restarting the patience and spawning the held "
+                         "lines with neutral keys. For a fork or a crash-resume of a long --maps "
+                         "run (20 maps: the re-armed delay alone is 6e9 fleet steps). 0 = "
+                         "today's resume, byte-identical; written to the config when on, never "
+                         "restored")
     ap.add_argument("--demo-share", type=float, default=None,   # None = off
                     help="--demo-file: the curriculum's window draws take this SHARE of every "
                          "training spawn pool (uniformly chosen positions, like --finish-line) "
@@ -14265,6 +14277,19 @@ def main() -> None:
     if args.resume_spines and not (MULTI and args.auto_spine_scratch):
         raise SystemExit("--resume-spines restarts --maps curricula (--auto-spine-scratch's held "
                          "spines) on given lines: give --maps and --auto-spine-scratch")
+    # --resume-search-state: the maps whose held spine came back from the checkpoint (their
+    # spawns hold that spine's own keys, as a given spine's do)
+    HELD_KEYS = [None] * len(slots)
+    if args.resume_search_state:
+        if not (MULTI and args.auto_spine_scratch):
+            raise SystemExit("--resume-search-state continues --maps search loops "
+                             "(--auto-spine-scratch): give --maps and --auto-spine-scratch")
+        if ck is None:
+            raise SystemExit("--resume-search-state continues a RESUMED run's search loops: "
+                             "give --ckpt")
+        if not ck.get("auto_search_clocks"):
+            raise SystemExit("--resume-search-state: the checkpoint stores no search clocks "
+                             "(every --maps --auto-spine checkpoint since mm/m20 does)")
     DEMOS = []                           # --maps: each map's curriculum (DEMOS[0] IS demo)
     if args.auto_spine_scratch:
         # --auto-spine-scratch: the first spine is the map's own spawn (two copies), written next
@@ -14291,8 +14316,14 @@ def main() -> None:
                     RESUME_SPINES[_k] = str(Path(_pth).resolve())
             for _k, _s in enumerate(slots):
                 _held = _ck_sp.get(_s.tag)
+                if args.resume_search_state and _held and not Path(_held).exists():
+                    # (a fork on another box needs the run's auto/ lines at the same paths)
+                    raise SystemExit(f"--resume-search-state: {_s.tag}'s held spine {_held} is "
+                                     "not on this disk: copy the run's auto/<tag>/ lines first")
                 if _held and Path(_held).exists():
                     SPINES0[_k] = str(_held)
+                    if args.resume_search_state and RESUME_SPINES[_k] is None:
+                        HELD_KEYS[_k] = str(_held)
                     print(f"--auto-spine-scratch[{_s.tag}]: "
                           + (f"restarts on the GIVEN spine {_held} (--resume-spines)"
                              if RESUME_SPINES[_k] is not None else
@@ -15492,9 +15523,11 @@ def main() -> None:
         if DEMO_KEYS[0] is None and args.demo_file:
             _ns = len(np.load(args.demo_file, mmap_mode="r"))
             DEMO_KEYS[0] = np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (_ns, 1))
-            if RESUME_SPINES[0] is not None:
+            if RESUME_SPINES[0] is not None or HELD_KEYS[0] is not None:
                 # --resume-spines: a given spine spawns holding its own keys
-                _rk = resume_spine_keys(RESUME_SPINES[0], _ns)
+                # (--resume-search-state: so does the held spine the checkpoint gave back)
+                _rk = resume_spine_keys(RESUME_SPINES[0] if RESUME_SPINES[0] is not None
+                                        else HELD_KEYS[0], _ns)
                 if _rk is not None:
                     DEMO_KEYS[0] = _rk
             print(f"--auto-spine-keys: the first spine ({_ns} rows) holds neutral keys; every "
@@ -17965,6 +17998,9 @@ def main() -> None:
         meta["config"]["anneal_start"] = float(args.anneal_start)
     if args.wr_file:
         meta["config"]["wr_file"] = str(args.wr_file)
+    if args.resume_search_state:
+        # --resume-search-state, written ONLY when on (this resume's provenance; never restored)
+        meta["config"]["resume_search_state"] = 1
     if args.wd_skip_norms:
         meta["config"]["wd_skip_norms"] = 1
     if float(args.race_pay_d0) > 0.0:
@@ -19454,9 +19490,11 @@ def main() -> None:
             if DEMO_KEYS[0] is not None:
                 # (--auto-spine-keys: the first spine holds neutral keys, as slot 0's)
                 _kk = [np.tile(np.asarray(keyshold.NEUTRAL, np.int32), (_dm.n, 1))]
-                if RESUME_SPINES[_k] is not None:
+                if RESUME_SPINES[_k] is not None or HELD_KEYS[_k] is not None:
                     # --resume-spines: a given spine spawns holding its own keys
-                    _rk = resume_spine_keys(RESUME_SPINES[_k], _dm.n)
+                    # (--resume-search-state: so does the held spine the checkpoint gave back)
+                    _rk = resume_spine_keys(RESUME_SPINES[_k] if RESUME_SPINES[_k] is not None
+                                            else HELD_KEYS[_k], _dm.n)
                     if _rk is not None:
                         _kk = [_rk]
             DSL.append(dict(demo=_dm, end_d=_edk, h_min=None, paid=[None], ok=[None, None],
@@ -19491,6 +19529,26 @@ def main() -> None:
                 + (f"{int(DSL[_k]['auto']['last']):,}" if DSL[_k]["auto"].get("last") is not None
                    else "its next eval") + f", k {int(DSL[_k]['auto']['k'])}"
                 for _k, _s in enumerate(slots)), flush=True)
+        if args.resume_search_state:
+            # --resume-search-state: the clocks every --maps checkpoint stores (the same names
+            # the --map-floor re-split carries), over the delay and patience a resume sets up
+            _rc = ck["auto_search_clocks"]
+            _miss = [_s.tag for _s in slots if _s.tag not in _rc]
+            if _miss:
+                raise SystemExit(f"--resume-search-state: the checkpoint has no search clocks "
+                                 f"for {_miss}")
+            for _k, _s in enumerate(slots):
+                _c = _rc[_s.tag]
+                DSL[_k]["auto"].update({_n: _c[_n] for _n in AUTO_CLOCKS if _n in _c})
+                DSL[_k]["auto"]["k"] = max(int(DSL[_k]["auto"]["k"]), int(_c.get("k") or 0))
+            print("--resume-search-state: each map's search loop goes on from the checkpoint: "
+                  + "; ".join(
+                      f"{_s.tag} retry_at {int(DSL[_k]['auto']['retry_at'] or 0):,}, patience "
+                      + (f"from {int(DSL[_k]['auto']['last']):,}"
+                         if DSL[_k]["auto"].get("last") is not None else "from its next eval")
+                      + f", k {int(DSL[_k]['auto']['k'])}"
+                      + (", held keys" if HELD_KEYS[_k] is not None else "")
+                      for _k, _s in enumerate(slots)), flush=True)
 
     def _use_dslot(k):
         """--maps: load map k's curriculum / loop state into the names the loop code reads,
@@ -21840,7 +21898,7 @@ def main() -> None:
     CKPT_PER_MAP = ("int_counts", "unstuck", "auto_spine_failed", "auto_spine_spines",
                     "int_coef_progress", "int_share_max", "respawn_frontier",
                     "respawn_backward", "respawn_novel", "respawn_greedy", "respawn",
-                    "unstuck_finish")
+                    "unstuck_finish", "auto_search_clocks")
 
     def save_ckpt(tag):
         # rank 0 only, and the branch is collective-free BY CONSTRUCTION:
@@ -21948,6 +22006,13 @@ def main() -> None:
                 except (OSError, ValueError, KeyError):
                     _held[_s.tag] = SPINES0[_k]
             state["auto_spine_spines"] = _held
+            # (mm/m20) each map's search clocks and search count, what --resume-search-state
+            # goes on from; training never reads them back without that flag
+            state["auto_search_clocks"] = {
+                _s.tag: dict({_n: (_a.get(_n) if _a.get(_n) is None else int(_a.get(_n)))
+                              for _n in AUTO_CLOCKS}, k=int(_a["k"]))
+                for _k, _s in enumerate(slots)
+                for _a in [AUTO if _k == DSI[0] else DSL[_k]["auto"]]}
         if INTP is not None:
             # --int-coef-progress: the coefficient and its frontier reading, so a resume keeps
             # the novelty the run had reached until its next greedy eval
