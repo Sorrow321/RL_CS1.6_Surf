@@ -52735,3 +52735,31 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Files: ~/ar_m2/runs/distill/mmds_1 (sync/: run.json, progress.csv, the launch log, every eval;
   zs/: the four zero-shot passes and grade.json; ckpt_latest.pt md5 a779d28b, ckpt_1000484352.pt
   md5 538f2de1). One seed.
+
+## 2026-11-27 15:12 UTC: PLAN - per-map experts on the 13 speedrun.eu maps (mm/experts), stage 1: RL from scratch
+
+* The user (2026-11-27, after the 100-map estimate): "$800 is clearly too much. I'd aim for ~$200
+  max. I think we can use cheaper GPUs with proper CPU. And we can start doing the map experts and
+  adjust our estimates based on real data, not guesses ... we can try to solve 13 other maps (RL +
+  expert loop), see how it goes." Paper part 1: per-map experts + the expert loop for records;
+  part 2: distil them (dc056c96).
+* Maps: the 13 speedrun.eu maps of mm/m20 (gi_rino, prechasm, src_mellow, sg_guater,
+  simulatedway, src_ing, kei_luupy, latebra, lowestbidder, freeland_uncapped, src_hollow,
+  src_volcanic, secret_passage), queued hardest first by the 20-map run (the six it had not
+  finished by 0.5B own steps first). The seven development maps keep mmg_S1c as their expert.
+* Recipe: v14 (the 160 tokens that finished all seven maps from scratch, c1d4d88e) + its launch
+  extra (the search mix), --maxvel 3500 (the record servers'), --wr-file
+  autoresearch/records_m20.json; from scratch, one map per run, seed 0, an eval every 75M steps.
+* Boxes: up to 4 at once, RTX 5080 (cap $0.35/h; 4080 / 4080S fallback at $0.25), a fast desktop
+  CPU (>= 16 threads, >= 4.5 GHz listed, no EPYC / Xeon), one map at a time per box from a shared
+  queue (scratchpad experts/farm_w.sh on mm/experts 6c571f83: box.py launch --map). The fleet
+  watchdog with each run's harvest, a $13 floor, a dashboard tunnel per box (8701-8704).
+* A map ENDS at DONE = >= 7 of 9 verified finishes (official grader) in 3 evals in a row, at the
+  cap of 8e9 steps, or when its trainer dies; its ckpt_latest.pt is pulled (md5) and the box takes
+  the next map. The trainer is stopped with every process under it (its searches).
+* Measured per map (results.jsonl): steps and hours to the first verified finish and to DONE, the
+  box price, the best time against the record. They replace the guesses of the 100-map estimate
+  (low $165 / mid $390 / high $825) under the user's target of ~$200 for the whole program.
+* Budget for this stage: <= $30 even if every map ran to its cap (13 x 8e9 steps at ~0.33M
+  steps/s and ~$0.31/h); expected $10-15. Stage 2 (the expert loop on the finished maps) gets its
+  own PLAN. One seed per map.
