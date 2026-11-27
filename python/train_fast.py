@@ -6230,7 +6230,8 @@ def main() -> None:
                          "curriculum's success becomes the objective's too, so a line whose "
                          "payoff lies seconds past a nearer field optimum is worth flying. "
                          "Config only when set; ckpt restores")
-    ap.add_argument("--demo-success-bonus-energy-only", action="store_true",
+    ap.add_argument("--demo-success-bonus-energy-only", type=int, nargs="?", const=1,
+                    default=None, choices=(0, 1),
                     help="--demo-success-bonus is paid only while the held line is an ENERGY "
                          "spine (the --auto-spine-energy stage's, or one taught with "
                          "--demo-success-energy); a depth line is paid by the field alone, as "
@@ -6238,7 +6239,10 @@ def main() -> None:
                          "decides exactly as one without it. ab/bonus-energy, 2026-11-15: v12 "
                          "(the energy pair on every line) paid unitfarmer2's trough line over the "
                          "novelty-driven dive and nailed celestial to one side of its fork. "
-                         "Config only when on; ckpt restores")
+                         "Config only when on; ckpt restores. The bare flag is 1 (recipe v14's "
+                         "token); 0 switches a restored one off (mm/experts: the expert loop's "
+                         "warm rounds pay no success bonus, and a v14 checkpoint's resume "
+                         "restores this flag without the energy stage it needs)")
     ap.add_argument("--demo-success-d", type=float, default=None,   # None = off
                     help="--demo-file: an episode started from the spine counts as a SUCCESS "
                          "for the backward curriculum when its ratchet RECORD (the deepest "
@@ -10116,9 +10120,10 @@ def main() -> None:
                 and ck_cfg.get("demo_success_bonus") is not None):
             args.demo_success_bonus = float(ck_cfg["demo_success_bonus"])
             restored.append(f"demo_success_bonus={args.demo_success_bonus:g}")
-        if (not args.demo_success_bonus_energy_only
+        # restored only when not given: an explicit 0 switches a restored one off
+        if (args.demo_success_bonus_energy_only is None
                 and ck_cfg.get("demo_success_bonus_energy_only")):
-            args.demo_success_bonus_energy_only = True
+            args.demo_success_bonus_energy_only = 1
             restored.append("demo_success_bonus_energy_only")
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
