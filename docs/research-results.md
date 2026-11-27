@@ -52763,3 +52763,29 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Budget for this stage: <= $30 even if every map ran to its cap (13 x 8e9 steps at ~0.33M
   steps/s and ~$0.31/h); expected $10-15. Stage 2 (the expert loop on the finished maps) gets its
   own PLAN. One seed per map.
+
+## 2026-11-27 16:36 UTC: PLAN - per-map experts, stage 2: the expert loop on every finished expert
+
+* Stage 1 (c3a56467) is running: 4 RTX 5080 boxes at $0.33-0.35/h train at ~426k steps/s; the
+  first expert is done (latebra: first finish 0.60B, DONE at 1.51B in 1.1 h; best 40.83 s on the
+  record clock vs 32.69 s, 1.25x).
+* Every map whose RL run ends DONE goes to the loop queue (scratchpad experts/conductor.sh); a loop
+  worker (loop_w.sh, one RTX 5080, agents mml1.., tunnels 8705..) pushes the expert's
+  ckpt_latest.pt by scp (md5 on the box) and runs tools/exit_local.py on it: search (beam_tas
+  waves from the policy's own proposals) -> distil (plan_to_bc) -> warm training with the BC term
+  and the planner's line as the spawn spine -> eval -> gate. The same flags on every map (CLAUDE.md
+  0b): za_loop's proven loop (zlEXIT1) minus its energy-specific planning (--score dh,
+  --allow-nonfinisher --score-energy 30, --max-ticks 25000): --rounds 6 --deadline-h 3 --waves 4
+  --plan-envs 4096 --greedy-envs 128 --resample 25 --keep 16 --spawn-per-wave 1 --train-steps 3e8
+  --lr 3e-4 --lr-halve-after 3 --lr-min 5e-5 --bc-coef 0.5 --bc-value-coef 0 --bc-target dist
+  --eval-eps 9 --gate-evals 3 --gate-rematch 1 --gate-rule expected --distil-max-over-greedy 0
+  --distil-args=--no-value-target, the trainer extras of zlEXIT1 (respawn machinery off, BC keys
+  by engine action). Every line the loop sees is the policy's own (SELF_STATES=1 by construction).
+* Boxes: loop workers start while the fleet holds < 5 instances (the daemon's cap), up to 4 once the
+  RL workers release theirs; a box with no queued work is released at once.
+* Measured per map (loop_results.jsonl): the planner's best line per round, the gated policy's
+  best and mean time and finishes per round, hours and price - how far the loop moves a fresh
+  expert toward the record, which the 100-map estimate needs.
+* Budget: 13 x ~3.3 h at ~$0.35/h = ~$15. The two stages together stay under ~$45, within the
+  user's ~$200 for the program. Records claimed later need an in-game replay check (our physics is
+  the C core).
