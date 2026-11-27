@@ -115,6 +115,10 @@ TRAIN_ONLY = frozenset({
     "wr_file",
     # --resume-search-state: a resume continued the search loops' clocks; a recording runs none
     "resume_search_state",
+    # --distill: the frozen teacher the weights were fitted to (its path, md5, step, weight
+    # average) and the loss / rollout mix; a recording flies the student's own weights
+    "distill", "distill_md5", "distill_step", "distill_ema", "distill_coef", "distill_vcoef",
+    "distill_rl", "distill_drive", "distill_drive_steps",
     # --init-weights: where a from-scratch run's network started (another run's checkpoint,
     # its md5 / step / map / spine file); provenance only - a recording runs the weights it is
     # given, under this run's own settings

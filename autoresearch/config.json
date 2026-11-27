@@ -265,44 +265,18 @@
       "maps/surf_src_cannonball.bsp",
       "maps/surf_edgeflow_blue200.bsp",
       "maps/surf_src_celestial.bsp",
-      "maps/surf_petrus_lite.bsp",
-      "maps/surf_gi_rino.bsp",
-      "maps/surf_prechasm.bsp",
-      "maps/surf_src_mellow.bsp",
-      "maps/surf_sg_guater.bsp",
-      "maps/surf_simulatedway.bsp",
-      "maps/surf_src_ing.bsp",
-      "maps/surf_kei_luupy.bsp",
-      "maps/surf_latebra.bsp",
-      "maps/surf_lowestbidder.bsp",
-      "maps/surf_freeland_uncapped.bsp",
-      "maps/surf_src_hollow.bsp",
-      "maps/surf_src_volcanic.bsp",
-      "maps/surf_secret_passage.bsp"
+      "maps/surf_petrus_lite.bsp"
     ],
     "maxvel": [
       3500,
+      4000,
       3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500,
-      3500
+      4000,
+      4000,
+      4000,
+      4000
     ],
-    "envs": 1020,
+    "envs": 1029,
     "extra": [
       "--auto-spine-mcts-args",
       "--mcts-mix-rule sib --mcts-mix-floor 0.05 --mcts-mix-horizon 256 --mcts-mix-warm 2",
@@ -312,7 +286,7 @@
       "autoresearch/records_m20.json"
     ]
   },
-  "_multimap_doc": "mm/m20 (the user, 2026-11-25: 'Let's try these ideas on 20 map run' + a world-record metric): ONE policy on the seven development maps + 13 speedrun.eu trigger-finish maps (the round-20 verified trigger maps with a record, the 13 with the most records; intake 2026-11-26: all pass load / zones / reachability at cell 32), 51 envs each, every map at the record servers' sv_maxvelocity 3500, the pay test's extra tokens (--adv-norm-per-map 1, the search mix) + --wr-file autoresearch/records_m20.json (the records frozen at launch). The arms' own tokens (round-2 arch, --update-stats 1, the one change) go after box.py launch's --. Earlier blocks: the pay test (cannonball, petrus, blue200; maxvel 4000 x3; envs 1026) on mm/health; the seven-map block (pb, sidistic, uf2, cannonball, blue200, celestial, petrus; maxvel 3500,4000,3500,4000,4000,4000,4000; envs 1029) on mm/s7*.",
+  "_multimap_doc": "mm/distill (the user, 2026-11-27: per-map experts, then 'unite them into one policy ... supervised using this dagger method'; 'Let's start with 7 maps that we had before'): the STUDENT of the seven-map agent mmg_S1c - the seven maps in its order, its per-map sv_maxvelocity (3500 on princessburglar and unitfarmer2, 4000 elsewhere: the teacher's physics, which --distill checks), its 147 envs per map, the 20-map run's extra tokens (--adv-norm-per-map 1, the search mix, --wr-file); maps_tarball mm20_maps.tar.gz also carries the 13 speedrun.eu maps of mm/m20, the zero-shot test set (record_ckpt, never trained on). The student's own tokens (--distill <teacher> ..., --auto-spine-delay 1e15: no search) go after box.py launch's --. Earlier blocks: mm/m20 (20 maps, maxvel 3500 x20, envs 1020); the pay test (cannonball, petrus, blue200; maxvel 4000 x3; envs 1026) on mm/health; the seven-map block on mm/s7*.",
   "_box_hours_default_doc": "mm7 has no step cap: the box's first deadline is 24 h; the operator extends it (box.py extend) while the credit floor (budget_reserve_usd) holds.",
   "_rent_2026_11_19_doc": "mmg_S1c (the user, 2026-11-19: 'Yes, you can rent the 5090 for 66 cents'): one RTX 5090 with a FAST desktop/workstation CPU (Zen 4/5, Intel 12th-14th gen or Core Ultra): server CPUs ran the seven-map trainer 2.3x slower per GPU (EPYC 7663 176k vs Ryzen 9950X3D 409k steps/s), so cpu_exclude drops EPYC, Xeon, Zen 1-3 Ryzen/Threadripper and Intel <= 11th gen; 5090 cap 0.60 -> 0.66 for this rental. 2026-11-19 15:51 UTC: box 61473916 (machine 51313, Michigan) passed the filter with cpu_name 'AMD Eng Sample: 100-000000946-01' = dual-socket Zen 4c (family 19h model A0h, 2 x 128 cores, max 3.17 GHz, a shared host at load ~45): a server part under a name no exclude matched. Fix: 'Eng Sample' excluded and cpu_ghz >= 4.5 (the survey of 2026-11-19 14:03: every desktop or workstation CPU offered with a 5090 lists 5.05-5.66 GHz, every server part 2.15-4.04 GHz)."
 }

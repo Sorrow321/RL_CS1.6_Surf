@@ -5777,6 +5777,39 @@ def main() -> None:
                          "(KL(pi(s) || pi(aug s)) + (V(aug s) - V(s))^2), the clean "
                          "frame's policy and value as fixed targets; rollouts and evals "
                          "see clean frames. ckpt restores")
+    # --distill (mm/distill, 2026-11-27; the user: train separate policies, then "unite them
+    # into one policy that will be basically supervised using this dagger method"):
+    # surfgym/distill.py. ckpt restores all seven
+    ap.add_argument("--distill", default=None, metavar="CKPT",
+                    help="DAgger (Ross, Gordon & Bagnell 2011) as online policy distillation "
+                         "(Rusu et al. 2016; Czarnecki et al. 2019): a FROZEN teacher "
+                         "checkpoint of THIS run's architecture (strict load) labels every "
+                         "state the rollout visits with its action distribution and value, and "
+                         "every minibatch fits KL(teacher || student) per head (the view "
+                         "Gaussians in closed form, each side's own sigma) + --distill-vcoef x "
+                         "(V - V_teacher)^2. Its observation / action / physics config must be "
+                         "this run's (checked at startup). The teacher must be the policy's OWN "
+                         "lineage (CLAUDE.md section 0: never a demo-trained checkpoint)")
+    ap.add_argument("--distill-ema", type=int, default=None, metavar="I",
+                    help="--distill: the teacher's weight average I (ck['policy_ema'][I], "
+                         "--eval-ema) instead of its raw weights")
+    ap.add_argument("--distill-coef", type=float, default=None,
+                    help="--distill: the KL term's weight (default 1)")
+    ap.add_argument("--distill-vcoef", type=float, default=None,
+                    help="--distill: the value term's weight (default 0.5, PPO's --vf)")
+    ap.add_argument("--distill-rl", type=float, default=None,
+                    help="--distill: this run's own PPO loss (pg + vf x value + ent) times this, "
+                         "beside the distillation terms (default 0: pure distillation, no "
+                         "reward gradient)")
+    ap.add_argument("--distill-drive", type=float, default=None, metavar="BETA",
+                    help="--distill: DAgger's beta - the share of every map's training envs "
+                         "whose actions the TEACHER draws (its own untempered sampled policy) "
+                         "instead of the student; their states, and the respawn snapshots they "
+                         "leave, cover the map before the student can fly it, and are labelled "
+                         "like every other row (default 0: the student flies every env)")
+    ap.add_argument("--distill-drive-steps", type=float, default=None,
+                    help="--distill-drive: beta falls linearly to 0 over this many env steps "
+                         "from step 0 of the run (default: constant)")
     ap.add_argument("--gamma", type=float, default=None)   # 0.995; ckpt restores
     ap.add_argument("--gae", type=float, default=None)     # 0.95; ckpt restores
     ap.add_argument("--clip", type=float, default=None)    # 0.2; ckpt restores
@@ -10121,6 +10154,14 @@ def main() -> None:
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, _ty(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k):g}")
+        # --distill: training-time only (the teacher never enters this run's state_dict),
+        # restored so a plain crash-resume goes on distilling from the same teacher
+        for _k, _ty in (("distill", str), ("distill_ema", int), ("distill_coef", float),
+                        ("distill_vcoef", float), ("distill_rl", float),
+                        ("distill_drive", float), ("distill_drive_steps", float)):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, _ty(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k)}")
         for _k in ("int_move_gate", "int_dwell", "int_speed_cum", "int_speed_weight_up"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, bool(ck_cfg[_k]))
@@ -11084,6 +11125,30 @@ def main() -> None:
         raise SystemExit(f"--aug-drop {args.aug_drop:g}: a pixel share, 0 <= p < 1")
     if float(args.aug_noise) < 0.0 or int(args.aug_shift) < 0 or float(args.aug_coef) < 0.0:
         raise SystemExit("--aug-noise / --aug-shift / --aug-coef must be >= 0")
+    _dk = ("distill_ema", "distill_coef", "distill_vcoef", "distill_rl", "distill_drive",
+           "distill_drive_steps")
+    if not args.distill:
+        if any(getattr(args, _k) is not None for _k in _dk):
+            raise SystemExit("--distill-* without --distill (the teacher checkpoint)")
+    else:
+        for _k, _v in (("distill_coef", 1.0), ("distill_vcoef", 0.5), ("distill_rl", 0.0),
+                       ("distill_drive", 0.0)):
+            if getattr(args, _k) is None:
+                setattr(args, _k, _v)
+        if float(args.distill_coef) <= 0.0:
+            raise SystemExit(f"--distill-coef {args.distill_coef:g}: the KL term is the "
+                             "distillation, it needs a weight > 0")
+        if float(args.distill_vcoef) < 0.0 or float(args.distill_rl) < 0.0:
+            raise SystemExit("--distill-vcoef / --distill-rl must be >= 0")
+        if not 0.0 <= float(args.distill_drive) <= 1.0:
+            raise SystemExit(f"--distill-drive {args.distill_drive:g}: a share of the envs, 0..1")
+        if args.distill_drive_steps is not None and float(args.distill_drive_steps) <= 0.0:
+            raise SystemExit("--distill-drive-steps must be > 0")
+        if float(args.distill_drive) > 0.0 and float(args.distill_rl) > 0.0:
+            raise SystemExit("--distill-drive with --distill-rl > 0: a teacher-driven row's "
+                             "stored log-prob is the student's draw, not the action flown, so "
+                             "PPO's ratio would be wrong on it - drive under pure distillation "
+                             "(--distill-rl 0) only")
     if args.clip is None:
         args.clip = 0.2
     if args.ent is None:
@@ -16188,7 +16253,11 @@ def main() -> None:
     # (b) policy init rank-COMMON - identical weights everywhere (the
     #     explicit broadcast below is belt-and-braces);
     torch.manual_seed(args.seed)
-    policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
+
+    # one constructor for the run's network and, under --distill, its teacher (built the same
+    # way, so the strict load of the teacher's weights below IS the architecture check)
+    def _new_policy():
+        return Policy(obs_dim, args.lidar_w, args.lidar_h,
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
@@ -16218,8 +16287,73 @@ def main() -> None:
                     fp32_trunk=bool(args.fp32_trunk),
                     final_ln_affine=bool(args.final_ln_affine),
                     mlp_act=str(args.mlp_act),
-                    pay_split=PAY_SPLIT, dae=DAE).to(device)
+                    pay_split=PAY_SPLIT, dae=DAE)
+    policy = _new_policy().to(device)
     R = policy.rnn_size                    # 0 without --rnn
+    # ---- --distill: the frozen teacher (surfgym/distill.py) -------------------------------
+    DISTILL = bool(args.distill)
+    DRIVE = DISTILL and float(args.distill_drive) > 0.0
+    DIST_COEF = float(args.distill_coef) if DISTILL else 0.0
+    DIST_VCOEF = float(args.distill_vcoef) if DISTILL else 0.0
+    DIST_RL = float(args.distill_rl) if DISTILL else 0.0
+    teacher = distillmod = None            # bound either way: mb_step closes over both
+    DIST_CFG, DIST_MD5, DIST_STEP = {}, None, None
+    if DISTILL:
+        if H > 0 or RNN or STACK > 1 or int(args.obs_views) > 1 or YCOND or MASKS.on:
+            raise SystemExit("--distill: the flat minibatch step only - not with --chunk, --rnn, "
+                             "--frame-stack, --obs-views, --yaw-cond or the --mask-* flags")
+        if AUG_ON or VMPO or DAE or OFFP or FREEZE or args.bc_file or D.enabled:
+            raise SystemExit("--distill: not with --aug-*, --vmpo, --dae, --offpolicy, "
+                             "--freeze-policy, --bc-file or --ddp (one process, the PPO "
+                             "minibatch step with the teacher's terms)")
+        from surfgym import distill as distillmod
+        _tp = Path(args.distill)
+        if not _tp.exists() and (ROOT / args.distill).exists():
+            _tp = ROOT / args.distill
+        if not _tp.exists():
+            raise SystemExit(f"--distill {args.distill}: no such checkpoint")
+        _h = hashlib.md5()
+        with open(_tp, "rb") as _fh:
+            for _blk in iter(lambda: _fh.read(1 << 22), b""):
+                _h.update(_blk)
+        DIST_MD5 = _h.hexdigest()
+        _tck = torch.load(_tp, map_location="cpu", weights_only=False)
+        DIST_CFG = dict(_tck.get("config") or {})
+        DIST_STEP = int(_tck.get("global_step") or 0)
+        if DIST_CFG.get("demo_contaminated"):
+            raise SystemExit("--distill: this teacher was trained on DEMO-DERIVED targets "
+                             "(demo_contaminated): CLAUDE.md section 0 - its labels would put "
+                             "the record into this run's gradient, one step removed")
+        if args.distill_ema is None:
+            _tsd, _tw = _tck["policy"], "its raw weights"
+        else:
+            _tem = _tck.get("policy_ema") or []
+            if not 0 <= int(args.distill_ema) < len(_tem):
+                raise SystemExit(f"--distill-ema {args.distill_ema}: the teacher carries "
+                                 f"{len(_tem)} weight average(s) (--eval-ema)")
+            _tsd = _tem[int(args.distill_ema)]["policy"]
+            _tw = (f"its weight average {int(args.distill_ema)} (half-life "
+                   f"{float(_tem[int(args.distill_ema)]['half']):,.0f} steps)")
+        # the teacher's own init must not move this run's RNG streams (the student's draw above
+        # is the one a run without --distill makes; everything after it stays that run's)
+        with torch.random.fork_rng(devices=[]):
+            teacher = _new_policy()
+        try:
+            teacher.load_state_dict(_tsd)
+        except RuntimeError as exc:
+            raise SystemExit(f"--distill {args.distill}: the teacher is not this run's "
+                             f"architecture (strict load): {exc}")
+        teacher = teacher.to(device).eval().requires_grad_(False)
+        del _tck, _tsd
+        print(f"--distill: teacher {_tp} (md5 {DIST_MD5}, step {DIST_STEP:,}), {_tw}, frozen; "
+              f"every minibatch fits {DIST_COEF:g} x KL(teacher || student) + {DIST_VCOEF:g} x "
+              f"(V - V_teacher)^2"
+              + (f" + {DIST_RL:g} x this run's PPO loss" if DIST_RL > 0.0
+                 else " (pure distillation: no reward gradient)")
+              + (f"; the teacher draws the actions of {float(args.distill_drive):.0%} of every "
+                 "map's envs" + (f", falling to 0 at {float(args.distill_drive_steps):,.0f} "
+                                 "steps" if args.distill_drive_steps else "")
+                 if DRIVE else ""))
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
     #     is frozen at capture time - re-seeding after has no effect.
@@ -18073,6 +18207,21 @@ def main() -> None:
         meta["config"]["aug_noise"] = float(args.aug_noise)
         meta["config"]["aug_shift"] = int(args.aug_shift)
         meta["config"]["aug_coef"] = float(args.aug_coef)
+    if DISTILL:
+        # --distill: written ONLY when on (record_ckpt.py declares every key TRAIN_ONLY: the
+        # teacher shaped the weights, it changes nothing about what a recording means); the
+        # teacher's md5 and step are its provenance
+        meta["config"]["distill"] = str(args.distill)
+        meta["config"]["distill_md5"] = DIST_MD5
+        meta["config"]["distill_step"] = DIST_STEP
+        if args.distill_ema is not None:
+            meta["config"]["distill_ema"] = int(args.distill_ema)
+        meta["config"]["distill_coef"] = DIST_COEF
+        meta["config"]["distill_vcoef"] = DIST_VCOEF
+        meta["config"]["distill_rl"] = DIST_RL
+        meta["config"]["distill_drive"] = float(args.distill_drive)
+        if args.distill_drive_steps is not None:
+            meta["config"]["distill_drive_steps"] = float(args.distill_drive_steps)
     if args.goal_field_file:
         meta["config"]["goal_field_file"] = str(args.goal_field_file)
     if args.race_no_corner_cut:
@@ -19026,11 +19175,18 @@ def main() -> None:
     #                     G_V = (V(aug s) - V(s))^2, mean over the update's minibatches
     #   race/*_mirror     --eval-mirror: race/eval_progress, the number of greedy
     #                     finishes and race/map_pct of the eval on the MIRROR IMAGE
+    #   distill/kl, distill/kl_view, distill/v_mse, distill/agree  --distill: KL(teacher ||
+    #                     student) over the categorical heads and over the view Gaussians,
+    #                     (V - V_teacher)^2 and the heads' argmax agreement, mean over the
+    #                     update's minibatches (diagnostics: finishes decide, not these)
+    #   distill/drive     --distill: the share of the fleet the teacher flew this iteration
     # LAST, and only when on (a control run's header is the pre-flag one)
     CSV_COLS += ((["aug/mirror_frac"] if MIRROR_P > 0.0 else [])
                  + (["aug/kl", "aug/v_mse"] if AUG_ON else [])
                  + (["race/eval_progress_mirror", "race/eval_finishes_mirror",
-                     "race/map_pct_mirror"] if EVAL_MIRROR else []))
+                     "race/map_pct_mirror"] if EVAL_MIRROR else [])
+                 + (["distill/kl", "distill/kl_view", "distill/v_mse", "distill/agree",
+                     "distill/drive"] if DISTILL else []))
     # --respawn-novel, one block per map, LAST and only when on:
     #   novel/ceiling   the deepest PROGRESS (d0 - d) a REAL episode (map start or
     #                   reservoir, never a novel row) has reached: no novel row is deeper
@@ -20889,6 +21045,10 @@ def main() -> None:
     # MASKS.on is a Python constant: with no flag ROLL_MASK is None, the
     # branch is decided at trace time and the graph is the one that shipped.
     ROLL_MASK = roll_mask if MASKS.on else None
+    # --distill-drive: which envs the TEACHER flies - a static buffer the captured graph reads,
+    # its contents re-set between replays at the start of every iteration (beta moves)
+    static_drive = (distillmod.drive_mask(slots, N, float(args.distill_drive)).to(device)
+                    if DRIVE else None)
 
     def step_compute():
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
@@ -20905,6 +21065,11 @@ def main() -> None:
                 static_h.copy_(h1)
             else:
                 logits, value = policy(static_obs, priv=static_priv)
+            if DRIVE:
+                # --distill-drive: the teacher's row on the same obs; its own untempered draw
+                # replaces the student's on the driven envs below (DRIVE is a Python
+                # constant: a control run's graph has no teacher in it)
+                t_logits_r = teacher(static_obs)[0]
         if CRL:
             # --crl: the raw output row the draw below is made from (the
             # critic's V re-draws from it); a trace-time constant, so the
@@ -20941,6 +21106,13 @@ def main() -> None:
                 static_bls.copy_(torch.broadcast_to(
                     _temper_log_std(policy.log_std(),
                                     temp_t if tempv_t is None else tempv_t), (N, NZ)))
+            if DRIVE:
+                # the driven envs fly the teacher's draw (its keys and its view z); the stored
+                # logp stays the student's draw - inert, --distill-drive needs --distill-rl 0
+                _tc, _tm = split_view(t_logits_r.float())
+                t_act, t_z, _ = sample_view(packer.pad(_tc), _tm, teacher.log_std())
+                act = torch.where(static_drive[:, None], t_act, act)
+                z = torch.where(static_drive[:, None], t_z, z)
             static_act.copy_(act)
             # STORED z is the un-offset draw, so logp above is exactly the
             # behaviour policy's log-density of the EXECUTED action and the
@@ -20963,6 +21135,10 @@ def main() -> None:
                 if ROLL_MASK is not None:
                     padded = ROLL_MASK(padded)
                 act, logp = sample_padded(padded, temp_t)
+                if DRIVE:
+                    # the driven envs fly the teacher's untempered draw (as above)
+                    t_act, _ = sample_padded(packer.pad(t_logits_r.float()))
+                    act = torch.where(static_drive[:, None], t_act, act)
             static_act.copy_(act)
         static_logp.copy_(logp)
         if INT_SPLIT:
@@ -21850,6 +22026,9 @@ def main() -> None:
     # forward between evals / updates exactly like the eval_* values above
     eval_mir = (float("nan"), float("nan"), float("nan"))
     aug_kl_v = aug_vm_v = float("nan")
+    # --distill: the last update's mean (KL_cat, KL_view, V MSE, argmax agreement) and beta
+    dist_v = [float("nan")] * 4
+    dist_beta = float("nan")
     # the two aggregates the multi-map run is judged on (see the eval block):
     # mean over maps of the % of that map's own route covered, and the
     # fraction of maps with at least one box finish; then the same two
@@ -22221,6 +22400,24 @@ def main() -> None:
                     aug_kl, aug_vm = augmod.drac_terms(
                         packer.pad(logits.float()), packer.pad(logits_a.float()),
                         value, value_a)
+            if DISTILL:
+                # --distill: the frozen teacher on the very same rows; its distribution and
+                # value are the targets (surfgym/distill.py terms; masks, yaw-cond and chunks
+                # are refused with it, so these are the heads the policy acts with). DISTILL
+                # is a Python constant: a control run traces the graph it always traced.
+                with torch.no_grad():
+                    t_logits, t_value = teacher.forward_split(
+                        f_scal[idx], img, priv=(None if f_priv is None else f_priv[idx]))
+                if VIEWC:
+                    _cs, _ms = split_view(logits.float())
+                    _ct, _mt = split_view(t_logits.float())
+                    d_kl, d_kv, d_vm, d_ag = distillmod.terms(
+                        packer.pad(_ct)[:, N_VIEW:], packer.pad(_cs)[:, N_VIEW:],
+                        t_value, value, _mt, _ms, teacher.log_std(), policy.log_std())
+                else:
+                    d_kl, d_kv, d_vm, d_ag = distillmod.terms(
+                        packer.pad(t_logits.float()), packer.pad(logits.float()),
+                        t_value, value)
             if H > 0:
                 # the JOINT log-prob PPO's ratio is taken over:
                 #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
@@ -22377,6 +22574,15 @@ def main() -> None:
             # 64 identical codes (that IS code collapse), decoder entropy
             # alone by one code the policy always picks.
             loss = loss - args.dec_ent * dl_ent.mean()
+        if DISTILL:
+            # --distill: coef x (KL_cat + KL_view) + vcoef x V MSE, beside --distill-rl x the PPO
+            # loss (0, a Python constant: the PPO terms are computed for the log and never
+            # backwarded); the four terms ride out for distill/* (--aug-* and --vmpo are
+            # refused with it, so _mbo[5] is never ambiguous)
+            d_loss = DIST_COEF * (d_kl + d_kv) + DIST_VCOEF * d_vm
+            loss = d_loss if DIST_RL == 0.0 else DIST_RL * loss + d_loss
+            return (loss, pg, vl, el, logp,
+                    torch.stack([d_kl.detach(), d_kv.detach(), d_vm.detach(), d_ag.detach()]))
         if AUG_ON:
             # DrAC: L_PPO + alpha_r (G_pi + G_V); the two terms ride out for aug/*
             loss = loss + AUG_COEF * (aug_kl + aug_vm)
@@ -23473,9 +23679,36 @@ def main() -> None:
         print(f"--target-kl {TKL:g}: an update stops once its approx KL exceeds {1.5 * TKL:g}")
     tkl_acc = [0, 0, [], 0]           # updates, stops, the stops' (epoch, mb, kl), stops ever
     floor_next = None                 # --map-floor: the split to re-execute with, once decided
+    if DISTILL:
+        # --distill: the same rows go into both networks, so what an observation holds, what an
+        # action means and the physics must be the teacher's (its strict load already checked
+        # the architecture); compared on the run's final config
+        _mis = distillmod.semantic_mismatch(DIST_CFG, meta["config"])
+        if _mis:
+            raise SystemExit("--distill: the teacher was trained under other observation / "
+                             "action / physics settings than this run, so its labels answer "
+                             "another question:\n" + "\n".join(
+                                 f"  {_k}: teacher {_a!r}, this run {_b!r}"
+                                 for _k, _a, _b in _mis))
+        _new = distillmod.unseen_maps(DIST_CFG, [_s.tag for _s in slots])
+        print(f"--distill: the teacher's config agrees with this run's on every observation / "
+              f"action / physics key it carries ({len(distillmod.SEMANTIC)} keys + the "
+              "per-map blocks)"
+              + (f"; it NEVER trained on {', '.join(_new)} (its labels there are a zero-shot "
+                 "guess)" if _new else ""))
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
+        if DRIVE:
+            # --distill-drive: beta at this iteration's first step, set before its rollout (the
+            # logged share is the envs actually driven: round(beta x width) per map)
+            _dm = distillmod.drive_mask(
+                slots, N, distillmod.drive_at(global_step, float(args.distill_drive),
+                                              args.distill_drive_steps))
+            static_drive.copy_(_dm.to(device))
+            dist_beta = float(_dm.float().mean())
+        elif DISTILL:
+            dist_beta = 0.0
         if DROP_GEN is not None:
             # consistent dropout: ONE sub-network for this rollout AND the
             # update that consumes it (the ratio stays on-policy); the new
@@ -25459,6 +25692,7 @@ def main() -> None:
         vmpo_last = None               # --vmpo: the last minibatch's duals, KLs, psi max
         last_pooled = None             # --ddp-maps shard: the last minibatch's union moments
         aug_sum, aug_n = None, 0       # --aug-*: DrAC's (G_pi, G_V) over this update
+        dist_sum, dist_n = None, 0     # --distill: the four terms over this update
         env_np = None
         # --critic-warmup: is THIS update a critic-only one? Counted in
         # updates from the start of this run, so a resume of a resume that
@@ -25570,6 +25804,10 @@ def main() -> None:
                         # --aug-*: (G_pi, G_V) summed over the update, one read per iteration
                         aug_sum = _mbo[5] if aug_sum is None else aug_sum + _mbo[5]
                         aug_n += 1
+                    if DISTILL:
+                        # --distill: the four terms summed over the update, one read per iteration
+                        dist_sum = _mbo[5] if dist_sum is None else dist_sum + _mbo[5]
+                        dist_n += 1
                 if warming:
                     # ONLY the value term, in the same units the joint loss
                     # weights it with, so the critic's effective step size is
@@ -25759,6 +25997,9 @@ def main() -> None:
         if AUG_ON and aug_n:
             # --aug-*: the update's MEAN DrAC terms (every minibatch, not the last)
             aug_kl_v, aug_vm_v = (aug_sum / aug_n).tolist()
+        if DISTILL and dist_n:
+            # --distill: the update's MEAN terms (every minibatch, not the last)
+            dist_v = (dist_sum / dist_n).tolist()
         if SR_ON and D.is_main and it_no % 50 == 1:
             # the mask share is the MEAN over the period's iterations:
             # episode ends are synchronised across envs, so one iteration
@@ -27067,6 +27308,8 @@ def main() -> None:
             aug_row += [round(eval_mir[0], 1) if eval_mir[0] == eval_mir[0] else "",
                         int(eval_mir[1]) if eval_mir[1] == eval_mir[1] else "",
                         round(eval_mir[2], 3) if eval_mir[2] == eval_mir[2] else ""]
+        if DISTILL:
+            aug_row += [round(v, 6) if v == v else "" for v in dist_v + [dist_beta]]
         if DDP_SHARD:
             # --ddp-maps shard: this row's per-map blocks (unstuck/*, fpert/*, train/*.<tag>)
             # come from every map's owner rank - one small gather per iteration, laid out in
@@ -27336,6 +27579,10 @@ def main() -> None:
         if AUG_ON and aug_kl_v == aug_kl_v:
             # --aug-*: how far the augmented frame's answer still is from the clean one
             hyg_note += f"  drac kl {aug_kl_v:.4f} v {aug_vm_v:.4f}"
+        if DISTILL and dist_v[0] == dist_v[0]:
+            # --distill: how far the student still is from the teacher on its own states
+            hyg_note += (f"  distill kl {dist_v[0]:.4f} view {dist_v[1]:.4f} v {dist_v[2]:.4g} "
+                         f"agree {dist_v[3]:.1%} drive {dist_beta:.0%}")
         _dmx, _dfd = (dip_stats["max_survived_depth"],
                       dip_stats["fail_depth"])
         if _dmx == _dmx or _dfd == _dfd:
