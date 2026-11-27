@@ -86,6 +86,25 @@ def semantic_mismatch(teacher_cfg: dict, cfg: dict) -> list:
     return out
 
 
+def slot_mismatch(teacher_cfg: dict, stem: str, tag: str, maxvel):
+    """One map's teacher against the map it teaches -> (refusals, notes), lists of strings.
+    Refused: a speed cap on this map other than the run's (``maxvel_maps[tag]`` of a --maps
+    teacher, else its run-wide ``maxvel``): the physics the labels answer would not be this run's.
+    Noted: a teacher that never trained on this map (``maps`` / ``map`` of its config) - its
+    labels there are a zero-shot guess."""
+    from pathlib import Path as _P
+    maps = list(teacher_cfg.get("maps") or ([teacher_cfg["map"]] if teacher_cfg.get("map") else []))
+    stems = [_P(str(m)).stem for m in maps]
+    notes, refuse = [], []
+    if stems and stem not in stems:
+        notes.append(f"never trained on {stem} (its maps: {', '.join(stems)})")
+    mvm = teacher_cfg.get("maxvel_maps") or {}
+    tv = mvm.get(tag) if isinstance(mvm, dict) and tag in mvm else teacher_cfg.get("maxvel")
+    if tv is not None and maxvel is not None and abs(float(tv) - float(maxvel)) > 1e-6:
+        refuse.append(f"speed cap on {stem}: teacher {float(tv):g}, this run {float(maxvel):g}")
+    return refuse, notes
+
+
 def unseen_maps(teacher_cfg: dict, tags) -> list:
     """this run's map tags the teacher never trained on (its labels there are a zero-shot
     guess); [] when the teacher's config names no maps (a single-map checkpoint: its map)."""
@@ -95,7 +114,7 @@ def unseen_maps(teacher_cfg: dict, tags) -> list:
     return [t for t in tags if t not in seen]
 
 
-def terms(pad_t, pad_s, v_t, v_s, mu_t=None, mu_s=None, ls_t=None, ls_s=None):
+def terms(pad_t, pad_s, v_t, v_s, mu_t=None, mu_s=None, ls_t=None, ls_s=None, per_row=False):
     """The distillation terms on one minibatch -> (kl_cat, kl_view, v_mse, agree), scalars.
 
     ``pad_*`` (B, heads, bins) categorical logits padded with HeadPacker.pad's -1e30 slots (the
@@ -108,18 +127,24 @@ def terms(pad_t, pad_s, v_t, v_s, mu_t=None, mu_s=None, ls_t=None, ls_s=None):
     log(s_s / s_t) + (s_t^2 + (mu_t - mu_s)^2) / (2 s_s^2) - 1/2 summed over the view heads, so
     the student's sigma is fitted to the teacher's as well as its mean; agree = the share of
     (row, categorical head) pairs whose argmax agrees (a diagnostic, never the verdict).
+    ``ls_t`` may also be (B, n_z): each row's own teacher's sigma (one teacher per map).
+    ``per_row``: a fifth output, (B,) each row's KL_cat + KL_view, detached (the per-map log).
     """
     lt = F.log_softmax(pad_t.detach().float(), dim=-1)
     ls = F.log_softmax(pad_s.float(), dim=-1)
-    kl = (lt.exp() * (lt - ls)).sum(-1).sum(-1).mean()
+    kl_r = (lt.exp() * (lt - ls)).sum(-1).sum(-1)
+    kl = kl_r.mean()
     agree = (pad_t.detach().argmax(-1) == pad_s.detach().argmax(-1)).float().mean()
     if mu_t is not None:
         lst, lss = ls_t.detach().float(), ls_s.float()
-        kv = (lss - lst + ((2.0 * lst).exp() + (mu_t.detach().float() - mu_s.float()).pow(2))
-              / (2.0 * (2.0 * lss).exp()) - 0.5).sum(-1).mean()
+        kv_r = (lss - lst + ((2.0 * lst).exp() + (mu_t.detach().float() - mu_s.float()).pow(2))
+                / (2.0 * (2.0 * lss).exp()) - 0.5).sum(-1)
+        kv = kv_r.mean()
     else:
-        kv = torch.zeros((), device=kl.device)
+        kv_r = kv = torch.zeros((), device=kl.device)
     vm = (v_s.float() - v_t.detach().float()).pow(2).mean()
+    if per_row:
+        return kl, kv, vm, agree, (kl_r + kv_r).detach()
     return kl, kv, vm, agree
 
 

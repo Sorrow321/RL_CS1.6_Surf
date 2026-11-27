@@ -197,6 +197,11 @@ def _parent_tree(dst):
 DCOLS = ["distill/kl", "distill/kl_view", "distill/v_mse", "distill/agree", "distill/drive"]
 
 
+def _tag(m):
+    from surfgym.mapfleet import map_tag
+    return map_tag(Path(m).stem)
+
+
 @needs_two
 def test_flags_off_is_bit_identical_to_the_parent(tmp_path):
     base = _parent_tree(tmp_path / "base")
@@ -262,8 +267,10 @@ def test_a_student_that_is_its_teacher_scores_zero(teacher):
         _block(head)
         kl, kv, vm, ag = (_col(head, rows, c) for c in DCOLS[:4])
         assert len(kl) >= 3
-        assert all(x == 0.0 for x in kl) and all(x == 0.0 for x in vm), (kl, vm)
-        assert all(x == 0.0 for x in kv) and all(x == 1.0 for x in ag), (kv, ag)
+        # (the labels come from label_rollout's forward over the whole rollout, the student's
+        # from the minibatch's: the same weights and rows, other matmul shapes - rounding only)
+        assert all(abs(x) < 1e-9 for x in kl) and all(abs(x) < 1e-9 for x in vm), (kl, vm)
+        assert all(abs(x) < 1e-9 for x in kv) and all(x == 1.0 for x in ag), (kv, ag)
         assert all(x == 0.0 for x in _col(head, rows, "distill/drive"))
         # the BACKWARDED loss has no gradient but rounding: a softmax sums to 1 only to an ulp,
         # so log_softmax's backward leaves p (sum p - 1) ~ 1e-8 per logit; a PPO term would put it
@@ -353,4 +360,46 @@ def test_the_refusals(teacher):
     fails("ds_x4", ["--distill-coef", "2"], "--distill-* without --distill")
     fails("ds_x5", ["--distill", str(teacher) + ".missing"], "no such checkpoint")
     fails("ds_x6", ["--distill", str(teacher), "--distill-ema", "3"],
-          "the teacher carries 1 weight average(s)")
+          "carries 1 weight average(s)")
+    # another speed cap than the teacher's on a map: the physics its labels answer differ
+    fails("ds_x7", ["--distill", str(teacher), "--maxvel", "3500"], "speed cap on")
+    # one teacher per map: every map of the run needs one
+    fails("ds_x8", ["--distill", f"{_tag(MAPS[0])}={teacher}"], "no teacher for")
+
+
+@needs_two
+def test_one_teacher_per_map(teacher):
+    """--distill tag=ckpt,tag=ckpt: each map's rows labelled by ITS teacher. The student is the
+    first teacher's own weights at --lr 0, so the first map's KL is rounding only while the
+    second map, taught by another network, shows a real KL; the config names both teachers"""
+    names = ("ds_t2", "ds_pm")
+    try:
+        r, d2 = V.run_line(V.ROOT, "ds_t2", _maps(), steps=STEPS,
+                           extra=SM + ["--seed", "5", "--lr", "3e-3", "--epochs", "4"])
+        assert r.returncode == 0, (r.stdout + r.stderr)[-4000:]
+        t2 = d2 / "ckpt_final.pt"
+        a, b = _tag(MAPS[0]), _tag(MAPS[1])
+        os.environ["SELF_STATES"] = "1"
+        r, d = V.run_line(V.ROOT, "ds_pm", _maps(), steps=STEPS + IT * 3,
+                          extra=SM + ["--ckpt", str(teacher), "--lr", "0",
+                                      "--distill", f"{a}={teacher},{b}={t2}"])
+        out = r.stdout + r.stderr
+        assert r.returncode == 0, out[-5000:]
+        assert f"--distill: teacher of {a}: {teacher}" in out
+        assert f"--distill: teacher of {b}: {t2}" in out
+        assert "--distill: 2 teachers for 2 maps" in out
+        cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+        assert set(cfg["distill_md5"]) == {a, b} and cfg["distill_md5"][a] != cfg["distill_md5"][b]
+        import record_ckpt
+        record_ckpt.audit_cfg(cfg)
+        head, rows = _csv(d / "progress.csv")
+        _block(head)
+        i = head.index(DCOLS[-1])
+        assert head[i + 1:i + 3] == [f"distill/kl.{a}", f"distill/kl.{b}"]
+        ka, kb = _col(head, rows, f"distill/kl.{a}"), _col(head, rows, f"distill/kl.{b}")
+        assert len(ka) >= 3 and all(abs(x) < 1e-9 for x in ka), ka
+        assert all(x > 1e-4 for x in kb), kb
+    finally:
+        os.environ.pop("SELF_STATES", None)
+        for n in (() if os.environ.get("DISTILL_KEEP") else names):
+            shutil.rmtree(V.ROOT / "runs" / n, ignore_errors=True)
