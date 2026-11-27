@@ -3067,6 +3067,15 @@
       "detail": "m20c bake box: the HOST rebooted mid-job at ~12:36 UTC on 2026-11-26 (uptime reset to 0 inside the container, the warm-caches pass killed 45 min in); fine for a restartable bake, not for a 17-hour training run",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "161.8.101.139",
+      "machine_id": 150482,
+      "host_id": 691050,
+      "date": null,
+      "detail": "gpu_health --all UNHEALTHY in deploy (mmds, 2026-11-27 13:10 UTC, instance 62859024): VERDICT: UNHEALTHY - do not benchmark on this box ",
+      "run": "",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [
