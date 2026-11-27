@@ -52850,3 +52850,25 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   ~$0.55 at a 4B cap (the capped maps finish now and then by 4B), so ~$55-90 of box time and ~2 days
   on 5 boxes for the RL stage - against the user's ~$200 for the program.
 * Credit $30.85 at 23:15 UTC; no box is up.
+
+## 2026-11-27 23:37 UTC: PLAN - per-map experts, the consolidation pass: one teacher per map, chosen on its exact weights
+
+* The user (2026-11-27): "Yes" to step 1 of the order RL -> distillation / generalisation test ->
+  the expert loop later. Why: the experts are fragile (8be0f6b6) - a saved checkpoint of a DONE map
+  can finish 1/9 on its exact weights - and a distillation teacher passes on what its weights do.
+* The 12 experts with a finish (stage 1, 233dcb96; secret_passage left out), unreliable ones first:
+  src_ing, src_volcanic, gi_rino, sg_guater, kei_luupy, freeland_uncapped, src_hollow, latebra,
+  lowestbidder, src_mellow, simulatedway, prechasm.
+* Each expert resumes for 5e8 steps (box.py launch --resume -> run_arm.sh ARM_RESUME, the record gate
+  on the source) with recipe v14's full token list (+ --maxvel 3500, the search mix, --wr-file) and
+  --lr-final 3e-5 --ent-final 0.001 --anneal-start <its step> (lr 3e-4 -> 3e-5, entropy 0.005 ->
+  0.001 over the 5e8) --eval-ema 1.5e8 --auto-spine-delay 1e15 (no search); its search spines are
+  restored from the droplet (sg_guater's were lost: --demo-file=, the run builds its own).
+* Verdict per map (scratchpad experts/cons_eval.py on the box): the expert as pulled (orig), the run's
+  final weights (raw) and its weight average 0 (ema0), 18 exact-weight greedy episodes each
+  (record_ckpt, seeds 1 and 2), graded by score.py: the most verified finishes wins, a tie the faster
+  best record-clock time; the winner is that map's teacher (teacher.pt, md5-pulled to
+  ~/ar_m2/runs/experts/mmc<k>_c_<tag>). Reported: finishes and times of all three per map, so the pass
+  also measures whether an annealed tail stabilises and speeds an expert.
+* Boxes: 4 RTX 5080 (cap $0.35/h), scratchpad experts/cons_w.sh, tunnels 8701-8704, the fleet
+  watchdog with each run's harvest, a $13 floor. Budget ~$3 (12 x ~0.6 h). Credit $30.85.
