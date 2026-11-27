@@ -52647,3 +52647,50 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   the seven maps (3500 here; unitfarmer2 and princessburglar were 3500 in both); the new maps have
   no single-map run to compare with.
 * Spent: ~$43 (four arms + the bake), credit $18.6 after the release.
+
+## 2026-11-27 11:33 UTC: PLAN - DAgger distillation of the seven-map agent into a fresh network (mm/distill)
+
+* The user (2026-11-27, after the 20-map result): "let's now try this policy distillation idea with
+  Dagger idea. Let's start with 7 maps that we had before" - the last try at ONE agent before a
+  write-up: per-map experts, then one student trained "in a supervised manner" by DAgger (Ross,
+  Gordon & Bagnell 2011), and does it generalise better than RL (Lyle et al. ICML 2022:
+  post-training distillation into a fresh network improved Procgen generalisation).
+* TEACHER: the seven-map agent mmg_S1c, ckpt_latest.pt at 79.99B fleet steps (md5 70119029,
+  ~/ar_m2/runs/mmg/mmg_S1c), its weight average 0 (half-life 300M; 345 of 378 verified finishes
+  over its last six tests, 59/63 at the last: RESULT 4838a9d2). The single-map experts of the
+  seven maps were deleted in the 2026-11-21 purge (only two cannonball runs remain), so the first
+  test uses the one joint teacher. Lineage: recipe v14 from scratch, every search line its own -
+  no demo (CLAUDE.md section 0; --distill refuses a demo_contaminated teacher).
+* STUDENT: a fresh network of the teacher's architecture and observation (recipe v14's 160 tokens:
+  hidden 448, SimBa towers, keys-hold, potential channel, absolute view, act_every 4, tick 7.63),
+  the seven maps with the teacher's physics (maxvel 3500 on princessburglar and unitfarmer2, 4000
+  elsewhere), 147 envs per map, one RTX 5090. `--distill` (mm/distill 1004c19f, surfgym/distill.py):
+  every PPO minibatch row also goes through the frozen teacher and the loss is KL(teacher ||
+  student) over the four key heads + the closed-form KL of the two view Gaussians (each side's own
+  sigma) + 0.5 (V - V_teacher)^2; `--distill-rl 0`: NO reward gradient. DAgger's beta
+  (`--distill-drive 0.5 --distill-drive-steps 1e9`): the teacher flies half of every map's envs
+  at step 0, falling linearly to none at 1e9 fleet steps; every state either network flies is
+  labelled by the teacher. No search (`--auto-spine-delay 1e15`). `--eval-ema 3e8`. 3e9 fleet
+  steps, an eval every 37.5M own steps (262.5M fleet).
+* ZERO-SHOT TEST SET: the 13 speedrun.eu maps of mm/m20 (gi_rino, prechasm, src_mellow, sg_guater,
+  simulatedway, src_ing, kei_luupy, latebra, lowestbidder, freeland_uncapped, src_hollow,
+  src_volcanic, secret_passage), never trained on by teacher or student; record_ckpt, 9 greedy
+  episodes from the map start, --maxvel 3500 (the record servers'); the teacher (ema0) beside the
+  training, the student at each 1e9 milestone (raw) and at the end (raw and ema0); graded by
+  score.py (verified finishes on the finish hull, best progress %).
+* Tests (local CPU, tests/python/test_distill.py): the terms are the exact KLs; flags off the run
+  is bit-identical to the parent (config, every eval trajectory, every CSV row, the weights); a
+  student resumed from its own teacher's weights scores KL 0, value 0, agreement 1 and a zero
+  gradient at every update; a fresh student closes on its teacher; the drive share follows its
+  schedule and the driven envs' stored actions are the teacher's draws; the refusals.
+* RULE, fixed now:
+  - RETENTION (the seven training maps; maps held = a verified finish in >= 2 of the last 3
+    evals at or before 3e9): WORKS >= 6 held; PARTIAL 3-5; FAILS <= 2. Secondary: each map's
+    first verified finish (fleet steps) against the teacher's own RL history (petrus, blue200,
+    celestial before 7.50B; cannonball 25.36B, unitfarmer2 36.40B, princessburglar 49.00B,
+    sidistic 76.84B).
+  - GENERALISATION (the 13 maps): the student's final raw weights against the teacher's ema0.
+    BETTER = >= 9 more verified finishes (one map's worth, of 117) or a median best progress
+    >= 5 points higher; WORSE = the mirror; else SAME. The milestones show the trend.
+* Box: one RTX 5090 <= $0.60/h (the standard cap), the fleet watchdog with a harvest, a $13
+  credit floor, a dashboard tunnel. Credit $43.11 before the rental. One seed.
