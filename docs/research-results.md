@@ -52812,3 +52812,41 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   seven-map loop's rounds did (mmx_E1, four rejected rounds). Stage 2 STOPPED after the two rounds (the
   loop box released, files in ~/ar_m2/runs/experts/mml1_xl_latebra); the RL farm continues.
 * Spent today ~$5.4 (credit $37.70), the farm's own share ~$4.
+
+## 2026-11-27 23:13 UTC: RESULT - per-map experts, stage 1: recipe v14 learns 12 of the 13 speedrun.eu maps from scratch for $10.5; the median best time is 1.13x the record
+
+* PLAN c3a56467; code mm/experts (6c571f83 box.py launch --map, 3a4c15c3, 94fad2da); scratchpad
+  experts/farm_w.sh with 5 RTX 5080 boxes at $0.33-0.35/h (Core Ultra 5 250 / i9-14900K), ~426k
+  steps/s, 15:13-23:12 UTC; one map at a time per box from a shared queue; DONE = >= 7/9 verified
+  finishes in 3 evals in a row, else the 8e9 cap. Every expert's ckpt_latest.pt pulled (13 of 13
+  md5-checked) with its evals to ~/ar_m2/runs/experts/<run>; the search spines of 12 (sg_guater's
+  lost: its box was released 20 s after its end).
+* Per map (first verified finish / end, hours, $, best record-clock time / record):
+
+| map | status | first finish | end | hours | $ | best / record |
+|---|---|---|---|---|---|---|
+| prechasm | done | 0.30B | 0.45B | 0.33 | 0.11 | 16.28 / 15.54 = 1.048 |
+| sg_guater | done | 0.38B | 0.60B | 0.49 | 0.17 | 24.82 / 23.36 = 1.062 |
+| freeland_uncapped | done | 2.64B | 2.87B | 2.04 | 0.67 | 34.25 / 31.89 = 1.074 |
+| lowestbidder | done | 0.68B | 1.66B | 1.14 | 0.38 | 28.93 / 26.91 = 1.075 |
+| gi_rino | done | 0.30B | 4.83B | 3.65 | 1.28 | 32.84 / 29.08 = 1.129 |
+| simulatedway | done | 0.30B | 0.91B | 0.60 | 0.20 | 26.60 / 23.48 = 1.133 |
+| src_hollow | done | 0.91B | 1.74B | 1.21 | 0.42 | 41.78 / 36.77 = 1.136 |
+| src_mellow | done | 0.30B | 1.06B | 0.77 | 0.25 | 33.20 / 26.66 = 1.245 |
+| latebra | done | 0.60B | 1.51B | 1.10 | 0.39 | 40.83 / 32.69 = 1.249 |
+| kei_luupy | done | 2.42B | 2.57B | 1.99 | 0.66 | 19.25 / 14.20 = 1.356 |
+| src_volcanic | cap (2-8/9 per eval) | 0.60B | 7.93B | 5.37 | 1.88 | 49.43 / 44.41 = 1.113 |
+| src_ing | cap (3-7/9 per eval) | 1.43B | 7.93B | 6.01 | 2.07 | 74.95 / 61.75 = 1.214 |
+| secret_passage | cap, no finish (best 59.65%) | - | 7.93B | 5.69 | 1.99 | - |
+
+* 10 DONE (median 1.12 h, $0.38, 1.59B steps), 2 learned but not reliable by the rule, 1 not learned;
+  30.4 box-hours, $10.46 of box time; the three capped maps took 57% of it. The 20-map joint run
+  had held 3-4 of these 13 maps at 10B fleet steps (05d49d62).
+* Best record-clock time / record over the 12 maps with a finish: median 1.131, 1.048-1.356; no
+  record beaten (and any claim would need an in-game replay of the line).
+* Fragility (NOTE 8be0f6b6) stands: the saved ckpt_latest of a DONE map need not be a good weight
+  set (src_hollow's: 1/9 at its exact weights). These are the checkpoints the next stage starts from.
+* Re-estimate for the ~100 speedrun.eu maps from these numbers: ~$0.85 per map at an 8B cap,
+  ~$0.55 at a 4B cap (the capped maps finish now and then by 4B), so ~$55-90 of box time and ~2 days
+  on 5 boxes for the RL stage - against the user's ~$200 for the program.
+* Credit $30.85 at 23:15 UTC; no box is up.
