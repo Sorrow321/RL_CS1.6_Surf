@@ -52789,3 +52789,26 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
 * Budget: 13 x ~3.3 h at ~$0.35/h = ~$15. The two stages together stay under ~$45, within the
   user's ~$200 for the program. Records claimed later need an in-game replay check (our physics is
   the C core).
+
+## 2026-11-27 18:09 UTC: NOTE - expert farm: stage 1 pace, the experts are fragile, stage 2 (the expert loop) stopped after two collapsed rounds
+
+* Stage 1 (c3a56467), 4 RTX 5080 boxes at $0.33-0.35/h, ~426k steps/s: DONE so far latebra (first
+  verified finish 0.60B, DONE 1.51B, 1.1 h, ~$0.39), src_hollow (0.91B / 1.74B, 1.2 h), freeland_uncapped
+  (2.64B / 2.87B, 2.0 h, ~$0.67); finishing src_ing (first 1.43B) and src_volcanic (0.60B). Best
+  record-clock time / record: freeland 1.074, hollow 1.136, volcanic 1.176, src_ing 1.233, latebra
+  1.249 - and falling while the runs train (volcanic 1.215 -> 1.176 over 1.4B steps).
+* The experts are FRAGILE. src_hollow's pulled ckpt_latest (step 1.757B, saved after three evals of
+  7, 7, 8 / 9) finishes 1/9 in the trainer's own eval at --lr 0 (weights verified identical), 6, 7, 8 / 9
+  one PPO iteration later (three seeds) and 7/18 in record_ckpt: the tools are right, the weights swing
+  between ~10% and ~80% within minutes of training. DONE says the map is learned, not that a saved
+  checkpoint is good: a teacher or a record claim needs its exact weights verified (or weight averages).
+* Stage 2 (2ee4864a) first failed on a flag (a v14 checkpoint restores --demo-success-bonus-energy-only,
+  which refused the loop's --demo-success-bonus 0: fixed, mm/experts 3a4c15c3, the flag takes an explicit
+  0, tests/python/test_experts.py) and on the planner's greedy gate (--plan-args=--allow-nonfinisher
+  added). Then on latebra: round 0 the planner's best line 42.24 s, the policy after the round's training
+  0/27 finishes; round 1 42.60 s and 1/27 against the seed's 12/27 - both rejected by the gate; the
+  planner's lines were no faster than the expert's best eval (41.68 s). The warm rounds (lr 3e-4, BC on
+  the planner's lines, the spine curriculum, the respawn machinery off) wreck a knife-edge policy, as the
+  seven-map loop's rounds did (mmx_E1, four rejected rounds). Stage 2 STOPPED after the two rounds (the
+  loop box released, files in ~/ar_m2/runs/experts/mml1_xl_latebra); the RL farm continues.
+* Spent today ~$5.4 (credit $37.70), the farm's own share ~$4.
