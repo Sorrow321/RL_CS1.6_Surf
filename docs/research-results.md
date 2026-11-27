@@ -52599,3 +52599,51 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   0.026-0.041). The normalisers were finite and sensible (per-map sd 0.5 on princessburglar to 22 on
   gi_rino at 2.5B). The 3-map pre-launch test pointed the same way (pn_3m finished petrus least
   often; RESULT 47600529). One seed. --ret-norm 2 is not adopted.
+
+## 2026-11-27 08:51 UTC: RESULT - the 20-map run at 10B: no arm clears the rule (wide net +1 map, floor -2); joint training is behind the seven-map run on every original map
+
+* PLAN 7cbcfd60; NOTE 30d7544c (stop at 10B, the user's "Decide at 10B"); RESULT a02c62d5 (m20n_1
+  stopped at 5.57B). Each arm stopped at its first milestone at or past 1e10 fleet steps and its
+  watcher pulled that milestone + ckpt_latest (md5) with the run's evals and search lines to
+  ~/ar_m2/runs/m20/<run>: m20f_1 ckpt_10257315840.pt (e0587d50; its --map-floor re-splits shift
+  its milestones), m20w_1 ckpt_10000896000.pt (8d8a33f7), m20c_1 ckpt_10000896000.pt (d0a8dfeb).
+  Boxes released 05:02, 07:58 and 08:43 UTC; no instance is live.
+* The PLAN's rule (official grader; maps held = a verified finish in >= 2 of the last three evals
+  at or before 10B: 8.26, 9.01, 9.76B):
+  - m20c_1 control: 3 held (sg_guater, simulatedway, src_mellow); 3 finished at some eval.
+  - m20w_1 (--conv-mult 2 --emb 1024 --hidden 896): 4 held (petrus_lite, sg_guater, simulatedway,
+    src_mellow) = control + 1: no clear difference by the rule (BETTER needs + 3). Every
+    secondary favours it: 8 maps finished at some eval (adds prechasm 5.25B, gi_rino 6.75B,
+    lowestbidder 7.51B, kei_luupy 9.76B) against 3; first finishes on the shared maps at
+    1.50-2.25B against 1.50-5.25B; median best record clock / record on its held maps 1.102
+    against 1.178; median best progress at the 9.76B eval 43.0% against 31.3%.
+  - m20f_1 (--map-floor 0.5): 1 held (sg_guater) = control - 2: no clear difference by the rule
+    (WORSE needs - 3); it lost simulatedway and src_mellow after its searches began (a finished map
+    keeps half an even share of the envs).
+  - m20n_1 (--ret-norm 2): stopped at 5.57B by the user, behind at every eval (a02c62d5).
+  - The anneal fork m20a_1 was not run: it forks at 13e9 and needs the run continued to 2e10.
+* Records: none beaten. Closest: sg_guater 24.69 s (control) / 24.78 s (wide) vs 23.36 s (1.06x);
+  simulatedway 25.06 s vs 23.48 s (1.07x, wide); petrus_lite 31.55 s vs 27.74 s (1.14x, wide).
+  Record clock, our simulator.
+* Searches began at 6e9 fleet (--auto-spine-delay 3e8 own steps per map) and every arm then dipped
+  as in mm7_1 (adopted lines move practice to their ends): median best progress control 48.5% at
+  6.0B, 33.3% at 7.5B, 31.3% at 9.76B; wide 63.3% at 6.75B, 43.0% at 9.76B. The 10B read falls
+  inside that dip for every arm.
+* Joint training on the seven original maps at matched own steps per map (the 9.76B eval = 488M
+  own; mm7_1, the seven-map v14 run, at 525M own from the 2026-11-17 20:55 NOTE): mean eval progress
+  control / wide / floor against mm7_1: sidistic 5.1 / 9.0 / 9.9 vs 25.0; unitfarmer2 9.3 / 1.6 /
+  3.3 vs ~9.5; cannonball 2.7 / 5.2 / 6.7 vs 19.2; celestial 27.2 / 26.6 / 18.0 vs 35.5; blue200
+  51.5 / 50.9 / 51.0 vs 60.3; petrus 39.1 / 82.1 (2/9) / 20.4 vs 48.2 (1/9); princessburglar 0
+  everywhere. At 300M own (before any search in either run) all three arms were behind mm7_1 on
+  all seven maps as well (sidistic 15 vs 26, unitfarmer2 1.5 vs 9.5, cannonball 11-19 vs 55,
+  petrus 61-75 vs 100). Alone, v14 finished petrus at 0.30B own: the 20-map control had not by
+  0.49B, the wide net had. mm7_1 itself matched the single-map runs on sidistic and unitfarmer2
+  and trailed them on cannonball and celestial (2026-11-17 23:10 NOTE). So per own step the 20-map
+  joint agent learned every original map slower than the seven-map one, and per wall-clock hour
+  6-8x slower again (the maps are stepped one after another, NOTE 30d7544c). No hard map
+  (princessburglar, sidistic, unitfarmer2, cannonball) finished in any arm; in the seven-map runs
+  they first finished at 3.6-11B own steps, out of this run's reach at 10B or 20B.
+* Caveats: one seed per arm; the seven-map reference is one run, at sv_maxvelocity 4000 on five of
+  the seven maps (3500 here; unitfarmer2 and princessburglar were 3500 in both); the new maps have
+  no single-map run to compare with.
+* Spent: ~$43 (four arms + the bake), credit $18.6 after the release.
