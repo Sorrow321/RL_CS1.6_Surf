@@ -52694,3 +52694,44 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
     >= 5 points higher; WORSE = the mirror; else SAME. The milestones show the trend.
 * Box: one RTX 5090 <= $0.60/h (the standard cap), the fleet watchdog with a harvest, a $13
   credit floor, a dashboard tunnel. Credit $43.11 before the rental. One seed.
+
+## 2026-11-27 14:44 UTC: RESULT - DAgger distillation of the seven-map agent: the skill is copied in under 1B steps, generalisation unchanged (stopped at 1.52B by the user)
+
+* Run mmds_1 (PLAN f6be38b8, code mm/distill 1004c19f): box 62859436 (RTX 5090 + Ryzen 9 9950X,
+  Maryland, $0.698/h), 13:12-14:42 UTC, about $1.1. No fast-CPU 5090 passed at <= $0.60 for 90
+  min; the user OK'd up to $0.80/h for this run only (cap back to 0.60, daemon restarted). The first
+  box (Oman, machine 150482) failed gpu_health in deploy and is blocked. Trainer launched 13:16,
+  stopped by the user at 1.52B fleet steps ("maybe now you can stop"), before the PLAN's 3e9.
+* Throughput ~374k steps/s once the teacher's zero-shot pass ended; that pass (3 recordings at ~7
+  cores each) held the trainer near 200k, and the later passes were capped at 2 x 2 threads.
+* RETENTION (official grader, raw weights; finishes of 9 for pb / sidistic / uf2 / cannonball /
+  blue200 / celestial / petrus):
+  - 0.26B: 2 0 4 0 9 7 9 (5 maps); 0.53B: 2 0 8 0 9 9 9 (5); 0.79B: 4 1 7 2 9 8 9 (ALL 7);
+    1.05B: 1 0 9 1 9 9 9 (6); 1.32B: 6 0 9 1 9 9 9 (6).
+  - Held over the last three evals (0.79 / 1.05 / 1.32B): 6 of 7, all but sidistic = WORKS by the
+    rule's threshold (>= 6), read at 1.32B instead of the planned 3e9. Weight average 0: 4 held, 6 of
+    7 finished at 1.32B.
+  - First verified finishes: pb, uf2, blue200, celestial, petrus 0.26B; sidistic, cannonball 0.79B.
+    The teacher's own RL run: cannonball 25.36B, uf2 36.40B, pb 49.00B, sidistic 76.84B fleet.
+  - Best times over the run (raw, spawn clock) against the teacher's last test (raw / ema0): pb
+    68.15 (68.75 / 68.32), sidistic 112.78 (113.37 / 112.04), uf2 39.61 (39.68 / 39.66), cannonball
+    75.96 (75.81 / 75.12), blue200 12.20 (12.30 / 12.17), celestial 41.68 (41.42 / 41.60), petrus
+    27.22 (27.54 / 27.26) s.
+  - Distillation terms: KL over the key heads 1.15 -> 0.035, view KL 4.1 -> 0.07, value MSE 757 ->
+    0.5, argmax agreement 53% -> 86%; the teacher flew 50% -> 0% of the envs over the first 1B.
+* GENERALISATION (the 13 speedrun.eu maps, never trained on; 9 greedy episodes each from the map
+  start, maxvel 3500, score.py): teacher ema0 0/117 finishes, median best progress 13.7%; student
+  raw at 1.0B 0/117, 13.1%; at 1.52B raw 0/117, 13.9%, ema0 0/117, 9.4%. Per map within a few points
+  of the teacher (gi_rino 5.2 -> 7.5%, src_ing 6.2 -> 14.6%, simulatedway 14.5 -> 5.9%). SAME by the
+  rule.
+* Reading: supervised DAgger copies an 80B-step RL agent's seven routes into a fresh network in
+  about 1% of the RL steps, at the teacher's pace, with no reward gradient; the copy generalises
+  exactly as poorly as the original. With seven training maps the student learns seven routes,
+  not a skill that transfers - what Lyle et al. (Procgen, 200 levels) and Mediratta et al.
+  (diversity beats amount) lead one to expect at this diversity. The user's next step
+  (2026-11-27): per-map RL experts on the ~100 speedrun.eu maps plus the expert loop for records,
+  then distillation on the large set, where choices that failed under RL (recurrent memory) can be
+  retried under supervision.
+* Files: ~/ar_m2/runs/distill/mmds_1 (sync/: run.json, progress.csv, the launch log, every eval;
+  zs/: the four zero-shot passes and grade.json; ckpt_latest.pt md5 a779d28b, ckpt_1000484352.pt
+  md5 538f2de1). One seed.
