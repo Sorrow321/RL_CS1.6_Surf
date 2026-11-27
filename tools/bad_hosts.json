@@ -3040,6 +3040,33 @@
       "detail": "autoresearch mmp: not running after 330 s (status loading, 45e1402c720b: Verifying Checksum\n45e1402c720b: Download complete\n)",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "110.138.16.112",
+      "machine_id": 142213,
+      "host_id": 575741,
+      "date": null,
+      "detail": "autoresearch m20c: not running after 330 s (status loading, #7 3.511 Get:17 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libip4tc2 amd64 1.8.7-1ubuntu5.2 [19.9 kB]\n)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "89.115.211.212",
+      "machine_id": 153717,
+      "host_id": 716861,
+      "date": null,
+      "detail": "autoresearch m20c: not running after 330 s (status offline, 44d78ae4d2d4: Pull complete\n)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "216.155.220.136",
+      "machine_id": 45400,
+      "host_id": 74292,
+      "date": "2026-11-26",
+      "detail": "m20c bake box: the HOST rebooted mid-job at ~12:36 UTC on 2026-11-26 (uptime reset to 0 inside the container, the warm-caches pass killed 45 min in); fine for a restartable bake, not for a 17-hour training run",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
