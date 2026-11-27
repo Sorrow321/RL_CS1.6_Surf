@@ -251,6 +251,37 @@ def test_launch_declares_self_states_with_its_provenance(monkeypatch, tmp_path):
         box.main(["launch", "--agent", "r1b4", "--run", "r1b4_y", "--self-states", "mine"])
 
 
+def test_launch_map_trains_another_map_of_the_tarball(monkeypatch, tmp_path):
+    """mm/experts: one deployed box trains a queue of single maps from scratch; --map replaces
+    config map in run_arm.sh's MAP and is recorded with the run; refused on a resume (the
+    checkpoint's map) and with --multimap (the config's maps), and outside maps/"""
+    monkeypatch.setattr(box, "AR_HOME", tmp_path)
+    monkeypatch.setattr(box, "BOXES", tmp_path / "boxes")
+    box.save_rec("mmx1", {"agent": "mmx1", "id": 42, "gpu": "RTX_5080", "dph": 0.3,
+                          "created": 0, "host": "h", "port": 1})
+    sent = []
+    monkeypatch.setattr(box, "ssh", lambda rec, cmd, **k: sent.append(cmd) or
+                        box.subprocess.CompletedProcess(cmd, 0, "", ""))
+    box.main(["launch", "--agent", "mmx1", "--run", "mmx1_gi_rino", "--map",
+              "maps/surf_gi_rino.bsp", "--", "--maxvel", "3500"])
+    assert "MAP=maps/surf_gi_rino.bsp " in sent[-1] and "SCRATCH=1 " in sent[-1]
+    assert f"MAP={box.CFG['map']} " not in sent[-1]
+    assert sent[-1].rstrip().endswith("--maxvel 3500")
+    assert box.load_rec("mmx1")["runs"][-1]["map"] == "maps/surf_gi_rino.bsp"
+    # without --map: the config's map, and no map key in the record (as before)
+    box.main(["launch", "--agent", "mmx1", "--run", "mmx1_cfg"])
+    assert f"MAP={box.CFG['map']} " in sent[-1]
+    assert "map" not in box.load_rec("mmx1")["runs"][-1]
+    n = len(sent)
+    for bad in (["--resume"], ["--multimap"]):
+        with pytest.raises(SystemExit):
+            box.main(["launch", "--agent", "mmx1", "--run", "mmx1_x", "--map",
+                      "maps/surf_gi_rino.bsp"] + bad)
+    with pytest.raises(SystemExit):
+        box.main(["launch", "--agent", "mmx1", "--run", "mmx1_y", "--map", "/root/x.bsp"])
+    assert len(sent) == n
+
+
 def _blocklist(*mids, readme="branch"):
     return {"_README": [readme], "blocked": [
         {"ip": None, "machine_id": m, "host_id": None, "reason": "gpu_capped", "detail": f"m{m}"}

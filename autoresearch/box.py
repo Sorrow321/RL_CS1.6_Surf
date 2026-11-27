@@ -623,6 +623,12 @@ def cmd_launch(a):
     recipe = [] if a.no_recipe else list(CFG["incumbent_recipe"])
     maps = None
     mm_resume = None
+    one_map = getattr(a, "map", None)
+    if one_map and (getattr(a, "multimap", False) or a.resume):
+        die("--map names the map of a single-map run from scratch (a resume flies its "
+            "checkpoint's map, --multimap the config's multimap maps)")
+    if one_map and not one_map.startswith("maps/"):
+        die(f"--map {one_map}: a path under the deployed maps/ (maps/<stem>.bsp)")
     if getattr(a, "multimap", False):
         # --multimap (mm/s0): ONE policy over config "multimap" maps, from scratch, with the
         # recipe's own tokens except its --envs (a multiple of the map count) and its --maxvel
@@ -642,7 +648,7 @@ def cmd_launch(a):
                 die(f"runs_ckpt.pt on the box (md5 {got}) is not the checkpoint deploy --ckpt "
                     f"pushed ({rec['ckpt_cfg']['md5']}): push it again")
     env = ((f"MAPS={shlex.quote(','.join(maps))} " if maps and not a.resume else
-            "" if maps else f"MAP={shlex.quote(CFG['map'])} ")
+            "" if maps else f"MAP={shlex.quote(one_map or CFG['map'])} ")
            + f"BUDGET={shlex.quote(str(int(float(a.steps))))} "
            f"RECORD_EVERY={shlex.quote(a.record_every)} ")
     if a.self_states is not None:
@@ -698,6 +704,8 @@ def cmd_launch(a):
         run["self_states"] = a.self_states
     if maps:
         run["maps"] = maps
+    if one_map:
+        run["map"] = one_map
     if ranks > 1:
         run["ranks"] = ranks
     if rgpu:
@@ -944,6 +952,10 @@ def main(argv=None):
                    help="the record gate's card (RECORD_GPU, surfgym/gpupick.py: inherit | own "
                         "| free | <n> | GPU-<uuid>); default free on a multi-GPU box, unset "
                         "on one card")
+    p.add_argument("--map", default=None, metavar="BSP",
+                   help="mm/experts: a single-map run from scratch on this map (maps/<stem>.bsp, "
+                        "in the deployed tarball) instead of config map, so one deployed box "
+                        "trains a queue of maps one after another; recorded with the run")
     p.add_argument("extra", nargs=argparse.REMAINDER)
     p.set_defaults(fn=cmd_launch)
     p = sub.add_parser("pull")
