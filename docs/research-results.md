@@ -52872,3 +52872,56 @@ the greedy path swings while the sampled policy holds, so the path the tests fly
   also measures whether an annealed tail stabilises and speeds an expert.
 * Boxes: 4 RTX 5080 (cap $0.35/h), scratchpad experts/cons_w.sh, tunnels 8701-8704, the fleet
   watchdog with each run's harvest, a $13 floor. Budget ~$3 (12 x ~0.6 h). Credit $30.85.
+
+## 2026-11-28 01:40 UTC: RESULT - per-map experts, the consolidation pass: 12 teachers, 213 of 216 exact-weight finishes, every map faster
+
+* Plan 16b8fd86. Each of the 12 experts with a finish (stage 1, 233dcb96) resumed for 5e8 steps with
+  recipe v14's full token list and --lr-final 3e-5 --ent-final 0.001 --anneal-start <its step>
+  --eval-ema 1.5e8 --auto-spine-delay 1e15 (no search). Then three weight sets were flown greedily
+  on their EXACT weights, 18 episodes each (record_ckpt seeds 1 and 2), graded by score.py on the
+  finish hull: the expert as pulled (orig), the run's final weights (raw), its weight average 0
+  (ema0). Best = best record-clock time / the speedrun.eu record.
+
+    map                 orig            raw             ema0            teacher
+    src_ing             3/18  1.250x   14/18  1.195x   17/18  1.204x   ema0
+    src_volcanic        9/18  1.138x   18/18  1.071x   17/18  1.090x   raw
+    gi_rino            18/18  1.166x   15/18  1.083x   18/18  1.099x   ema0
+    sg_guater          17/18  1.092x   18/18  0.958x   18/18  0.982x   raw
+    kei_luupy          18/18  1.352x   18/18  1.227x   18/18  1.258x   raw
+    freeland_uncapped  16/18  1.075x   18/18  1.021x   18/18  1.031x   raw
+    latebra            10/18  1.266x   18/18  1.152x   18/18  1.168x   raw
+    src_hollow          7/18  1.165x   17/18  1.085x   12/18  1.118x   raw
+    lowestbidder       18/18  1.087x   18/18  1.013x   18/18  1.046x   raw
+    src_mellow         14/18  1.280x   16/18  1.146x   17/18  1.187x   ema0
+    simulatedway       18/18  1.133x   18/18  1.072x   17/18  1.094x   raw
+    prechasm           18/18  1.025x   18/18  0.981x   18/18  0.993x   raw
+
+* Totals: orig 166/216 (76.9%, 6 maps at >= 17/18), raw 206/216 (95.4%), ema0 206/216 (95.4%),
+  the chosen teacher 213/216 (98.6%, all 12 maps at >= 17/18). Best / record median 1.151 (orig) ->
+  1.078 (raw) / 1.079 (teacher). raw is faster than orig on 12 of 12 maps and faster than ema0 on 12
+  of 12. Reliability between raw and ema0 is a draw: ema0 ahead on src_ing, gi_rino, src_mellow, raw
+  ahead on src_volcanic, src_hollow (17 vs 12), simulatedway, tied on six. So the average is not
+  uniformly better, and the teacher has to be chosen per map on its exact weights.
+* The two experts unreliable at the 8e9 cap (src_ing 3/18, src_volcanic 9/18) and the one whose
+  saved weights flew 1/9 (src_hollow, 8be0f6b6; 7/18 here) end at 17/18, 18/18 and 17/18.
+* Under the record on the record clock, IN SIMULATION ONLY (not a record claim until the line is
+  replayed in the game): sg_guater 22.39 s (raw; ema0 22.93 s) vs 23.36 s (FiZz, 137 records),
+  0.958x; prechasm 15.24 s (raw; ema0 15.43 s) vs 15.54 s (JiZz, 238 records), 0.981x. Both are
+  trigger maps (sg_guater: two trigger_multiple, *13 and *18, both fire the button but_stop ->
+  counter_off, so the zone union is the game's; prechasm: trigger *8 -> counter_off), 26 and 20
+  brush entities (far below the old 128 tables), on a core with 6bd7f931.
+* NOT separated: there was no constant-lr control, so the gain is the pass as a whole (5e8 more
+  steps + the lr / entropy anneal + the weight average). Best-of-18 times are a noisy statistic,
+  but the direction holds on 12 of 12 maps.
+* Teachers: ~/ar_m2/runs/experts/mmc<k>_c_<tag>/teacher.pt (md5 in the scratchpad's
+  experts/cons_results.jsonl, all 12 verified on the droplet), plus end.tgz (run.json,
+  progress.csv, the evals). The top-level key teacher_choice names the variant. An ema0 teacher
+  carries the average's weights as "policy", so --distill loads exactly what was flown, without
+  --distill-ema (record_ckpt --ema and the distill loader both read only ["policy"] of the slot).
+* Ops: the first launch was REFUSED by run_arm.sh. The restored demo_file is the expert's own
+  auto-spine (recipe v14's search line from its own policy, no demo), and a restored source needs
+  the SELF_STATES declaration (CLAUDE.md section 0). The local smoke test had set SELF_STATES=1
+  itself and so hid it. Fixed by passing box.py's --self-states with that provenance, and the queue
+  restarted. 4 RTX 5080 at $0.283-0.35/h (Ontario, Japan, 2 x South Korea), 12 x 0.42-0.49 h.
+  Cost $2.07 of credit ($30.85 -> $28.78), including the refused first wave. No box is up.
+* Next (needs the user): step 2, the generalisation test.
